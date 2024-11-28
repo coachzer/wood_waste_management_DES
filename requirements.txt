@@ -1,0 +1,10 @@
+# Core dependencies
+simpy>=4.0.1
+numpy>=1.21.0
+
+# Visualization
+matplotlib>=3.5.0
+
+# Optional utilities
+pandas>=1.4.0  # For data analysis
+scipy>=1.8.0   # For optimization calculations
