@@ -71,15 +71,15 @@ def create_simulation_entities(env):
         waste_streams={
             WasteType.SAWDUST: 15.0,
             WasteType.WOOD_CUTTINGS: 12.0,
-            WasteType.SOLID_WOOD: 8.0,
+            WasteType.SOLID_WOOD: 20.0,
         },
-        generation_frequency=4,  # Frequent generation
-        storage_capacity=200,  # Large storage
+        generation_frequency=0.01,  # Frequent generation
+        storage_capacity=2000,  # Large storage
         priority_level=1,  # High priority
         randomness=0.15,  # Moderate variation
         std_dev=0.2,  # Standard deviation
         environmental_impact="Moderate",
-        region="North",
+        region="North",  # placeholder
     )
 
     # Paper/Packaging Companies
@@ -87,8 +87,8 @@ def create_simulation_entities(env):
         env=env,
         name="PackagingCo East",
         waste_streams={WasteType.PAPER_PACKAGING: 25.0, WasteType.WOOD_PACKAGING: 18.0},
-        generation_frequency=3,
-        storage_capacity=150,
+        generation_frequency=0.01,
+        storage_capacity=1500,
         priority_level=2,
         randomness=0.1,
         std_dev=0.15,
@@ -105,8 +105,8 @@ def create_simulation_entities(env):
             WasteType.BARK: 20.0,
             WasteType.WOOD_CUTTINGS: 15.0,
         },
-        generation_frequency=2,  # Very frequent
-        storage_capacity=300,  # Large capacity
+        generation_frequency=0.01,  # Very frequent
+        storage_capacity=3000,  # Large capacity
         priority_level=1,
         randomness=0.2,
         std_dev=0.25,
@@ -123,8 +123,8 @@ def create_simulation_entities(env):
             WasteType.WOOD_PACKAGING: 15.0,
             WasteType.SOLID_WOOD: 10.0,
         },
-        generation_frequency=5,
-        storage_capacity=250,
+        generation_frequency=0.01,
+        storage_capacity=2500,
         priority_level=3,
         randomness=0.25,
         std_dev=0.3,
@@ -137,11 +137,11 @@ def create_simulation_entities(env):
     regional_collector = CollectorCompany(
         env=env,
         name="RegionalWaste Solutions",
-        collection_capacity=100,
-        collection_frequency=6,
+        collection_capacity=500,
+        collection_frequency=0.1,
         transport_cost=80,
         environmental_impact="Low",
-        efficiency=0.95,
+        efficiency=1,
         availability=True,
         strategy="collaborative",
         region="North",
@@ -151,11 +151,11 @@ def create_simulation_entities(env):
     specialized_collector = CollectorCompany(
         env=env,
         name="WoodWaste Specialists",
-        collection_capacity=75,
-        collection_frequency=4,
+        collection_capacity=250,
+        collection_frequency=0.5,
         transport_cost=60,
         environmental_impact="Low",
-        efficiency=0.90,
+        efficiency=1,
         availability=True,
         strategy="competitive",
         region="South",
@@ -165,11 +165,11 @@ def create_simulation_entities(env):
     multi_regional = CollectorCompany(
         env=env,
         name="MultiRegional Services",
-        collection_capacity=150,
-        collection_frequency=8,
+        collection_capacity=350,
+        collection_frequency=0.1,
         transport_cost=100,
         environmental_impact="Moderate",
-        efficiency=0.85,
+        efficiency=1,
         availability=True,
         strategy="collaborative",
         region="East",
@@ -177,16 +177,59 @@ def create_simulation_entities(env):
 
     # TREATMENT OPERATORS
     # Biomass Energy Plant
+    # biomass_plant = TreatmentOperator(
+    #     env=env,
+    #     name="BioPower Solutions",
+    #     processing_capacity=30,
+    #     processing_time=10,
+    #     storage_capacity=4000,
+    #     energy_consumption=2.0,
+    #     environmental_impact="Low",
+    #     conversion_rate=0.95,
+    #     operational_costs=15,
+    #     region="North",
+    # )
+
+    # # Recycling Facility
+    # recycling_facility = TreatmentOperator(
+    #     env=env,
+    #     name="EcoRecycle Center",
+    #     processing_capacity=50,
+    #     processing_time=20,
+    #     storage_capacity=3000,
+    #     energy_consumption=1.5,
+    #     environmental_impact="Low",
+    #     conversion_rate=0.90,
+    #     operational_costs=12,
+    #     region="South",
+    # )
+
+    # # Composting Facility
+    # composting_facility = TreatmentOperator(
+    #     env=env,
+    #     name="GreenCompost Facility",
+    #     processing_capacity=40,
+    #     processing_time=12,
+    #     storage_capacity=2500,
+    #     energy_consumption=1.0,
+    #     environmental_impact="Low",
+    #     conversion_rate=0.85,
+    #     operational_costs=8,
+    #     region="East",
+    # )
+
+    # ADJUSTED
+    # Biomass Energy Plant
     biomass_plant = TreatmentOperator(
         env=env,
         name="BioPower Solutions",
-        processing_capacity=200,
-        processing_time=8,
-        storage_capacity=400,
-        energy_consumption=2.0,
-        environmental_impact="Low",
+        processing_capacity=60,  # Doubled from 30
+        processing_time=0.2,  # Halved from 10
+        storage_capacity=6000,  # Increased from 4000
+        energy_consumption=3.0,  # Adjusted for increased capacity
+        environmental_impact="Moderate",  # Changed due to higher intensity
         conversion_rate=0.95,
-        operational_costs=15,
+        operational_costs=25,  # Increased for higher capacity
         region="North",
     )
 
@@ -194,13 +237,13 @@ def create_simulation_entities(env):
     recycling_facility = TreatmentOperator(
         env=env,
         name="EcoRecycle Center",
-        processing_capacity=150,
-        processing_time=6,
-        storage_capacity=300,
-        energy_consumption=1.5,
-        environmental_impact="Low",
-        conversion_rate=0.90,
-        operational_costs=12,
+        processing_capacity=100,  # Doubled from 50
+        processing_time=0.4,  # Halved from 20
+        storage_capacity=5000,  # Increased from 3000
+        energy_consumption=2.5,  # Adjusted
+        environmental_impact="Moderate",
+        conversion_rate=0.92,  # Slightly improved
+        operational_costs=20,  # Adjusted for scale
         region="South",
     )
 
@@ -208,13 +251,13 @@ def create_simulation_entities(env):
     composting_facility = TreatmentOperator(
         env=env,
         name="GreenCompost Facility",
-        processing_capacity=100,
-        processing_time=12,
-        storage_capacity=250,
-        energy_consumption=1.0,
+        processing_capacity=80,  # Doubled from 40
+        processing_time=0.3,  # Halved from 12
+        storage_capacity=4000,  # Increased from 2500
+        energy_consumption=2.0,  # Adjusted
         environmental_impact="Low",
-        conversion_rate=0.85,
-        operational_costs=8,
+        conversion_rate=0.88,  # Slightly improved
+        operational_costs=15,  # Adjusted for scale
         region="East",
     )
 
@@ -284,7 +327,7 @@ def main():
     env.process(optimization_process(env, optimizer))
 
     # Run simulation
-    simulation_duration = 501
+    simulation_duration = 101
     print(f"Starting simulation for {simulation_duration} time units...")
     env.run(until=simulation_duration)
 

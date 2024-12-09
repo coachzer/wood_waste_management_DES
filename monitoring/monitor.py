@@ -548,6 +548,8 @@ class WasteMonitor:
         self.plot_collector_metrics()
         self.plot_treatment_metrics()
         self.plot_system_performance()
+        self.plot_product_metrics()
+        self.plot_treatment_detailed()
 
     def plot_generator_metrics(self):
         """Plot detailed generator performance metrics"""
@@ -689,6 +691,128 @@ class WasteMonitor:
 
         plt.tight_layout()
         plt.savefig("plots/treatment_metrics.png")
+        plt.close()
+
+    def plot_treatment_detailed(self):
+        """Plot detailed treatment metrics from treatment.py"""
+        plt.figure(figsize=(15, 10))
+
+        # Energy consumption correlation
+        plt.subplot(2, 2, 1)
+        for name, history in self.processing_history.items():
+            plt.scatter(
+                history["processed"]["total"],
+                history["operational"]["energy_consumption"],
+                alpha=0.6,
+                label=name,
+            )
+        plt.title("Energy Consumption vs Processing Volume")
+        plt.xlabel("Processed Volume (m³)")
+        plt.ylabel("Energy Consumption")
+        plt.legend()
+        plt.grid(True)
+
+        # Processing capacity evolution
+        plt.subplot(2, 2, 2)
+        for name, history in self.processing_history.items():
+            plt.plot(
+                history["timestamps"],
+                [
+                    e * v
+                    for e, v in zip(
+                        history["operational"]["energy_consumption"],
+                        history["processed"]["total"],
+                    )
+                ],
+                label=name,
+            )
+        plt.title("Energy Efficiency Over Time")
+        plt.xlabel("Time")
+        plt.ylabel("Energy per Volume")
+        plt.legend()
+        plt.grid(True)
+
+        # Storage vs Processing
+        plt.subplot(2, 2, 3)
+        for name, history in self.processing_history.items():
+            plt.plot(
+                history["timestamps"],
+                [
+                    p / s if s > 0 else 0
+                    for p, s in zip(
+                        history["processed"]["total"], history["storage"]["total"]
+                    )
+                ],
+                label=name,
+            )
+        plt.title("Processing/Storage Ratio")
+        plt.xlabel("Time")
+        plt.ylabel("Ratio")
+        plt.legend()
+        plt.grid(True)
+
+        plt.tight_layout()
+        plt.savefig("plots/treatment_detailed.png")
+        plt.close()
+
+    def plot_product_metrics(self):
+        """Plot product creation and demand metrics"""
+        plt.figure(figsize=(15, 10))
+
+        # Processing vs. demand
+        plt.subplot(2, 2, 1)
+        for name, history in self.processing_history.items():
+            plt.plot(
+                history["timestamps"],
+                history["processed"]["total"],
+                label=f"{name} - Processed",
+            )
+            plt.plot(
+                history["timestamps"],
+                [history["operational"]["demand"][-1]] * len(history["timestamps"]),
+                label=f"{name} - Demand",
+                linestyle="--",
+            )
+        plt.title("Processed vs. Demand Volumes")
+        plt.xlabel("Time")
+        plt.ylabel("Volume (m³)")
+        plt.legend()
+        plt.grid(True)
+
+        # Conversion efficiency
+        plt.subplot(2, 2, 2)
+        for name, history in self.processing_history.items():
+            efficiency = [
+                p / d if d > 0 else 0
+                for p, d in zip(
+                    history["processed"]["total"], history["operational"]["demand"]
+                )
+            ]
+            plt.plot(history["timestamps"], efficiency, label=name)
+        plt.title("Processing Efficiency")
+        plt.xlabel("Time")
+        plt.ylabel("Efficiency Ratio")
+        plt.legend()
+        plt.grid(True)
+
+        # Product Mix
+        plt.subplot(2, 2, 3)
+        for name, history in self.processing_history.items():
+            for waste_type, volumes in history["processed"]["by_type"].items():
+                if volumes:
+                    plt.plot(
+                        history["timestamps"],
+                        volumes,
+                        label=f"{name}-{waste_type.value}",
+                    )
+        plt.title("Product Mix Over Time")
+        plt.xlabel("Time")
+        plt.ylabel("Volume (m³)")
+        plt.legend(bbox_to_anchor=(1.05, 1))
+        plt.grid(True)
+
+        plt.tight_layout()
+        plt.savefig("plots/product_metrics.png")
         plt.close()
 
     def plot_system_performance(self):

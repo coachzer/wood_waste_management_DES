@@ -87,12 +87,12 @@ class WasteGenerator:
                         }
                     )
 
-                    print(
-                        f"{self.env.now}: {self.name} generated {generated_volume:.2f} m³ of {waste_type.value}"
-                    )
-                    print(
-                        f"Updated storage: {self.current_storage:.2f}/{self.storage_capacity}"
-                    )
+                    # print(
+                    #     f"{self.env.now}: {self.name} generated {generated_volume:.2f} m³ of {waste_type.value}"
+                    # )
+                    # print(
+                    #     f"Updated storage: {self.current_storage:.2f}/{self.storage_capacity}"
+                    # )
                 else:
                     print(
                         f"{self.env.now}: {self.name} storage is full! Cannot generate {waste_type.value}"

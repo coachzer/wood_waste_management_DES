@@ -59,15 +59,15 @@ class CollectorCompany:
             collection_cost = self.transport_cost + (0.1 * total_collected)
 
             # Print detailed collection report
-            print(
-                f"\n{self.env.now}: {self.name} (Region: {self.region}) collection report:"
-            )
-            for waste_type, amount in collection_details.items():
-                print(f"- Collected {amount:.2f} m³ of {waste_type.value}")
-            print(f"Total cost: {collection_cost:.2f}")
-            print(
-                f"{generator.name} remaining storage: {generator.current_storage:.2f}/{generator.storage_capacity}"
-            )
+            # print(
+            #     f"\n{self.env.now}: {self.name} (Region: {self.region}) collection report:"
+            # )
+            # for waste_type, amount in collection_details.items():
+            #     print(f"- Collected {amount:.2f} m³ of {waste_type.value}")
+            # print(f"Total cost: {collection_cost:.2f}")
+            # print(
+            #     f"{generator.name} remaining storage: {generator.current_storage:.2f}/{generator.storage_capacity}"
+            # )
 
     def collect_with_collaboration(self, generator, other_collectors):
         """Collaborative collection handling multiple waste types"""
@@ -131,18 +131,18 @@ class CollectorCompany:
                         collection_details[self.name][waste_type] += collectable_amount
 
         # Print collaborative collection report if any waste was collected
-        if any(details for details in collection_details.values()):
-            print(
-                f"\n{self.env.now}: Collaborative collection report for {generator.name}:"
-            )
-            for collector_name, waste_types in collection_details.items():
-                if waste_types:
-                    print(f"\n{collector_name} collected:")
-                    for waste_type, amount in waste_types.items():
-                        print(f"- {amount:.2f} m³ of {waste_type.value}")
-            print(
-                f"Generator remaining storage: {generator.current_storage:.2f}/{generator.storage_capacity}"
-            )
+        # if any(details for details in collection_details.values()):
+        #     print(
+        #         f"\n{self.env.now}: Collaborative collection report for {generator.name}:"
+        #     )
+        #     for collector_name, waste_types in collection_details.items():
+        #         if waste_types:
+        #             print(f"\n{collector_name} collected:")
+        #             for waste_type, amount in waste_types.items():
+        #                 print(f"- {amount:.2f} m³ of {waste_type.value}")
+        #     print(
+        #         f"Generator remaining storage: {generator.current_storage:.2f}/{generator.storage_capacity}"
+        #     )
 
     def collect_waste_for_demand(self, required_amount):
         """Collect waste based on treatment plant demand"""

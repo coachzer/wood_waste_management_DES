@@ -10,7 +10,7 @@ def monitor_system(env, waste_monitor, generators, collectors, treatment_operato
             waste_monitor.track_processing(treatment, env.now)
 
         # Generate reports
-        if env.now == 500:
+        if env.now == 100:
             print(f"\n=== System State at Time {env.now} ===")
             waste_monitor.generate_summary_report()
 
@@ -27,5 +27,8 @@ def monitor_system(env, waste_monitor, generators, collectors, treatment_operato
             waste_monitor.plot_collector_metrics()
             waste_monitor.plot_treatment_metrics()
             waste_monitor.plot_system_performance()
+
+            # TO-DO
+            # waste_monitor.plot_created_products()
 
         yield env.timeout(1)

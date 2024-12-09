@@ -145,8 +145,8 @@ class TreatmentOperator:
             capacity_based_demand = self.processing_capacity * self.conversion_rate
 
             # Adjust demand based on current storage levels
-            if storage_factor < 0.2:  # Low storage - increase demand
-                demand_multiplier = random.uniform(1.2, 1.5)
+            if storage_factor < 0.3:  # Low storage - increase demand
+                demand_multiplier = random.uniform(1.0, 1.2)
             elif storage_factor > 0.7:  # High storage - decrease demand
                 demand_multiplier = random.uniform(0.6, 0.8)
             else:  # Normal storage levels
@@ -162,15 +162,15 @@ class TreatmentOperator:
                 ),
             )
 
-            # print(f"\n{self.env.now}: {self.name} creating demand:")
-            # print(f"- Storage factor: {storage_factor:.2f}")
-            # print(f"- Capacity-based demand: {capacity_based_demand:.2f}")
-            # print(f"- Demand multiplier: {demand_multiplier:.2f}")
-            # print(f"- Final demand: {self.demand:.2f} units")
-            # print(
-            #     f"- Current storage: {self.current_storage:.2f}/{self.storage_capacity}"
-            # )
-            # print(f"- Storage utilization: {self.storage_utilization:.2f}%")
+            print(f"\n{self.env.now}: {self.name} creating demand:")
+            print(f"- Storage factor: {storage_factor:.2f}")
+            print(f"- Capacity-based demand: {capacity_based_demand:.2f}")
+            print(f"- Demand multiplier: {demand_multiplier:.2f}")
+            print(f"- Final demand: {self.demand:.2f} units")
+            print(
+                f"- Current storage: {self.current_storage:.2f}/{self.storage_capacity}"
+            )
+            print(f"- Storage utilization: {self.storage_utilization:.2f}%")
 
             # Trigger collection process
             self.trigger_collection()
@@ -415,7 +415,9 @@ class TreatmentOperator:
         # print(f"- Demand satisfaction: {demand_satisfaction:.1f}%")
 
         if produced_amount >= self.demand:
-            print(f"{self.name} met demand of {self.demand:.2f} units")
+            print(
+                f"{self.name} met demand of {self.demand:.2f} units. Produced: {produced_amount:.2f} units"
+            )
         else:
             shortage = self.demand - produced_amount
             print(f"{self.name} failed to meet demand. Shortage: {shortage:.2f} units")
