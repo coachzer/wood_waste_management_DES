@@ -108,6 +108,7 @@
 ## 5. Production and Overflow Management
 
 ### Production Control
+
 1. **Normal Production**
    - Standard processing rates
    - Regular energy consumption
@@ -119,6 +120,7 @@
    - Energy conservation
 
 ### Overflow Prevention
+
 1. **Early Warning System**
    - Storage utilization monitoring
    - Rolling window analysis
@@ -168,12 +170,14 @@ graph TD
 ## Operating Modes
 
 ### Fixed Parameter Mode
+
 - Static storage capacity
 - Fixed processing rates
 - Constant transformation efficiencies
 - Benefits: Predictable behavior, easier to optimize
 
 ### Dynamic Parameter Mode
+
 - Adaptive storage capacity
 - Variable processing rates
 - Efficiency-based transformations
@@ -199,6 +203,7 @@ graph TD
 ## Model Validation
 
 The behavior model can be validated through:
+
 1. Historical data comparison
 2. Scenario testing
 3. Sensitivity analysis

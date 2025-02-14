@@ -1,6 +1,5 @@
 # visualization.py
 import matplotlib.pyplot as plt
-from typing import List, Dict
 
 from optimization.optimization_history import OptimizationHistory
 

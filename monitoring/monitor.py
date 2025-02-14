@@ -15,6 +15,7 @@ from monitoring.mfa_visualization import (
     plot_production_analysis,
 )
 
+
 class WasteMonitor:
     def __init__(self):
         self.generation_history = {}
@@ -210,6 +211,7 @@ class WasteMonitor:
 
         if save_path:
             plt.savefig(save_path)
+            print(f"Collection efficiency plot saved to: {save_path}")
 
         plt.close()
 
@@ -223,7 +225,7 @@ class WasteMonitor:
 
         self._plot_generators_storage()
         self._plot_treatment_storage()
-        self._plot_collectors_volumes()
+        self._plot_collectors_storage()
 
         # Adjust layout to prevent overlap
         plt.tight_layout()
@@ -278,45 +280,51 @@ class WasteMonitor:
         plt.grid(True, linestyle="--", alpha=0.7)
         plt.ylim(0, 100)
 
-    def _plot_collectors_volumes(self):
-        """Helper method to plot collectors' total volumes over time"""
+    def _plot_collectors_storage(self):
+        """Helper method to plot collectors' storage utilization"""
         plt.subplot(3, 1, 3)
         for name, history in self.collection_history.items():
-            try:
-                # Calculate total volumes across all waste types
-                total_volumes = []
-                timestamps = history["timestamps"]
+            if len(history["timestamps"]) > 0:
+                try:
+                    # Calculate storage utilization as percentage of total collected volume
+                    total_volumes = []
+                    timestamps = history["timestamps"]
 
-                for t_idx in range(len(timestamps)):
-                    total = sum(
-                        volumes[t_idx]
-                        for volumes in history["collected_volumes"].values()
-                        if len(volumes) > t_idx
-                    )
-                    total_volumes.append(total)
+                    for t_idx in range(len(timestamps)):
+                        total = sum(
+                            volumes[t_idx]
+                            for volumes in history["collected_volumes"].values()
+                            if len(volumes) > t_idx
+                        )
+                        total_volumes.append(total)
 
-                if len(timestamps) == len(total_volumes):
-                    plt.plot(
-                        timestamps,
-                        total_volumes,
-                        label=f"{name}",
-                        marker="^",
-                        markersize=4,
-                        linestyle="-",
-                        linewidth=2,
-                    )
-                else:
-                    print(
-                        f"Warning: Data mismatch for collector {name}. Skipping plot."
-                    )
-            except Exception as e:
-                print(f"Error plotting collector {name}: {str(e)}")
+                    # Normalize to percentage (0-100%)
+                    max_volume = max(total_volumes) if total_volumes else 1
+                    storage_utilization = [v / max_volume * 100 for v in total_volumes]
 
-        plt.title("Collector Total Volumes Over Time", fontsize=12, pad=10)
+                    if len(timestamps) == len(storage_utilization):
+                        plt.plot(
+                            timestamps,
+                            storage_utilization,
+                            label=f"{name}",
+                            marker="^",
+                            markersize=4,
+                            linestyle="-",
+                            linewidth=2,
+                        )
+                    else:
+                        print(
+                            f"Warning: Data mismatch for collector {name}. Skipping plot."
+                        )
+                except Exception as e:
+                    print(f"Error plotting collector {name}: {str(e)}")
+
+        plt.title("Collector Storage Utilization", fontsize=12, pad=10)
         plt.xlabel("Simulation Time")
-        plt.ylabel("Volume (m³)")
+        plt.ylabel("Storage Utilization (%)")
         plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.grid(True, linestyle="--", alpha=0.7)
+        plt.ylim(0, 100)
 
     def plot_detailed_storage_analysis(self, save_path=None):
         """Create a detailed analysis of storage patterns with additional metrics"""
@@ -562,7 +570,6 @@ class WasteMonitor:
             self.generation_history,
             self.collection_history,
             self.processing_history,
-            "plots/material_flow_analysis.png",
         )
 
         # Create individual time series analysis plots
@@ -595,6 +602,7 @@ class WasteMonitor:
         plot_production_analysis(
             demand_history, production_history, "plots/production_analysis.png"
         )
+
     def plot_generator_metrics(self):
         """Plot detailed generator performance metrics"""
         plt.figure(figsize=(15, 10))
@@ -800,11 +808,22 @@ class WasteMonitor:
         plt.close()
 
     def plot_product_metrics(self):
-        """Plot product creation and demand metrics"""
-        plt.figure(figsize=(15, 10))
+        """Plot product creation and demand metrics with demand satisfaction table"""
+        fig = plt.figure(figsize=(15, 12))
+        gs = plt.GridSpec(3, 2, figure=fig)
 
-        # Processing vs. demand
-        plt.subplot(2, 2, 1)
+        self._plot_processing_vs_demand(fig, gs)
+        self._plot_conversion_efficiency(fig, gs)
+        self._plot_product_mix(fig, gs)
+        self._plot_demand_satisfaction_table(fig, gs)
+
+        plt.tight_layout()
+        plt.savefig("plots/product_metrics.png")
+        plt.close()
+
+    def _plot_processing_vs_demand(self, fig, gs):
+        """Helper method to plot processing vs. demand"""
+        ax1 = fig.add_subplot(gs[0, 0])
         for name, history in self.processing_history.items():
             plt.plot(
                 history["timestamps"],
@@ -817,14 +836,15 @@ class WasteMonitor:
                 label=f"{name} - Demand",
                 linestyle="--",
             )
-        plt.title("Processed vs. Demand Volumes")
-        plt.xlabel("Time")
-        plt.ylabel("Volume (m³)")
-        plt.legend()
-        plt.grid(True)
+        ax1.set_title("Processed vs. Demand Volumes")
+        ax1.set_xlabel("Time")
+        ax1.set_ylabel("Volume (m³)")
+        ax1.legend()
+        ax1.grid(True)
 
-        # Conversion efficiency
-        plt.subplot(2, 2, 2)
+    def _plot_conversion_efficiency(self, fig, gs):
+        """Helper method to plot conversion efficiency"""
+        ax2 = fig.add_subplot(gs[0, 1])
         for name, history in self.processing_history.items():
             efficiency = [
                 p / d if d > 0 else 0
@@ -833,14 +853,15 @@ class WasteMonitor:
                 )
             ]
             plt.plot(history["timestamps"], efficiency, label=name)
-        plt.title("Processing Efficiency")
-        plt.xlabel("Time")
-        plt.ylabel("Efficiency Ratio")
-        plt.legend()
-        plt.grid(True)
+        ax2.set_title("Processing Efficiency")
+        ax2.set_xlabel("Time")
+        ax2.set_ylabel("Efficiency Ratio")
+        ax2.legend()
+        ax2.grid(True)
 
-        # Product Mix
-        plt.subplot(2, 2, 3)
+    def _plot_product_mix(self, fig, gs):
+        """Helper method to plot product mix"""
+        ax3 = fig.add_subplot(gs[1, 0])
         for name, history in self.processing_history.items():
             for waste_type, volumes in history["processed"]["by_type"].items():
                 if volumes:
@@ -849,15 +870,73 @@ class WasteMonitor:
                         volumes,
                         label=f"{name}-{waste_type.value}",
                     )
-        plt.title("Product Mix Over Time")
-        plt.xlabel("Time")
-        plt.ylabel("Volume (m³)")
-        plt.legend(bbox_to_anchor=(1.05, 1))
-        plt.grid(True)
+        ax3.set_title("Product Mix Over Time")
+        ax3.set_xlabel("Time")
+        ax3.set_ylabel("Volume (m³)")
+        ax3.legend(bbox_to_anchor=(1.05, 1))
+        ax3.grid(True)
 
-        plt.tight_layout()
-        plt.savefig("plots/product_metrics.png")
-        plt.close()
+    def _plot_demand_satisfaction_table(self, fig, gs):
+        """Helper method to plot demand satisfaction table"""
+        ax4 = fig.add_subplot(gs[1:, 1])
+        ax4.axis("off")
+
+        facility_stats = []
+        for name, history in self.processing_history.items():
+            demands = history["operational"]["demand"]
+            processed = history["processed"]["total"]
+            if demands and processed:
+                total_demands = sum(demands)
+                total_processed = sum(processed)
+                success_count = sum(1 for p, d in zip(processed, demands) if p >= d)
+                total_periods = len(demands)
+
+                stats = {
+                    "Facility": name,
+                    "Success Rate": f"{(success_count/total_periods)*100:.1f}%",
+                    "Total Demand": f"{total_demands:.1f}",
+                    "Total Produced": f"{total_processed:.1f}",
+                    "Satisfaction Rate": (
+                        f"{(total_processed/total_demands)*100:.1f}%"
+                        if total_demands > 0
+                        else "N/A"
+                    ),
+                }
+                facility_stats.append(stats)
+
+        table_data = [
+            [
+                stats[key]
+                for key in [
+                    "Facility",
+                    "Success Rate",
+                    "Total Demand",
+                    "Total Produced",
+                    "Satisfaction Rate",
+                ]
+            ]
+            for stats in facility_stats
+        ]
+        headers = [
+            "Facility",
+            "Success Rate",
+            "Total Demand",
+            "Total Produced",
+            "Satisfaction Rate",
+        ]
+
+        table = ax4.table(
+            cellText=table_data, colLabels=headers, loc="center", cellLoc="center"
+        )
+
+        table.auto_set_font_size(False)
+        table.set_fontsize(9)
+        table.scale(1.2, 1.5)
+
+        for j in range(len(headers)):
+            table[(0, j)].set_facecolor("#E6E6E6")
+
+        plt.title("Demand Satisfaction Statistics", pad=20)
 
     def plot_system_performance(self):
         """Plot overall system performance metrics"""

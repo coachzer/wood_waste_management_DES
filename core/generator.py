@@ -1,10 +1,12 @@
 import numpy as np
-from typing import Dict
+from typing import Dict, Optional
 from models.enums import WasteType
 from models.data_classes import WasteStream
+from optimization.stochastic import UncertaintySet
 
 
 class WasteGenerator:
+
     def __init__(
         self,
         env,
@@ -13,10 +15,9 @@ class WasteGenerator:
         generation_frequency,
         storage_capacity,
         priority_level,
-        randomness,
-        std_dev,
         environmental_impact,
         region,
+        uncertainty_set: Optional[UncertaintySet] = None,
     ):
         self.env = env
         self.name = name
@@ -33,81 +34,103 @@ class WasteGenerator:
         self.generation_frequency = generation_frequency
         self.storage_capacity = storage_capacity
         self.priority_level = priority_level
-        self.randomness = randomness
-        self.std_dev = std_dev
+        self.uncertainty_set = uncertainty_set
         self.environmental_impact = environmental_impact
         self.current_storage = 0
         self.last_collected = env.now
         self.region = region
 
-        # Track total generation (cumulative)
+        # Track total generation efficiently
         self.total_generated = {waste_type: 0.0 for waste_type in waste_streams.keys()}
 
-        # Track historical generation with timestamps
+        # Optimize history tracking with fixed-size arrays
+        self.history_size = 1000
+        self.history_index = 0
         self.generation_history = {
-            waste_type: [] for waste_type in waste_streams.keys()
+            waste_type: {
+                "times": np.zeros(self.history_size),
+                "volumes": np.zeros(self.history_size),
+                "totals": np.zeros(self.history_size),
+                "storage": np.zeros(self.history_size),
+            }
+            for waste_type in waste_streams.keys()
         }
+
+        # Pre-calculate seasonal factors for efficiency
+        self.seasonal_periods = 4
+        self.seasonal_factors = np.array(
+            [
+                1 + 0.2 * np.sin(2 * np.pi * t / self.seasonal_periods)
+                for t in range(self.seasonal_periods)
+            ]
+        )
+
+        # Initialize RNG with seed for reproducibility
+        self.rng = np.random.default_rng(42)
 
         # Start waste generation process
         self.action = env.process(self.generate_waste())
 
     def generate_waste(self):
+        """Generate waste with optimized calculations"""
         while True:
-            # Print debug info before generation
-            # print(f"\nDebug: {self.name} generating waste at time {self.env.now}")
-            # print(f"Current storage before generation: {self.current_storage}")
+            current_time = self.env.now
+            season_index = int(current_time % self.seasonal_periods)
+            seasonal_factor = self.seasonal_factors[season_index]
 
-            for waste_type, base_rate in self.waste_generation_rates.items():
-                # Apply more realistic waste generation patterns
-                if self.randomness:
-                    rng = np.random.default_rng()
-                    # Base seasonal variation (sine wave with period = 4 time units)
-                    seasonal_factor = 1 + 0.2 * np.sin(2 * np.pi * self.env.now / 4)
-                    # Daily variation (normal distribution)
-                    daily_factor = max(0.7, min(1.3, rng.normal(1, self.std_dev)))
-                    # Combine base rate with both variation factors
-                    generated_volume = max(
-                        0, base_rate * seasonal_factor * daily_factor
+            if self.uncertainty_set:
+                # Use stochastic parameters for generation
+                daily_factors = []
+                for waste_type in self.waste_generation_rates.keys():
+                    mean, std = self.uncertainty_set.waste_generation.get(
+                        waste_type, (1.0, 0.2)
                     )
-                else:
-                    generated_volume = base_rate
+                    factor = self.rng.normal(mean, std)
+                    # Ensure non-negative and reasonable bounds
+                    daily_factors.append(np.clip(factor, 0.1, 2.0))
 
-                # Check if adding this waste would exceed storage capacity
-                if self.current_storage + generated_volume <= self.storage_capacity:
-                    # Update waste stream volume
+            # Calculate available storage once
+            available_storage = self.storage_capacity - self.current_storage
+            if available_storage <= 0:
+                yield self.env.timeout(self.generation_frequency)
+                continue
+
+            # Process all waste types in batch
+            for (waste_type, base_rate), daily_factor in zip(
+                self.waste_generation_rates.items(),
+                (
+                    daily_factors
+                    if self.uncertainty_set
+                    else [1.0] * len(self.waste_generation_rates)
+                ),
+            ):
+                if available_storage <= 0:
+                    break
+
+                # Calculate generation amount
+                generated_volume = base_rate * seasonal_factor * daily_factor
+                generated_volume = min(generated_volume, available_storage)
+
+                if generated_volume > 0:
+                    # Update waste stream
                     self.waste_streams[waste_type].volume += generated_volume
-
-                    # Update current total storage
                     self.current_storage += generated_volume
-
-                    # Update cumulative total
                     self.total_generated[waste_type] += generated_volume
+                    available_storage -= generated_volume
 
-                    # Record in history with timestamp
-                    self.generation_history[waste_type].append(
-                        {
-                            "time": self.env.now,
-                            "volume": generated_volume,
-                            "total_volume": self.total_generated[waste_type],
-                            "current_storage": self.current_storage,
-                        }
-                    )
+                    # Update history efficiently
+                    if self.history_index >= self.history_size:
+                        self.history_index = 0
 
-                    # print(
-                    #     f"{self.env.now}: {self.name} generated {generated_volume:.2f} m³ of {waste_type.value}"
-                    # )
-                    # print(
-                    #     f"Updated storage: {self.current_storage:.2f}/{self.storage_capacity}"
-                    # )
-                else:
-                    print(
-                        f"{self.env.now}: {self.name} storage is full! Cannot generate {waste_type.value}"
-                    )
-                    print(
-                        f"Current storage: {self.current_storage:.2f}/{self.storage_capacity}"
-                    )
+                    history = self.generation_history[waste_type]
+                    history["times"][self.history_index] = current_time
+                    history["volumes"][self.history_index] = generated_volume
+                    history["totals"][self.history_index] = self.total_generated[
+                        waste_type
+                    ]
+                    history["storage"][self.history_index] = self.current_storage
 
-            # Wait for next generation cycle
+            self.history_index += 1
             yield self.env.timeout(self.generation_frequency)
 
     def _get_default_density(self, waste_type: WasteType) -> float:
@@ -150,15 +173,19 @@ class WasteGenerator:
         }
 
     def get_generation_history_summary(self) -> Dict[str, Dict[WasteType, float]]:
-        """Get detailed summary of waste generation"""
+        """Get efficient summary of waste generation"""
         summary = {}
-        for waste_type, history in self.generation_history.items():
-            total_volume = self.total_generated[waste_type]  # Use tracked total
-            num_generations = len(history) if history else 1
-            avg_volume = total_volume / num_generations
+        for waste_type in self.total_generated:
+            history = self.generation_history[waste_type]
+            valid_entries = history["volumes"][: self.history_index]
+
+            if len(valid_entries) > 0:
+                avg_volume = np.mean(valid_entries)
+            else:
+                avg_volume = 0
 
             summary[waste_type.value] = {
-                "total_generated": total_volume,
+                "total_generated": self.total_generated[waste_type],
                 "average_per_cycle": avg_volume,
                 "current_storage": self.waste_streams[waste_type].volume,
                 "generation_rate": self.waste_generation_rates[waste_type],
@@ -168,23 +195,25 @@ class WasteGenerator:
     def adjust_priority(self):
         """Adjust priority level based on storage utilization and time since last collection"""
         utilization_ratio = self.current_storage / self.storage_capacity
-        time_since_last_collection = self.env.now - self.last_collected
+        time_since_collection = self.env.now - self.last_collected
 
-        # Increase priority as storage utilization nears capacity
+        # Storage-based priority adjustment
         if utilization_ratio > 0.75:
-            self.priority_level = min(10, self.priority_level + 1)  # Cap priority at 10
+            self.priority_level = min(10, self.priority_level + 1)
         elif utilization_ratio < 0.25:
-            self.priority_level = max(
-                1, self.priority_level - 1
-            )  # Lower limit for priority
+            self.priority_level = max(1, self.priority_level - 1)
 
-        # Consider time since last collectiosn, ADJUSTABLE
-        if time_since_last_collection > 5:
+        # Time-based priority adjustment
+        if time_since_collection > 5:
             self.priority_level = min(10, self.priority_level + 1)
 
+        print(
+            f"Priority for {self.name} adjusted to {self.priority_level} "
+            f"due to storage utilization ({utilization_ratio:.2f}) and "
+            f"time since last collection ({time_since_collection:.2f})"
+        )
+
     def mark_collected(self):
+        """Update collection status"""
         self.priority_level = max(1, self.priority_level - 1)
         self.last_collected = self.env.now
-        print(
-            f"{self.env.now}: {self.name} has been collected.\nPriority reset to {self.priority_level}."
-        )

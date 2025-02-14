@@ -1,5 +1,6 @@
 from models.enums import WasteType
 from models.state import SimulationState
+import numpy as np
 
 
 class CollectorCompany:
@@ -29,171 +30,192 @@ class CollectorCompany:
         self.strategy = strategy
         self.region = region
 
+        # Initialize waste tracking
         self.collected_waste = {waste_type: 0.0 for waste_type in WasteType}
+
+        # Initialize RNG for collection adjustments
+        self.rng = np.random.default_rng(42)  # For reproducibility
+
+        # Start collection process
         self.process = env.process(self.collect_waste())
 
     def collect_from_generator(self, generator):
         """Collect waste from a generator, handling multiple waste types"""
         total_collected = 0
-        collection_details = {}
         remaining_capacity = self.collection_capacity * self.efficiency
 
-        # Collect from each waste stream based on priority/availability
-        for waste_type, waste_stream in generator.waste_streams.items():
-            if waste_stream.volume > 0 and remaining_capacity > 0:
-                collectable_amount = min(waste_stream.volume, remaining_capacity)
+        # Pre-filter active waste streams
+        active_streams = {
+            waste_type: stream
+            for waste_type, stream in generator.waste_streams.items()
+            if stream.volume > 0
+        }
 
-                if collectable_amount > 0:
-                    # Update generator's waste stream
-                    generator.waste_streams[waste_type].volume -= collectable_amount
-                    generator.current_storage -= collectable_amount
+        for waste_type, waste_stream in active_streams.items():
+            collectable_amount = min(waste_stream.volume, remaining_capacity)
 
-                    # Update collector's tracking
-                    self.collected_waste[waste_type] += collectable_amount
-                    remaining_capacity -= collectable_amount
-                    total_collected += collectable_amount
-                    collection_details[waste_type] = collectable_amount
+            if collectable_amount > 0:
+                # Update generator's waste stream
+                waste_stream.volume -= collectable_amount
+                generator.current_storage -= collectable_amount
+
+                # Update collector's tracking
+                self.collected_waste[waste_type] += collectable_amount
+                remaining_capacity -= collectable_amount
+                total_collected += collectable_amount
+
+                print(
+                    f"{self.env.now}: {self.name} collected {collectable_amount:.2f} m³ of {waste_type.value} from {generator.name}"
+                )
 
         if total_collected > 0:
             generator.mark_collected()
-            collection_cost = self.transport_cost + (0.1 * total_collected)
-
-            # Print detailed collection report
-            # print(
-            #     f"\n{self.env.now}: {self.name} (Region: {self.region}) collection report:"
-            # )
-            # for waste_type, amount in collection_details.items():
-            #     print(f"- Collected {amount:.2f} m³ of {waste_type.value}")
-            # print(f"Total cost: {collection_cost:.2f}")
-            # print(
-            #     f"{generator.name} remaining storage: {generator.current_storage:.2f}/{generator.storage_capacity}"
-            # )
+            return self.transport_cost + (0.1 * total_collected)
+        return 0
 
     def collect_with_collaboration(self, generator, other_collectors):
         """Collaborative collection handling multiple waste types"""
-        collection_details = {
-            collector.name: {} for collector in [self] + other_collectors
-        }
         remaining_capacity = {
             collector.name: collector.collection_capacity * collector.efficiency
             for collector in [self] + other_collectors
         }
 
-        # Process each waste type
-        for waste_type, waste_stream in generator.waste_streams.items():
+        # Pre-filter active waste streams
+        active_streams = {
+            waste_type: stream
+            for waste_type, stream in generator.waste_streams.items()
+            if stream.volume > 0
+        }
+
+        for waste_type, waste_stream in active_streams.items():
             remaining_volume = waste_stream.volume
 
-            if remaining_volume > 0:
-                # Try collection with other collectors first
-                for collector in other_collectors:
-                    if remaining_volume > 0 and remaining_capacity[collector.name] > 0:
-                        collectable_amount = min(
-                            remaining_volume, remaining_capacity[collector.name]
-                        )
+            # Try collection with other collectors first
+            for collector in other_collectors:
+                if remaining_volume <= 0 or remaining_capacity[collector.name] <= 0:
+                    continue
 
-                        if collectable_amount > 0:
-                            # Update generator
-                            generator.waste_streams[
-                                waste_type
-                            ].volume -= collectable_amount
-                            generator.current_storage -= collectable_amount
+                collectable_amount = min(
+                    remaining_volume, remaining_capacity[collector.name]
+                )
 
-                            # Update collector
-                            collector.collected_waste[waste_type] += collectable_amount
-                            remaining_capacity[collector.name] -= collectable_amount
-                            remaining_volume -= collectable_amount
+                if collectable_amount > 0:
+                    # Update generator
+                    waste_stream.volume -= collectable_amount
+                    generator.current_storage -= collectable_amount
 
-                            # Track details
-                            if waste_type not in collection_details[collector.name]:
-                                collection_details[collector.name][waste_type] = 0
-                            collection_details[collector.name][
-                                waste_type
-                            ] += collectable_amount
+                    # Update collector
+                    collector.collected_waste[waste_type] += collectable_amount
+                    remaining_capacity[collector.name] -= collectable_amount
+                    remaining_volume -= collectable_amount
 
-                # Finally collect with this collector if there's remaining waste
-                if remaining_volume > 0 and remaining_capacity[self.name] > 0:
-                    collectable_amount = min(
-                        remaining_volume, remaining_capacity[self.name]
+                    print(
+                        f"{self.env.now}: {collector.name} collaboratively collected {collectable_amount:.2f} m³ of {waste_type.value}"
                     )
 
-                    if collectable_amount > 0:
-                        # Update generator
-                        generator.waste_streams[waste_type].volume -= collectable_amount
-                        generator.current_storage -= collectable_amount
+            # Process with this collector if there's remaining waste
+            if remaining_volume > 0 and remaining_capacity[self.name] > 0:
+                collectable_amount = min(
+                    remaining_volume, remaining_capacity[self.name]
+                )
 
-                        # Update collector
-                        self.collected_waste[waste_type] += collectable_amount
-                        remaining_capacity[self.name] -= collectable_amount
+                if collectable_amount > 0:
+                    # Update generator
+                    waste_stream.volume -= collectable_amount
+                    generator.current_storage -= collectable_amount
 
-                        # Track details
-                        if waste_type not in collection_details[self.name]:
-                            collection_details[self.name][waste_type] = 0
-                        collection_details[self.name][waste_type] += collectable_amount
+                    # Update collector
+                    self.collected_waste[waste_type] += collectable_amount
+                    remaining_capacity[self.name] -= collectable_amount
 
-        # Print collaborative collection report if any waste was collected
-        # if any(details for details in collection_details.values()):
-        #     print(
-        #         f"\n{self.env.now}: Collaborative collection report for {generator.name}:"
-        #     )
-        #     for collector_name, waste_types in collection_details.items():
-        #         if waste_types:
-        #             print(f"\n{collector_name} collected:")
-        #             for waste_type, amount in waste_types.items():
-        #                 print(f"- {amount:.2f} m³ of {waste_type.value}")
-        #     print(
-        #         f"Generator remaining storage: {generator.current_storage:.2f}/{generator.storage_capacity}"
-        #     )
+                    print(
+                        f"{self.env.now}: {self.name} collected remaining {collectable_amount:.2f} m³ of {waste_type.value}"
+                    )
 
     def collect_waste_for_demand(self, required_amount):
-        """Collect waste based on treatment plant demand"""
+        """Collect waste based on treatment plant demand with storage-based adjustments"""
         collected_amounts = {waste_type: 0.0 for waste_type in WasteType}
         total_collected = 0
-
         state = SimulationState.get_instance()
 
-        for generator in state.generators:
-            if generator.region == self.region and generator.current_storage > 0:
-                for waste_type, waste_stream in generator.waste_streams.items():
-                    if total_collected < required_amount and waste_stream.volume > 0:
-                        collectable_amount = min(
-                            waste_stream.volume,
-                            required_amount - total_collected,
-                            self.collection_capacity * self.efficiency,
-                        )
+        # Get storage levels from generators to adjust collection amount
+        generators_storage = [
+            (g, g.current_storage / g.storage_capacity)
+            for g in state.generators
+            if g.region == self.region and g.current_storage > 0
+        ]
 
-                        if collectable_amount > 0:
-                            # Update generator
-                            generator.waste_streams[
-                                waste_type
-                            ].volume -= collectable_amount
-                            generator.current_storage -= collectable_amount
+        # Adjust required amount based on average storage levels
+        if generators_storage:
+            avg_storage = sum(ratio for _, ratio in generators_storage) / len(
+                generators_storage
+            )
+            if avg_storage < 0.3:
+                required_amount = required_amount * self.rng.uniform(
+                    1.0, 1.2
+                )  # Increase collection
+            elif avg_storage > 0.7:
+                required_amount = required_amount * self.rng.uniform(
+                    0.6, 0.8
+                )  # Reduce collection
 
-                            # Update tracking
-                            collected_amounts[waste_type] += collectable_amount
-                            total_collected += collectable_amount
+        # Sort generators by storage level (prioritize those with higher storage)
+        generators_storage.sort(key=lambda x: x[1], reverse=True)
+        eligible_generators = [g for g, _ in generators_storage]
 
-                            print(
-                                f"{self.env.now}: {self.name} collected {collectable_amount:.2f} m³ of {waste_type.value} from {generator.name}"
-                            )
+        print(f"Eligible generators: {[g.name for g in eligible_generators]}")
+
+        for generator in eligible_generators:
+            # Pre-filter active waste streams that we can collect
+            active_streams = {
+                waste_type: stream
+                for waste_type, stream in generator.waste_streams.items()
+                if stream.volume > 0 and total_collected < required_amount
+            }
+
+            for waste_type, stream in active_streams.items():
+                collectable_amount = min(
+                    stream.volume,
+                    required_amount - total_collected,
+                    self.collection_capacity * self.efficiency,
+                )
+
+                if collectable_amount > 0:
+                    # Update generator
+                    stream.volume -= collectable_amount
+                    generator.current_storage -= collectable_amount
+
+                    # Update tracking
+                    collected_amounts[waste_type] += collectable_amount
+                    total_collected += collectable_amount
+
+                    print(
+                        f"{self.env.now}: {self.name} collected {collectable_amount:.2f} m³ of {waste_type.value} from {generator.name}"
+                    )
 
                 if total_collected >= required_amount:
+                    print(f"{self.name} collected enough waste for demand")
                     break
+
+            if total_collected >= required_amount:
+                break
 
         return collected_amounts
 
     def get_collection_summary(self):
         """Get summary of all collected waste by type"""
+        capacity_with_efficiency = self.collection_capacity * self.efficiency
         return {
             waste_type: {
                 "total_collected": amount,
-                "collection_capacity_utilization": amount
-                / (self.collection_capacity * self.efficiency),
+                "collection_capacity_utilization": amount / capacity_with_efficiency,
             }
             for waste_type, amount in self.collected_waste.items()
             if amount > 0
         }
 
     def _get_prioritized_generators(self):
+        """Get generators sorted by priority and filtered by region"""
         state = SimulationState.get_instance()
         regional_generators = [
             g
@@ -204,22 +226,34 @@ class CollectorCompany:
         if not regional_generators:
             regional_generators = [g for g in state.generators if g.current_storage > 0]
 
-        return sorted(regional_generators, key=lambda x: x.priority_level, reverse=True)
+        regional_generators.sort(key=lambda x: x.priority_level, reverse=True)
+        return regional_generators
 
     def _handle_competitive_collection(self, prioritized_generators):
+        """Handle competitive collection strategy"""
         if prioritized_generators and self.availability:
-            self.collect_from_generator(prioritized_generators[0])
+            return self.collect_from_generator(prioritized_generators[0])
+        return 0
 
     def _handle_collaborative_collection(self, prioritized_generators):
+        """Handle collaborative collection strategy"""
+        if not self.availability:
+            return
+
         state = SimulationState.get_instance()
+        other_collectors = [
+            c
+            for c in state.collectors
+            if c != self and c.availability and c.region == self.region
+        ]
+
+        total_collection_cost = 0
         for generator in prioritized_generators:
-            if generator.current_storage > 0 and self.availability:
-                other_collectors = [
-                    c
-                    for c in state.collectors
-                    if c != self and c.availability and c.region == self.region
-                ]
-                self.collect_with_collaboration(generator, other_collectors)
+            if generator.current_storage <= 0:
+                continue
+            self.collect_with_collaboration(generator, other_collectors)
+            total_collection_cost += self.transport_cost
+        return total_collection_cost
 
     def collect_waste(self):
         """Periodically collect waste from generators based on strategy"""
@@ -231,9 +265,23 @@ class CollectorCompany:
             self.transport_cost = min(100, self.transport_cost * (2 - self.efficiency))
 
             yield self.env.timeout(self.collection_frequency)
+
+            if not self.availability:
+                continue
+
             prioritized_generators = self._get_prioritized_generators()
 
+            collection_cost = 0
             if self.strategy == "competitive":
-                self._handle_competitive_collection(prioritized_generators)
+                collection_cost = self._handle_competitive_collection(
+                    prioritized_generators
+                )
             elif self.strategy == "collaborative":
-                self._handle_collaborative_collection(prioritized_generators)
+                collection_cost = self._handle_collaborative_collection(
+                    prioritized_generators
+                )
+
+            if collection_cost > 0:
+                print(
+                    f"{self.env.now}: {self.name} collection operation cost: {collection_cost:.2f}"
+                )

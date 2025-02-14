@@ -2,7 +2,8 @@ from typing import Dict, Optional
 from models.data_classes import WasteTransformation
 from models.enums import WasteType
 from models.state import SimulationState
-import random
+from optimization.stochastic import UncertaintySet
+import numpy as np
 
 
 class TreatmentOperator:
@@ -20,10 +21,16 @@ class TreatmentOperator:
         operational_costs,
         region,
         transformations: Optional[Dict[WasteType, WasteTransformation]] = None,
+        uncertainty_set: Optional[UncertaintySet] = None,
     ):
+        # Track utilization history for dynamic capacity management
+        self.utilization_history = []
+        self.utilization_window = 10  # Rolling window size
         self.env = env
         self.name = name
-        self.processing_capacity = storage_capacity * 0.75
+        self.processing_capacity = (
+            storage_capacity * 0.1
+        )  # Start with 10% of storage capacity
         self.processing_time = processing_time
         self.initial_storage_capacity = storage_capacity
         self.storage_capacity = storage_capacity
@@ -34,247 +41,280 @@ class TreatmentOperator:
         self.region = region
         self.demand = 0
 
-        # Track total products created
-        self.total_products_created = 0.0
+        self.initial_storage_capacity = storage_capacity
+        self.storage_capacity = storage_capacity
+        self.min_capacity = storage_capacity * 0.75  # Minimum 75% of initial
+        self.max_capacity = storage_capacity * 2.0  # Maximum 200% of initial
 
-        # Add tracking for storage utilization history
-        self.utilization_history = []
-        self.utilization_window = 10  # Track last 10 periods
+        self.total_products_created = 0.0
         self.demand_history = []
         self.production_history = []
-        self.high_utilization_threshold = 0.85
-        self.low_utilization_threshold = 0.3
-        self.max_expansion_multiplier = 2.0  # Maximum 2x initial capacity
-        self.min_capacity_multiplier = 0.75  # Minimum 75% of initial capacity
 
-        # Single source of truth for storage
         self.waste_storage = {waste_type: 0.0 for waste_type in WasteType}
-
-        # Track cumulative processed volumes
         self.processed_volumes = {waste_type: 0.0 for waste_type in WasteType}
 
-        # Start the demand-driven processing loop
-        self.process = env.process(self.create_demand())
+        # Capacity management state
+        self.last_capacity_check = env.now
+        self.capacity_check_interval = 1.0  # Check every time unit
+
+        # Initialize stochastic components
+        self.uncertainty_set = uncertainty_set
+        self.rng = np.random.default_rng(42)  # For reproducibility
+        self.transformation_efficiency = 0.95  # Base efficiency
+
         self.transformations = transformations or self._default_transformations()
 
-    @property
-    def current_storage(self) -> float:
-        """Calculate current total storage from waste_storage"""
-        total = sum(self.waste_storage.values())
-        # print("DEBUG - Current storage calculation:")
-        # print("Individual storage amounts:")
-        # for waste_type, amount in self.waste_storage.items():
-        #     if amount > 0:
-        #         print(f"- {waste_type.value}: {amount:.2f}")
-        # print(f"Total: {total:.2f}")
-        return total
-
-    @property
-    def storage_utilization(self) -> float:
-        """Calculate storage utilization percentage with bounds checking"""
-        if self.storage_capacity <= 0:
-            print("WARNING: Storage capacity is 0 or negative")
-            return 0
-
-        utilization = self.current_storage / self.storage_capacity * 100
-        utilization = min(100, max(0, utilization))  # Ensure between 0 and 100
-
-        print("DEBUG - Storage utilization calculation:")
-        print(f"Current storage: {self.current_storage:.2f}")
-        print(f"Storage capacity: {self.storage_capacity}")
-        print(f"Utilization: {utilization:.2f}%")
-
-        return utilization
-
-    def adjust_storage_capacity(self):
-        """Dynamically adjust storage capacity based on utilization patterns"""
-        current_utilization = (
-            self.storage_utilization / 100
-        )  # Convert percentage to decimal
-        self.utilization_history.append(current_utilization)
-
-        # Keep only recent history
-        if len(self.utilization_history) > self.utilization_window:
-            self.utilization_history.pop(0)
-
-        # Calculate average utilization over recent periods
-        avg_utilization = sum(self.utilization_history) / len(self.utilization_history)
-
-        # Adjust capacity based on sustained utilization patterns
-        if avg_utilization > self.high_utilization_threshold:
-            # Expand capacity by 20% if consistently near capacity
-            new_capacity = self.storage_capacity * 1.2
-            # But don't exceed maximum allowed expansion
-            max_allowed = self.initial_storage_capacity * self.max_expansion_multiplier
-            self.storage_capacity = min(new_capacity, max_allowed)
-            print(f"\n{self.env.now}: {self.name} expanding storage capacity:")
-            print(f"- Previous capacity: {self.storage_capacity / 1.2:.2f}")
-            print(f"- New capacity: {self.storage_capacity:.2f}")
-            print(f"- Average utilization: {avg_utilization:.2%}")
-
-        elif avg_utilization < self.low_utilization_threshold:
-            # Contract capacity by 10% if consistently underutilized
-            new_capacity = self.storage_capacity * 0.9
-            # But don't go below minimum allowed capacity
-            min_allowed = self.initial_storage_capacity * self.min_capacity_multiplier
-            self.storage_capacity = max(new_capacity, min_allowed)
-            print(f"\n{self.env.now}: {self.name} reducing storage capacity:")
-            print(f"- Previous capacity: {self.storage_capacity / 0.9:.2f}")
-            print(f"- New capacity: {self.storage_capacity:.2f}")
-            print(f"- Average utilization: {avg_utilization:.2%}")
+        # Start processing loop
+        self.process = env.process(self.run_facility())
 
     def _default_transformations(self) -> Dict[WasteType, WasteTransformation]:
         """Define default transformation pathways for all waste types"""
-        return {
-            WasteType.SAWDUST: WasteTransformation(
-                input_type=WasteType.SAWDUST,
-                output_type=WasteType.MIXED_WOOD,
-                conversion_efficiency=0.95,
-                energy_required=0.5,
-            ),
-            WasteType.WOOD_CUTTINGS: WasteTransformation(
-                input_type=WasteType.WOOD_CUTTINGS,
-                output_type=WasteType.MIXED_WOOD,
-                conversion_efficiency=0.90,
-                energy_required=0.8,
-            ),
-            WasteType.BARK: WasteTransformation(
-                input_type=WasteType.BARK,
-                output_type=WasteType.MIXED_WOOD,
-                conversion_efficiency=0.85,
-                energy_required=0.7,
-            ),
-            WasteType.CORK: WasteTransformation(
-                input_type=WasteType.CORK,
-                output_type=WasteType.MIXED_WOOD,
-                conversion_efficiency=0.92,
-                energy_required=0.6,
-            ),
-            WasteType.SOLID_WOOD: WasteTransformation(
-                input_type=WasteType.SOLID_WOOD,
-                output_type=WasteType.MIXED_WOOD,
-                conversion_efficiency=0.98,
-                energy_required=0.9,
-            ),
-            WasteType.PAPER_PACKAGING: WasteTransformation(
-                input_type=WasteType.PAPER_PACKAGING,
-                output_type=WasteType.MIXED_WOOD,
-                conversion_efficiency=0.80,
-                energy_required=0.4,
-            ),
-            WasteType.WOOD_PACKAGING: WasteTransformation(
-                input_type=WasteType.WOOD_PACKAGING,
-                output_type=WasteType.MIXED_WOOD,
-                conversion_efficiency=0.88,
-                energy_required=0.7,
-            ),
-            WasteType.MIXED_WOOD: WasteTransformation(
-                input_type=WasteType.MIXED_WOOD,
-                output_type=WasteType.MIXED_WOOD,
-                conversion_efficiency=1.0,
-                energy_required=0.3,
-            ),
+        # Transformation efficiencies from behavior model
+        base_transformations = {
+            WasteType.SAWDUST: (0.95, 0.5),  # 95% efficiency
+            WasteType.WOOD_CUTTINGS: (0.90, 0.8),  # 90% efficiency
+            WasteType.BARK: (0.85, 0.7),  # 85% efficiency
+            WasteType.CORK: (0.92, 0.6),  # 92% efficiency
+            WasteType.SOLID_WOOD: (0.98, 0.9),  # 98% efficiency
+            WasteType.PAPER_PACKAGING: (0.80, 0.4),  # 80% efficiency
+            WasteType.WOOD_PACKAGING: (0.88, 0.7),  # 88% efficiency
+            WasteType.MIXED_WOOD: (1.0, 0.3),  # Already mixed
         }
 
-    def create_demand(self):
-        """Generate demand based on facility capacity and current storage levels"""
-        while True:
-
-            self.adjust_storage_capacity()
-
-            # Evolve parameters over time based on optimization
-            if self.current_storage > 0.8 * self.storage_capacity:
-                self.processing_capacity *= (
-                    1.1  # Increase capacity when storage is high
-                )
-            elif self.current_storage < 0.2 * self.storage_capacity:
-                self.processing_capacity *= 0.9  # Decrease capacity when storage is low
-
-            # Calculate base demand considering processing capacity and storage
-            storage_factor = min(
-                1.0, self.current_storage / (self.storage_capacity * 0.8)
+        return {
+            waste_type: WasteTransformation(
+                input_type=waste_type,
+                output_type=WasteType.MIXED_WOOD,
+                conversion_efficiency=efficiency,
+                energy_required=energy,
             )
-            capacity_based_demand = self.processing_capacity * self.conversion_rate
+            for waste_type, (efficiency, energy) in base_transformations.items()
+        }
 
-            # Adjust demand based on current storage levels
-            if storage_factor < 0.3:  # Low storage - increase demand
-                demand_multiplier = random.uniform(1.0, 1.2)
-            elif storage_factor > 0.7:  # High storage - decrease demand
-                demand_multiplier = random.uniform(0.6, 0.8)
-            else:  # Normal storage levels
-                demand_multiplier = random.uniform(0.8, 1.2)
+    def collect_and_process(self):
+        """Main collection and processing cycle"""
+        # Calculate storage-based demand
+        storage_factor = min(1.0, self.current_storage / (self.storage_capacity * 0.8))
+        base_demand = self.processing_capacity * self.conversion_rate
 
-            # Calculate final demand with some randomness
-            self.demand = max(
-                10,
-                min(
-                    capacity_based_demand * demand_multiplier,
-                    self.storage_capacity
-                    * 0.5,  # Cap demand at 50% of storage capacity
-                ),
-            )
-
-            self.demand_history.append(self.demand)
-            print(f"\n{self.env.now}: {self.name} creating demand:")
-            print(f"- Storage factor: {storage_factor:.2f}")
-            print(f"- Capacity-based demand: {capacity_based_demand:.2f}")
-            print(f"- Demand multiplier: {demand_multiplier:.2f}")
-            print(f"- Final demand: {self.demand:.2f} units")
-            print(
-                f"- Current storage: {self.current_storage:.2f}/{self.storage_capacity}"
-            )
-            print(f"- Storage utilization: {self.storage_utilization:.2f}%")
-
-            # Trigger collection process
-            self.trigger_collection()
-
-            # Dynamic processing time based on storage levels
-            if storage_factor > 0.8:  # Very high storage
-                processing_time = max(1, self.processing_time * 0.7)  # Process faster
-            elif storage_factor < 0.2:  # Very low storage
-                processing_time = self.processing_time * 1.3  # Process slower
+        # Use stochastic market demand if available
+        if self.uncertainty_set:
+            waste_type = next(iter(self.waste_storage.keys()))  # Get first waste type
+            mean, std = self.uncertainty_set.market_demand.get(waste_type, (1.0, 0.2))
+            demand_factor = np.clip(self.rng.normal(mean, std), 0.6, 1.4)
+            self.demand = base_demand * demand_factor
+            print(f"Market demand factor: {demand_factor:.2f}")
+        else:
+            # Fallback to deterministic demand adjustments
+            if storage_factor < 0.3:
+                self.demand = base_demand * self.rng.uniform(1.0, 1.2)  # High demand
+            elif storage_factor > 0.7:
+                self.demand = base_demand * self.rng.uniform(0.6, 0.8)  # Low demand
             else:
-                processing_time = self.processing_time
+                self.demand = base_demand * self.rng.uniform(0.8, 1.2)  # Normal demand
+
+        # Cap demand at 50% of storage capacity
+        self.demand = min(self.demand, self.storage_capacity * 0.5)
+        self.demand = max(10, self.demand)  # Ensure minimum demand
+
+        print(f"\n{self.env.now}: {self.name} operating cycle:")
+        print(
+            f"Current storage: {self.current_storage:.2f}/{self.storage_capacity:.2f} m³"
+        )
+        print(f"Demand: {self.demand:.2f} m³")
+
+        # Collect waste if needed
+        if self.current_storage < self.storage_capacity * 0.8:
+            actually_stored, total_collected = self.trigger_collection()
+            if actually_stored > 0:
+                print(f"Collected and stored: {actually_stored:.2f} m³")
+                print(f"Total collected: {total_collected:.2f} m³")
+
+        # Process stored waste with equipment failure consideration
+        if self.current_storage > 0:
+            # Check for equipment failure if uncertainty set is available
+            equipment_operational = True
+            if self.uncertainty_set:
+                equipment_operational = (
+                    self.rng.random() > self.uncertainty_set.equipment_failure_rate
+                )
+                if not equipment_operational:
+                    print(f"{self.env.now}: Equipment failure at {self.name}")
+                    return False
+
+            processed = self.process_waste_to_product()
+            if processed > 0:
+                print(f"Products created: {processed:.2f} m³")
+                return True
+
+        return False
+
+    def check_overflow_risk(self) -> bool:
+        """Early Warning System for overflow risk"""
+        if len(self.utilization_history) <= self.utilization_window:
+            return False
+
+        # Analyze recent utilization trend
+        recent_utilization = self.utilization_history[-self.utilization_window :]
+        trend = np.polyfit(range(len(recent_utilization)), recent_utilization, 1)[0]
+        current_util = recent_utilization[-1]
+
+        # High risk if:
+        # 1. Current utilization is high (>80%)
+        # 2. Trend is positive (increasing storage)
+        # 3. Rate of increase is significant
+        return current_util > 80 and trend > 0.5
+
+    def handle_overflow_risk(self):
+        """Implement overflow prevention measures"""
+        if self.check_overflow_risk():
+            print(f"\n{self.env.now}: OVERFLOW RISK DETECTED at {self.name}")
+            print(f"Current utilization: {self.storage_utilization:.2f}%")
+
+            # Emergency Protocol 1: Rapid processing activation
+            self.processing_capacity *= 1.5
+            print("Emergency Protocol: Increased processing capacity by 50%")
+
+            # Emergency Protocol 2: Collection suspension
+            # (implemented via very low demand)
+            self.demand *= 0.2
+            print("Emergency Protocol: Reduced collection demand by 80%")
+
+            return True
+        return False
+
+    def manage_storage_capacity(self):
+        """Dynamic capacity management based on utilization"""
+        if self.env.now - self.last_capacity_check < self.capacity_check_interval:
+            return
+
+        # First check for overflow risk
+        if self.handle_overflow_risk():
+            self.last_capacity_check = self.env.now
+            return
+
+        # Regular capacity management
+        if len(self.utilization_history) > self.utilization_window:
+            recent_utilization = np.mean(
+                self.utilization_history[-self.utilization_window :]
+            )
+
+            # Expand capacity if utilization > 85%
+            if recent_utilization > 85:
+                new_capacity = min(self.max_capacity, self.storage_capacity * 1.1)
+                if new_capacity > self.storage_capacity:
+                    print(
+                        f"{self.env.now}: Expanding storage capacity from {self.storage_capacity:.2f} to {new_capacity:.2f}"
+                    )
+                    self.storage_capacity = new_capacity
+
+            # Contract capacity if utilization < 30%
+            elif recent_utilization < 30:
+                new_capacity = max(self.min_capacity, self.storage_capacity * 0.9)
+                if new_capacity < self.storage_capacity:
+                    print(
+                        f"{self.env.now}: Contracting storage capacity from {self.storage_capacity:.2f} to {new_capacity:.2f}"
+                    )
+                    self.storage_capacity = new_capacity
+
+        # Update check time
+        self.last_capacity_check = self.env.now
+
+        # Record current utilization
+        self.utilization_history.append(self.storage_utilization)
+
+    def run_facility(self):
+        """Main facility operation loop"""
+        while True:
+            # Check and adjust storage capacity
+            self.manage_storage_capacity()
+
+            # Adjust operations based on inventory state
+            state_message = self.adjust_operations_for_state()
+            print(f"\n{self.env.now}: Inventory State - {state_message}")
+
+            success = self.collect_and_process()
+
+            # Adjust processing time based on success and stochastic factors
+            base_adjustment = 1.0
+            if self.uncertainty_set:
+                mean, std = self.uncertainty_set.transportation_time
+                base_adjustment = np.clip(self.rng.normal(mean, std), 0.5, 2.0)
+
+            if success and self.current_storage > 0.8 * self.storage_capacity:
+                processing_time = max(
+                    1, self.processing_time * 0.7 * base_adjustment
+                )  # Process faster when storage is high
+            elif not success or self.current_storage < 0.2 * self.storage_capacity:
+                processing_time = (
+                    self.processing_time * 1.3 * base_adjustment
+                )  # Process slower when storage is low
+            else:
+                processing_time = self.processing_time * base_adjustment
 
             yield self.env.timeout(processing_time)
 
     def process_waste_to_product(self) -> float:
-        """Process waste into product with gradual processing"""
+        """Process waste into products"""
+        if self.current_storage <= 0:
+            return 0.0
+
         total_output = 0.0
         total_energy_used = 0.0
 
-        print(f"\n{self.env.now}: {self.name} processing waste:")
-
-        # Calculate maximum processable amount per cycle
+        # Calculate maximum processable amount
         max_process_per_cycle = min(
             self.processing_capacity,
-            self.current_storage * 0.4,  # Process only 40% of current storage per cycle
+            self.current_storage * 0.4,  # Process up to 40% of current storage
         )
 
-        if max_process_per_cycle <= 0:
-            print("No waste available for processing")
-            return 0.0
+        # Pre-filter active waste streams
+        active_storage = {wt: amt for wt, amt in self.waste_storage.items() if amt > 0}
 
-        # Process a portion of each waste type
-        for waste_type, amount in list(self.waste_storage.items()):
-            if amount <= 0:
+        print(f"\n{self.env.now}: {self.name} processing waste:")
+        for waste_type, amount in active_storage.items():
+            transformation = self.transformations.get(waste_type)
+            if not transformation:
                 continue
 
-            transformation = self.transformations.get(waste_type)
-            if transformation:
-                # Calculate processable amount for this waste type
-                waste_fraction = amount / self.current_storage
-                processable_amount = min(amount, max_process_per_cycle * waste_fraction)
+            # Determine processing state and adjust rate
+            storage_ratio = self.current_storage / self.storage_capacity
+            if storage_ratio > 0.8:  # High-Volume Processing
+                processing_multiplier = 1.3  # 30% faster
+                energy_multiplier = 1.3  # Higher energy consumption
+            elif storage_ratio < 0.2:  # Low-Volume Processing
+                processing_multiplier = 0.7  # 30% slower
+                energy_multiplier = 0.7  # Energy conservation
+            else:  # Standard Processing
+                processing_multiplier = 1.0  # Normal rate
+                energy_multiplier = 1.0  # Standard energy usage
 
-                # Process the waste
-                output = processable_amount * transformation.conversion_efficiency
-                energy_used = processable_amount * transformation.energy_required
+            # Calculate processable amount for this waste type with state-based adjustment
+            waste_fraction = amount / self.current_storage
+            processable_amount = min(
+                amount, max_process_per_cycle * waste_fraction * processing_multiplier
+            )
 
-                # Update storage and processing records
+            if processable_amount > 0:
+                # Apply stochastic conversion rate if available
+                if self.uncertainty_set:
+                    mean, std = self.uncertainty_set.treatment_conversion.get(
+                        waste_type, (transformation.conversion_efficiency, 0.05)
+                    )
+                    conversion_rate = np.clip(self.rng.normal(mean, std), 0.5, 1.0)
+                    output = processable_amount * conversion_rate
+                else:
+                    output = processable_amount * transformation.conversion_efficiency
+
+                energy_used = (
+                    processable_amount
+                    * transformation.energy_required
+                    * energy_multiplier
+                )
+
+                # Update storage and records
                 self.waste_storage[waste_type] -= processable_amount
                 self.processed_volumes[waste_type] += processable_amount
-
-                # Accumulate outputs
                 total_output += output
                 total_energy_used += energy_used
 
@@ -282,201 +322,142 @@ class TreatmentOperator:
                 print(f"  Output: {output:.2f} m³")
                 print(f"  Energy used: {energy_used:.2f} kWh")
 
-        # Update total products created
-        self.total_products_created += total_output
+        if total_output > 0:
+            self.total_products_created += total_output
+            self.production_history.append(total_output)
 
-        self.production_history.append(total_output)
-        print(f"Total output: {total_output:.2f} m³")
-        print(f"Total products created to date: {self.total_products_created:.2f} m³")
-        print(f"Total energy used: {total_energy_used:.2f} kWh")
-        print(f"Remaining storage utilization: {self.storage_utilization:.2f}%")
+            print(f"Total output: {total_output:.2f} m³")
+            print(
+                f"Total products created to date: {self.total_products_created:.2f} m³"
+            )
+            print(f"Total energy used: {total_energy_used:.2f} kWh")
+            print(f"Storage utilization: {self.storage_utilization:.2f}%")
 
         return total_output
 
-    def _collect_from_single_generator(self, generator, needed_amount):
-        collected = 0
-        collected_by_type = {}
-
-        for waste_type, waste_stream in generator.waste_streams.items():
-            if waste_stream.volume <= 0:
-                continue
-
-            amount = min(waste_stream.volume, needed_amount - collected)
-            if amount > 0:
-                waste_stream.volume -= amount
-                generator.current_storage -= amount
-                collected_by_type[waste_type] = amount
-                collected += amount
-
-        return collected, collected_by_type
-
-    def _collect_using_collector(self, collector, needed_amount):
-        """Debug version of collection process"""
-        collected = 0
-        collected_amounts = {waste_type: 0.0 for waste_type in WasteType}
-
-        max_collectable = min(
-            needed_amount, collector.collection_capacity * collector.efficiency
-        )
-
-        # print("\nDEBUG: Collection Details")
-        # print(f"Needed amount: {needed_amount:.2f}")
-        # print(f"Collector capacity: {collector.collection_capacity}")
-        # print(f"Collector efficiency: {collector.efficiency}")
-        # print(f"Max collectable: {max_collectable:.2f}")
-
-        state = SimulationState.get_instance()
-        for generator in state.generators:
-            # Debug generator state
-            print(f"\nChecking {generator.name}")
-            print(f"Current storage: {generator.current_storage}")
-            print("Available waste types:")
-            for waste_type, amount in generator.waste_streams.items():
-                print(f"- {waste_type.value}: {amount.volume}")
-
-            if generator.current_storage <= 0:
-                print("Generator has no waste to collect")
-                continue
-
-            # Try collection
-            amount, by_type = self._collect_from_single_generator(
-                generator, max_collectable - collected
-            )
-
-            print(f"Collected from generator: {amount:.2f}")
-            print("By waste type:")
-            for waste_type, type_amount in by_type.items():
-                if type_amount > 0:
-                    print(f"- {waste_type.value}: {type_amount:.2f}")
-                    collected_amounts[waste_type] += type_amount
-            collected += amount
-
-            if collected >= max_collectable:
-                print("Reached maximum collection capacity")
-                break
-
-        # print("\nTotal collection results:")
-        # print(f"Total collected: {collected:.2f}")
-        # print("By waste type:")
-        # for waste_type, amount in collected_amounts.items():
-        #     if amount > 0:
-        #         print(f"- {waste_type.value}: {amount:.2f}")
-
-        return collected, collected_amounts
-
-    def _report_results(self, collected, produced):
-        print(f"Total collected: {collected:.2f} m³")
-        print(f"Total produced: {produced:.2f} m³")
-
-        if produced >= self.demand:
-            print(f"{self.name} SATISFIED demand of {self.demand:.2f} units")
-        else:
-            shortage = self.demand - produced
-            print(f"{self.name} FAILED to meet demand. Shortage: {shortage:.2f} units")
-
-    def _add_to_storage(self, collected_amounts: Dict[WasteType, float]) -> float:
-        """
-        Add collected waste to storage with bounds checking.
-        Returns total amount actually stored.
-        """
-        total_added = 0
-        available_space = self.storage_capacity - self.current_storage
-
-        if available_space <= 0:
-            return 0
-
-        for waste_type, amount in collected_amounts.items():
-            if amount <= 0:
-                continue
-
-            # Calculate how much we can actually store
-            storable_amount = min(amount, available_space)
-            if storable_amount > 0:
-                self.waste_storage[waste_type] += storable_amount
-                total_added += storable_amount
-                available_space -= storable_amount
-
-                print(f"Added {storable_amount:.2f} m³ of {waste_type.value}")
-                if available_space <= 0:
-                    break
-
-        print(
-            f"Storage after addition: {self.current_storage:.2f}/{self.storage_capacity} m³"
-        )
-        print(f"Storage utilization: {self.storage_utilization:.2f}%")
-
-        return total_added
-
     def trigger_collection(self):
-        """Trigger waste collection based on storage-aware demand"""
+        """Request waste collection based on current needs"""
         available_storage = self.storage_capacity - self.current_storage
         required_waste = min(
             self.demand / self.conversion_rate, available_storage * 0.8
         )
 
-        # print(f"\n{self.env.now}: {self.name} triggering collection")
-        # print(f"Available storage: {available_storage:.2f} m³")
-        # print(f"Required waste: {required_waste:.2f} m³")
-        # print(f"Current storage before collection: {self.current_storage:.2f} m³")
-        # print(f"Current storage utilization: {self.storage_utilization:.2f}%")
+        if required_waste <= 0:
+            return 0, 0
 
         state = SimulationState.get_instance()
         total_collected = 0
         total_by_type = {waste_type: 0.0 for waste_type in WasteType}
 
-        # Collect from available collectors
-        for collector in state.collectors:
-            if collector.region != self.region and not collector.availability:
-                print(f"Collector {collector.name} not available or in wrong region")
-                continue
+        print(
+            f"\n{self.env.now}: {self.name} requesting collection of {required_waste:.2f} m³"
+        )
 
+        # Get available collectors in the region
+        available_collectors = [
+            c for c in state.collectors if c.region == self.region and c.availability
+        ]
+
+        for collector in available_collectors:
             remaining_need = required_waste - total_collected
             if remaining_need <= 0:
                 break
 
-            print(f"\nTrying collection with {collector.name}")
-            collected, by_type = self._collect_using_collector(
-                collector, remaining_need
-            )
+            # Request collection
+            collected_amounts = collector.collect_waste_for_demand(remaining_need)
 
-            for waste_type, amount in by_type.items():
-                total_by_type[waste_type] += amount
-            total_collected += collected
+            # Process collected amounts
+            for waste_type, amount in collected_amounts.items():
+                if amount > 0:
+                    total_by_type[waste_type] += amount
+                    total_collected += amount
+                    print(
+                        f"Collected {amount:.2f} m³ of {waste_type.value} from {collector.name}"
+                    )
 
-        print(f"\nTotal collected across all collectors: {total_collected:.2f} m³")
+        if total_collected > 0:
+            print(f"Total waste collected: {total_collected:.2f} m³")
+            # Add to storage
+            actually_stored = self._add_to_storage(total_by_type)
+            if actually_stored < total_collected:
+                print(
+                    f"Could only store {actually_stored:.2f} m³ due to capacity constraints"
+                )
+            return actually_stored, total_collected
 
-        # Add to storage and track how much was actually stored
-        actually_stored = self._add_to_storage(total_by_type)
-        if actually_stored < total_collected:
-            print(
-                f"Warning: Could only store {actually_stored:.2f} m³ out of {total_collected:.2f} m³ collected"
-            )
-            print(f"Storage efficiency: {(actually_stored/total_collected*100):.1f}%")
+        return 0, 0
 
-        # Process waste
-        produced_amount = self.process_waste_to_product()
+    def _add_to_storage(self, waste_amounts: Dict[WasteType, float]) -> float:
+        """Add collected waste to storage"""
+        available_space = self.storage_capacity - self.current_storage
+        if available_space <= 0:
+            return 0
 
-        # Report comprehensive results
-        collection_efficiency = (
-            (total_collected / required_waste * 100) if required_waste > 0 else 0
-        )
-        storage_efficiency = (
-            (actually_stored / total_collected * 100) if total_collected > 0 else 0
-        )
-        demand_satisfaction = (
-            (produced_amount / self.demand * 100) if self.demand > 0 else 0
-        )
+        total_added = 0
+        for waste_type, amount in waste_amounts.items():
+            if amount <= 0:
+                continue
 
-        # print("\nOperation Summary:")
-        # print(f"- Collection efficiency: {collection_efficiency:.1f}%")
-        # print(f"- Storage efficiency: {storage_efficiency:.1f}%")
-        # print(f"- Demand satisfaction: {demand_satisfaction:.1f}%")
-        # print(f"- Demand satisfaction: {demand_satisfaction:.1f}%")
+            storable_amount = min(amount, available_space)
+            if storable_amount > 0:
+                self.waste_storage[waste_type] += storable_amount
+                total_added += storable_amount
+                available_space -= storable_amount
+                print(
+                    f"Added {storable_amount:.2f} m³ of {waste_type.value} to storage"
+                )
 
-        if produced_amount >= self.demand:
-            print(
-                f"{self.name} met demand of {self.demand:.2f} units. Produced: {produced_amount:.2f} units"
-            )
+            if available_space <= 0:
+                break
+
+        return total_added
+
+    @property
+    def current_storage(self) -> float:
+        """Calculate current total storage"""
+        return sum(self.waste_storage.values())
+
+    def get_inventory_state(self) -> str:
+        """Determine current inventory state based on storage utilization"""
+        utilization = self.storage_utilization
+
+        if 40 <= utilization <= 60:
+            return "OPTIMAL"
+        elif 20 <= utilization < 40 or 60 < utilization <= 80:
+            return "BUFFER"
         else:
-            shortage = self.demand - produced_amount
-            print(f"{self.name} failed to meet demand. Shortage: {shortage:.2f} units")
+            return "CRITICAL"
+
+    def adjust_operations_for_state(self):
+        """Adjust operations based on inventory state"""
+        state = self.get_inventory_state()
+        utilization = self.storage_utilization
+
+        if state == "OPTIMAL":
+            # Standard operations, no adjustments needed
+            self.processing_capacity = self.initial_storage_capacity * 0.1
+            return "Standard operations in optimal zone"
+
+        elif state == "BUFFER":
+            # Adjust operations based on which buffer zone we're in
+            if utilization < 40:  # Lower buffer
+                self.processing_capacity *= 0.9  # Slightly reduce processing
+                return "Adjusted operations for lower buffer zone"
+            else:  # Upper buffer
+                self.processing_capacity *= 1.1  # Slightly increase processing
+                return "Adjusted operations for upper buffer zone"
+
+        else:  # CRITICAL
+            if utilization < 20:  # Critical low
+                self.processing_capacity *= 0.7  # Significantly reduce processing
+                return "Emergency measures for critically low storage"
+            else:  # Critical high
+                self.processing_capacity *= 1.3  # Significantly increase processing
+                return "Emergency measures for critically high storage"
+
+    @property
+    def storage_utilization(self) -> float:
+        """Calculate storage utilization percentage"""
+        if self.storage_capacity <= 0:
+            return 0
+        return min(100, max(0, (self.current_storage / self.storage_capacity * 100)))
