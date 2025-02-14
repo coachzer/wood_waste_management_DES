@@ -5,7 +5,15 @@ from core.collector import CollectorCompany
 from core.generator import WasteGenerator
 from core.treatment import TreatmentOperator
 from models.enums import WasteType
-
+from monitoring.mfa_visualization import (
+    create_material_flow_analysis,
+    plot_generation_trends,
+    plot_collection_efficiency,
+    plot_processing_volume,
+    plot_system_efficiency,
+    plot_cumulative_analysis,
+    plot_production_analysis,
+)
 
 class WasteMonitor:
     def __init__(self):
@@ -551,6 +559,44 @@ class WasteMonitor:
         self.plot_product_metrics()
         self.plot_treatment_detailed()
 
+        # Create material flow analysis plot
+        create_material_flow_analysis(
+            self.generation_history,
+            self.collection_history,
+            self.processing_history,
+            "plots/material_flow_analysis.png",
+        )
+
+        # Create individual time series analysis plots
+        plot_generation_trends(self.generation_history, "plots/generation_trends.png")
+
+        plot_collection_efficiency(
+            self.collection_history, "plots/collection_efficiency.png"
+        )
+
+        plot_processing_volume(self.processing_history, "plots/processing_volume.png")
+
+        plot_system_efficiency(self.processing_history, "plots/system_efficiency.png")
+
+        plot_cumulative_analysis(
+            self.generation_history,
+            self.collection_history,
+            self.processing_history,
+            "plots/cumulative_analysis.png",
+        )
+
+        # Get demand and production histories
+        demand_history = []
+        production_history = []
+        for history in self.processing_history.values():
+            if history["operational"]["demand"]:
+                demand_history.extend(history["operational"]["demand"])
+            if history["processed"]["total"]:
+                production_history.extend(history["processed"]["total"])
+
+        plot_production_analysis(
+            demand_history, production_history, "plots/production_analysis.png"
+        )
     def plot_generator_metrics(self):
         """Plot detailed generator performance metrics"""
         plt.figure(figsize=(15, 10))

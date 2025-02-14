@@ -1,4 +1,3 @@
-import simpy
 import numpy as np
 from typing import Dict
 from models.enums import WasteType
@@ -59,10 +58,17 @@ class WasteGenerator:
             # print(f"Current storage before generation: {self.current_storage}")
 
             for waste_type, base_rate in self.waste_generation_rates.items():
+                # Apply more realistic waste generation patterns
                 if self.randomness:
-                    # Apply randomness to waste generation with normal distribution
-                    rng = np.random.default_rng(12345)
-                    generated_volume = max(0, rng.normal(base_rate, self.std_dev))
+                    rng = np.random.default_rng()
+                    # Base seasonal variation (sine wave with period = 4 time units)
+                    seasonal_factor = 1 + 0.2 * np.sin(2 * np.pi * self.env.now / 4)
+                    # Daily variation (normal distribution)
+                    daily_factor = max(0.7, min(1.3, rng.normal(1, self.std_dev)))
+                    # Combine base rate with both variation factors
+                    generated_volume = max(
+                        0, base_rate * seasonal_factor * daily_factor
+                    )
                 else:
                     generated_volume = base_rate
 

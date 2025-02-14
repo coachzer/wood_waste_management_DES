@@ -12,7 +12,6 @@ class TreatmentOperator:
         self,
         env,
         name,
-        processing_capacity,
         processing_time,
         storage_capacity,
         energy_consumption,
@@ -24,8 +23,9 @@ class TreatmentOperator:
     ):
         self.env = env
         self.name = name
-        self.processing_capacity = processing_capacity
+        self.processing_capacity = storage_capacity * 0.75
         self.processing_time = processing_time
+        self.initial_storage_capacity = storage_capacity
         self.storage_capacity = storage_capacity
         self.energy_consumption = energy_consumption
         self.environmental_impact = environmental_impact
@@ -33,6 +33,19 @@ class TreatmentOperator:
         self.operational_costs = operational_costs
         self.region = region
         self.demand = 0
+
+        # Track total products created
+        self.total_products_created = 0.0
+
+        # Add tracking for storage utilization history
+        self.utilization_history = []
+        self.utilization_window = 10  # Track last 10 periods
+        self.demand_history = []
+        self.production_history = []
+        self.high_utilization_threshold = 0.85
+        self.low_utilization_threshold = 0.3
+        self.max_expansion_multiplier = 2.0  # Maximum 2x initial capacity
+        self.min_capacity_multiplier = 0.75  # Minimum 75% of initial capacity
 
         # Single source of truth for storage
         self.waste_storage = {waste_type: 0.0 for waste_type in WasteType}
@@ -66,12 +79,49 @@ class TreatmentOperator:
         utilization = self.current_storage / self.storage_capacity * 100
         utilization = min(100, max(0, utilization))  # Ensure between 0 and 100
 
-        # print("DEBUG - Storage utilization calculation:")
-        # print(f"Current storage: {self.current_storage:.2f}")
-        # print(f"Storage capacity: {self.storage_capacity}")
-        # print(f"Utilization: {utilization:.2f}%")
+        print("DEBUG - Storage utilization calculation:")
+        print(f"Current storage: {self.current_storage:.2f}")
+        print(f"Storage capacity: {self.storage_capacity}")
+        print(f"Utilization: {utilization:.2f}%")
 
         return utilization
+
+    def adjust_storage_capacity(self):
+        """Dynamically adjust storage capacity based on utilization patterns"""
+        current_utilization = (
+            self.storage_utilization / 100
+        )  # Convert percentage to decimal
+        self.utilization_history.append(current_utilization)
+
+        # Keep only recent history
+        if len(self.utilization_history) > self.utilization_window:
+            self.utilization_history.pop(0)
+
+        # Calculate average utilization over recent periods
+        avg_utilization = sum(self.utilization_history) / len(self.utilization_history)
+
+        # Adjust capacity based on sustained utilization patterns
+        if avg_utilization > self.high_utilization_threshold:
+            # Expand capacity by 20% if consistently near capacity
+            new_capacity = self.storage_capacity * 1.2
+            # But don't exceed maximum allowed expansion
+            max_allowed = self.initial_storage_capacity * self.max_expansion_multiplier
+            self.storage_capacity = min(new_capacity, max_allowed)
+            print(f"\n{self.env.now}: {self.name} expanding storage capacity:")
+            print(f"- Previous capacity: {self.storage_capacity / 1.2:.2f}")
+            print(f"- New capacity: {self.storage_capacity:.2f}")
+            print(f"- Average utilization: {avg_utilization:.2%}")
+
+        elif avg_utilization < self.low_utilization_threshold:
+            # Contract capacity by 10% if consistently underutilized
+            new_capacity = self.storage_capacity * 0.9
+            # But don't go below minimum allowed capacity
+            min_allowed = self.initial_storage_capacity * self.min_capacity_multiplier
+            self.storage_capacity = max(new_capacity, min_allowed)
+            print(f"\n{self.env.now}: {self.name} reducing storage capacity:")
+            print(f"- Previous capacity: {self.storage_capacity / 0.9:.2f}")
+            print(f"- New capacity: {self.storage_capacity:.2f}")
+            print(f"- Average utilization: {avg_utilization:.2%}")
 
     def _default_transformations(self) -> Dict[WasteType, WasteTransformation]:
         """Define default transformation pathways for all waste types"""
@@ -130,6 +180,8 @@ class TreatmentOperator:
         """Generate demand based on facility capacity and current storage levels"""
         while True:
 
+            self.adjust_storage_capacity()
+
             # Evolve parameters over time based on optimization
             if self.current_storage > 0.8 * self.storage_capacity:
                 self.processing_capacity *= (
@@ -162,6 +214,7 @@ class TreatmentOperator:
                 ),
             )
 
+            self.demand_history.append(self.demand)
             print(f"\n{self.env.now}: {self.name} creating demand:")
             print(f"- Storage factor: {storage_factor:.2f}")
             print(f"- Capacity-based demand: {capacity_based_demand:.2f}")
@@ -229,7 +282,12 @@ class TreatmentOperator:
                 print(f"  Output: {output:.2f} m³")
                 print(f"  Energy used: {energy_used:.2f} kWh")
 
+        # Update total products created
+        self.total_products_created += total_output
+
+        self.production_history.append(total_output)
         print(f"Total output: {total_output:.2f} m³")
+        print(f"Total products created to date: {self.total_products_created:.2f} m³")
         print(f"Total energy used: {total_energy_used:.2f} kWh")
         print(f"Remaining storage utilization: {self.storage_utilization:.2f}%")
 
@@ -412,6 +470,7 @@ class TreatmentOperator:
         # print("\nOperation Summary:")
         # print(f"- Collection efficiency: {collection_efficiency:.1f}%")
         # print(f"- Storage efficiency: {storage_efficiency:.1f}%")
+        # print(f"- Demand satisfaction: {demand_satisfaction:.1f}%")
         # print(f"- Demand satisfaction: {demand_satisfaction:.1f}%")
 
         if produced_amount >= self.demand:
