@@ -188,7 +188,7 @@ class WasteMonitor:
         plt.tight_layout()
         if save_path:
             plt.savefig(save_path)
-        plt.show()
+
         plt.close()
 
     def plot_collection_efficiency(self, save_path=None):
@@ -210,7 +210,7 @@ class WasteMonitor:
 
         if save_path:
             plt.savefig(save_path)
-        plt.show()
+
         plt.close()
 
     def plot_storage_levels(self, save_path=None):
@@ -233,7 +233,6 @@ class WasteMonitor:
             plt.savefig(save_path, bbox_inches="tight", dpi=300)
             print(f"Storage levels plot saved to: {save_path}")
 
-        plt.show()
         plt.close()
 
     def _plot_generators_storage(self):
@@ -342,7 +341,6 @@ class WasteMonitor:
             plt.savefig(save_path, bbox_inches="tight", dpi=300)
             print(f"Detailed storage analysis saved to: {save_path}")
 
-        plt.show()
         plt.close()
 
     def _plot_storage_heatmap(self, ax):

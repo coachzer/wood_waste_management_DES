@@ -1,4 +1,5 @@
 import simpy
+from models.config import SIMULATION_DURATION
 from models.enums import WasteType
 from core.generator import WasteGenerator
 from core.collector import CollectorCompany
@@ -87,7 +88,7 @@ def create_simulation_entities(env):
         env=env,
         name="PackagingCo East",
         waste_streams={WasteType.PAPER_PACKAGING: 25.0, WasteType.WOOD_PACKAGING: 18.0},
-        generation_frequency=0.2,
+        generation_frequency=0.3,
         storage_capacity=1500,
         priority_level=2,
         randomness=0.1,
@@ -105,8 +106,8 @@ def create_simulation_entities(env):
             WasteType.BARK: 20.0,
             WasteType.WOOD_CUTTINGS: 15.0,
         },
-        generation_frequency=0.2,
-        storage_capacity=1000,
+        generation_frequency=0.3,
+        storage_capacity=3000,
         priority_level=1,
         randomness=0.2,
         std_dev=0.25,
@@ -123,7 +124,7 @@ def create_simulation_entities(env):
             WasteType.WOOD_PACKAGING: 15.0,
             WasteType.SOLID_WOOD: 10.0,
         },
-        generation_frequency=0.2,
+        generation_frequency=0.3,
         storage_capacity=2500,
         priority_level=3,
         randomness=0.25,
@@ -241,26 +242,6 @@ def main():
         ],
     }
 
-    # Add debug print
-    # print("\nInitial state:")
-    # print(f"Generators registered: {len(state.generators)}")
-    # for g in state.generators:
-    #     print(
-    #         f"Generator {g.name}: Region={g.region}, Storage={g.current_storage}/{g.storage_capacity}"
-    #     )
-
-    # print(f"Collectors registered: {len(state.collectors)}")
-    # for c in state.collectors:
-    #     print(
-    #         f"Collector {c.name}: Region={c.region}, Collection Capacity={c.collection_capacity}"
-    #     )
-
-    # print(f"Treatment Operators registered: {len(state.treatment_operators)}")
-    # for t in state.treatment_operators:
-    #     print(
-    #         f"Treatment Operator {t.name}: Region={t.region}, Processing Capacity={t.processing_capacity}"
-    #     )
-
     # Create optimizer after state is initialized
     waste_monitor = WasteMonitor()
     optimizer = setup_optimization()
@@ -280,7 +261,7 @@ def main():
     env.process(optimization_process(env, optimizer))
 
     # Run simulation
-    simulation_duration = 101
+    simulation_duration = SIMULATION_DURATION
     print(f"Starting simulation for {simulation_duration} time units...")
     env.run(until=simulation_duration)
 
