@@ -557,50 +557,24 @@ class WasteMonitor:
         return total
 
     def plot_temporal_analysis(self):
-        """Create comprehensive temporal analysis plots"""
-        self.plot_generator_metrics()
-        self.plot_collector_metrics()
-        self.plot_treatment_metrics()
-        self.plot_system_performance()
-        self.plot_product_metrics()
-        self.plot_treatment_detailed()
+        """Create streamlined temporal analysis plots"""
+        # Core system metrics
+        self.plot_system_performance()  # Combined system efficiency metrics
+        self.plot_product_metrics()  # Production and demand analysis
 
-        # Create material flow analysis plot
+        # Create material flow analysis plot (key visualization)
         create_material_flow_analysis(
             self.generation_history,
             self.collection_history,
             self.processing_history,
         )
 
-        # Create individual time series analysis plots
-        plot_generation_trends(self.generation_history, "plots/generation_trends.png")
-
-        plot_collection_efficiency(
-            self.collection_history, "plots/collection_efficiency.png"
-        )
-
-        plot_processing_volume(self.processing_history, "plots/processing_volume.png")
-
-        plot_system_efficiency(self.processing_history, "plots/system_efficiency.png")
-
+        # Combined analysis plots
         plot_cumulative_analysis(
             self.generation_history,
             self.collection_history,
             self.processing_history,
             "plots/cumulative_analysis.png",
-        )
-
-        # Get demand and production histories
-        demand_history = []
-        production_history = []
-        for history in self.processing_history.values():
-            if history["operational"]["demand"]:
-                demand_history.extend(history["operational"]["demand"])
-            if history["processed"]["total"]:
-                production_history.extend(history["processed"]["total"])
-
-        plot_production_analysis(
-            demand_history, production_history, "plots/production_analysis.png"
         )
 
     def plot_generator_metrics(self):

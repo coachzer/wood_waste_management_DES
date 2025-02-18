@@ -130,7 +130,7 @@ class TwoStageOptimizer:
         return {
             "facility_locations": [],
             "storage_capacities": {},
-            "processing_capacities": {},
+            "processing_rates": {},
         }
 
     def _optimize_second_stage(self, first_stage: Dict, scenario: Dict) -> float:

@@ -13,9 +13,6 @@ from optimization.objectives import (
     StorageUtilizationObjective,
     CollectionEfficiencyObjective,
     TreatmentEfficiencyObjective,
-    RobustStorageObjective,
-    ReliabilityObjective,
-    StochasticCostObjective,
 )
 from optimization.strategies import OptimizationStrategy
 from optimization.optimizer import WasteOptimizer
@@ -28,20 +25,17 @@ def setup_optimization():
     # Create scenario generator with baseline uncertainty set
     scenario_generator = ScenarioGenerator(uncertainty_sets["Baseline"])
 
-    # Create objectives with risk-aware evaluation
+    # Create objectives with simplified risk-aware evaluation
     objectives = [
         StorageUtilizationObjective(
-            weight=0.15, should_minimize=True, risk_aversion=0.3
+            weight=0.35, should_minimize=True, risk_aversion=0.3
         ),
         CollectionEfficiencyObjective(
-            weight=0.15, should_minimize=False, risk_aversion=0.3
+            weight=0.35, should_minimize=False, risk_aversion=0.3
         ),
         TreatmentEfficiencyObjective(
-            weight=0.15, should_minimize=False, risk_aversion=0.3
+            weight=0.30, should_minimize=False, risk_aversion=0.3
         ),
-        RobustStorageObjective(weight=0.2, should_minimize=True, risk_aversion=0.7),
-        ReliabilityObjective(weight=0.2, should_minimize=False, risk_aversion=0.6),
-        StochasticCostObjective(weight=0.15, should_minimize=True, risk_aversion=0.5),
     ]
 
     # Set scenario generator for each objective
@@ -160,95 +154,65 @@ def create_simulation_entities(env, uncertainty_set=None):
         region="North",
     )
 
-    # COLLECTORS (Optimized for increased throughput)
-    # Large Regional Collector
-    regional_collector = CollectorCompany(
+    # COLLECTORS (Optimized for balanced coverage)
+    # Primary Regional Collector
+    primary_collector = CollectorCompany(
         env=env,
-        name="RegionalWaste Solutions",
-        collection_capacity=800,  # Increased capacity
-        collection_frequency=1.5,  # More frequent collection
-        transport_cost=90,  # Slightly higher for better service
+        name="PrimaryWaste Solutions",
+        collection_capacity=1000,  # Large capacity for main operations
+        collection_frequency=1.5,
+        transport_cost=95,  # Balanced cost
         environmental_impact="Low",
-        efficiency=1.2,  # Improved efficiency
+        efficiency=1.2,
         availability=True,
-        strategy="collaborative",
         region="North",
     )
 
-    # Specialized Wood Waste Collector
-    specialized_collector = CollectorCompany(
+    # Secondary Regional Collector
+    secondary_collector = CollectorCompany(
         env=env,
-        name="WoodWaste Specialists",
-        collection_capacity=400,  # Increased capacity
-        collection_frequency=2,  # More frequent collection
-        transport_cost=75,  # Higher for better service
+        name="SecondaryWaste Services",
+        collection_capacity=800,  # Medium capacity for support
+        collection_frequency=1.2,
+        transport_cost=85,
         environmental_impact="Low",
-        efficiency=1.15,  # Improved efficiency
+        efficiency=1.15,
         availability=True,
-        strategy="competitive",
         region="South",
-    )
-
-    # Multi-Regional Collector
-    multi_regional = CollectorCompany(
-        env=env,
-        name="MultiRegional Services",
-        collection_capacity=600,  # Increased capacity
-        collection_frequency=1,  # Most frequent collection
-        transport_cost=120,  # Higher for better service
-        environmental_impact="Moderate",
-        efficiency=1.1,  # Improved efficiency
-        availability=True,
-        strategy="collaborative",
-        region="East",
     )
 
     # Treatment operators with uncertainty sets
-    # Biomass Energy Plant (Optimized for high throughput)
-    biomass_plant = TreatmentOperator(
+    # High-Capacity Processing Plant
+    main_plant = TreatmentOperator(
         env=env,
-        name="BioPower Solutions",
-        processing_time=0.3,  # Faster processing
-        storage_capacity=2000,  # Doubled capacity
-        energy_consumption=1.2,  # Slightly higher for faster processing
-        environmental_impact="High",
-        conversion_rate=0.98,  # Improved efficiency
-        operational_costs=18,  # Slightly higher for better performance
+        name="MainProcessingPlant",
+        processing_time=0.3,
+        storage_capacity=3000,  # Increased capacity
+        energy_consumption=1.8,  # Balanced energy usage
+        environmental_impact="Moderate",
+        conversion_rate=0.96,  # High efficiency
+        operational_costs=25,  # Standard operational costs
         region="North",
         uncertainty_set=uncertainty_set,
     )
 
-    # Recycling Facility (Enhanced processing)
+    # Specialized Recycling Facility
     recycling_facility = TreatmentOperator(
         env=env,
-        name="EcoRecycle Center",
-        processing_time=0.3,  # Much faster processing
-        storage_capacity=1500,  # 50% more capacity
-        energy_consumption=2.8,  # Slightly higher for speed
-        environmental_impact="Moderate",
-        conversion_rate=0.95,  # Improved efficiency
-        operational_costs=25,  # Increased for better performance
-        region="South",
-        uncertainty_set=uncertainty_set,
-    )
-
-    # Composting Facility (Rapid processing)
-    composting_facility = TreatmentOperator(
-        env=env,
-        name="GreenCompost Facility",
-        processing_time=0.5,  # Very fast processing
-        storage_capacity=1200,  # More capacity
-        energy_consumption=3.5,  # Higher for rapid processing
+        name="SpecializedRecycling",
+        processing_time=0.4,
+        storage_capacity=1500,
+        energy_consumption=2.2,
         environmental_impact="Low",
-        conversion_rate=0.92,  # Improved efficiency
-        operational_costs=40,  # Higher costs for speed
-        region="East",
+        conversion_rate=0.94,
+        operational_costs=35,
+        region="South",
         uncertainty_set=uncertainty_set,
     )
 
     generators = [furniture_manufacturer1, packaging_plant, sawmill, construction_waste]
-    collectors = [regional_collector, specialized_collector, multi_regional]
-    treatment_operators = [biomass_plant, recycling_facility, composting_facility]
+    collectors = [primary_collector, secondary_collector]
+    treatment_operators = [main_plant, recycling_facility]
 
     return generators, collectors, treatment_operators
 
@@ -268,10 +232,8 @@ def main():
 
     # Store initial parameters for comparison
     initial_params = {
-        "collection_frequencies": [c.collection_frequency for c in state.collectors],
-        "processing_capacities": [
-            t.processing_capacity for t in state.treatment_operators
-        ],
+        "collection_rates": [c.collection_frequency for c in state.collectors],
+        "processing_rates": [t.processing_capacity for t in state.treatment_operators],
     }
 
     # Create optimizer and scenario generator after state is initialized
@@ -302,10 +264,8 @@ def main():
 
     # Compare final parameters
     final_params = {
-        "collection_frequencies": [c.collection_frequency for c in state.collectors],
-        "processing_capacities": [
-            t.processing_capacity for t in state.treatment_operators
-        ],
+        "collection_rates": [c.collection_frequency for c in state.collectors],
+        "processing_rates": [t.processing_capacity for t in state.treatment_operators],
     }
     print("\nParameter Evolution:")
     print("Initial:", initial_params)
