@@ -1,6 +1,6 @@
 # Discrete Event Wood Waste Management Simulation
 
-A Python-based simulation system for modeling and optimizing industrial waste management operations. The system simulates waste generation, collection, and treatment processes while providing comprehensive monitoring and optimization capabilities.
+A Python-based simulation system for modeling and optimizing wood waste management operations. The system simulates waste generation, collection, and treatment processes while providing comprehensive monitoring and optimization capabilities.
 
 ## Project Structure
 
@@ -69,7 +69,9 @@ The system will generate visualizations and metrics in the `plots/` directory.
   - Regional waste distribution and prioritization
 
 - **Waste Collection**: Models collection operations with:
-  - Multiple collection strategies (competitive/collaborative)
+  - Multiple collection strategies:
+    - Collaborative Strategy: Collectors work together within assigned regions, coordinating with other available collectors to handle waste collection efficiently. When a collector operates collaboratively, it first allows other collectors to process waste, then handles any remaining volume itself. This approach optimizes resource utilization and ensures balanced workload distribution across the collection fleet.
+    - Competitive Strategy: Collectors operate independently, targeting high-priority generators first. Each collector dynamically adjusts its collection capacity based on efficiency ratings and modifies transport costs accordingly. This creates a performance-driven system where collectors compete for waste from prioritized generators while balancing operational costs.
   - Regional-based collection routing with availability checking
   - Transport cost optimization with efficiency modulation
   - Collection efficiency tracking and performance monitoring
@@ -86,7 +88,7 @@ The system will generate visualizations and metrics in the `plots/` directory.
     - Solid Wood → Mixed Wood (98% efficiency)
     - Paper Packaging → Mixed Wood (80% efficiency)
     - Wood Packaging → Mixed Wood (88% efficiency)
-  - State-of-the-art storage management with dynamic capacity
+  - Storage management with dynamic capacity
   - Batch processing (40% of current storage per cycle)
   - Real-time energy consumption tracking
   - Quality-dependent conversion rates with stochastic variations

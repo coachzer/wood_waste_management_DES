@@ -1,7 +1,17 @@
 from optimization.stochastic import UncertaintySet
 from models.enums import WasteType
 
-SIMULATION_DURATION = 200
+# Time configuration
+SIMULATION_DURATION = 300  # 3 years * 100 time units per year
+TIME_PERIOD = 100  # Length of one year in time units
+TOTAL_YEARS = 3  # Total number of years to simulate
+
+# Time periods documentation
+TIME_PERIODS = {
+    "year_1": (0, 99),  # First year time range
+    "year_2": (100, 199),  # Second year time range
+    "year_3": (200, 299),  # Third year time range
+}
 
 # Define uncertainty sets for different scenarios
 uncertainty_sets = {

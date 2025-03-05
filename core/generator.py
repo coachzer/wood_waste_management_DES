@@ -1,8 +1,10 @@
 import numpy as np
 from typing import Dict, Optional
-from models.enums import WasteType
+from models.enums import WasteType, RegionType
+from models.state import SimulationState
 from models.data_classes import WasteStream
 from optimization.stochastic import UncertaintySet
+from core.overflow import OverflowTracker
 
 
 class WasteGenerator:
@@ -16,17 +18,25 @@ class WasteGenerator:
         storage_capacity,
         priority_level,
         environmental_impact,
-        region,
+        region: str,
         uncertainty_set: Optional[UncertaintySet] = None,
+        initial_stock: Optional[Dict[WasteType, float]] = None,
     ):
         self.env = env
         self.name = name
+        # Validate initial stock against storage capacity
+        if initial_stock:
+            total_initial = sum(initial_stock.values())
+            if total_initial > storage_capacity:
+                raise ValueError(
+                    f"Initial stock ({total_initial}) exceeds storage capacity ({storage_capacity})"
+                )
+
+        # Initialize waste streams with initial stock if provided
         self.waste_streams = {
             waste_type: WasteStream(
                 waste_type=waste_type,
-                volume=0,
-                density=self._get_default_density(waste_type),
-                moisture_content=self._get_default_moisture(waste_type),
+                volume=initial_stock.get(waste_type, 0) if initial_stock else 0,
             )
             for waste_type in waste_streams.keys()
         }
@@ -36,12 +46,22 @@ class WasteGenerator:
         self.priority_level = priority_level
         self.uncertainty_set = uncertainty_set
         self.environmental_impact = environmental_impact
-        self.current_storage = 0
+        self.current_storage = sum(initial_stock.values() if initial_stock else [0])
         self.last_collected = env.now
+        # Store original region string for tracking
         self.region = region
+        # Convert to enum for internal use
+        self.region_type = RegionType[region.upper()] if region else None
+
+        # Initialize overflow tracker
+        self.overflow_tracker = OverflowTracker()
 
         # Track total generation efficiently
-        self.total_generated = {waste_type: 0.0 for waste_type in waste_streams.keys()}
+        # Initialize total generated with initial stock
+        self.total_generated = {
+            waste_type: initial_stock.get(waste_type, 0.0) if initial_stock else 0.0
+            for waste_type in waste_streams.keys()
+        }
 
         # Optimize history tracking with fixed-size arrays
         self.history_size = 1000
@@ -71,6 +91,98 @@ class WasteGenerator:
         # Start waste generation process
         self.action = env.process(self.generate_waste())
 
+    def _calculate_daily_factors(self):
+        """Calculate daily generation factors based on uncertainty"""
+        if not self.uncertainty_set:
+            return [1.0] * len(self.waste_generation_rates)
+
+        daily_factors = []
+        for waste_type in self.waste_generation_rates.keys():
+            mean, std = self.uncertainty_set.waste_generation.get(
+                waste_type, (1.0, 0.2)
+            )
+            factor = self.rng.normal(mean, std)
+            daily_factors.append(np.clip(factor, 0.1, 2.0))
+        return daily_factors
+
+    def _update_waste_stream(self, waste_type, generated_volume, current_time):
+        """Update waste stream and history records"""
+        self.waste_streams[waste_type].volume += generated_volume
+        self.current_storage += generated_volume
+        self.total_generated[waste_type] += generated_volume
+
+        # Track waste generation in the region using original region string
+        SimulationState.get_instance().track_waste_generation(
+            self.region, waste_type, generated_volume
+        )
+
+        if self.history_index >= self.history_size:
+            self.history_index = 0
+
+        history = self.generation_history[waste_type]
+        history["times"][self.history_index] = current_time
+        history["volumes"][self.history_index] = generated_volume
+        history["totals"][self.history_index] = self.total_generated[waste_type]
+        history["storage"][self.history_index] = self.current_storage
+
+    def _handle_overflow(self):
+        """Handle storage overflow situation"""
+        # Determine severity level
+        if self.current_storage / self.storage_capacity > 0.95:
+            severity = "emergency"
+        elif self.current_storage / self.storage_capacity > 0.90:
+            severity = "critical"
+        else:
+            severity = "warning"
+
+        # Calculate overflow volume
+        overflow_volume = max(0, self.current_storage - self.storage_capacity)
+
+        # Landfill the excess waste and track it
+        print(
+            f"{self.env.now}: Landfilling {overflow_volume:.2f} m³ of waste from {self.name}"
+        )
+        self.overflow_tracker.track_overflow(
+            facility_type="generator", volume=overflow_volume
+        )
+
+        # Track waste removal from the region using original region string
+        state = SimulationState.get_instance()
+        for waste_type in self.waste_streams:
+            excess = self.waste_streams[waste_type].volume
+            if excess > 0:
+                state.track_waste_collection(self.region, waste_type, excess)
+                self.waste_streams[waste_type].volume = 0.0
+                self.current_storage -= excess
+
+        # Calculate and apply penalty
+        penalty = self.overflow_tracker.calculate_penalty(
+            facility_type="generator", severity=severity, volume=overflow_volume
+        )
+        print(f"Overflow penalty applied to {self.name}: {penalty:.2f}")
+
+    def _generate_waste_for_period(
+        self, seasonal_factor, available_storage, current_time
+    ):
+        """Generate waste for all waste types in one period"""
+        daily_factors = self._calculate_daily_factors()
+
+        for (waste_type, base_rate), daily_factor in zip(
+            self.waste_generation_rates.items(), daily_factors
+        ):
+            if available_storage <= 0:
+                break
+
+            generated_volume = min(
+                base_rate * seasonal_factor * daily_factor, available_storage
+            )
+
+            if generated_volume > 0:
+                self._update_waste_stream(waste_type, generated_volume, current_time)
+                available_storage -= generated_volume
+
+        return available_storage
+
     def generate_waste(self):
         """Generate waste with optimized calculations"""
         while True:
@@ -78,88 +190,17 @@ class WasteGenerator:
             season_index = int(current_time % self.seasonal_periods)
             seasonal_factor = self.seasonal_factors[season_index]
 
-            if self.uncertainty_set:
-                # Use stochastic parameters for generation
-                daily_factors = []
-                for waste_type in self.waste_generation_rates.keys():
-                    mean, std = self.uncertainty_set.waste_generation.get(
-                        waste_type, (1.0, 0.2)
-                    )
-                    factor = self.rng.normal(mean, std)
-                    # Ensure non-negative and reasonable bounds
-                    daily_factors.append(np.clip(factor, 0.1, 2.0))
-
-            # Calculate available storage once
             available_storage = self.storage_capacity - self.current_storage
             if available_storage <= 0:
+                self._handle_overflow()
                 yield self.env.timeout(self.generation_frequency)
                 continue
 
-            # Process all waste types in batch
-            for (waste_type, base_rate), daily_factor in zip(
-                self.waste_generation_rates.items(),
-                (
-                    daily_factors
-                    if self.uncertainty_set
-                    else [1.0] * len(self.waste_generation_rates)
-                ),
-            ):
-                if available_storage <= 0:
-                    break
-
-                # Calculate generation amount
-                generated_volume = base_rate * seasonal_factor * daily_factor
-                generated_volume = min(generated_volume, available_storage)
-
-                if generated_volume > 0:
-                    # Update waste stream
-                    self.waste_streams[waste_type].volume += generated_volume
-                    self.current_storage += generated_volume
-                    self.total_generated[waste_type] += generated_volume
-                    available_storage -= generated_volume
-
-                    # Update history efficiently
-                    if self.history_index >= self.history_size:
-                        self.history_index = 0
-
-                    history = self.generation_history[waste_type]
-                    history["times"][self.history_index] = current_time
-                    history["volumes"][self.history_index] = generated_volume
-                    history["totals"][self.history_index] = self.total_generated[
-                        waste_type
-                    ]
-                    history["storage"][self.history_index] = self.current_storage
-
+            self._generate_waste_for_period(
+                seasonal_factor, available_storage, current_time
+            )
             self.history_index += 1
             yield self.env.timeout(self.generation_frequency)
-
-    def _get_default_density(self, waste_type: WasteType) -> float:
-        """Return default density for each waste type in kg/m3"""
-        density_map = {
-            WasteType.SAWDUST: 250,
-            WasteType.WOOD_CUTTINGS: 400,
-            WasteType.BARK: 300,
-            WasteType.CORK: 240,
-            WasteType.SOLID_WOOD: 500,
-            WasteType.PAPER_PACKAGING: 100,
-            WasteType.WOOD_PACKAGING: 450,
-            WasteType.MIXED_WOOD: 350,
-        }
-        return density_map.get(waste_type, 300)
-
-    def _get_default_moisture(self, waste_type: WasteType) -> float:
-        """Return default moisture content for each waste type as percentage"""
-        moisture_map = {
-            WasteType.SAWDUST: 0.35,
-            WasteType.WOOD_CUTTINGS: 0.30,
-            WasteType.BARK: 0.45,
-            WasteType.CORK: 0.15,
-            WasteType.SOLID_WOOD: 0.25,
-            WasteType.PAPER_PACKAGING: 0.10,
-            WasteType.WOOD_PACKAGING: 0.20,
-            WasteType.MIXED_WOOD: 0.30,
-        }
-        return moisture_map.get(waste_type, 0.30)
 
     def get_total_generated_volume(self) -> float:
         """Returns total volume across all waste streams"""

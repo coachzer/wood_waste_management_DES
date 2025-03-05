@@ -55,35 +55,70 @@ def _create_nodes(
     treatment_volumes: Dict,
     product_volumes: Dict,
     product_counts: Dict,
+    volume_threshold: float = 0.1,  # Filter out nodes with volumes below this threshold
 ):
-    """Create nodes for the Sankey diagram."""
+    """Create nodes for the Sankey diagram with volume-based filtering and improved organization."""
     labels, node_colors = [], []
 
+    # Helper function to format volume label with metric prefix
+    def format_volume(volume: float) -> str:
+        if volume >= 1000:
+            return f"{volume/1000:.1f}km³"
+        return f"{volume:.1f}m³"
+
+    # Filter and sort generators by volume
+    filtered_generators = {
+        k: v for k, v in generator_volumes.items() if v >= volume_threshold
+    }
+    sorted_generators = dict(
+        sorted(filtered_generators.items(), key=lambda x: x[1], reverse=True)
+    )
+
     generator_start_idx = len(labels)
-    for generator, volume in generator_volumes.items():
-        labels.append(f"{generator}\n{volume:.1f}m³")
-        node_colors.append("green")
+    for generator, volume in sorted_generators.items():
+        labels.append(f"{generator}<br>{format_volume(volume)}")
+        node_colors.append("rgba(0, 128, 0, 0.7)")  # Semi-transparent green
+
+    # Filter and sort collectors
+    filtered_collectors = {
+        k: v for k, v in collector_volumes.items() if v >= volume_threshold
+    }
+    sorted_collectors = dict(
+        sorted(filtered_collectors.items(), key=lambda x: x[1], reverse=True)
+    )
 
     collector_start_idx = len(labels)
-    for collector, volume in collector_volumes.items():
-        labels.append(f"{collector}\n{volume:.1f}m³")
-        node_colors.append("blue")
+    for collector, volume in sorted_collectors.items():
+        labels.append(f"{collector}<br>{format_volume(volume)}")
+        node_colors.append("rgba(0, 0, 255, 0.7)")  # Semi-transparent blue
+
+    # Filter and sort treatment facilities
+    filtered_treatments = {
+        k: v for k, v in treatment_volumes.items() if v >= volume_threshold
+    }
+    sorted_treatments = dict(
+        sorted(filtered_treatments.items(), key=lambda x: x[1], reverse=True)
+    )
 
     treatment_start_idx = len(labels)
-    for treatment, volume in treatment_volumes.items():
-        labels.append(f"{treatment}\n{volume:.1f}m³")
-        node_colors.append("red")
+    for treatment, volume in sorted_treatments.items():
+        labels.append(f"{treatment}<br>{format_volume(volume)}")
+        node_colors.append("rgba(255, 0, 0, 0.7)")  # Semi-transparent red
 
     product_start_idx = len(labels)
     max_count = max(product_counts.values()) if product_counts.values() else 1
 
-    for waste_type, volume in product_volumes.items():
+    # Filter and sort products
+    filtered_products = {
+        k: v for k, v in product_volumes.items() if v >= volume_threshold
+    }
+    for waste_type, volume in filtered_products.items():
         if volume > 0:
             count = product_counts[waste_type]
             labels.append(
-                f"Product: {waste_type.value}\n{volume:.1f}m³\n(Created {count} times)"
+                f"Product: {waste_type.value}<br>{format_volume(volume)}<br>Created {count} times"
             )
-            node_colors.append("purple")
+            node_colors.append("rgba(128, 0, 128, 0.7)")  # Semi-transparent purple
 
     return (
         labels,
@@ -208,211 +243,15 @@ def create_material_flow_analysis(
         ]
     )
 
-    fig.update_layout(title_text="Material Flow Analysis", font_size=10, height=800)
-    fig.write_html(save_path)
-
-
-def plot_generation_trends(
-    generation_history: Dict, save_path: str = "plots/generation_trends.png"
-):
-    """Create visualization of waste generation trends over time."""
-    plt.figure(figsize=(10, 6))
-
-    for generator, history in generation_history.items():
-        total_volumes = []
-        for t_idx in range(len(history["timestamps"])):
-            total = sum(
-                volumes[t_idx]
-                for volumes in history["total_generated"].values()
-                if len(volumes) > t_idx
-            )
-            total_volumes.append(total)
-
-        plt.plot(
-            history["timestamps"],
-            total_volumes,
-            label=generator,
-            marker="o",
-            markersize=4,
-        )
-
-    plt.title("Waste Generation Trends")
-    plt.xlabel("Time")
-    plt.ylabel("Volume (m³)")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(save_path, bbox_inches="tight", dpi=300)
-    plt.close()
-
-
-def plot_collection_efficiency(
-    collection_history: Dict, save_path: str = "plots/collection_efficiency.png"
-):
-    """Create visualization of collection efficiency over time."""
-    plt.figure(figsize=(10, 6))
-
-    for collector, history in collection_history.items():
-        if history["efficiency"]:
-            plt.plot(
-                history["timestamps"],
-                history["efficiency"],
-                label=collector,
-                marker="s",
-                markersize=4,
-            )
-
-    plt.title("Collection Efficiency Over Time")
-    plt.xlabel("Time")
-    plt.ylabel("Efficiency")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(save_path, bbox_inches="tight", dpi=300)
-    plt.close()
-
-
-def plot_processing_volume(
-    processing_history: Dict, save_path: str = "plots/processing_volume.png"
-):
-    """Create visualization of processing volume over time."""
-    plt.figure(figsize=(10, 6))
-
-    for treatment, history in processing_history.items():
-        if history["processed"]["total"]:
-            plt.plot(
-                history["timestamps"],
-                history["processed"]["total"],
-                label=treatment,
-                marker="^",
-                markersize=4,
-            )
-
-    plt.title("Processing Volume Over Time")
-    plt.xlabel("Time")
-    plt.ylabel("Volume (m³)")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(save_path, bbox_inches="tight", dpi=300)
-    plt.close()
-
-
-def plot_system_efficiency(
-    processing_history: Dict, save_path: str = "plots/system_efficiency.png"
-):
-    """Create visualization of system efficiency metrics."""
-    plt.figure(figsize=(10, 6))
-
-    for treatment, history in processing_history.items():
-        if history["operational"]["conversion_rate"]:
-            plt.plot(
-                history["timestamps"],
-                history["operational"]["conversion_rate"],
-                label=f"{treatment} Efficiency",
-                marker="*",
-                markersize=4,
-            )
-
-    plt.title("System Efficiency Metrics")
-    plt.xlabel("Time")
-    plt.ylabel("Efficiency Rate")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(save_path, bbox_inches="tight", dpi=300)
-    plt.close()
-
-
-def plot_cumulative_analysis(
-    generation_history: Dict,
-    collection_history: Dict,
-    processing_history: Dict,
-    save_path: str = "plots/cumulative_analysis.png",
-):
-    """Create visualization of cumulative volume analysis."""
-    plt.figure(figsize=(10, 6))
-
-    # Calculate all unique timestamps
-    all_timestamps = set()
-    for history in generation_history.values():
-        all_timestamps.update(history["timestamps"])
-    for history in collection_history.values():
-        all_timestamps.update(history["timestamps"])
-    for history in processing_history.values():
-        all_timestamps.update(history["timestamps"])
-
-    timestamps = sorted(list(all_timestamps))
-    gen_cum = []
-    col_cum = []
-    proc_cum = []
-
-    # Calculate cumulative volumes
-    for t in timestamps:
-        gen_total = sum(
-            sum(vol[i] for vol in history["total_generated"].values())
-            for name, history in generation_history.items()
-            for i, ts in enumerate(history["timestamps"])
-            if ts <= t
-        )
-        gen_cum.append(gen_total)
-
-        col_total = sum(
-            sum(vol[i] for vol in history["collected_volumes"].values())
-            for name, history in collection_history.items()
-            for i, ts in enumerate(history["timestamps"])
-            if ts <= t
-        )
-        col_cum.append(col_total)
-
-        proc_total = sum(
-            sum(
-                history["processed"]["total"][i]
-                for i, ts in enumerate(history["timestamps"])
-                if ts <= t
-            )
-            for name, history in processing_history.items()
-        )
-        proc_cum.append(proc_total)
-
-    plt.plot(timestamps, gen_cum, label="Generated", linewidth=2)
-    plt.plot(timestamps, col_cum, label="Collected", linewidth=2)
-    plt.plot(timestamps, proc_cum, label="Processed", linewidth=2)
-
-    plt.title("Cumulative Volume Analysis")
-    plt.xlabel("Time")
-    plt.ylabel("Cumulative Volume (m³)")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(save_path, bbox_inches="tight", dpi=300)
-    plt.close()
-
-
-def plot_production_analysis(
-    demand_history: List[float],
-    production_history: List[float],
-    save_path: str = "plots/production_analysis.png",
-):
-    """Create visualization of production analysis."""
-    plt.figure(figsize=(10, 6))
-
-    plt.plot(demand_history, label="Demand", marker="o", markersize=4)
-    plt.plot(production_history, label="Production", marker="x", markersize=4)
-
-    cumulative_production = np.cumsum(production_history)
-    plt.plot(
-        cumulative_production,
-        label="Total Products Created",
-        linestyle="--",
-        linewidth=2,
+    # Update layout with improved styling and interactivity
+    fig.update_layout(
+        title=dict(
+            text="Material Flow Analysis", font=dict(size=16), x=0.5, xanchor="center"
+        ),
+        font=dict(size=10),
+        height=800,
+        hovermode="x",
+        plot_bgcolor="rgba(255,255,255,0.9)",
+        paper_bgcolor="rgba(255,255,255,0.9)",
     )
-
-    plt.title("Production Analysis")
-    plt.xlabel("Time")
-    plt.ylabel("Volume (m³)")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(save_path, bbox_inches="tight", dpi=300)
-    plt.close()
+    fig.write_html(save_path)

@@ -1,6 +1,21 @@
 from enum import Enum
 
 
+class RegionType(Enum):
+    POMURSKA = "pomurska"
+    PODRAVSKA = "podravska"
+    KOROSKA = "koroska"
+    SAVINJSKA = "savinjska"
+    ZASAVSKA = "zasavska"
+    POSAVSKA = "posavska"
+    JUGOVZHODNA_SLOVENIJA = "jugovzhodna_slovenija"
+    OSREDNJESLOVENSKA = "osrednjeslovenska"
+    GORENJSKA = "gorenjska"
+    PRIMORSKONOTRANJSKA = "primorskonotranjska"
+    GORISKA = "goriska"
+    OBALNOKRASKA = "obalnokraska"
+
+
 class WasteType(Enum):
     SAWDUST = "sawdust"  # Fine particles from cutting/processing
     WOOD_CUTTINGS = "wood_cuttings"  # Larger wood pieces from cutting

@@ -27,8 +27,45 @@ class ScenarioGenerator:
 
     def __init__(self, uncertainty_set: UncertaintySet, num_scenarios: int = 100):
         self.uncertainty_set = uncertainty_set
+        self.base_uncertainty_set = uncertainty_set  # Store original values
         self.num_scenarios = num_scenarios
         self.rng = np.random.default_rng(42)  # For reproducibility
+
+    def adjust_parameters(
+        self,
+        waste_generation_multiplier: float = 1.0,
+        efficiency_multiplier: float = 1.0,
+    ):
+        """Adjust uncertainty parameters based on multipliers for different simulation years"""
+        # Adjust waste generation parameters
+        self.uncertainty_set.waste_generation = {
+            waste_type: (mean * waste_generation_multiplier, std)
+            for waste_type, (
+                mean,
+                std,
+            ) in self.base_uncertainty_set.waste_generation.items()
+        }
+
+        # Adjust collection and treatment efficiencies
+        mean, std = self.base_uncertainty_set.collection_efficiency
+        self.uncertainty_set.collection_efficiency = (mean * efficiency_multiplier, std)
+
+        self.uncertainty_set.treatment_conversion = {
+            waste_type: (mean * efficiency_multiplier, std)
+            for waste_type, (
+                mean,
+                std,
+            ) in self.base_uncertainty_set.treatment_conversion.items()
+        }
+
+        # Adjust market demand proportionally to waste generation
+        self.uncertainty_set.market_demand = {
+            waste_type: (mean * waste_generation_multiplier, std)
+            for waste_type, (
+                mean,
+                std,
+            ) in self.base_uncertainty_set.market_demand.items()
+        }
 
     def generate_scenarios(self) -> List[Dict]:
         """Generate scenarios based on uncertainty distributions"""

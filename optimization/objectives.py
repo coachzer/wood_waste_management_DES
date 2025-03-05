@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import List, Dict
 import numpy as np
 from optimization.stochastic import ScenarioGenerator, UncertaintySet
+from core.cost_tracker import CostType
 
 
 @dataclass
@@ -145,6 +146,25 @@ class CollectionEfficiencyObjective(OptimizationObjective):
         return ObjectiveResult(final_score, self.weight, self.should_minimize)
 
 
+class OverflowPenaltyObjective(OptimizationObjective):
+    """Evaluates overflow penalties across the system"""
+
+    def evaluate(self, state) -> ObjectiveResult:
+        total_penalty = 0
+        state = SimulationState.get_instance()
+
+        for generator in state.generators:
+            total_penalty += generator.overflow_tracker.total_landfilled
+
+        for collector in state.collectors:
+            total_penalty += collector.overflow_tracker.total_landfilled
+
+        for operator in state.treatment_operators:
+            total_penalty += operator.overflow_tracker.total_landfilled
+
+        return ObjectiveResult(total_penalty, self.weight, self.should_minimize)
+
+
 class TreatmentEfficiencyObjective(OptimizationObjective):
     """Evaluates treatment efficiency, reliability, and environmental impact"""
 
@@ -177,3 +197,31 @@ class TreatmentEfficiencyObjective(OptimizationObjective):
 
         final_score = sum(scores) / len(scores) if scores else 0
         return ObjectiveResult(final_score, self.weight, self.should_minimize)
+
+
+class CostOptimizationObjective(OptimizationObjective):
+    """Evaluates and optimizes total system costs"""
+
+    def evaluate(self, state) -> ObjectiveResult:
+        total_cost = 0.0
+        weighted_costs = {
+            CostType.PROCESSING: 1.0,
+            CostType.TRANSPORTATION: 1.2,
+            CostType.STORAGE: 0.8,
+            CostType.LANDFILL: 2.0,
+            CostType.OVERFLOW: 2.5,
+            CostType.MAINTENANCE: 0.9,
+            CostType.ENERGY: 1.1,
+        }
+
+        for operator in state.treatment_operators:
+            cost_breakdown = operator.cost_tracker.get_cost_breakdown()
+
+            # Sum weighted costs
+            for cost_type_str, cost in cost_breakdown.items():
+                cost_type = CostType(cost_type_str)
+                total_cost += cost * weighted_costs[cost_type]
+
+        # Normalize total cost (higher cost = lower score)
+        score = 1.0 / (1.0 + total_cost / 1000)  # Normalize per 1000 units
+        return ObjectiveResult(score, self.weight, True)  # should_minimize=True

@@ -1,0 +1,13 @@
+{
+    "national_demand": {
+        "wood_packaging": 8000,
+        "paper_packaging": 6000,
+        "mixed_wood": 4000,
+        "solid_wood": 3000
+    },
+    "period": {
+        "unit": "month",
+        "length": 1
+    },
+    "note": "Volumes are in cubic meters per period. Demand represents the minimum required processed output across all regions combined."
+}

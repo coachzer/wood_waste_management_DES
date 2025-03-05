@@ -1,14 +1,13 @@
 import simpy
-from models.config import SIMULATION_DURATION
-from models.enums import WasteType
-from core.generator import WasteGenerator
-from core.collector import CollectorCompany
-from core.treatment import TreatmentOperator
+from models.config import SIMULATION_DURATION, TIME_PERIOD, TOTAL_YEARS
 from models.state import SimulationState
 from monitoring.monitor import WasteMonitor
 from utils.helpers import monitor_system
 
-# optimizer
+# Core components
+from core.facility_builder import initialize_simulation_entities
+
+# Optimization components
 from optimization.objectives import (
     StorageUtilizationObjective,
     CollectionEfficiencyObjective,
@@ -51,170 +50,67 @@ def setup_optimization():
     return optimizer, scenario_generator
 
 
-def optimization_process(env, optimizer):
-    """Run periodic optimization of the waste management system"""
+def _check_year_transition(env, current_year, scenario_generator):
+    """Handle year transition and parameter adjustments"""
+    if env.now > 0 and env.now % TIME_PERIOD == 0:
+        current_year = (env.now // TIME_PERIOD) + 1
+        if current_year <= TOTAL_YEARS:
+            print(f"\n=== Starting Year {current_year} at time {env.now} ===")
+            # Adjust uncertainty parameters for the new year
+            scenario_generator.adjust_parameters(
+                waste_generation_multiplier=1.0 + (0.1 * (current_year - 1)),
+                efficiency_multiplier=1.0 + (0.05 * (current_year - 1)),
+            )
+    return current_year
+
+
+def _print_optimization_results(env, result):
+    """Print detailed optimization results"""
+    print(f"\n=== Optimization Results at Time {env.now} ===")
+    print("Objective Scores (with risk measures):")
+    for objective, score in result.scores.items():
+        risk_measure = getattr(result, "risk_measures", {}).get(objective, 0.0)
+        scenarios = getattr(result, "scenarios_evaluated", {}).get(objective, 1)
+        print(f"- {objective}:")
+        print(f"  Score: {score:.3f}")
+        print(f"  Risk Measure (VaR): {risk_measure:.3f}")
+        print(f"  Scenarios Evaluated: {scenarios}")
+
+    _print_actions_and_suggestions(result)
+
+
+def _print_actions_and_suggestions(result):
+    """Print optimization actions and suggestions"""
+    if result.actions:
+        print("\nOptimization Actions:")
+        for action in result.actions:
+            confidence = getattr(action, "confidence", 1.0)
+            print(
+                f"- {action.entity_type}: {action.parameter} adjusted by {action.adjustment}"
+                f" (Confidence: {confidence:.2f})"
+            )
+
+    if result.suggestions:
+        print("\nRobustness Suggestions:")
+        for suggestion in result.suggestions:
+            print(f"- {suggestion}")
+
+
+def optimization_process(env, optimizer, scenario_generator):
+    """Run periodic optimization of the waste management system with year-based adjustments"""
+    current_year = 1
     while True:
+        # Check for year transition and update parameters if needed
+        current_year = _check_year_transition(env, current_year, scenario_generator)
+
+        # Run optimization
         result = optimizer.optimize()
 
-        # Log optimization results with stochastic measures
-        print(f"\n=== Optimization Results at Time {env.now} ===")
-        print("Objective Scores (with risk measures):")
-        for objective, score in result.scores.items():
-            risk_measure = getattr(result, "risk_measures", {}).get(objective, 0.0)
-            scenarios = getattr(result, "scenarios_evaluated", {}).get(objective, 1)
-            print(f"- {objective}:")
-            print(f"  Score: {score:.3f}")
-            print(f"  Risk Measure (VaR): {risk_measure:.3f}")
-            print(f"  Scenarios Evaluated: {scenarios}")
-
-        if result.actions:
-            print("\nOptimization Actions:")
-            for action in result.actions:
-                confidence = getattr(action, "confidence", 1.0)
-                print(
-                    f"- {action.entity_type}: {action.parameter} adjusted by {action.adjustment}"
-                    f" (Confidence: {confidence:.2f})"
-                )
-
-        if result.suggestions:
-            print("\nRobustness Suggestions:")
-            for suggestion in result.suggestions:
-                print(f"- {suggestion}")
+        # Log optimization results
+        _print_optimization_results(env, result)
 
         # Wait for next optimization cycle
         yield env.timeout(10)
-
-
-def create_simulation_entities(env, uncertainty_set=None):
-    # GENERATORS (Optimized for increased output)
-    # Large Furniture Manufacturers
-    furniture_manufacturer1 = WasteGenerator(
-        env=env,
-        name="FurnitureCorp North",
-        waste_streams={
-            WasteType.SAWDUST: 25.0,  # Increased volume
-            WasteType.WOOD_CUTTINGS: 20.0,  # Increased volume
-            WasteType.SOLID_WOOD: 30.0,  # Increased volume
-        },
-        generation_frequency=0.5,  # More frequent generation
-        storage_capacity=2000,  # Increased storage
-        priority_level=2,  # Maintained priority
-        uncertainty_set=uncertainty_set,
-        environmental_impact="Moderate",
-        region="North",
-    )
-
-    # Paper/Packaging Companies
-    packaging_plant = WasteGenerator(
-        env=env,
-        name="PackagingCo East",
-        waste_streams={
-            WasteType.PAPER_PACKAGING: 35.0,  # Increased volume
-            WasteType.WOOD_PACKAGING: 25.0,  # Increased volume
-        },
-        generation_frequency=0.4,  # More frequent generation
-        storage_capacity=1200,  # Increased storage
-        priority_level=1,
-        uncertainty_set=uncertainty_set,
-        environmental_impact="Low",
-        region="East",
-    )
-
-    # Sawmills
-    sawmill = WasteGenerator(
-        env=env,
-        name="SawmillPro South",
-        waste_streams={
-            WasteType.SAWDUST: 45.0,  # Increased volume
-            WasteType.BARK: 30.0,  # Increased volume
-            WasteType.WOOD_CUTTINGS: 25.0,  # Increased volume
-        },
-        generation_frequency=0.4,  # More frequent generation
-        storage_capacity=800,  # Increased storage
-        priority_level=1,
-        uncertainty_set=uncertainty_set,
-        environmental_impact="High",
-        region="South",
-    )
-
-    # Construction Waste
-    construction_waste = WasteGenerator(
-        env=env,
-        name="ConstructionWaste Central",
-        waste_streams={
-            WasteType.MIXED_WOOD: 50.0,  # Increased volume
-            WasteType.WOOD_PACKAGING: 25.0,  # Increased volume
-            WasteType.SOLID_WOOD: 20.0,  # Increased volume
-        },
-        generation_frequency=0.6,  # More frequent generation
-        storage_capacity=1500,  # Increased storage
-        priority_level=3,
-        uncertainty_set=uncertainty_set,
-        environmental_impact="Moderate",
-        region="North",
-    )
-
-    # COLLECTORS (Optimized for balanced coverage)
-    # Primary Regional Collector
-    primary_collector = CollectorCompany(
-        env=env,
-        name="PrimaryWaste Solutions",
-        collection_capacity=1000,  # Large capacity for main operations
-        collection_frequency=1.5,
-        transport_cost=95,  # Balanced cost
-        environmental_impact="Low",
-        efficiency=1.2,
-        availability=True,
-        region="North",
-    )
-
-    # Secondary Regional Collector
-    secondary_collector = CollectorCompany(
-        env=env,
-        name="SecondaryWaste Services",
-        collection_capacity=800,  # Medium capacity for support
-        collection_frequency=1.2,
-        transport_cost=85,
-        environmental_impact="Low",
-        efficiency=1.15,
-        availability=True,
-        region="South",
-    )
-
-    # Treatment operators with uncertainty sets
-    # High-Capacity Processing Plant
-    main_plant = TreatmentOperator(
-        env=env,
-        name="MainProcessingPlant",
-        processing_time=0.3,
-        storage_capacity=3000,  # Increased capacity
-        energy_consumption=1.8,  # Balanced energy usage
-        environmental_impact="Moderate",
-        conversion_rate=0.96,  # High efficiency
-        operational_costs=25,  # Standard operational costs
-        region="North",
-        uncertainty_set=uncertainty_set,
-    )
-
-    # Specialized Recycling Facility
-    recycling_facility = TreatmentOperator(
-        env=env,
-        name="SpecializedRecycling",
-        processing_time=0.4,
-        storage_capacity=1500,
-        energy_consumption=2.2,
-        environmental_impact="Low",
-        conversion_rate=0.94,
-        operational_costs=35,
-        region="South",
-        uncertainty_set=uncertainty_set,
-    )
-
-    generators = [furniture_manufacturer1, packaging_plant, sawmill, construction_waste]
-    collectors = [primary_collector, secondary_collector]
-    treatment_operators = [main_plant, recycling_facility]
-
-    return generators, collectors, treatment_operators
 
 
 def main():
@@ -222,7 +118,7 @@ def main():
     env = simpy.Environment()
 
     # Create entities with baseline uncertainty set
-    generators, collectors, treatment_operators = create_simulation_entities(
+    generators, collectors, treatment_operators = initialize_simulation_entities(
         env, uncertainty_sets["Baseline"]
     )
 
@@ -251,8 +147,8 @@ def main():
         )
     )
 
-    # Set up optimization process
-    env.process(optimization_process(env, optimizer))
+    # Set up optimization process with scenario generator
+    env.process(optimization_process(env, optimizer, scenario_generator))
 
     # Run simulation
     simulation_duration = SIMULATION_DURATION
