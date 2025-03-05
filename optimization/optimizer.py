@@ -63,3 +63,12 @@ class WasteOptimizer:
                         print(
                             f"Adjusted {collector.name} {action.parameter} from {current_value} to {new_value}"
                         )
+            elif action.entity_type == "treatment":
+                for operator in self.state.treatment_operators:
+                    if action.entity_id == "all" or action.entity_id == operator.name:
+                        current_value = getattr(operator, action.parameter)
+                        new_value = current_value * action.adjustment
+                        setattr(operator, action.parameter, new_value)
+                        print(
+                            f"Adjusted {operator.name} {action.parameter} from {current_value} to {new_value}"
+                        )

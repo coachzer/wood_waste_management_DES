@@ -5,12 +5,9 @@ from ..visualizations.plot_utils import (
     STORAGE_UTIL_LABEL,
     DEFAULT_FIGURE_SIZE,
     GRID_ALPHA,
-    LEGEND_FONTSIZE,
-    create_grouped_plot,
     setup_axis_labels,
     save_plot,
 )
-
 
 class StoragePlotter:
     """Handles plotting of storage-related metrics and analysis"""
@@ -45,6 +42,7 @@ class StoragePlotter:
     def plot_detailed_storage_analysis(
         generation_history: Dict[str, Any],
         processing_history: Dict[str, Any],
+        collection_history: Dict[str, Any],
         save_path: str = None,
     ) -> None:
         """Create a simplified summary of storage patterns"""
@@ -54,13 +52,13 @@ class StoragePlotter:
         # Average utilization by type with error bars
         ax1 = fig.add_subplot(gs[0])
         StoragePlotter._plot_storage_statistics(
-            ax1, generation_history, processing_history
+            ax1, generation_history, processing_history, collection_history
         )
 
         # Peak storage periods analysis
         ax2 = fig.add_subplot(gs[1])
         StoragePlotter._plot_peak_storage_analysis(
-            ax2, generation_history, processing_history
+            ax2, generation_history, processing_history, collection_history
         )
 
         plt.tight_layout()
@@ -100,21 +98,18 @@ class StoragePlotter:
                 sum(treat_utils) / len(treat_utils) if treat_utils else 0
             )
 
-            # Collector average
-            col_totals = []
+            # Collector average with proper utilization calculation
+            col_utils = []
             for history in collection_history.values():
                 if t_idx < len(history["timestamps"]):
-                    total = sum(
-                        volumes[t_idx]
-                        for volumes in history["collected_volumes"].values()
-                        if len(volumes) > t_idx
-                    )
-                    if total > 0:
-                        col_totals.append(total)
-
-            collector_util.append(
-                sum(col_totals) / len(col_totals) if col_totals else 0
-            )
+                    for volumes in history["collected_volumes"].values():
+                        if len(volumes) > t_idx:
+                            max_volume = max(volumes)  # Use max as capacity
+                            if max_volume > 0:  # Avoid division by zero
+                                utilization = (volumes[t_idx] / max_volume) * 100
+                                col_utils.append(utilization)
+            
+            collector_util.append(sum(col_utils) / len(col_utils) if col_utils else 0)
 
         # Plot aggregated trends
         ax.plot(
@@ -176,16 +171,14 @@ class StoragePlotter:
                 if len(history["storage"]["utilization"]) > t_idx:
                     timestep_total += history["storage"]["utilization"][t_idx]
 
-            # Add collector storage
+            # Add collector storage with proper utilization calculation
             for history in collection_history.values():
                 if t_idx < len(history["timestamps"]):
-                    total = sum(
-                        volumes[t_idx]
-                        for volumes in history["collected_volumes"].values()
-                        if len(volumes) > t_idx
-                    )
-                    if total > 0:
-                        timestep_total += total
+                    for volumes in history["collected_volumes"].values():
+                        if len(volumes) > t_idx:
+                            max_volume = max(volumes)
+                            if max_volume > 0:
+                                timestep_total += (volumes[t_idx] / max_volume) * 100
 
             total_storage.append(timestep_total)
 
@@ -212,42 +205,72 @@ class StoragePlotter:
         ax.grid(True, linestyle="--", alpha=GRID_ALPHA)
 
     @staticmethod
-    def _plot_storage_statistics(
-        ax: plt.Axes,
-        generation_history: Dict[str, Any],
-        processing_history: Dict[str, Any],
-    ) -> None:
-        """Plot storage statistics with error bars"""
-        # Calculate statistics for generators and treatment facilities
-        facility_types = ["Generators", "Treatment"]
-        means = []
-        errors = []
+    def _calculate_statistics(data):
+        """Calculate mean and error for a dataset"""
+        if data:
+            mean = sum(data) / len(data)
+            error = (max(data) - min(data)) / 2
+        else:
+            mean = 0
+            error = 0
+        return mean, error
 
-        # Generator statistics
+    @staticmethod
+    def _get_generator_data(generation_history):
+        """Extract generator storage utilization data"""
         gen_data = []
         for history in generation_history.values():
             if history["storage_utilization"]:
                 gen_data.extend(history["storage_utilization"])
-        if gen_data:
-            means.append(sum(gen_data) / len(gen_data))
-            errors.append(
-                (max(gen_data) - min(gen_data)) / 2
-            )  # Use range as error bars
-        else:
-            means.append(0)
-            errors.append(0)
+        return gen_data
 
-        # Treatment facility statistics
+    @staticmethod
+    def _get_treatment_data(processing_history):
+        """Extract treatment facility storage utilization data"""
         treat_data = []
         for history in processing_history.values():
             if "storage" in history and "utilization" in history["storage"]:
                 treat_data.extend(history["storage"]["utilization"])
-        if treat_data:
-            means.append(sum(treat_data) / len(treat_data))
-            errors.append((max(treat_data) - min(treat_data)) / 2)
-        else:
-            means.append(0)
-            errors.append(0)
+        return treat_data
+
+    @staticmethod
+    def _get_collector_data(collection_history):
+        """Extract collector storage utilization data"""
+        collector_data = []
+        for history in collection_history.values():
+            for volumes in history["collected_volumes"].values():
+                if volumes:
+                    max_volume = max(volumes)  # Use max as capacity
+                    if max_volume > 0:
+                        utilization = [(v / max_volume) * 100 for v in volumes]
+                        collector_data.extend(utilization)
+        return collector_data
+
+    @staticmethod
+    def _plot_storage_statistics(
+        ax: plt.Axes,
+        generation_history: Dict[str, Any],
+        processing_history: Dict[str, Any],
+        collection_history: Dict[str, Any],
+    ) -> None:
+        """Plot storage statistics with error bars"""
+        # Calculate statistics for all facility types
+        facility_types = ["Generators", "Treatment", "Collectors"]
+        
+        # Get data for each facility type
+        data_sets = [
+            StoragePlotter._get_generator_data(generation_history),
+            StoragePlotter._get_treatment_data(processing_history),
+            StoragePlotter._get_collector_data(collection_history)
+        ]
+        
+        # Calculate statistics
+        means = []
+        errors = []
+        for data in data_sets:
+            mean, error = StoragePlotter._calculate_statistics(data)
+            means.append(mean)
+            errors.append(error)
 
         # Create bar plot with error bars
         x_pos = range(len(facility_types))
@@ -279,6 +302,7 @@ class StoragePlotter:
         ax: plt.Axes,
         generation_history: Dict[str, Any],
         processing_history: Dict[str, Any],
+        collection_history: Dict[str, Any],
     ) -> None:
         """Plot peak storage periods analysis"""
         timestamps = next(iter(generation_history.values()))["timestamps"]
@@ -289,14 +313,24 @@ class StoragePlotter:
         for t_idx in range(len(timestamps)):
             timestep_total = 0
 
-            # Add generator and treatment facility storage
+            # Add generator storage
             for history in generation_history.values():
                 if len(history["storage_utilization"]) > t_idx:
                     timestep_total += history["storage_utilization"][t_idx]
 
+            # Add treatment facility storage
             for history in processing_history.values():
                 if len(history["storage"]["utilization"]) > t_idx:
                     timestep_total += history["storage"]["utilization"][t_idx]
+
+            # Add collector storage
+            for history in collection_history.values():
+                if t_idx < len(history["timestamps"]):
+                    for volumes in history["collected_volumes"].values():
+                        if len(volumes) > t_idx:
+                            max_volume = max(volumes)
+                            if max_volume > 0:
+                                timestep_total += (volumes[t_idx] / max_volume) * 100
 
             total_storage.append(timestep_total)
 

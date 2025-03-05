@@ -34,7 +34,7 @@ class WasteMonitor:
         """Track treatment facility metrics"""
         self.data_collector.track_processing(treatment, timestamp)
 
-    def plot_temporal_analysis(self) -> None:
+    def plot_temporal_analysis(self, end_time: float) -> None:
         """Create streamlined temporal analysis plots"""
         generation_history = self.data_collector.get_generation_history()
         collection_history = self.data_collector.get_collection_history()
@@ -58,13 +58,14 @@ class WasteMonitor:
             generation_history,
             processing_history,
             collection_history,
-            "plots/storage_t299.png",
+            f"plots/storage_t{int(end_time)}.png",
         )
 
         StoragePlotter.plot_detailed_storage_analysis(
             generation_history,
             processing_history,
-            "plots/storage_detailed_t299.png",
+            collection_history,
+            f"plots/storage_detailed_t{int(end_time)}.png",
         )
 
         # Efficiency metrics

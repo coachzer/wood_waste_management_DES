@@ -129,7 +129,7 @@ def main():
     # Store initial parameters for comparison
     initial_params = {
         "collection_rates": [c.collection_frequency for c in state.collectors],
-        "processing_rates": [t.processing_capacity for t in state.treatment_operators],
+        "processing_rates": [t.processing_time for t in state.treatment_operators],
     }
 
     # Create optimizer and scenario generator after state is initialized
@@ -161,14 +161,16 @@ def main():
     # Compare final parameters
     final_params = {
         "collection_rates": [c.collection_frequency for c in state.collectors],
-        "processing_rates": [t.processing_capacity for t in state.treatment_operators],
+        "processing_rates": [t.processing_time for t in state.treatment_operators],
     }
     print("\nParameter Evolution:")
     print("Initial:", initial_params)
     print("Final:", final_params)
 
     # Create visualizations
-    waste_monitor.plot_temporal_analysis()  # Generate all plots including material flow analysis
+    waste_monitor.plot_temporal_analysis(
+        simulation_duration
+    )  # Generate all plots including material flow analysis
     visualizer = OptimizationVisualizer(optimizer.history)
     visualizer.plot_results("plots/optimization_results.png")
 

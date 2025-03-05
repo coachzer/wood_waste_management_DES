@@ -30,8 +30,8 @@ class OptimizationStrategy:
                 OptimizationAction(
                     entity_type="treatment",
                     entity_id="all",
-                    parameter="processing_capacity",
-                    adjustment=1.2,  # Reduce capacity by 10%
+                    parameter="processing_time",
+                    adjustment=0.8,  # Increase processing speed by reducing time by 20%
                 )
             )
 

@@ -17,7 +17,4 @@ def monitor_system(env, waste_monitor, generators, collectors, treatment_operato
             print(f"\n=== System State at Time {env.now} ===")
             waste_monitor.generate_summary_report()
 
-            # Generate all plots using temporal analysis
-            waste_monitor.plot_temporal_analysis()
-
         yield env.timeout(1)
