@@ -1,7 +1,4 @@
-from typing import Dict, Any
-from core.collector import CollectorCompany
-from core.generator import WasteGenerator
-from core.treatment import TreatmentOperator
+from typing import Dict, Any, TYPE_CHECKING
 from models.enums import WasteType
 
 
@@ -12,8 +9,20 @@ class DataCollector:
         self.generation_history = {}
         self.collection_history = {}
         self.processing_history = {}
+        self.cost_history = {
+            "energy": [],
+            "processing": [],
+            "transport": [],
+            "timestamps": []
+        }
+        self.overflow_history = {
+            "facility_types": [],
+            "volumes": [],
+            "timestamps": []
+        }
+        self.last_timestamp = 0.0  # Initialize timestamp tracker
 
-    def track_generation(self, generator: WasteGenerator, timestamp: float):
+    def track_generation(self, generator, timestamp):
         """Track waste generation events with timestamps"""
         if generator.name not in self.generation_history:
             self.generation_history[generator.name] = {
@@ -41,7 +50,7 @@ class DataCollector:
         utilization = (generator.current_storage / generator.storage_capacity) * 100
         history["storage_utilization"].append(utilization)
 
-    def track_collection(self, collector: CollectorCompany, timestamp: float):
+    def track_collection(self, collector, timestamp: float):
         """Track waste collection events"""
         if collector.name not in self.collection_history:
             self.collection_history[collector.name] = {
@@ -64,7 +73,33 @@ class DataCollector:
         history["efficiency"].append(collector.efficiency)
         history["transport_costs"].append(collector.transport_cost)
 
-    def track_processing(self, treatment: TreatmentOperator, timestamp: float):
+    def track_overflow(self, facility_type: str, volume: float):
+        """Track overflow events"""
+        self.overflow_history["facility_types"].append(facility_type)
+        self.overflow_history["volumes"].append(volume)
+        self.overflow_history["timestamps"].append(self.last_timestamp)
+
+    def track_energy_cost(self, cost: float, timestamp: float):
+        """Track energy consumption costs"""
+        self.cost_history["energy"].append(cost)
+        self.cost_history["timestamps"].append(timestamp)
+        self.last_timestamp = timestamp
+
+    def track_processing_cost(self, cost: float, timestamp: float):
+        """Track processing operation costs"""
+        self.cost_history["processing"].append(cost)
+        if timestamp not in self.cost_history["timestamps"]:
+            self.cost_history["timestamps"].append(timestamp)
+        self.last_timestamp = timestamp
+
+    def track_transport_cost(self, cost: float, timestamp: float):
+        """Track transportation costs"""
+        self.cost_history["transport"].append(cost)
+        if timestamp not in self.cost_history["timestamps"]:
+            self.cost_history["timestamps"].append(timestamp)
+        self.last_timestamp = timestamp
+
+    def track_processing(self, treatment, timestamp: float):
         """Track treatment facility metrics"""
         if treatment.name not in self.processing_history:
             self.processing_history[treatment.name] = {

@@ -1,5 +1,65 @@
 from optimization.stochastic import UncertaintySet
 from models.enums import WasteType
+from typing import Dict, Tuple
+
+class UncertaintySetFactory:
+    """Factory methods for creating consistent uncertainty sets"""
+    
+    @staticmethod
+    def create_waste_generation(base_mean: float, base_std: float) -> Dict[WasteType, Tuple[float, float]]:
+        """Create waste generation dictionary with consistent values across waste types"""
+        return {waste_type: (base_mean, base_std) for waste_type in WasteType}
+        
+    @staticmethod 
+    def create_treatment_conversion(base_mean: float, base_std: float) -> Dict[WasteType, Tuple[float, float]]:
+        """Create treatment conversion dictionary with consistent values across waste types"""
+        return {waste_type: (base_mean, base_std) for waste_type in WasteType}
+
+    @staticmethod
+    def create_market_demand(base_mean: float, base_std: float) -> Dict[WasteType, Tuple[float, float]]:
+        """Create market demand dictionary with consistent values across waste types"""
+        return {waste_type: (base_mean, base_std) for waste_type in WasteType}
+
+class ConfigValidator:
+    """Validates configuration parameters"""
+    
+    @staticmethod
+    def validate_uncertainty_set(uncertainty_set: UncertaintySet) -> None:
+        """Validate uncertainty set parameters"""
+        if not 0 <= uncertainty_set.equipment_failure_rate <= 1:
+            raise ValueError("Equipment failure rate must be between 0 and 1")
+            
+        # Validate means and standard deviations
+        for (mean, std) in uncertainty_set.waste_generation.values():
+            if mean <= 0 or std < 0:
+                raise ValueError("Mean must be positive and std must be non-negative")
+        
+        if uncertainty_set.collection_efficiency[0] <= 0 or uncertainty_set.collection_efficiency[1] < 0:
+            raise ValueError("Collection efficiency mean must be positive and std non-negative")
+            
+        for (mean, std) in uncertainty_set.treatment_conversion.values():
+            if mean <= 0 or std < 0:
+                raise ValueError("Treatment conversion mean must be positive and std non-negative")
+            
+        if uncertainty_set.transportation_time[0] <= 0 or uncertainty_set.transportation_time[1] < 0:
+            raise ValueError("Transportation time mean must be positive and std non-negative")
+            
+        for (mean, std) in uncertainty_set.market_demand.values():
+            if mean <= 0 or std < 0:
+                raise ValueError("Market demand mean must be positive and std non-negative")
+
+    @staticmethod
+    def validate_time_periods() -> None:
+        """Validate time period configuration"""
+        total_units = sum(end - start + 1 for start, end in TIME_PERIODS.values())
+        if total_units != SIMULATION_DURATION:
+            raise ValueError("Time periods don't match simulation duration")
+        
+        # Check for gaps and overlaps
+        sorted_periods = sorted((start, end) for start, end in TIME_PERIODS.values())
+        for i in range(len(sorted_periods) - 1):
+            if sorted_periods[i][1] + 1 != sorted_periods[i + 1][0]:
+                raise ValueError("Time periods must be consecutive without gaps or overlaps")
 
 # Time configuration
 SIMULATION_DURATION = 300  # 3 years * 100 time units per year
@@ -13,94 +73,69 @@ TIME_PERIODS = {
     "year_3": (200, 299),  # Third year time range
 }
 
-# Define uncertainty sets for different scenarios
-uncertainty_sets = {
-    "Baseline": UncertaintySet(
-        waste_generation={
-            WasteType.SAWDUST: (1.0, 0.2),
-            WasteType.WOOD_CUTTINGS: (1.0, 0.2),
-            WasteType.BARK: (1.0, 0.2),
-            WasteType.CORK: (1.0, 0.2),
-            WasteType.SOLID_WOOD: (1.0, 0.2),
-            WasteType.PAPER_PACKAGING: (1.0, 0.2),
-            WasteType.WOOD_PACKAGING: (1.0, 0.2),
-            WasteType.MIXED_WOOD: (1.0, 0.2),
-        },
-        collection_efficiency=(0.85, 0.1),
-        treatment_conversion={waste_type: (0.9, 0.05) for waste_type in WasteType},
-        transportation_time=(2.0, 0.5),
-        market_demand={waste_type: (1.0, 0.2) for waste_type in WasteType},
-        equipment_failure_rate=0.05,
-    ),
-    "High Uncertainty": UncertaintySet(
-        waste_generation={
-            WasteType.SAWDUST: (1.0, 0.4),
-            WasteType.WOOD_CUTTINGS: (1.0, 0.4),
-            WasteType.BARK: (1.0, 0.4),
-            WasteType.CORK: (1.0, 0.4),
-            WasteType.SOLID_WOOD: (1.0, 0.4),
-            WasteType.PAPER_PACKAGING: (1.0, 0.4),
-            WasteType.WOOD_PACKAGING: (1.0, 0.4),
-            WasteType.MIXED_WOOD: (1.0, 0.4),
-        },
-        collection_efficiency=(0.85, 0.2),
-        treatment_conversion={waste_type: (0.9, 0.1) for waste_type in WasteType},
-        transportation_time=(2.0, 1.0),
-        market_demand={waste_type: (1.0, 0.4) for waste_type in WasteType},
-        equipment_failure_rate=0.1,
-    ),
-    "High Demand": UncertaintySet(
-        waste_generation={
-            WasteType.SAWDUST: (1.5, 0.3),
-            WasteType.WOOD_CUTTINGS: (1.5, 0.3),
-            WasteType.BARK: (1.5, 0.3),
-            WasteType.CORK: (1.5, 0.3),
-            WasteType.SOLID_WOOD: (1.5, 0.3),
-            WasteType.PAPER_PACKAGING: (1.5, 0.3),
-            WasteType.WOOD_PACKAGING: (1.5, 0.3),
-            WasteType.MIXED_WOOD: (1.5, 0.3),
-        },
-        collection_efficiency=(0.85, 0.15),
-        treatment_conversion={waste_type: (0.9, 0.05) for waste_type in WasteType},
-        transportation_time=(2.0, 0.7),
-        market_demand={waste_type: (1.5, 0.3) for waste_type in WasteType},
-        equipment_failure_rate=0.05,
-    ),
-    "Optimistic": UncertaintySet(
-        waste_generation={
-            WasteType.SAWDUST: (1.2, 0.1),
-            WasteType.WOOD_CUTTINGS: (1.2, 0.1),
-            WasteType.BARK: (1.2, 0.1),
-            WasteType.CORK: (1.2, 0.1),
-            WasteType.SOLID_WOOD: (1.2, 0.1),
-            WasteType.PAPER_PACKAGING: (1.2, 0.1),
-            WasteType.WOOD_PACKAGING: (1.2, 0.1),
-            WasteType.MIXED_WOOD: (1.2, 0.1),
-        },
-        collection_efficiency=(0.95, 0.05),
-        treatment_conversion={waste_type: (0.95, 0.03) for waste_type in WasteType},
-        transportation_time=(1.5, 0.3),
-        market_demand={waste_type: (1.2, 0.1) for waste_type in WasteType},
-        equipment_failure_rate=0.02,
-    ),
-}
-
-# Scenario configuration including both uncertainty sets and operational parameters
-scenarios = {
+# Scenario configuration parameters
+SCENARIO_CONFIGS = {
     "Baseline": {
-        "uncertainty_set": uncertainty_sets["Baseline"],
-        "collaboration": False,
+        "waste_gen": (1.0, 0.2),
+        "coll_eff": (0.85, 0.1),
+        "treat_conv": (0.9, 0.05),
+        "trans_time": (2.0, 0.5),
+        "market_dem": (1.0, 0.2),
+        "equip_fail": 0.05,
+        "collaboration": False
     },
     "High Uncertainty": {
-        "uncertainty_set": uncertainty_sets["High Uncertainty"],
-        "collaboration": True,
+        "waste_gen": (1.0, 0.4),
+        "coll_eff": (0.85, 0.2),
+        "treat_conv": (0.9, 0.1),
+        "trans_time": (2.0, 1.0),
+        "market_dem": (1.0, 0.4),
+        "equip_fail": 0.1,
+        "collaboration": True
     },
     "High Demand": {
-        "uncertainty_set": uncertainty_sets["High Demand"],
-        "collaboration": True,
+        "waste_gen": (1.5, 0.3),
+        "coll_eff": (0.85, 0.15),
+        "treat_conv": (0.9, 0.05),
+        "trans_time": (2.0, 0.7),
+        "market_dem": (1.5, 0.3),
+        "equip_fail": 0.05,
+        "collaboration": True
     },
     "Optimistic": {
-        "uncertainty_set": uncertainty_sets["Optimistic"],
-        "collaboration": True,
-    },
+        "waste_gen": (1.2, 0.1),
+        "coll_eff": (0.95, 0.05),
+        "treat_conv": (0.95, 0.03),
+        "trans_time": (1.5, 0.3),
+        "market_dem": (1.2, 0.1),
+        "equip_fail": 0.02,
+        "collaboration": True
+    }
+}
+
+# Create uncertainty sets using factory methods
+uncertainty_sets = {}
+for name, config in SCENARIO_CONFIGS.items():
+    uncertainty_set = UncertaintySet(
+        waste_generation=UncertaintySetFactory.create_waste_generation(*config["waste_gen"]),
+        collection_efficiency=config["coll_eff"],
+        treatment_conversion=UncertaintySetFactory.create_treatment_conversion(*config["treat_conv"]),
+        transportation_time=config["trans_time"],
+        market_demand=UncertaintySetFactory.create_market_demand(*config["market_dem"]),
+        equipment_failure_rate=config["equip_fail"]
+    )
+    # Validate the uncertainty set
+    ConfigValidator.validate_uncertainty_set(uncertainty_set)
+    uncertainty_sets[name] = uncertainty_set
+
+# Validate time periods configuration
+ConfigValidator.validate_time_periods()
+
+# Create scenarios with validated uncertainty sets
+scenarios = {
+    name: {
+        "uncertainty_set": uncertainty_sets[name],
+        "collaboration": config["collaboration"]
+    }
+    for name, config in SCENARIO_CONFIGS.items()
 }

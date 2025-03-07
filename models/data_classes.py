@@ -2,6 +2,12 @@ from dataclasses import dataclass
 from typing import Dict, Tuple, Optional
 from .enums import WasteType, RegionType
 
+@dataclass
+class CollectionResult:
+    """Data class to represent results from a collection request"""
+    total_collected: float
+    waste_by_type: Dict[WasteType, float]
+
 
 @dataclass
 class WasteStream:

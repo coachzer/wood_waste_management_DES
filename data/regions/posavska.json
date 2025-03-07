@@ -1,2 +1,64 @@
 {
+    "generators": [
+        {
+            "id": "gen_posavska_1",
+            "waste_generation_rates": {
+                "bark_waste": 65.0,
+                "sawdust": 100.0,
+                "wood_cuttings": 95.0,
+                "construction_wood": 60.0,
+                "mixed_wood": 70.0
+            },
+            "generation_frequency": 24,
+            "storage_capacity": 800,
+            "priority_level": 5,
+            "environmental_impact": 1.0,
+            "initial_stock": {
+                "bark_waste": 130.0,
+                "sawdust": 160.0,
+                "wood_cuttings": 150.0,
+                "construction_wood": 120.0,
+                "mixed_wood": 140.0
+            }
+        }
+    ],
+    "collectors": [
+        {
+            "id": "col_posavska_1",
+            "waste_types": ["bark_waste", "sawdust", "wood_cuttings", "construction_wood", "mixed_wood", "wooden_packaging", "paper_packaging"],
+            "collection_capacity": 1300,
+            "collection_frequency": 24,
+            "transport_cost": 50.0,
+            "environmental_impact": 1.0,
+            "efficiency": 0.9,
+            "availability": true,
+            "strategy": "competitive"
+        }
+    ],
+    "processors": [
+        {
+            "id": "proc_posavska_wood",
+            "input_types": ["sawdust", "wood_cuttings", "construction_wood"],
+            "output_types": ["wooden_packaging"],
+            "processing_capacity": 900,
+            "processing_time": 12,
+            "storage_capacity": 1500,
+            "energy_consumption": 100.0,
+            "environmental_impact": 1.0,
+            "conversion_rate": 0.8,
+            "operational_costs": 200.0
+        },
+        {
+            "id": "proc_posavska_paper",
+            "input_types": ["bark_waste", "mixed_wood"],
+            "output_types": ["paper_packaging"],
+            "processing_capacity": 700,
+            "processing_time": 12,
+            "storage_capacity": 1100,
+            "energy_consumption": 90.0,
+            "environmental_impact": 1.0,
+            "conversion_rate": 0.7,
+            "operational_costs": 180.0
+        }
+    ]
 }

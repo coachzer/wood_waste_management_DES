@@ -1,15 +1,12 @@
 import os
-from typing import Dict, Any, List
-from core.collector import CollectorCompany
-from core.generator import WasteGenerator
-from core.treatment import TreatmentOperator
+from typing import Dict, Any, List, TYPE_CHECKING
+from models.system_types import CollectorCompany, WasteGenerator, TreatmentOperator
 from .data_collector import DataCollector
 from .metrics_analyzer import MetricsAnalyzer
 from .mfa_visualization import create_material_flow_analysis
 from .visualizations.storage_plots import StoragePlotter
 from .visualizations.efficiency_plots import EfficiencyPlotter
 from .visualizations.system_plots import SystemPlotter
-
 
 class WasteMonitor:
     """Central monitoring system for waste management operations"""

@@ -51,7 +51,8 @@ class WasteGenerator:
         # Store original region string for tracking
         self.region = region
         # Convert to enum for internal use
-        self.region_type = RegionType[region.upper()] if region else None
+        # Convert region string to enum, replacing hyphen with underscore for lookup
+        self.region_type = RegionType[region.upper().replace('-', '_')] if region else None
 
         # Initialize overflow tracker
         self.overflow_tracker = OverflowTracker()

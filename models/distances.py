@@ -15,7 +15,7 @@ REGION_COORDINATES: Dict[RegionType, Tuple[float, float]] = {
     RegionType.GORENJSKA: (46.3624, 14.1149),  # Kranj area
     RegionType.PRIMORSKONOTRANJSKA: (45.7721, 14.3687),  # Postojna area
     RegionType.GORISKA: (46.0003, 13.6554),  # Nova Gorica area
-    RegionType.OBALNOKRASKA: (45.5480, 13.7315),  # Koper area
+    RegionType.OBALNO_KRASKA: (45.5480, 13.7315),  # Koper area
 }
 
 

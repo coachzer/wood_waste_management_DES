@@ -1,6 +1,5 @@
 from enum import Enum
 
-
 class RegionType(Enum):
     POMURSKA = "pomurska"
     PODRAVSKA = "podravska"
@@ -13,15 +12,13 @@ class RegionType(Enum):
     GORENJSKA = "gorenjska"
     PRIMORSKONOTRANJSKA = "primorskonotranjska"
     GORISKA = "goriska"
-    OBALNOKRASKA = "obalnokraska"
-
+    OBALNO_KRASKA = "obalno-kraska"
 
 class WasteType(Enum):
-    SAWDUST = "sawdust"  # Fine particles from cutting/processing
-    WOOD_CUTTINGS = "wood_cuttings"  # Larger wood pieces from cutting
-    BARK = "bark"  # Tree bark
-    CORK = "cork"  # Cork material
-    SOLID_WOOD = "solid_wood"  # Untreated solid wood
-    PAPER_PACKAGING = "paper_packaging"  # Paper-based packaging
-    WOOD_PACKAGING = "wood_packaging"  # Wooden pallets, crates
-    MIXED_WOOD = "mixed_wood"  # Mixed wood waste
+    BARK_WASTE = "bark_waste"           # 03 01 01 & 03 03 01 combined
+    SAWDUST = "sawdust"                 # Part of 03 01 05
+    WOOD_CUTTINGS = "wood_cuttings"     # Part of 03 01 05
+    CONSTRUCTION_WOOD = "construction_wood"  # 17 02 01
+    MIXED_WOOD = "mixed_wood"           # 20 01 38
+    WOODEN_PACKAGING = "wooden_packaging"    # 15 01 03 (output)
+    PAPER_PACKAGING = "paper_packaging"      # 15 01 01 (output)

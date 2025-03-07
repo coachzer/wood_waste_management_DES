@@ -6,7 +6,6 @@ import numpy as np
 from typing import List, Optional, Tuple
 from core.overflow import OverflowTracker
 
-
 class CollectorCompany:
     """A company that collects waste from generators"""
 
@@ -37,7 +36,8 @@ class CollectorCompany:
         # Store original region string for tracking
         self.region = region
         # Convert region string to RegionType for internal use
-        self.region_type = RegionType[region.upper()] if region else None
+        # Convert region string to enum, replacing hyphen with underscore for lookup
+        self.region_type = RegionType[region.upper().replace('-', '_')] if region else None
 
         # Initialize collection center
         self.collection_center = CollectionCenter(
@@ -140,76 +140,89 @@ class CollectorCompany:
         )
 
         print(
-            f"{self.env.now}: Scheduled transport of {volume:.2f} m³ {waste_type} "
-            f"to {target_region.value}, ETA: {transport_time:.2f} hours"
+            f"{self.env.now}: Scheduled transport of {volume:.8f} m³ {waste_type} "
+            f"to {target_region.value}, ETA: {transport_time:.8f} hours"
         )
         return True
+
+    def _handle_completed_transport(self, transport, current_time):
+        """Process a completed transport"""
+        # Update target collection center
+        target_collector = next(
+            (
+                c
+                for c in SimulationState.get_instance().collectors
+                if c.region_type == transport["vehicle"].current_region
+            ),
+            None,
+        )
+        if target_collector:
+            # Track waste addition to destination region
+            SimulationState.get_instance().track_waste_generation(
+                target_collector.region,
+                transport["waste_type"],
+                transport["volume"],
+            )
+            target_collector.collection_center.current_storage[
+                transport["waste_type"]
+            ] += transport["volume"]
+            print(
+                f"{current_time}: Added {transport['volume']:.8f} m³ to "
+                f"{target_collector.name}'s collection center"
+            )
+
+    def _check_completed_transports(self, current_time):
+        """Identify completed transports and update vehicle status"""
+        completed = []
+        for transport in self.active_transports:
+            if current_time >= transport["arrival_time"]:
+                vehicle = transport["vehicle"]
+                # Update vehicle status
+                vehicle.in_transit = False
+                vehicle.current_load = 0
+                vehicle.current_region = vehicle.destination
+                vehicle.destination = None
+                vehicle.estimated_arrival = None
+                completed.append(transport)
+                print(
+                    f"{current_time}: Transport completed - Vehicle {vehicle.id} "
+                    f"arrived at {vehicle.current_region.value}"
+                )
+        return completed
+
+    def _handle_transport_delays(self, current_time):
+        """Process potential delays for active transports"""
+        for transport in self.active_transports:
+            if (
+                not transport["vehicle"].in_transit
+                or current_time < transport["arrival_time"]
+            ):
+                continue
+
+            # Simulate potential transport issues
+            if self.rng.random() < 0.05:  # 5% chance of delay
+                delay_hours = self.rng.uniform(1, 4)
+                transport["arrival_time"] += delay_hours
+                print(
+                    f"{current_time}: Transport delayed - Vehicle {transport['vehicle'].id} "
+                    f"new ETA: +{delay_hours:.1f} hours"
+                )
 
     def manage_transport(self):
         """Process to manage ongoing transports"""
         while True:
             current_time = self.env.now
 
-            # Check completed transports
-            completed = []
-            for transport in self.active_transports:
-                if current_time >= transport["arrival_time"]:
-                    vehicle = transport["vehicle"]
-                    # Update vehicle status
-                    vehicle.in_transit = False
-                    vehicle.current_load = 0
-                    vehicle.current_region = vehicle.destination
-                    vehicle.destination = None
-                    vehicle.estimated_arrival = None
-                    completed.append(transport)
-                    print(
-                        f"{current_time}: Transport completed - Vehicle {vehicle.id} "
-                        f"arrived at {vehicle.current_region.value}"
-                    )
-
             try:
-                # Handle vehicle breakdowns or delays
-                for transport in self.active_transports:
-                    if (
-                        not transport["vehicle"].in_transit
-                        or current_time < transport["arrival_time"]
-                    ):
-                        continue
+                # Check completed transports
+                completed = self._check_completed_transports(current_time)
+                
+                # Handle potential vehicle delays
+                self._handle_transport_delays(current_time)
 
-                    # Simulate potential transport issues
-                    if self.rng.random() < 0.05:  # 5% chance of delay
-                        delay_hours = self.rng.uniform(1, 4)
-                        transport["arrival_time"] += delay_hours
-                        print(
-                            f"{current_time}: Transport delayed - Vehicle {transport['vehicle'].id} "
-                            f"new ETA: +{delay_hours:.1f} hours"
-                        )
-
-                # Remove completed transports and update collection centers
+                # Process completed transports and update collection centers
                 for transport in completed:
-                    # Update target collection center
-                    target_collector = next(
-                        (
-                            c
-                            for c in SimulationState.get_instance().collectors
-                            if c.region_type == transport["vehicle"].current_region
-                        ),
-                        None,
-                    )
-                    if target_collector:
-                        # Track waste addition to destination region
-                        SimulationState.get_instance().track_waste_generation(
-                            target_collector.region,
-                            transport["waste_type"],
-                            transport["volume"],
-                        )
-                        target_collector.collection_center.current_storage[
-                            transport["waste_type"]
-                        ] += transport["volume"]
-                        print(
-                            f"{current_time}: Added {transport['volume']:.2f} m³ to "
-                            f"{target_collector.name}'s collection center"
-                        )
+                    self._handle_completed_transport(transport, current_time)
                     self.active_transports.remove(transport)
 
             except Exception as e:
@@ -261,7 +274,7 @@ class CollectorCompany:
                 total_collected += collectable_amount
 
                 print(
-                    f"{self.env.now}: {self.name} collected {collectable_amount:.2f} m³ of {waste_type.value} from {generator.name}"
+                    f"{self.env.now}: {self.name} collected {collectable_amount:.8f} m³ of {waste_type.value} from {generator.name}"
                 )
 
         if total_collected > 0:
@@ -310,7 +323,7 @@ class CollectorCompany:
                 else "collected remaining"
             )
             print(
-                f"{self.env.now}: {collector.name} {collection_type} {collectable_amount:.2f} m³ of {waste_type.value}"
+                f"{self.env.now}: {collector.name} {collection_type} {collectable_amount:.8f} m³ of {waste_type.value}"
             )
 
         return remaining_volume - collectable_amount
@@ -338,6 +351,32 @@ class CollectorCompany:
             return True
         return False
 
+    def _handle_collector_capacity(self, waste_type, target_volume, waste_stream, 
+                                  collector, remaining_capacity, generator):
+        """Handle waste collection for a specific collector"""
+        if collector.region_type != self.region_type:
+            # If different region, schedule transport
+            if target_volume > 0:
+                success = self.transfer_waste_to_region(
+                    waste_type, target_volume, collector.region_type
+                )
+                if success:
+                    # Track waste removal from current region
+                    SimulationState.get_instance().track_waste_collection(
+                        self.region, waste_type, target_volume
+                    )
+        else:
+            # Same region, use normal collection process
+            self._process_collection(
+                collector,
+                waste_type,
+                waste_stream,
+                target_volume,
+                remaining_capacity,
+                generator,
+                True,
+            )
+
     def collect_with_collaboration(self, generator, other_collectors):
         """Collaborative collection handling multiple waste types"""
         # Consider collection center capacities
@@ -361,35 +400,14 @@ class CollectorCompany:
         total_storage = sum(remaining_capacity.values())
 
         for waste_type, waste_stream in active_streams.items():
-            remaining_volume = waste_stream.volume
-
             # Calculate target volumes for each collector based on their capacity ratio
             for collector in available_collectors:
                 capacity_ratio = remaining_capacity[collector.name] / total_storage
                 target_volume = waste_stream.volume * capacity_ratio
-                # Check if collector is from a different region
-                if collector.region_type != self.region_type:
-                    # If different region, schedule transport
-                    if target_volume > 0:
-                        success = self.transfer_waste_to_region(
-                            waste_type, target_volume, collector.region_type
-                        )
-                        if success:
-                            # Track waste removal from current region
-                            SimulationState.get_instance().track_waste_collection(
-                                self.region, waste_type, target_volume
-                            )
-                else:
-                    # Same region, use normal collection process
-                    self._process_collection(
-                        collector,
-                        waste_type,
-                        waste_stream,
-                        target_volume,
-                        remaining_capacity,
-                        generator,
-                        True,
-                    )
+                self._handle_collector_capacity(
+                    waste_type, target_volume, waste_stream, 
+                    collector, remaining_capacity, generator
+                )
 
     def _collect_from_single_generator(
         self, generator, required_amount, total_collected, collected_amounts
@@ -428,7 +446,7 @@ class CollectorCompany:
                 total_collected += collectable_amount
 
                 print(
-                    f"{self.env.now}: {self.name} collected {collectable_amount:.2f} m³ of {waste_type.value} from {generator.name}"
+                    f"{self.env.now}: {self.name} collected {collectable_amount:.8f} m³ of {waste_type.value} from {generator.name}"
                 )
 
                 # Immediately remove from collector storage since it's going to treatment
@@ -487,7 +505,7 @@ class CollectorCompany:
 
             # Landfill the excess waste and track it
             print(
-                f"{self.env.now}: Landfilling {overflow_volume:.2f} m³ of waste from {self.name}"
+                f"{self.env.now}: Landfilling {overflow_volume:.8f} m³ of waste from {self.name}"
             )
             self.overflow_tracker.track_overflow(
                 facility_type="collector", volume=overflow_volume
@@ -497,7 +515,7 @@ class CollectorCompany:
             penalty = self.overflow_tracker.calculate_penalty(
                 facility_type="collector", severity=severity, volume=overflow_volume
             )
-            print(f"Overflow penalty applied to {self.name}: {penalty:.2f}")
+            print(f"Overflow penalty applied to {self.name}: {penalty:.8f}")
 
             # Reduce collected waste
             reduction_factor = (self.collection_capacity * self.efficiency) / sum(
@@ -589,5 +607,5 @@ class CollectorCompany:
 
             if collection_cost > 0:
                 print(
-                    f"{self.env.now}: {self.name} collection operation cost: {collection_cost:.2f}"
+                    f"{self.env.now}: {self.name} collection operation cost: {collection_cost:.8f}"
                 )

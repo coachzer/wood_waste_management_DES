@@ -7,7 +7,7 @@ from core.generator import WasteGenerator
 from core.collector import CollectorCompany
 from core.treatment import TreatmentOperator
 from optimization.stochastic import UncertaintySet
-
+from monitoring.data_collector import DataCollector
 
 class FacilityBuilder:
     """Builder class to create simulation entities from facility data"""
@@ -16,10 +16,12 @@ class FacilityBuilder:
         self,
         env: Environment,
         facility_manager: FacilityDataManager,
+        data_collector: DataCollector,
         uncertainty_set: UncertaintySet = None,
     ):
         self.env = env
         self.facility_manager = facility_manager
+        self.data_collector = data_collector
         self.uncertainty_set = uncertainty_set
 
     def create_generator(self, gen_data, region: RegionType) -> WasteGenerator:
@@ -69,11 +71,10 @@ class FacilityBuilder:
         base_transformations = {
             WasteType.SAWDUST: (0.95, 0.5),  # 95% efficiency, 0.5 kWh/kg
             WasteType.WOOD_CUTTINGS: (0.90, 0.8),
-            WasteType.BARK: (0.85, 0.7),
-            WasteType.CORK: (0.92, 0.6),
-            WasteType.SOLID_WOOD: (0.98, 0.9),
+            WasteType.BARK_WASTE: (0.85, 0.7),
+            WasteType.CONSTRUCTION_WOOD: (0.98, 0.9),
             WasteType.PAPER_PACKAGING: (0.80, 0.4),
-            WasteType.WOOD_PACKAGING: (0.88, 0.7),
+            WasteType.WOODEN_PACKAGING: (0.88, 0.7),
             WasteType.MIXED_WOOD: (1.0, 0.3),
         }
 
@@ -93,18 +94,13 @@ class FacilityBuilder:
 
                 output_waste_type = WasteType(output_type)
                 key = (waste_type, output_waste_type)
-                # Only create transformation if it makes logical sense
-                if output_type.lower() in [
-                    "wood_packaging",
-                    "paper_packaging",
-                    "mixed_wood",
-                ]:
-                    transformations[key] = WasteTransformation(
-                        input_type=waste_type,
-                        output_type=output_waste_type,
-                        conversion_efficiency=efficiency,
-                        energy_required=energy,
-                    )
+                # Create transformation for any valid input/output pair in facility config
+                transformations[key] = WasteTransformation(
+                    input_type=waste_type,
+                    output_type=output_waste_type,
+                    conversion_efficiency=efficiency,
+                    energy_required=energy,
+                )
 
         return TreatmentOperator(
             env=self.env,
@@ -118,6 +114,7 @@ class FacilityBuilder:
             region=region.value,
             uncertainty_set=self.uncertainty_set,
             transformations=transformations,
+            data_collector=self.data_collector,
         )
 
     def build_all_facilities(
@@ -148,17 +145,22 @@ class FacilityBuilder:
 
         return generators, collectors, processors
 
-
 def initialize_simulation_entities(
-    env: Environment, uncertainty_set: UncertaintySet = None
+    env: Environment, 
+    uncertainty_set: UncertaintySet = None,
+    data_collector: DataCollector = None
 ) -> Tuple[List, List, List]:
     """Initialize all simulation entities from facility data"""
     # Load facility data
     facility_manager = FacilityDataManager()
     facility_manager.load_data()
+    
+    # Use provided data collector or create new one if none provided
+    if data_collector is None:
+        data_collector = DataCollector()
 
     # Create builder and build facilities
-    builder = FacilityBuilder(env, facility_manager, uncertainty_set)
+    builder = FacilityBuilder(env, facility_manager, data_collector, uncertainty_set)
     generators, collectors, processors = builder.build_all_facilities()
 
     # Distribute demand among treatment operators
@@ -166,8 +168,8 @@ def initialize_simulation_entities(
     processor_by_output = {}
     # First, group processors by output type
     for processor in processors:
-        for output_type in processor.transformations.values():
-            output_type_str = output_type.output_type.value
+        for transformation in processor.transformations.values():
+            output_type_str = transformation.output_type.value
             if output_type_str not in processor_by_output:
                 processor_by_output[output_type_str] = []
             processor_by_output[output_type_str].append(processor)

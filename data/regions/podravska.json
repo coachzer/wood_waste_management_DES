@@ -1,2 +1,48 @@
 {
+    "generators": [
+        {
+            "id": "gen_podravska_1",
+            "waste_generation_rates": {
+                "sawdust": 100.0,
+                "wood_cuttings": 100.0,
+                "bark_waste": 100.0
+            },
+            "generation_frequency": 24,
+            "storage_capacity": 1100,
+            "priority_level": 5,
+            "environmental_impact": 1.0,
+            "initial_stock": {
+                "sawdust": 200.0,
+                "wood_cuttings": 180.0,
+                "bark_waste": 120.0
+            }
+        }
+    ],
+    "collectors": [
+        {
+            "id": "col_podravska_1",
+            "waste_types": ["sawdust", "wood_cuttings", "bark_waste", "wooden_packaging"],
+            "collection_capacity": 1800,
+            "collection_frequency": 24,
+            "transport_cost": 50.0,
+            "environmental_impact": 1.0,
+            "efficiency": 0.9,
+            "availability": true,
+            "strategy": "competitive"
+        }
+    ],
+    "processors": [
+        {
+            "id": "proc_podravska_1",
+            "input_types": ["sawdust", "wood_cuttings"],
+            "output_types": ["wooden_packaging"],
+            "processing_capacity": 1400,
+            "processing_time": 12,
+            "storage_capacity": 2000,
+            "energy_consumption": 100.0,
+            "environmental_impact": 1.0,
+            "conversion_rate": 0.8,
+            "operational_costs": 200.0
+        }
+    ]
 }

@@ -116,11 +116,31 @@ def optimization_process(env, optimizer, scenario_generator):
 def main():
     # Create simulation environment
     env = simpy.Environment()
+    
+    # Create monitor first so its data collector can be used
+    waste_monitor = WasteMonitor()
 
     # Create entities with baseline uncertainty set
-    generators, collectors, treatment_operators = initialize_simulation_entities(
-        env, uncertainty_sets["Baseline"]
-    )
+    print("\nLoading simulation entities...")
+    try:
+        generators, collectors, treatment_operators = initialize_simulation_entities(
+            env, 
+            uncertainty_sets["Baseline"],
+            waste_monitor.data_collector
+        )
+    except ValueError as e:
+        print(f"Error loading entities: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        # Print facility data for debugging
+        from models.facility_data import FacilityDataManager
+        facility_manager = FacilityDataManager()
+        facility_manager.load_data()
+        for region, facilities in facility_manager.regions.items():
+            print(f"\nRegion: {region}")
+            for gen in facilities.generators:
+                print(f"Generator {gen.id} waste types: {gen.waste_generation_rates.keys()}")
+        raise
 
     # Initialize simulation state
     state = SimulationState.get_instance()
@@ -133,7 +153,6 @@ def main():
     }
 
     # Create optimizer and scenario generator after state is initialized
-    waste_monitor = WasteMonitor()
     optimizer, scenario_generator = setup_optimization()
 
     # Set up monitoring process

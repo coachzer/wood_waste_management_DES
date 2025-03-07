@@ -3,54 +3,30 @@
         {
             "id": "gen_pomurska_1",
             "waste_generation_rates": {
-                "sawdust": 100.0,
+                "bark_waste": 80.0,
+                "sawdust": 120.0,
                 "wood_cuttings": 100.0,
-                "bark": 100.0
+                "construction_wood": 60.0,
+                "mixed_wood": 70.0
             },
             "generation_frequency": 24,
-            "storage_capacity": 800,
+            "storage_capacity": 900,
             "priority_level": 5,
-            "environmental_impact": 1.0
-        },
-        {
-            "id": "gen_pomurska_2",
-            "waste_generation_rates": {
-                "wood_packaging": 100.0,
-                "paper_packaging": 100.0
-            },
-            "generation_frequency": 24,
-            "storage_capacity": 600,
-            "priority_level": 5,
-            "environmental_impact": 1.0
-        },
-        {
-            "id": "gen_pomurska_3",
-            "waste_generation_rates": {
-                "mixed_wood": 100.0,
-                "solid_wood": 100.0
-            },
-            "generation_frequency": 24,
-            "storage_capacity": 700,
-            "priority_level": 5,
-            "environmental_impact": 1.0
+            "environmental_impact": 1.0,
+            "initial_stock": {
+                "bark_waste": 150.0,
+                "sawdust": 200.0,
+                "wood_cuttings": 180.0,
+                "construction_wood": 120.0,
+                "mixed_wood": 140.0
+            }
         }
     ],
     "collectors": [
         {
             "id": "col_pomurska_1",
-            "waste_types": ["sawdust", "wood_cuttings", "bark", "wood_packaging"],
+            "waste_types": ["bark_waste", "sawdust", "wood_cuttings", "construction_wood", "mixed_wood", "wooden_packaging", "paper_packaging"],
             "collection_capacity": 1500,
-            "collection_frequency": 24,
-            "transport_cost": 50.0,
-            "environmental_impact": 1.0,
-            "efficiency": 0.9,
-            "availability": true,
-            "strategy": "competitive"
-        },
-        {
-            "id": "col_pomurska_2",
-            "waste_types": ["mixed_wood", "solid_wood", "paper_packaging"],
-            "collection_capacity": 1200,
             "collection_frequency": 24,
             "transport_cost": 50.0,
             "environmental_impact": 1.0,
@@ -61,9 +37,9 @@
     ],
     "processors": [
         {
-            "id": "proc_pomurska_1",
-            "input_types": ["sawdust", "wood_cuttings"],
-            "output_types": ["wood_packaging"],
+            "id": "proc_pomurska_wood",
+            "input_types": ["sawdust", "wood_cuttings", "construction_wood"],
+            "output_types": ["wooden_packaging"],
             "processing_capacity": 1000,
             "processing_time": 12,
             "storage_capacity": 1800,
@@ -73,16 +49,16 @@
             "operational_costs": 200.0
         },
         {
-            "id": "proc_pomurska_2",
-            "input_types": ["mixed_wood", "solid_wood"],
+            "id": "proc_pomurska_paper",
+            "input_types": ["bark_waste", "mixed_wood"],
             "output_types": ["paper_packaging"],
             "processing_capacity": 800,
             "processing_time": 12,
-            "storage_capacity": 1600,
-            "energy_consumption": 100.0,
+            "storage_capacity": 1400,
+            "energy_consumption": 90.0,
             "environmental_impact": 1.0,
-            "conversion_rate": 0.8,
-            "operational_costs": 200.0
+            "conversion_rate": 0.7,
+            "operational_costs": 180.0
         }
     ]
 }
