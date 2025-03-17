@@ -3,29 +3,29 @@
         {
             "id": "gen_obalno-kraska_1",
             "waste_generation_rates": {
-                "bark_waste": 70.0,
-                "sawdust": 110.0,
-                "wood_cuttings": 100.0,
-                "construction_wood": 90.0,
-                "mixed_wood": 100.0
+                "bark_waste": 7.0,
+                "sawdust": 11.0,
+                "wood_cuttings": 10.0,
+                "construction_wood": 19.0,
+                "mixed_wood": 10.0
             },
             "generation_frequency": 24,
             "storage_capacity": 1000,
             "priority_level": 5,
             "environmental_impact": 1.0,
             "initial_stock": {
-                "bark_waste": 140.0,
-                "sawdust": 180.0,
-                "wood_cuttings": 160.0,
-                "construction_wood": 170.0,
-                "mixed_wood": 180.0
+                "bark_waste": 14.0,
+                "sawdust": 18.0,
+                "wood_cuttings": 16.0,
+                "construction_wood": 17.0,
+                "mixed_wood": 18.0
             }
         }
     ],
     "collectors": [
         {
             "id": "col_obalno-kraska_1",
-            "waste_types": ["bark_waste", "sawdust", "wood_cuttings", "construction_wood", "mixed_wood", "wooden_packaging", "paper_packaging"],
+            "waste_types": ["bark_waste", "sawdust", "wood_cuttings", "construction_wood", "mixed_wood"],
             "collection_capacity": 1600,
             "collection_frequency": 24,
             "transport_cost": 50.0,

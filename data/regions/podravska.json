@@ -3,25 +3,25 @@
         {
             "id": "gen_podravska_1",
             "waste_generation_rates": {
-                "sawdust": 100.0,
-                "wood_cuttings": 100.0,
-                "bark_waste": 100.0
+                "sawdust": 11.0,
+                "wood_cuttings": 7.0,
+                "bark_waste": 19.0
             },
             "generation_frequency": 24,
             "storage_capacity": 1100,
             "priority_level": 5,
             "environmental_impact": 1.0,
             "initial_stock": {
-                "sawdust": 200.0,
-                "wood_cuttings": 180.0,
-                "bark_waste": 120.0
+                "sawdust": 20.0,
+                "wood_cuttings": 18.0,
+                "bark_waste": 12.0
             }
         }
     ],
     "collectors": [
         {
             "id": "col_podravska_1",
-            "waste_types": ["sawdust", "wood_cuttings", "bark_waste", "wooden_packaging"],
+            "waste_types": ["sawdust", "wood_cuttings", "bark_waste"],
             "collection_capacity": 1800,
             "collection_frequency": 24,
             "transport_cost": 50.0,

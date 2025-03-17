@@ -1,4 +1,4 @@
-from models.config import SIMULATION_DURATION
+from config.base_config import SIMULATION_DURATION
 
 
 def monitor_system(env, waste_monitor, generators, collectors, treatment_operators):

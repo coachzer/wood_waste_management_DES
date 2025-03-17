@@ -3,29 +3,29 @@
         {
             "id": "gen_koroska_1",
             "waste_generation_rates": {
-                "bark_waste": 75.0,
-                "sawdust": 115.0,
-                "wood_cuttings": 105.0,
-                "construction_wood": 55.0,
-                "mixed_wood": 65.0
+                "bark_waste": 7.0,
+                "sawdust": 11.0,
+                "wood_cuttings": 10.0,
+                "construction_wood": 25.0,
+                "mixed_wood": 6.0
             },
             "generation_frequency": 24,
             "storage_capacity": 850,
             "priority_level": 5,
             "environmental_impact": 1.0,
             "initial_stock": {
-                "bark_waste": 150.0,
-                "sawdust": 180.0,
-                "wood_cuttings": 160.0,
-                "construction_wood": 110.0,
-                "mixed_wood": 130.0
+                "bark_waste": 10.0,
+                "sawdust": 10.0,
+                "wood_cuttings": 10.0,
+                "construction_wood": 11.0,
+                "mixed_wood": 13.0
             }
         }
     ],
     "collectors": [
         {
             "id": "col_koroska_1",
-            "waste_types": ["bark_waste", "sawdust", "wood_cuttings", "construction_wood", "mixed_wood", "wooden_packaging", "paper_packaging"],
+            "waste_types": ["bark_waste", "sawdust", "wood_cuttings", "construction_wood", "mixed_wood"],
             "collection_capacity": 1400,
             "collection_frequency": 24,
             "transport_cost": 50.0,

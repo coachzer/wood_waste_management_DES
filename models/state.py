@@ -15,6 +15,17 @@ class SimulationState:
             cls._instance.generators = []
             cls._instance.collectors = []
             cls._instance.treatment_operators = []
+            # Initialize product tracking
+            cls._instance.total_products = {
+                'wooden_packaging': 0,
+                'paper_packaging': 0,
+                'wooden_furniture': 0
+            }
+            cls._instance.target_demands = {
+                'wooden_packaging': 600,  # from MONTHLY_DEMAND
+                'paper_packaging': 500,
+                'wooden_furniture': 200
+            }
         return cls._instance
 
     @classmethod
@@ -62,3 +73,23 @@ class SimulationState:
         except Exception as e:
             print(f"Warning: Could not get waste type distribution - {str(e)}")
             return {}
+            
+    def track_product_production(self, product_type: str, amount: float) -> None:
+        """Track production of final products"""
+        if product_type in self.total_products:
+            self.total_products[product_type] += amount
+            print(f"Production tracked: {product_type} - {amount:.2f} m³ (Total: {self.total_products[product_type]:.2f} m³)")
+            
+    def check_all_demands_met(self) -> bool:
+        """Check if all product demands have been met"""
+        return all(
+            self.total_products[product] >= demand 
+            for product, demand in self.target_demands.items()
+        )
+        
+    def get_unmet_demands(self) -> dict:
+        """Get dictionary of unmet demands for each product"""
+        return {
+            product: max(0, demand - self.total_products[product])
+            for product, demand in self.target_demands.items()
+        }

@@ -2,25 +2,28 @@ import numpy as np
 from typing import Dict, List, Tuple
 from dataclasses import dataclass
 from models.enums import WasteType
-
+from models.data_classes import FailureConfig
 
 @dataclass
 class UncertaintySet:
     """Defines uncertainty sets for stochastic parameters"""
-
-    waste_generation: Dict[
-        WasteType, Tuple[float, float]
-    ]  # (mean, std) for each waste type
+    waste_generation: Dict[WasteType, Tuple[float, float]]  # (mean, std) for each waste type
     collection_efficiency: Tuple[float, float]  # (mean, std)
-    treatment_conversion: Dict[
-        WasteType, Tuple[float, float]
-    ]  # (mean, std) for each waste type
+    treatment_conversion: Dict[WasteType, Tuple[float, float]]  # (mean, std) for each waste type
     transportation_time: Tuple[float, float]  # (mean, std)
-    market_demand: Dict[
-        WasteType, Tuple[float, float]
-    ]  # (mean, std) for each waste type
-    equipment_failure_rate: float  # Probability of equipment failure
+    market_demand: Dict[WasteType, Tuple[float, float]]  # (mean, std) for each waste type
+    generator_failure: FailureConfig  # Generator failure configuration
+    collector_failure: FailureConfig  # Collector failure configuration
+    treatment_failure: FailureConfig  # Treatment failure configuration
 
+    @property
+    def equipment_failure_rate(self) -> float:
+        """Legacy support for equipment failure rate"""
+        return max(
+            self.generator_failure.probability,
+            self.collector_failure.probability,
+            self.treatment_failure.probability
+        )
 
 class ScenarioGenerator:
     """Generates scenarios for stochastic optimization"""
@@ -40,10 +43,7 @@ class ScenarioGenerator:
         # Adjust waste generation parameters
         self.uncertainty_set.waste_generation = {
             waste_type: (mean * waste_generation_multiplier, std)
-            for waste_type, (
-                mean,
-                std,
-            ) in self.base_uncertainty_set.waste_generation.items()
+            for waste_type, (mean, std) in self.base_uncertainty_set.waste_generation.items()
         }
 
         # Adjust collection and treatment efficiencies
@@ -52,19 +52,13 @@ class ScenarioGenerator:
 
         self.uncertainty_set.treatment_conversion = {
             waste_type: (mean * efficiency_multiplier, std)
-            for waste_type, (
-                mean,
-                std,
-            ) in self.base_uncertainty_set.treatment_conversion.items()
+            for waste_type, (mean, std) in self.base_uncertainty_set.treatment_conversion.items()
         }
 
         # Adjust market demand proportionally to waste generation
         self.uncertainty_set.market_demand = {
             waste_type: (mean * waste_generation_multiplier, std)
-            for waste_type, (
-                mean,
-                std,
-            ) in self.base_uncertainty_set.market_demand.items()
+            for waste_type, (mean, std) in self.base_uncertainty_set.market_demand.items()
         }
 
     def generate_scenarios(self) -> List[Dict]:
@@ -101,10 +95,7 @@ class ScenarioGenerator:
         """Sample treatment conversion rates for each waste type"""
         return {
             waste_type: np.clip(self.rng.normal(mean, std), 0.6, 1.0)
-            for waste_type, (
-                mean,
-                std,
-            ) in self.uncertainty_set.treatment_conversion.items()
+            for waste_type, (mean, std) in self.uncertainty_set.treatment_conversion.items()
         }
 
     def _sample_transportation_time(self) -> float:
@@ -122,7 +113,6 @@ class ScenarioGenerator:
     def _sample_equipment_status(self) -> bool:
         """Sample equipment operational status"""
         return self.rng.random() > self.uncertainty_set.equipment_failure_rate
-
 
 class TwoStageOptimizer:
     """Implements two-stage stochastic optimization"""
@@ -176,22 +166,31 @@ class TwoStageOptimizer:
         # For now return placeholder cost
         return 1000.0
 
-
 def create_default_uncertainty_set() -> UncertaintySet:
     """Create default uncertainty set with reasonable values"""
+    
+    LOW_FAILURE = FailureConfig(
+        probability=0.001,  # 0.1% chance per hour = ~2.4% per day
+        min_duration=12.0,
+        max_duration=24.0,
+        check_interval=24.0  # Check once per day
+    )
+    
     return UncertaintySet(
         waste_generation={
             WasteType.SAWDUST: (100, 20),
             WasteType.WOOD_CUTTINGS: (80, 15),
             WasteType.BARK_WASTE: (60, 10),
             WasteType.CONSTRUCTION_WOOD: (120, 25),
-            WasteType.PAPER_PACKAGING: (90, 18),
-            WasteType.WOODEN_PACKAGING: (70, 14),
+            WasteType.WASTE_PAPER_PACKAGING: (90, 18),
+            WasteType.WASTE_WOODEN_PACKAGING: (70, 14),
             WasteType.MIXED_WOOD: (50, 10),
         },
         collection_efficiency=(0.85, 0.1),
         treatment_conversion={waste_type: (0.9, 0.05) for waste_type in WasteType},
         transportation_time=(2.0, 0.5),
         market_demand={waste_type: (200, 40) for waste_type in WasteType},
-        equipment_failure_rate=0.05,
+        generator_failure=LOW_FAILURE,
+        collector_failure=LOW_FAILURE,
+        treatment_failure=LOW_FAILURE,
     )

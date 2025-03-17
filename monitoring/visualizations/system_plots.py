@@ -158,47 +158,7 @@ class SystemPlotter:
             proc_data, ax=ax2, cmap="YlOrRd", xticklabels=50, yticklabels=entities
         )
         setup_axis_labels(ax2, "Processor Volumes", xlabel="Time", ylabel="Processor")
-
-    @staticmethod
-    def plot_product_mix(
-        processing_history: Dict[str, Any],
-        save_path: str = None,
-    ) -> None:
-        """Create a pie chart showing the distribution of processed waste types"""
-        fig, ax = plt.subplots(figsize=(12, 8))
-
-        # Calculate total processed volumes by type
-        total_by_type = {}
-        for facility in processing_history.values():
-            for waste_type, volumes in facility["processed"]["by_type"].items():
-                if volumes:  # Only include if there are values
-                    total = volumes[-1]  # Get the final value
-                    if waste_type in total_by_type:
-                        total_by_type[waste_type] += total
-                    else:
-                        total_by_type[waste_type] = total
-
-        # Create pie chart
-        labels = [wtype.value for wtype in total_by_type.keys()]
-        values = list(total_by_type.values())
-
-        # Only include non-zero values
-        non_zero_mask = np.array(values) > 0
-        labels = [label for label, include in zip(labels, non_zero_mask) if include]
-        values = [value for value, include in zip(values, non_zero_mask) if include]
-
-        if values:  # Only create pie chart if we have values
-            patches, texts, autotexts = ax.pie(
-                values, labels=labels, autopct="%1.1f%%", startangle=90
-            )
-            plt.setp(autotexts, fontsize=8, weight="bold")
-            plt.setp(texts, fontsize=10)
-
-            setup_axis_labels(ax, "Product Mix Distribution")
-
-            plt.tight_layout()
-            save_plot(fig, save_path)
-
+        
     @staticmethod
     def plot_system_performance(
         efficiency_metrics: Dict[str, float],

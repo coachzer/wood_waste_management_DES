@@ -1,12 +1,13 @@
-from typing import Dict, Optional, Set, TYPE_CHECKING
-from models.data_classes import WasteTransformation
-from models.enums import RegionType, WasteType
+from typing import Dict, Optional
+from models.data_classes import WasteTransformation, OperationalEntity
+from models.enums import RegionType, WasteType, EntityStatus
+from models.state import SimulationState
 from optimization.stochastic import UncertaintySet
 from monitoring.data_collector import DataCollector
 from core.collection_coordinator import CollectionCoordinator
 import numpy as np
 
-class TreatmentOperator:
+class TreatmentOperator(OperationalEntity):
     """Treatment operator that processes waste into products"""
 
     def __init__(
@@ -24,6 +25,7 @@ class TreatmentOperator:
         uncertainty_set: Optional[UncertaintySet] = None,
         data_collector: Optional['DataCollector'] = None,
     ):
+        super().__init__()
         # Initialize monitoring
         if data_collector is None:
             raise ValueError("data_collector is required for TreatmentOperator")
@@ -76,6 +78,10 @@ class TreatmentOperator:
         self.uncertainty_set = uncertainty_set
         self.rng = np.random.default_rng(42)  # For reproducibility
         self.transformation_efficiency = 0.95  # Base efficiency
+        
+        # Set failure check interval if configuration is available
+        if uncertainty_set and hasattr(uncertainty_set, 'treatment_failure'):
+            self.failure_check_interval = uncertainty_set.treatment_failure.check_interval
 
         self.transformations = transformations or self._default_transformations()
 
@@ -110,8 +116,60 @@ class TreatmentOperator:
     def run_facility(self):
         """Main process loop for the treatment facility"""
         while True:
-            # Process waste based on available storage and transformations
-            for (input_type, output_type), transformation in self.transformations.items():
+            current_time = self.env.now
+            
+            # Check for failures if uncertainty set is available
+            if self.uncertainty_set and hasattr(self.uncertainty_set, 'treatment_failure'):
+                self.check_failure(current_time, self.uncertainty_set.treatment_failure.probability)
+            
+            # Skip processing if failed
+            if self.status == EntityStatus.FAILED:
+                print(f"{current_time}: Treatment operator {self.name} is currently failed, skipping processing")
+                yield self.env.timeout(self.processing_time)
+                continue
+                
+            # Check for recovery
+            if (self.status == EntityStatus.FAILED and 
+                current_time >= self.recovery_time):
+                print(f"{current_time}: Treatment operator {self.name} has recovered from failure")
+                self.status = EntityStatus.OPERATIONAL
+                self.failure_time = None
+                self.recovery_time = None
+
+            # Get current demands and sort transformations by priority
+            state = SimulationState.get_instance()
+            product_demands = {
+                WasteType.WOODEN_FURNITURE: state.target_demands['wooden_furniture'] - state.total_products['wooden_furniture'],
+                WasteType.WOODEN_PACKAGING: state.target_demands['wooden_packaging'] - state.total_products['wooden_packaging'],
+                WasteType.PAPER_PACKAGING: state.target_demands['paper_packaging'] - state.total_products['paper_packaging']
+            }
+
+            # Define a function to get furniture material quality
+            def get_furniture_material_quality(waste_type):
+                if waste_type == WasteType.CONSTRUCTION_WOOD:
+                    return 1.0
+                elif waste_type == WasteType.WOOD_CUTTINGS:
+                    return 0.9
+                else:
+                    return 0.8
+
+            # Sort transformations by demand priority and furniture preference
+            sorted_transformations = sorted(
+                self.transformations.items(),
+                key=lambda x, demands=product_demands, get_quality=get_furniture_material_quality: (
+                    # Primary sort: furniture with demand gets highest priority
+                    (x[0][1] == WasteType.WOODEN_FURNITURE and demands[WasteType.WOODEN_FURNITURE] > 0),
+                    # Secondary sort: remaining demand amount
+                    demands.get(x[0][1], 0),
+                    # Tertiary sort: efficiency for non-furniture, or highest quality for furniture
+                    -self._get_transformation_efficiency(x[0][0], x[1]) if x[0][1] != WasteType.WOODEN_FURNITURE
+                    else get_quality(x[0][0]),  # Prioritize best materials for furniture
+                ),
+                reverse=True
+            )
+
+            # Process transformations in priority order
+            for (input_type, output_type), transformation in sorted_transformations:
                 if self.waste_storage[input_type] > 0:
                     self._process_waste_transformation(input_type, output_type, transformation)
 
@@ -124,15 +182,39 @@ class TreatmentOperator:
         final_products = {
             WasteType.WOODEN_PACKAGING,
             WasteType.PAPER_PACKAGING,
-            WasteType.MIXED_WOOD,
+            WasteType.WOODEN_FURNITURE,
         }
         if input_type in final_products:
             return
             
-        # Calculate amount to process
-        amount_to_process = min(
-            self.waste_storage[input_type], self.processing_capacity
-        )
+        # Get current demands from simulation state
+        state = SimulationState.get_instance()
+        product_demands = {
+            WasteType.WOODEN_FURNITURE: state.target_demands['wooden_furniture'] - state.total_products['wooden_furniture'],
+            WasteType.WOODEN_PACKAGING: state.target_demands['wooden_packaging'] - state.total_products['wooden_packaging'],
+            WasteType.PAPER_PACKAGING: state.target_demands['paper_packaging'] - state.total_products['paper_packaging']
+        }
+
+        # Check if this is a furniture-capable input and handle material reservation
+        furniture_materials = {WasteType.CONSTRUCTION_WOOD, WasteType.WOOD_CUTTINGS, WasteType.WASTE_WOODEN_PACKAGING}
+        furniture_demand = product_demands[WasteType.WOODEN_FURNITURE]
+        
+        if input_type in furniture_materials and furniture_demand > 0:
+            # Calculate material reservation
+            reserved_amount = self.waste_storage[input_type] * 0.4  # Reserve 40% for furniture
+            
+            if output_type != WasteType.WOODEN_FURNITURE:
+                # For non-furniture outputs, only use unreserved portion
+                available_amount = self.waste_storage[input_type] - reserved_amount
+                if available_amount <= 0:
+                    return  # Skip processing if all material is reserved
+                amount_to_process = min(available_amount, self.processing_capacity)
+            else:
+                # For furniture production, can use entire amount including reserved
+                amount_to_process = min(self.waste_storage[input_type], self.processing_capacity)
+        else:
+            # Not a furniture material or no furniture demand, process normally
+            amount_to_process = min(self.waste_storage[input_type], self.processing_capacity)
         
         # Get transformation efficiency with uncertainty
         efficiency = self._get_transformation_efficiency(input_type, transformation)
@@ -154,7 +236,7 @@ class TreatmentOperator:
         
         # Update utilization metrics
         self._update_utilization_metrics(amount_to_process)
-    
+
     def _get_transformation_efficiency(self, input_type, transformation):
         """Calculate transformation efficiency with uncertainty if applicable"""
         efficiency = transformation.conversion_efficiency
@@ -200,14 +282,24 @@ class TreatmentOperator:
     
     def _fulfill_demand(self, output_type, output_amount):
         """Fulfill demand for final products"""
-        fulfilled_amount = min(output_amount, self.demand)
+        # Get current unmet demand for this specific product type
+        state = SimulationState.get_instance()
+        product_type = output_type.value.lower()
+        unmet_demand = state.target_demands[product_type] - state.total_products[product_type]
+        
+        # Use the actual unmet demand instead of self.demand
+        fulfilled_amount = min(output_amount, unmet_demand)
         if fulfilled_amount > 0:
             self.waste_storage[output_type] -= fulfilled_amount
             self.demand -= fulfilled_amount
+
+            # Report production to simulation state
+            state.track_product_production(product_type, fulfilled_amount)
+
             print(
-                f"{self.env.now}: Fulfilled {fulfilled_amount:.12f} m³ of {output_type.value} demand"
+                f"{self.env.now}: Fulfilled {fulfilled_amount:.12f} m³ of {output_type.value} demand (Total: {state.total_products[product_type]:.2f})"
             )
-    
+            
     def _track_processing_costs(self, amount_to_process, transformation):
         """Track energy and operational costs"""
         energy_cost = (
@@ -229,13 +321,34 @@ class TreatmentOperator:
 
     def trigger_collection(self):
         """Request waste collection based on current needs"""
+        # Get current demands from simulation state
+        state = SimulationState.get_instance()
+        product_demands = {
+            WasteType.WOODEN_FURNITURE: state.target_demands['wooden_furniture'] - state.total_products['wooden_furniture'],
+            WasteType.WOODEN_PACKAGING: state.target_demands['wooden_packaging'] - state.total_products['wooden_packaging'],
+            WasteType.PAPER_PACKAGING: state.target_demands['paper_packaging'] - state.total_products['paper_packaging']
+        }
+        
+        # Update self.demand to include all unmet product demands
+        self.demand = sum(product_demands.values())
+        
         required_waste = self._calculate_required_waste()
-
         if required_waste <= 0:
             return 0, 0
 
-        # Get input waste types from transformations
-        input_waste_types = set(key[0] for key in self.transformations.keys())
+        # Get input waste types from transformations, prioritizing furniture materials
+        input_waste_types = set()
+        if product_demands[WasteType.WOODEN_FURNITURE] > 0:
+            # First prioritize high-quality materials for furniture
+            input_waste_types.add(WasteType.CONSTRUCTION_WOOD)
+            input_waste_types.add(WasteType.WOOD_CUTTINGS)
+            input_waste_types.add(WasteType.WASTE_WOODEN_PACKAGING)
+            
+            # Increase the required amount to ensure enough materials for furniture
+            required_waste *= 1.2
+        
+        # Add other input types for remaining products
+        input_waste_types.update(key[0] for key in self.transformations.keys())
         
         # Request collection through coordinator
         collection_result = self.collection_coordinator.request_collection(
@@ -259,47 +372,84 @@ class TreatmentOperator:
             
         return actually_stored, collection_result.total_collected
 
+    MIN_REQUIRED_WASTE = 0.01  # Minimum waste volume to request
+
     def _calculate_required_waste(self):
         """Calculate how much waste needs to be collected"""
+        if self.demand < self.MIN_REQUIRED_WASTE:
+            return 0.0
+            
         available_storage = self.storage_capacity - self.current_storage
-        required_waste = min(
-            self.demand / self.conversion_rate, available_storage * 0.8
-        )
-        return required_waste
+        if available_storage <= 0:
+            return 0.0
+            
+        # Calculate required waste considering conversion rate
+        required_waste = self.demand / self.conversion_rate
+        
+        # Ensure we don't request too little
+        if required_waste < self.MIN_REQUIRED_WASTE:
+            return 0.0
+            
+        # Limit by available storage with buffer
+        return min(required_waste, available_storage * 0.8)
 
     def _default_transformations(self) -> Dict[WasteType, WasteTransformation]:
         """Define default transformation pathways for all waste types"""
         # Transformation efficiencies from behavior model
         base_transformations = {
-            WasteType.SAWDUST: (0.95, 0.5),  # 95% efficiency
-            WasteType.WOOD_CUTTINGS: (0.90, 0.8),  # 90% efficiency
-            WasteType.BARK_WASTE: (0.85, 0.7),  # 85% efficiency
-            WasteType.CONSTRUCTION_WOOD: (0.98, 0.9),  # 98% efficiency
-            WasteType.PAPER_PACKAGING: (0.80, 0.4),  # 80% efficiency
-            WasteType.WOODEN_PACKAGING: (0.88, 0.7),  # 88% efficiency
-            WasteType.MIXED_WOOD: (1.0, 0.3),  # Already mixed
+            # Primary materials (best for furniture)
+            WasteType.CONSTRUCTION_WOOD: (0.98, 0.90),   # High quality, high energy
+            WasteType.WOOD_CUTTINGS: (0.92, 0.85),       # Good quality, high energy
+            WasteType.WASTE_WOODEN_PACKAGING: (0.88, 0.95), # Good for furniture after processing
+            
+            # Secondary materials (good for packaging)
+            WasteType.SAWDUST: (0.95, 0.50),             # Great for compression molding
+            
+            # Paper materials
+            WasteType.BARK_WASTE: (0.85, 0.70),          # Good for pulping
+            WasteType.MIXED_WOOD: (0.88, 0.60),          # Decent for pulping
+            WasteType.WASTE_PAPER_PACKAGING: (0.82, 0.65), # Good for recycling
         }
 
-        # Create default transformations mapping for each input-output pair
+        # Create transformations dictionary
         transformations = {}
+        
+        # Create furniture transformations first for high-quality materials
+        for input_type, (efficiency, energy) in base_transformations.items():
+            if input_type in {WasteType.CONSTRUCTION_WOOD, WasteType.WOOD_CUTTINGS, WasteType.WASTE_WOODEN_PACKAGING}:
+                key = (input_type, WasteType.WOODEN_FURNITURE)
+                transformations[key] = WasteTransformation(
+                    input_type=input_type,
+                    output_type=WasteType.WOODEN_FURNITURE,
+                    conversion_efficiency=efficiency * 1.1,  # Boost efficiency for furniture
+                    energy_required=energy,
+                )
 
         # Define transformation paths (raw materials to final products only)
         default_output_mapping = {
+            # Primary furniture production - allow all suitable materials
+            WasteType.CONSTRUCTION_WOOD: [WasteType.WOODEN_FURNITURE, WasteType.WOODEN_PACKAGING],
+            WasteType.WOOD_CUTTINGS: [WasteType.WOODEN_FURNITURE, WasteType.WOODEN_PACKAGING],
+            WasteType.WASTE_WOODEN_PACKAGING: [WasteType.WOODEN_FURNITURE, WasteType.WOODEN_PACKAGING],
             WasteType.SAWDUST: [WasteType.WOODEN_PACKAGING],
-            WasteType.WOOD_CUTTINGS: [WasteType.WOODEN_PACKAGING],
-            WasteType.BARK_WASTE: [WasteType.MIXED_WOOD],
-            WasteType.CONSTRUCTION_WOOD: [WasteType.PAPER_PACKAGING],
+            
+            # Paper production paths
+            WasteType.BARK_WASTE: [WasteType.PAPER_PACKAGING],
+            WasteType.MIXED_WOOD: [WasteType.PAPER_PACKAGING],
+            WasteType.WASTE_PAPER_PACKAGING: [WasteType.PAPER_PACKAGING],
         }
 
         for input_type, (efficiency, energy) in base_transformations.items():
             for output_type in default_output_mapping[input_type]:
-                key = (input_type, output_type)
-                transformations[key] = WasteTransformation(
-                    input_type=input_type,
-                    output_type=output_type,
-                    conversion_efficiency=efficiency,
-                    energy_required=energy,
-                )
+                # Skip if already created (furniture transformations)
+                if (input_type, output_type) not in transformations:
+                    key = (input_type, output_type)
+                    transformations[key] = WasteTransformation(
+                        input_type=input_type,
+                        output_type=output_type,
+                        conversion_efficiency=efficiency,
+                        energy_required=energy,
+                    )
         return transformations
 
     def _add_to_storage(self, waste_amounts: Dict[WasteType, float]) -> float:

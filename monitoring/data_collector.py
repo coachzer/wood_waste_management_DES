@@ -113,6 +113,11 @@ class DataCollector:
                     "total": [],
                     "by_type": {waste_type: [] for waste_type in WasteType},
                 },
+                "products": {
+                    "total": [],
+                    "by_type": {},
+                    "quality": [],
+                },
                 "operational": {
                     "energy_consumption": [],
                     "conversion_rate": [],
@@ -152,6 +157,21 @@ class DataCollector:
             history["operational"]["demand_satisfaction"].append(
                 total_processed >= treatment.demand if treatment.demand > 0 else 1.0
             )
+
+            # Product metrics
+            total_products = sum(treatment.product_volumes.values()) if hasattr(treatment, 'product_volumes') else 0
+            history["products"]["total"].append(total_products)
+            
+            # Track products by type
+            if hasattr(treatment, 'product_volumes'):
+                for product_type, volume in treatment.product_volumes.items():
+                    if product_type not in history["products"]["by_type"]:
+                        history["products"]["by_type"][product_type] = []
+                    history["products"]["by_type"][product_type].append(volume)
+            
+            # Track product quality
+            quality = treatment.product_quality if hasattr(treatment, 'product_quality') else 1.0
+            history["products"]["quality"].append(quality)
 
     def get_generation_history(self) -> Dict[str, Any]:
         """Get the generation history data"""

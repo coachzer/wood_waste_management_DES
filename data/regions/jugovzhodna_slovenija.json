@@ -3,29 +3,33 @@
         {
             "id": "gen_jugovzhodna_1",
             "waste_generation_rates": {
-                "bark_waste": 85.0,
-                "sawdust": 130.0,
-                "wood_cuttings": 120.0,
-                "construction_wood": 65.0,
-                "mixed_wood": 75.0
+                "bark_waste": 8.0,
+                "sawdust": 13.0,
+                "wood_cuttings": 12.0,
+                "construction_wood": 21.0,
+                "mixed_wood": 7.0,
+                "waste_wooden_packaging": 3.0,
+                "waste_paper_packaging": 4.0
             },
             "generation_frequency": 24,
             "storage_capacity": 1000,
             "priority_level": 5,
             "environmental_impact": 1.0,
             "initial_stock": {
-                "bark_waste": 170.0,
-                "sawdust": 200.0,
-                "wood_cuttings": 180.0,
-                "construction_wood": 130.0,
-                "mixed_wood": 150.0
+                "bark_waste": 17.0,
+                "sawdust": 20.0,
+                "wood_cuttings": 18.0,
+                "construction_wood": 13.0,
+                "mixed_wood": 15.0,
+                "waste_wooden_packaging": 7.0,
+                "waste_paper_packaging": 9.0
             }
         }
     ],
     "collectors": [
         {
             "id": "col_jugovzhodna_1",
-            "waste_types": ["bark_waste", "sawdust", "wood_cuttings", "construction_wood", "mixed_wood", "wooden_packaging", "paper_packaging"],
+            "waste_types": ["bark_waste", "sawdust", "wood_cuttings", "construction_wood", "mixed_wood", "waste_wooden_packaging", "waste_paper_packaging"],
             "collection_capacity": 1700,
             "collection_frequency": 24,
             "transport_cost": 50.0,
@@ -59,6 +63,18 @@
             "environmental_impact": 1.0,
             "conversion_rate": 0.7,
             "operational_costs": 180.0
+        },
+        {
+            "id": "proc_jugovzhodna_furniture",
+            "input_types": ["construction_wood", "wood_cuttings", "waste_wooden_packaging"],
+            "output_types": ["wooden_furniture"],
+            "processing_capacity": 900,
+            "processing_time": 12,
+            "storage_capacity": 1500,
+            "energy_consumption": 80.0,
+            "environmental_impact": 1.0,
+            "conversion_rate": 0.85,
+            "operational_costs": 160.0
         }
     ]
 }

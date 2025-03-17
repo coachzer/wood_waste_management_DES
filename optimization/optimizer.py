@@ -54,21 +54,14 @@ class WasteOptimizer:
     def _apply_optimizations(self, actions: List[OptimizationAction]):
         for action in actions:
             if action.entity_type == "collector":
-                for collector in self.state.collectors:
-                    if action.entity_id == "all" or action.entity_id == collector.name:
-                        # Need to ensure these changes are actually affecting the simulation
-                        current_value = getattr(collector, action.parameter)
-                        new_value = current_value * action.adjustment
-                        setattr(collector, action.parameter, new_value)
-                        print(
-                            f"Adjusted {collector.name} {action.parameter} from {current_value} to {new_value}"
-                        )
+                self._adjust_entities(action, self.state.collectors)
             elif action.entity_type == "treatment":
-                for operator in self.state.treatment_operators:
-                    if action.entity_id == "all" or action.entity_id == operator.name:
-                        current_value = getattr(operator, action.parameter)
-                        new_value = current_value * action.adjustment
-                        setattr(operator, action.parameter, new_value)
-                        print(
-                            f"Adjusted {operator.name} {action.parameter} from {current_value} to {new_value}"
-                        )
+                self._adjust_entities(action, self.state.treatment_operators)
+    
+    def _adjust_entities(self, action: OptimizationAction, entities):
+        """Apply an optimization action to the specified entities."""
+        for entity in entities:
+            if action.entity_id == "all" or action.entity_id == entity.name:
+                current_value = getattr(entity, action.parameter)
+                new_value = current_value * action.adjustment
+                setattr(entity, action.parameter, new_value)

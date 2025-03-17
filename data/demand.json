@@ -1,7 +1,8 @@
 {
     "national_demand": {
-        "wooden_packaging": 12000,
-        "paper_packaging": 8000
+        "wooden_packaging": 600,
+        "paper_packaging": 500,
+        "wooden_furniture": 200
     },
     "period": {
         "unit": "month",

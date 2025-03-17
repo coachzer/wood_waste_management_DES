@@ -1,12 +1,13 @@
-from models.enums import WasteType, RegionType
+from models.enums import WasteType, RegionType, EntityStatus
 from models.state import SimulationState
-from models.data_classes import Vehicle, CollectionCenter
+from models.data_classes import Vehicle, CollectionCenter, OperationalEntity
 from models.distances import REGION_COORDINATES, get_distance
 import numpy as np
 from typing import List, Optional, Tuple
 from core.overflow import OverflowTracker
+from optimization.stochastic import UncertaintySet
 
-class CollectorCompany:
+class CollectorCompany(OperationalEntity):
     """A company that collects waste from generators"""
 
     def __init__(
@@ -23,7 +24,9 @@ class CollectorCompany:
         region=None,
         num_vehicles: int = 3,
         vehicle_capacity: Optional[float] = None,
+        uncertainty_set: Optional[UncertaintySet] = None,
     ):
+        super().__init__()
         self.env = env
         self.name = name
         self.collection_capacity = collection_capacity
@@ -35,9 +38,8 @@ class CollectorCompany:
         self.strategy = strategy
         # Store original region string for tracking
         self.region = region
-        # Convert region string to RegionType for internal use
-        # Convert region string to enum, replacing hyphen with underscore for lookup
         self.region_type = RegionType[region.upper().replace('-', '_')] if region else None
+        self.uncertainty_set = uncertainty_set
 
         # Initialize collection center
         self.collection_center = CollectionCenter(
@@ -139,10 +141,6 @@ class CollectorCompany:
             }
         )
 
-        print(
-            f"{self.env.now}: Scheduled transport of {volume:.8f} m³ {waste_type} "
-            f"to {target_region.value}, ETA: {transport_time:.8f} hours"
-        )
         return True
 
     def _handle_completed_transport(self, transport, current_time):
@@ -273,9 +271,9 @@ class CollectorCompany:
                 remaining_capacity -= collectable_amount
                 total_collected += collectable_amount
 
-                print(
-                    f"{self.env.now}: {self.name} collected {collectable_amount:.8f} m³ of {waste_type.value} from {generator.name}"
-                )
+                # print(
+                #     f"{self.env.now}: {self.name} collected {collectable_amount:.8f} m³ of {waste_type.value} from {generator.name}"
+                # )
 
         if total_collected > 0:
             generator.mark_collected()
@@ -478,14 +476,12 @@ class CollectorCompany:
         generators_storage.sort(key=lambda x: x[1], reverse=True)
         eligible_generators = [g for g, _ in generators_storage]
 
-        print(f"Eligible generators: {[g.name for g in eligible_generators]}")
-
         for generator in eligible_generators:
             total_collected = self._collect_from_single_generator(
                 generator, required_amount, total_collected, collected_amounts
             )
             if total_collected >= required_amount:
-                print(f"{self.name} collected enough waste for demand")
+                # print(f"{self.name} collected enough waste for demand")
                 break
 
         # Check for overflow (if the collector can't store all waste collected)
@@ -582,16 +578,36 @@ class CollectorCompany:
     def collect_waste(self):
         """Periodically collect waste from generators based on strategy"""
         while True:
+            current_time = self.env.now
+            
+            # Check for failures if uncertainty set is available
+            if self.uncertainty_set:
+                self.check_failure(current_time, self.uncertainty_set.equipment_failure_rate)
+            
             # Update collection parameters based on optimization
             self.collection_capacity = max(
                 10, self.collection_capacity * self.efficiency
             )
             self.transport_cost = min(100, self.transport_cost * (2 - self.efficiency))
 
-            yield self.env.timeout(self.collection_frequency)
+            # Add a small offset to avoid exact synchronization with generators
+            offset = self.rng.uniform(1, 4)  # Random 1-4 hour offset
+            yield self.env.timeout(self.collection_frequency + offset)
 
-            if not self.availability:
+            # Skip collection if failed or unavailable
+            if self.status == EntityStatus.FAILED:
+                print(f"{current_time}: Collector {self.name} is currently failed, skipping collection")
                 continue
+            elif not self.availability:
+                continue
+            
+            # Check for recovery
+            if (self.status == EntityStatus.FAILED and 
+                current_time >= self.recovery_time):
+                print(f"{current_time}: Collector {self.name} has recovered from failure")
+                self.status = EntityStatus.OPERATIONAL
+                self.failure_time = None
+                self.recovery_time = None
 
             prioritized_generators = self._get_prioritized_generators()
 

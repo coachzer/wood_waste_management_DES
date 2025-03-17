@@ -1,6 +1,4 @@
 import os
-from typing import Dict, Any, List, TYPE_CHECKING
-from models.system_types import CollectorCompany, WasteGenerator, TreatmentOperator
 from .data_collector import DataCollector
 from .metrics_analyzer import MetricsAnalyzer
 from .mfa_visualization import create_material_flow_analysis
@@ -19,15 +17,15 @@ class WasteMonitor:
         if not os.path.exists("plots"):
             os.makedirs("plots")
 
-    def track_generation(self, generator: WasteGenerator, timestamp: float) -> None:
+    def track_generation(self, generator, timestamp: float) -> None:
         """Track waste generation events with timestamps"""
         self.data_collector.track_generation(generator, timestamp)
 
-    def track_collection(self, collector: CollectorCompany, timestamp: float) -> None:
+    def track_collection(self, collector, timestamp: float) -> None:
         """Track waste collection events"""
         self.data_collector.track_collection(collector, timestamp)
 
-    def track_processing(self, treatment: TreatmentOperator, timestamp: float) -> None:
+    def track_processing(self, treatment, timestamp: float) -> None:
         """Track treatment facility metrics"""
         self.data_collector.track_processing(treatment, timestamp)
 

@@ -1,13 +1,13 @@
 import numpy as np
 from typing import Dict, Optional
-from models.enums import WasteType, RegionType
+from models.enums import WasteType, RegionType, EntityStatus
 from models.state import SimulationState
-from models.data_classes import WasteStream
+from models.data_classes import WasteStream, OperationalEntity
 from optimization.stochastic import UncertaintySet
 from core.overflow import OverflowTracker
 
 
-class WasteGenerator:
+class WasteGenerator(OperationalEntity):
 
     def __init__(
         self,
@@ -22,6 +22,7 @@ class WasteGenerator:
         uncertainty_set: Optional[UncertaintySet] = None,
         initial_stock: Optional[Dict[WasteType, float]] = None,
     ):
+        super().__init__()
         self.env = env
         self.name = name
         # Validate initial stock against storage capacity
@@ -147,14 +148,23 @@ class WasteGenerator:
             facility_type="generator", volume=overflow_volume
         )
 
+        # Calculate the reduction factor to bring total storage within capacity
+        reduction_factor = self.storage_capacity / self.current_storage
+        
         # Track waste removal from the region using original region string
         state = SimulationState.get_instance()
+        total_reduced = 0.0
+        
+        # Proportionally reduce each waste stream
         for waste_type in self.waste_streams:
-            excess = self.waste_streams[waste_type].volume
-            if excess > 0:
-                state.track_waste_collection(self.region, waste_type, excess)
-                self.waste_streams[waste_type].volume = 0.0
-                self.current_storage -= excess
+            current_volume = self.waste_streams[waste_type].volume
+            reduced_volume = current_volume * (1 - reduction_factor)
+            if reduced_volume > 0:
+                state.track_waste_collection(self.region, waste_type, reduced_volume)
+                self.waste_streams[waste_type].volume = current_volume - reduced_volume
+                total_reduced += reduced_volume
+        
+        self.current_storage -= total_reduced
 
         # Calculate and apply penalty
         penalty = self.overflow_tracker.calculate_penalty(
@@ -166,6 +176,15 @@ class WasteGenerator:
         self, seasonal_factor, available_storage, current_time
     ):
         """Generate waste for all waste types in one period"""
+        # Check for failure first
+        if self.uncertainty_set:
+            self.check_failure(current_time, self.uncertainty_set.equipment_failure_rate)
+
+        # If failed, don't generate waste
+        if self.status == EntityStatus.FAILED:
+            print(f"{current_time}: Generator {self.name} is currently failed, skipping waste generation")
+            return available_storage
+
         daily_factors = self._calculate_daily_factors()
 
         for (waste_type, base_rate), daily_factor in zip(
@@ -185,9 +204,18 @@ class WasteGenerator:
         return available_storage
 
     def generate_waste(self):
-        """Generate waste with optimized calculations"""
+        """Generate waste with optimized calculations and failure handling"""
         while True:
             current_time = self.env.now
+            
+            # If we were failed but have recovered, log it
+            if (self.status == EntityStatus.FAILED and 
+                current_time >= self.recovery_time):
+                print(f"{current_time}: Generator {self.name} has recovered from failure")
+                self.status = EntityStatus.OPERATIONAL
+                self.failure_time = None
+                self.recovery_time = None
+
             season_index = int(current_time % self.seasonal_periods)
             seasonal_factor = self.seasonal_factors[season_index]
 

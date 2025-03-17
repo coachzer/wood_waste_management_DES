@@ -3,36 +3,40 @@
         {
             "id": "gen_goriska_1",
             "waste_generation_rates": {
-                "bark_waste": 80.0,
-                "sawdust": 125.0,
-                "wood_cuttings": 115.0,
-                "construction_wood": 70.0,
-                "mixed_wood": 80.0
+                "bark_waste": 8.0,
+                "sawdust": 12.0,
+                "wood_cuttings": 11.0,
+                "construction_wood": 25.0,
+                "mixed_wood": 8.0,
+                "waste_wooden_packaging": 13.0,
+                "waste_paper_packaging": 10.0
             },
             "generation_frequency": 24,
             "storage_capacity": 950,
             "priority_level": 5,
             "environmental_impact": 1.0,
             "initial_stock": {
-                "bark_waste": 160.0,
-                "sawdust": 190.0,
-                "wood_cuttings": 170.0,
-                "construction_wood": 140.0,
-                "mixed_wood": 160.0
+                "bark_waste": 16.0,
+                "sawdust": 19.0,
+                "wood_cuttings": 17.0,
+                "construction_wood": 14.0,
+                "mixed_wood": 10.0,
+                "waste_wooden_packaging": 7.0,
+                "waste_paper_packaging": 8.0
             }
         }
     ],
     "collectors": [
         {
             "id": "col_goriska_1",
-            "waste_types": ["bark_waste", "sawdust", "wood_cuttings", "construction_wood", "mixed_wood", "wooden_packaging", "paper_packaging"],
+            "waste_types": ["bark_waste", "sawdust", "wood_cuttings", "construction_wood", "mixed_wood", "waste_wooden_packaging", "waste_paper_packaging"],
             "collection_capacity": 1600,
             "collection_frequency": 24,
             "transport_cost": 50.0,
             "environmental_impact": 1.0,
             "efficiency": 0.9,
             "availability": true,
-            "strategy": "competitive"
+            "strategy": "collaborative"
         }
     ],
     "processors": [
@@ -59,6 +63,18 @@
             "environmental_impact": 1.0,
             "conversion_rate": 0.7,
             "operational_costs": 180.0
+        },
+        {
+            "id": "proc_goriska_furniture",
+            "input_types": ["construction_wood", "wood_cuttings", "waste_wooden_packaging"],
+            "output_types": ["wooden_furniture"],
+            "processing_capacity": 1000,
+            "processing_time": 12,
+            "storage_capacity": 1600,
+            "energy_consumption": 80.0,
+            "environmental_impact": 1.0,
+            "conversion_rate": 0.85,
+            "operational_costs": 160.0
         }
     ]
 }

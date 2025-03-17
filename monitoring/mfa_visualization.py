@@ -1,14 +1,13 @@
-import matplotlib.pyplot as plt
-import numpy as np
 import plotly.graph_objects as go
-from typing import Dict, List
+from typing import Dict
 from models.enums import WasteType
-
+from models.state import SimulationState
 
 def _calculate_volumes(
     generation_history: Dict, collection_history: Dict, processing_history: Dict
 ):
     """Calculate volumes for each stage of the material flow."""
+    # Calculate generator volumes
     generator_volumes = {
         generator: sum(
             volumes[-1] if volumes else 0
@@ -17,6 +16,7 @@ def _calculate_volumes(
         for generator, history in generation_history.items()
     }
 
+    # Calculate collector volumes
     collector_volumes = {
         collector: sum(
             volumes[-1] if volumes else 0
@@ -25,100 +25,119 @@ def _calculate_volumes(
         for collector, history in collection_history.items()
     }
 
-    treatment_volumes = {
-        treatment: (
-            history["processed"]["total"][-1] if history["processed"]["total"] else 0
-        )
-        for treatment, history in processing_history.items()
+    # Calculate treatment volumes and product volumes separately
+    treatment_volumes = {}
+    product_by_type = {}
+    
+    for treatment, history in processing_history.items():
+        # Get total processed volume for treatment node
+        total_volume = history["processed"]["total"][-1] if history["processed"]["total"] else 0
+        treatment_volumes[treatment] = total_volume
+        
+        # Get volumes by product type for product nodes
+        products = history["products"]
+        by_type = products.get("by_type", {})
+        for product_type, volumes in by_type.items():
+            if product_type not in product_by_type:
+                product_by_type[product_type] = []
+            if volumes:
+                product_by_type[product_type].append(volumes[-1])
+
+    # Aggregate product volumes by type
+    processed_volumes = {
+        product_type: sum(volumes)
+        for product_type, volumes in product_by_type.items()
     }
 
-    return generator_volumes, collector_volumes, treatment_volumes
+    return generator_volumes, collector_volumes, treatment_volumes, processed_volumes
 
-
-def _calculate_product_data(processing_history: Dict):
-    """Calculate product volumes and counts."""
-    product_volumes = {waste_type: 0 for waste_type in WasteType}
-    product_counts = {waste_type: 0 for waste_type in WasteType}
-
-    for history in processing_history.values():
-        for waste_type, volumes in history["processed"]["by_type"].items():
-            if volumes:
-                product_volumes[waste_type] += volumes[-1]
-                product_counts[waste_type] += sum(1 for v in volumes if v > 0)
-
-    return product_volumes, product_counts
-
+def _get_demand_volumes():
+    """Get demand volumes from demand.json."""
+    import json
+    
+    with open('data/demand.json', 'r') as f:
+        demand_data = json.load(f)
+    
+    target_products = [WasteType.WOODEN_PACKAGING, WasteType.PAPER_PACKAGING, WasteType.WOODEN_FURNITURE]
+    demand_volumes = {}
+    for product in target_products:
+        key = product.value.lower()
+        if key in demand_data['national_demand']:
+            demand_volumes[product] = demand_data['national_demand'][key]
+    
+    return demand_volumes
 
 def _create_nodes(
     generator_volumes: Dict,
     collector_volumes: Dict,
     treatment_volumes: Dict,
-    product_volumes: Dict,
-    product_counts: Dict,
-    volume_threshold: float = 0.1,  # Filter out nodes with volumes below this threshold
+    demand_volumes: Dict,
+    processed_volumes: Dict,
+    volume_threshold: float
 ):
-    """Create nodes for the Sankey diagram with volume-based filtering and improved organization."""
+    """Create nodes for the Sankey diagram."""
     labels, node_colors = [], []
 
-    # Helper function to format volume label with metric prefix
     def format_volume(volume: float) -> str:
-        if volume >= 1000:
-            return f"{volume/1000:.1f}km³"
-        return f"{volume:.1f}m³"
+        """Format volume with appropriate metric prefix"""
+        return f"{volume/1000:.1f}km³" if volume >= 1000 else f"{volume:.1f}m³"
 
-    # Filter and sort generators by volume
-    filtered_generators = {
-        k: v for k, v in generator_volumes.items() if v >= volume_threshold
+    def sort_by_volume(volumes: Dict) -> Dict:
+        """Sort volumes dictionary by value in descending order"""
+        filtered = {k: v for k, v in volumes.items() if v >= volume_threshold}
+        return dict(sorted(filtered.items(), key=lambda x: x[1], reverse=True))
+
+    # Sort volumes for each stage
+    sorted_generators = sort_by_volume(generator_volumes)
+    sorted_collectors = sort_by_volume(collector_volumes)
+    sorted_treatments = sort_by_volume(treatment_volumes)
+
+    # Node colors for each stage
+    NODE_COLORS = {
+        'generator': "rgba(46, 204, 113, 0.7)",    # Green
+        'collector': "rgba(52, 152, 219, 0.7)",    # Blue
+        'treatment': "rgba(155, 89, 182, 0.7)",    # Purple
+        'demand': "rgba(230, 126, 34, 0.7)"        # Orange
     }
-    sorted_generators = dict(
-        sorted(filtered_generators.items(), key=lambda x: x[1], reverse=True)
-    )
 
+    # Add generator nodes
     generator_start_idx = len(labels)
     for generator, volume in sorted_generators.items():
         labels.append(f"{generator}<br>{format_volume(volume)}")
-        node_colors.append("rgba(0, 128, 0, 0.7)")  # Semi-transparent green
+        node_colors.append(NODE_COLORS['generator'])
 
-    # Filter and sort collectors
-    filtered_collectors = {
-        k: v for k, v in collector_volumes.items() if v >= volume_threshold
-    }
-    sorted_collectors = dict(
-        sorted(filtered_collectors.items(), key=lambda x: x[1], reverse=True)
-    )
-
+    # Add collector nodes
     collector_start_idx = len(labels)
     for collector, volume in sorted_collectors.items():
         labels.append(f"{collector}<br>{format_volume(volume)}")
-        node_colors.append("rgba(0, 0, 255, 0.7)")  # Semi-transparent blue
+        node_colors.append(NODE_COLORS['collector'])
 
-    # Filter and sort treatment facilities
-    filtered_treatments = {
-        k: v for k, v in treatment_volumes.items() if v >= volume_threshold
-    }
-    sorted_treatments = dict(
-        sorted(filtered_treatments.items(), key=lambda x: x[1], reverse=True)
-    )
-
+    # Add treatment nodes
     treatment_start_idx = len(labels)
     for treatment, volume in sorted_treatments.items():
         labels.append(f"{treatment}<br>{format_volume(volume)}")
-        node_colors.append("rgba(255, 0, 0, 0.7)")  # Semi-transparent red
+        node_colors.append(NODE_COLORS['treatment'])
 
-    product_start_idx = len(labels)
-    max_count = max(product_counts.values()) if product_counts.values() else 1
+    # Add demand nodes with actual processed volumes
+    # Get current production from simulation state
+    state = SimulationState.get_instance()
+    demand_start_idx = len(labels)
+    target_products = [WasteType.WOODEN_PACKAGING, WasteType.PAPER_PACKAGING, WasteType.WOODEN_FURNITURE]
+    
+    for product in target_products:
+        target_volume = demand_volumes.get(product, 0)
+        # Get actual production from simulation state
+        product_type = product.value.lower()
+        current_volume = state.total_products.get(product_type, 0)
+        fulfillment = (current_volume / target_volume * 100) if target_volume > 0 else 0
 
-    # Filter and sort products
-    filtered_products = {
-        k: v for k, v in product_volumes.items() if v >= volume_threshold
-    }
-    for waste_type, volume in filtered_products.items():
-        if volume > 0:
-            count = product_counts[waste_type]
-            labels.append(
-                f"Product: {waste_type.value}<br>{format_volume(volume)}<br>Created {count} times"
-            )
-            node_colors.append("rgba(128, 0, 128, 0.7)")  # Semi-transparent purple
+        labels.append(
+            f"{product.value}<br>"
+            f"Target: {format_volume(target_volume)}<br>"
+            f"Current: {format_volume(current_volume)}<br>"
+            f"({fulfillment:.1f}%)"
+        )
+        node_colors.append(NODE_COLORS['demand'])
 
     return (
         labels,
@@ -126,61 +145,92 @@ def _create_nodes(
         generator_start_idx,
         collector_start_idx,
         treatment_start_idx,
-        product_start_idx,
-        max_count,
+        demand_start_idx,
+        sorted_generators,
+        sorted_collectors,
+        sorted_treatments
     )
 
-
 def _create_flows(
-    generator_volumes: Dict,
-    collector_volumes: Dict,
-    treatment_volumes: Dict,
-    product_volumes: Dict,
-    product_counts: Dict,
+    sorted_generators: Dict,
+    sorted_collectors: Dict,
+    sorted_treatments: Dict,
     processing_history: Dict,
     generator_start_idx: int,
     collector_start_idx: int,
     treatment_start_idx: int,
-    product_start_idx: int,
-    max_count: float,
+    demand_start_idx: int,
+    demand_volumes: Dict,
+    volume_threshold: float
 ):
-    """Create flows for the Sankey diagram."""
+    """Create flows for the Sankey diagram while preserving volume proportions."""
     source, target, value = [], [], []
 
-    # Generator to Collector flows
-    for i, (gen, gen_vol) in enumerate(generator_volumes.items()):
-        for j in range(len(collector_volumes)):
-            source.append(generator_start_idx + i)
-            target.append(collector_start_idx + j)
-            value.append(gen_vol)
+    # Generator to Collector flows - distribute proportionally based on collection history
+    total_collected = sum(sorted_collectors.values())
 
-    # Collector to Treatment flows
-    for i, (col, col_vol) in enumerate(collector_volumes.items()):
-        for j in range(len(treatment_volumes)):
-            source.append(collector_start_idx + i)
-            target.append(treatment_start_idx + j)
-            value.append(col_vol)
+    if total_collected > 0:
+        for gen_idx, (gen, gen_vol) in enumerate(sorted_generators.items()):
+            for col_idx, (col, col_vol) in enumerate(sorted_collectors.items()):
+                # Determine proportional allocation from generator to collector
+                allocation = (col_vol / total_collected) * gen_vol
+                if allocation >= volume_threshold:
+                    source.append(generator_start_idx + gen_idx)
+                    target.append(collector_start_idx + col_idx)
+                    value.append(allocation)
+    else:  # If no collectors, generators send directly to treatment
+        total_treated = sum(sorted_treatments.values())
+        if total_treated > 0:
+            for gen_idx, (gen, gen_vol) in enumerate(sorted_generators.items()):
+                for treat_idx, (treat, treat_vol) in enumerate(sorted_treatments.items()):
+                    allocation = (treat_vol / total_treated) * gen_vol
+                    if allocation >= volume_threshold:
+                        source.append(generator_start_idx + gen_idx)
+                        target.append(treatment_start_idx + treat_idx)
+                        value.append(allocation)
 
-    # Treatment to Product flows
-    product_idx_map = {
-        waste_type: product_start_idx + i
-        for i, waste_type in enumerate(
-            waste_type for waste_type, vol in product_volumes.items() if vol > 0
-        )
-    }
+    # Collector to Treatment flows - distribute proportionally based on processing history
+    total_treated = sum(sorted_treatments.values())
 
-    for i, treatment in enumerate(treatment_volumes.keys()):
-        history = processing_history[treatment]
-        for waste_type, volumes in history["processed"]["by_type"].items():
-            if volumes and waste_type in product_idx_map:
-                source.append(treatment_start_idx + i)
-                target.append(product_idx_map[waste_type])
-                count = product_counts[waste_type]
-                count_factor = count / max_count
-                value.append(volumes[-1] * (1 + count_factor))
+    if total_treated > 0:
+        for col_idx, (col, col_vol) in enumerate(sorted_collectors.items()):
+            for treat_idx, (treat, treat_vol) in enumerate(sorted_treatments.items()):
+                allocation = (treat_vol / total_treated) * col_vol
+                if allocation >= volume_threshold:
+                    source.append(collector_start_idx + col_idx)
+                    target.append(treatment_start_idx + treat_idx)
+                    value.append(allocation)
+    else:  # If no treatments, collectors send directly to demand
+        for col_idx, (col, col_vol) in enumerate(sorted_collectors.items()):
+            for demand_idx, (product, demand_vol) in enumerate(demand_volumes.items()):
+                allocation = (demand_vol / sum(demand_volumes.values())) * col_vol
+                if allocation >= volume_threshold:
+                    source.append(collector_start_idx + col_idx)
+                    target.append(demand_start_idx + demand_idx)
+                    value.append(allocation)
+
+    # Treatment to Demand flows - use actual production from SimulationState
+    state = SimulationState.get_instance()
+    total_treatment_volume = sum(sorted_treatments.values())
+    
+    if total_treatment_volume > 0:
+        for demand_idx, product in enumerate(demand_volumes.keys()):
+            product_type = product.value.lower()
+            actual_production = state.total_products.get(product_type, 0)
+            
+            if actual_production >= volume_threshold:
+                # Distribute the production across treatment facilities proportionally
+                for treat_idx, (treat, treat_vol) in enumerate(sorted_treatments.items()):
+                    # Calculate this treatment's contribution based on its share of total treatment
+                    treatment_share = treat_vol / total_treatment_volume
+                    flow_value = actual_production * treatment_share
+                    
+                    if flow_value >= volume_threshold:
+                        source.append(treatment_start_idx + treat_idx)
+                        target.append(demand_start_idx + demand_idx)
+                        value.append(flow_value)
 
     return source, target, value
-
 
 def create_material_flow_analysis(
     generation_history: Dict,
@@ -188,46 +238,51 @@ def create_material_flow_analysis(
     processing_history: Dict,
     save_path: str = "plots/material_flow_analysis.html",
 ):
-    """
-    Create a Sankey diagram visualization of material flows through the waste management system.
-    Shows flows between generators, collectors, treatment facilities, and final products.
-    """
-    generator_volumes, collector_volumes, treatment_volumes = _calculate_volumes(
+    """Create a Sankey diagram visualization of material flows through the waste management system."""
+    # Calculate volumes for each stage and processed volumes by type
+    generator_volumes, collector_volumes, treatment_volumes, processed_volumes = _calculate_volumes(
         generation_history, collection_history, processing_history
     )
+    
+    # Get target demand volumes
+    demand_volumes = _get_demand_volumes()
 
-    product_volumes, product_counts = _calculate_product_data(processing_history)
-
+    # Create nodes with consistent volume threshold
+    volume_threshold = 0.1
     (
         labels,
         node_colors,
         generator_start_idx,
         collector_start_idx,
         treatment_start_idx,
-        product_start_idx,
-        max_count,
+        demand_start_idx,
+        sorted_generators,
+        sorted_collectors,
+        sorted_treatments
     ) = _create_nodes(
         generator_volumes,
         collector_volumes,
         treatment_volumes,
-        product_volumes,
-        product_counts,
+        demand_volumes,
+        processed_volumes,  # Add processed volumes
+        volume_threshold
     )
 
+    # Create flows between stages
     source, target, value = _create_flows(
-        generator_volumes,
-        collector_volumes,
-        treatment_volumes,
-        product_volumes,
-        product_counts,
+        sorted_generators,
+        sorted_collectors,
+        sorted_treatments,
         processing_history,
         generator_start_idx,
         collector_start_idx,
         treatment_start_idx,
-        product_start_idx,
-        max_count,
+        demand_start_idx,
+        demand_volumes,
+        volume_threshold
     )
 
+    # Create and configure the Sankey diagram
     fig = go.Figure(
         data=[
             go.Sankey(
@@ -237,21 +292,39 @@ def create_material_flow_analysis(
                     line=dict(color="black", width=0.5),
                     label=labels,
                     color=node_colors,
+                    hoverlabel=dict(
+                        bgcolor="white",
+                        font_size=12,
+                        font_family="Arial"
+                    ),
                 ),
-                link=dict(source=source, target=target, value=value),
+                link=dict(
+                    source=source,
+                    target=target,
+                    value=value,
+                    hoverlabel=dict(
+                        bgcolor="white",
+                        font_size=12,
+                        font_family="Arial"
+                    ),
+                    hovertemplate="From: %{source.label}<br>To: %{target.label}<br>Volume: %{value:.2f}m³<extra></extra>"
+                ),
             )
         ]
     )
 
-    # Update layout with improved styling and interactivity
+    # Update layout
     fig.update_layout(
         title=dict(
-            text="Material Flow Analysis", font=dict(size=16), x=0.5, xanchor="center"
+            text="Material Flow Analysis",
+            font=dict(size=16),
+            x=0.5,
+            xanchor="center"
         ),
-        font=dict(size=10),
+        font=dict(size=12),
         height=800,
         hovermode="x",
-        plot_bgcolor="rgba(255,255,255,0.9)",
-        paper_bgcolor="rgba(255,255,255,0.9)",
+        plot_bgcolor="white",
+        paper_bgcolor="white"
     )
     fig.write_html(save_path)

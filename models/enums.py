@@ -1,4 +1,10 @@
-from enum import Enum
+from enum import Enum, auto
+
+class EntityStatus(Enum):
+    """Status of operational entities in the system."""
+    OPERATIONAL = auto()    # Entity is functioning normally
+    FAILED = auto()        # Entity has experienced a failure
+    RECOVERING = auto()    # Entity is in recovery phase after failure
 
 class RegionType(Enum):
     POMURSKA = "pomurska"
@@ -15,10 +21,16 @@ class RegionType(Enum):
     OBALNO_KRASKA = "obalno-kraska"
 
 class WasteType(Enum):
+    # Input waste types
     BARK_WASTE = "bark_waste"           # 03 01 01 & 03 03 01 combined
     SAWDUST = "sawdust"                 # Part of 03 01 05
     WOOD_CUTTINGS = "wood_cuttings"     # Part of 03 01 05
     CONSTRUCTION_WOOD = "construction_wood"  # 17 02 01
     MIXED_WOOD = "mixed_wood"           # 20 01 38
+    WASTE_WOODEN_PACKAGING = "waste_wooden_packaging"  # 15 01 03 (input)
+    WASTE_PAPER_PACKAGING = "waste_paper_packaging"   # 15 01 01 (input)
+    
+    # Output product types
     WOODEN_PACKAGING = "wooden_packaging"    # 15 01 03 (output)
     PAPER_PACKAGING = "paper_packaging"      # 15 01 01 (output)
+    WOODEN_FURNITURE = "wooden_furniture"    # 20 03 07 (output)
