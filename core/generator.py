@@ -1,14 +1,15 @@
 import numpy as np
 from typing import Dict, Optional
 from models.enums import WasteType, RegionType, EntityStatus
-from models.state import SimulationState
 from models.data_classes import WasteStream, OperationalEntity
 from optimization.stochastic import UncertaintySet
 from core.overflow import OverflowTracker
-
+from core.generator_utils import (
+    handle_overflow,
+    generate_waste_for_period,
+)
 
 class WasteGenerator(OperationalEntity):
-
     def __init__(
         self,
         env,
@@ -93,116 +94,6 @@ class WasteGenerator(OperationalEntity):
         # Start waste generation process
         self.action = env.process(self.generate_waste())
 
-    def _calculate_daily_factors(self):
-        """Calculate daily generation factors based on uncertainty"""
-        if not self.uncertainty_set:
-            return [1.0] * len(self.waste_generation_rates)
-
-        daily_factors = []
-        for waste_type in self.waste_generation_rates.keys():
-            mean, std = self.uncertainty_set.waste_generation.get(
-                waste_type, (1.0, 0.2)
-            )
-            factor = self.rng.normal(mean, std)
-            daily_factors.append(np.clip(factor, 0.1, 2.0))
-        return daily_factors
-
-    def _update_waste_stream(self, waste_type, generated_volume, current_time):
-        """Update waste stream and history records"""
-        self.waste_streams[waste_type].volume += generated_volume
-        self.current_storage += generated_volume
-        self.total_generated[waste_type] += generated_volume
-
-        # Track waste generation in the region using original region string
-        SimulationState.get_instance().track_waste_generation(
-            self.region, waste_type, generated_volume
-        )
-
-        if self.history_index >= self.history_size:
-            self.history_index = 0
-
-        history = self.generation_history[waste_type]
-        history["times"][self.history_index] = current_time
-        history["volumes"][self.history_index] = generated_volume
-        history["totals"][self.history_index] = self.total_generated[waste_type]
-        history["storage"][self.history_index] = self.current_storage
-
-    def _handle_overflow(self):
-        """Handle storage overflow situation"""
-        # Determine severity level
-        if self.current_storage / self.storage_capacity > 0.95:
-            severity = "emergency"
-        elif self.current_storage / self.storage_capacity > 0.90:
-            severity = "critical"
-        else:
-            severity = "warning"
-
-        # Calculate overflow volume
-        overflow_volume = max(0, self.current_storage - self.storage_capacity)
-
-        # Landfill the excess waste and track it
-        print(
-            f"{self.env.now}: Landfilling {overflow_volume:.2f} m³ of waste from {self.name}"
-        )
-        self.overflow_tracker.track_overflow(
-            facility_type="generator", volume=overflow_volume
-        )
-
-        # Calculate the reduction factor to bring total storage within capacity
-        reduction_factor = self.storage_capacity / self.current_storage
-        
-        # Track waste removal from the region using original region string
-        state = SimulationState.get_instance()
-        total_reduced = 0.0
-        
-        # Proportionally reduce each waste stream
-        for waste_type in self.waste_streams:
-            current_volume = self.waste_streams[waste_type].volume
-            reduced_volume = current_volume * (1 - reduction_factor)
-            if reduced_volume > 0:
-                state.track_waste_collection(self.region, waste_type, reduced_volume)
-                self.waste_streams[waste_type].volume = current_volume - reduced_volume
-                total_reduced += reduced_volume
-        
-        self.current_storage -= total_reduced
-
-        # Calculate and apply penalty
-        penalty = self.overflow_tracker.calculate_penalty(
-            facility_type="generator", severity=severity, volume=overflow_volume
-        )
-        print(f"Overflow penalty applied to {self.name}: {penalty:.2f}")
-
-    def _generate_waste_for_period(
-        self, seasonal_factor, available_storage, current_time
-    ):
-        """Generate waste for all waste types in one period"""
-        # Check for failure first
-        if self.uncertainty_set:
-            self.check_failure(current_time, self.uncertainty_set.equipment_failure_rate)
-
-        # If failed, don't generate waste
-        if self.status == EntityStatus.FAILED:
-            print(f"{current_time}: Generator {self.name} is currently failed, skipping waste generation")
-            return available_storage
-
-        daily_factors = self._calculate_daily_factors()
-
-        for (waste_type, base_rate), daily_factor in zip(
-            self.waste_generation_rates.items(), daily_factors
-        ):
-            if available_storage <= 0:
-                break
-
-            generated_volume = min(
-                base_rate * seasonal_factor * daily_factor, available_storage
-            )
-
-            if generated_volume > 0:
-                self._update_waste_stream(waste_type, generated_volume, current_time)
-                available_storage -= generated_volume
-
-        return available_storage
-
     def generate_waste(self):
         """Generate waste with optimized calculations and failure handling"""
         while True:
@@ -221,12 +112,19 @@ class WasteGenerator(OperationalEntity):
 
             available_storage = self.storage_capacity - self.current_storage
             if available_storage <= 0:
-                self._handle_overflow()
+                self.current_storage = handle_overflow(
+                    self.env, self.name, self.current_storage, self.storage_capacity,
+                    self.waste_streams, self.region, self.overflow_tracker
+                )
                 yield self.env.timeout(self.generation_frequency)
                 continue
 
-            self._generate_waste_for_period(
-                seasonal_factor, available_storage, current_time
+            available_storage, self.current_storage, self.history_index = generate_waste_for_period(
+                self.name, self.status, self.uncertainty_set,
+                self.waste_generation_rates, self.region, self.waste_streams,
+                self.total_generated, self.generation_history, self.history_index,
+                self.current_storage, self.rng, seasonal_factor, available_storage,
+                current_time
             )
             self.history_index += 1
             yield self.env.timeout(self.generation_frequency)

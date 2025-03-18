@@ -5,6 +5,7 @@ Contains all parameters related to operational costs, rates, and economic factor
 from dataclasses import dataclass
 from typing import Dict
 from enum import Enum, auto
+from utils.helpers import validate_config, validate_all_numeric_positive
 
 class CostType(Enum):
     """Types of costs in the system"""
@@ -42,22 +43,28 @@ class CostConfig:
 # Default cost configuration
 DEFAULT_COST_CONFIG = CostConfig()
 
-def validate_cost_config(config: CostConfig) -> None:
-    """Validate cost configuration parameters"""
-    if config.processing_base_rate <= 0:
-        raise ValueError("Processing base rate must be positive")
-    if config.transportation_rate <= 0:
-        raise ValueError("Transportation rate must be positive")
-    if config.storage_rate <= 0:
-        raise ValueError("Storage rate must be positive")
-    if config.energy_rate <= 0:
-        raise ValueError("Energy rate must be positive")
-    if config.landfill_rate <= 0:
-        raise ValueError("Landfill rate must be positive")
+def _validate_cost_config_values(config: CostConfig) -> None:
+    """Internal validation function for cost config values"""
+    config_dict = {
+        'processing_base_rate': config.processing_base_rate,
+        'transportation_rate': config.transportation_rate,
+        'storage_rate': config.storage_rate,
+        'energy_rate': config.energy_rate,
+        'landfill_rate': config.landfill_rate,
+        'maintenance_rate': config.maintenance_rate,
+        'labor_rate': config.labor_rate
+    }
+    
+    # Validate all rates are positive except maintenance_rate
+    validate_all_numeric_positive(config_dict, allow_zero=False, exceptions=['maintenance_rate'])
+    
+    # Special validation for maintenance rate (must be between 0 and 1)
     if not 0 <= config.maintenance_rate <= 1:
         raise ValueError("Maintenance rate must be between 0 and 1")
-    if config.labor_rate <= 0:
-        raise ValueError("Labor rate must be positive")
+
+def validate_cost_config(config: CostConfig) -> None:
+    """Validate cost configuration parameters"""
+    validate_config(config, _validate_cost_config_values, "cost")
 
 # Validate default configuration on import
 validate_cost_config(DEFAULT_COST_CONFIG)

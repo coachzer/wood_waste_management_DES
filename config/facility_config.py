@@ -4,7 +4,8 @@ Contains parameters for treatment facilities, storage, and operational character
 """
 from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional
-from models.enums import WasteType
+from models.enums import WasteType, OutputType
+from utils.helpers import validate_all_numeric_positive
 from .base_config import MONTHLY_DEMAND
 
 @dataclass
@@ -17,8 +18,13 @@ class StorageConfig:
 
     def validate(self) -> None:
         """Validate storage configuration"""
-        if self.initial_capacity < 0:
-            raise ValueError("Initial capacity must be non-negative")
+        config_dict = {
+            'initial_capacity': self.initial_capacity,
+            'max_capacity': self.max_capacity,
+            'min_capacity': self.min_capacity
+        }
+        validate_all_numeric_positive(config_dict, allow_zero=True)
+        
         if self.max_capacity < self.initial_capacity:
             raise ValueError("Max capacity must be greater than or equal to initial capacity")
         if not 0 <= self.min_capacity <= self.initial_capacity:
@@ -41,12 +47,17 @@ class ProcessingConfig:
             raise ValueError("At least one input type must be specified")
         if not self.output_types:
             raise ValueError("At least one output type must be specified")
-        if not 0 < self.base_efficiency <= 1:
+        
+        config_dict = {
+            'base_efficiency': self.base_efficiency,
+            'energy_consumption': self.energy_consumption,
+            'processing_time': self.processing_time
+        }
+        validate_all_numeric_positive(config_dict, allow_zero=False)
+        
+        # Additional validation for efficiency
+        if self.base_efficiency > 1:
             raise ValueError("Base efficiency must be between 0 and 1")
-        if self.energy_consumption <= 0:
-            raise ValueError("Energy consumption must be positive")
-        if self.processing_time <= 0:
-            raise ValueError("Processing time must be positive")
 
 @dataclass
 class TreatmentFacilityConfig:
@@ -97,9 +108,9 @@ DEFAULT_INPUT_TYPES = [
 
 # Output types (final products from demand.json)
 DEFAULT_OUTPUT_TYPES = [
-    WasteType.WOODEN_FURNITURE,   # High-quality furniture products
-    WasteType.WOODEN_PACKAGING,   # Industrial packaging products
-    WasteType.PAPER_PACKAGING     # Paper-based packaging products
+    OutputType.WOODEN_FURNITURE,   # High-quality furniture products
+    OutputType.WOODEN_PACKAGING,   # Industrial packaging products
+    OutputType.PAPER_PACKAGING     # Paper-based packaging products
 ]
 
 DEFAULT_PROCESSING_CONFIG = ProcessingConfig(
@@ -126,11 +137,6 @@ BASE_TRANSFORMATION_EFFICIENCIES: Dict[WasteType, Tuple[float, float]] = {
     WasteType.BARK_WASTE: (0.85, 0.70),          # Good for pulping
     WasteType.MIXED_WOOD: (0.88, 0.60),          # Decent for pulping
     WasteType.WASTE_PAPER_PACKAGING: (0.82, 0.65), # Good for recycling into new paper products
-
-    # Recyclable finished products
-    WasteType.WOODEN_FURNITURE: (0.85, 1.20),     # High energy to break down, good material recovery
-    WasteType.WOODEN_PACKAGING: (0.90, 0.80),     # Easy to break down, good material quality
-    WasteType.PAPER_PACKAGING: (0.75, 0.60)       # Some fiber loss in recycling, low energy needed
 }
 
 def create_default_facility_config(

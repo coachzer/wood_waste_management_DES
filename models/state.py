@@ -1,4 +1,8 @@
 from .regional_tracker import RegionalWasteTracker
+from utils.helpers import load_json
+
+# Load demand data
+_demand_data = load_json("data/demand.json")
 
 
 class SimulationState:
@@ -15,16 +19,23 @@ class SimulationState:
             cls._instance.generators = []
             cls._instance.collectors = []
             cls._instance.treatment_operators = []
-            # Initialize product tracking
+            # Initialize product tracking with values from demand.json
+            demand = _demand_data["national_demand"]
             cls._instance.total_products = {
                 'wooden_packaging': 0,
                 'paper_packaging': 0,
                 'wooden_furniture': 0
             }
             cls._instance.target_demands = {
-                'wooden_packaging': 600,  # from MONTHLY_DEMAND
-                'paper_packaging': 500,
-                'wooden_furniture': 200
+                'wooden_packaging': demand["wooden_packaging"],
+                'paper_packaging': demand["paper_packaging"],
+                'wooden_furniture': demand["wooden_furniture"]
+            }
+            # Track when each demand was met
+            cls._instance.demand_met_times = {
+                'wooden_packaging': None,
+                'paper_packaging': None,
+                'wooden_furniture': None
             }
         return cls._instance
 
@@ -74,11 +85,17 @@ class SimulationState:
             print(f"Warning: Could not get waste type distribution - {str(e)}")
             return {}
             
-    def track_product_production(self, product_type: str, amount: float) -> None:
+    def track_product_production(self, product_type: str, amount: float, current_time: float = None) -> None:
         """Track production of final products"""
         if product_type in self.total_products:
             self.total_products[product_type] += amount
-            print(f"Production tracked: {product_type} - {amount:.2f} m³ (Total: {self.total_products[product_type]:.2f} m³)")
+            target = self.target_demands[product_type]
+            print(f"- {product_type}: {self.total_products[product_type]:.2f}/{target:.2f} m³")
+            
+            # Check if this production met the demand
+            if current_time is not None and self.demand_met_times[product_type] is None:
+                if self.total_products[product_type] >= self.target_demands[product_type]:
+                    self.demand_met_times[product_type] = current_time
             
     def check_all_demands_met(self) -> bool:
         """Check if all product demands have been met"""

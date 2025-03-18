@@ -1,69 +1,98 @@
 from typing import Dict, Any
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
 from ..visualizations.plot_utils import (
     VOLUME_LABEL,
-    DEFAULT_FIGURE_SIZE,
     GRID_ALPHA,
-    add_year_demarcations,
     setup_axis_labels,
-    save_plot,
+    add_moving_average_plot,
+    plot_multi_series,
 )
+from .base_plotter import BasePlotter
+from .production_plots import ProductionPlotter
+from .waste_plots import WastePlotter
 
-
-class EfficiencyPlotter:
+class EfficiencyPlotter(BasePlotter):
     """Handles plotting of efficiency-related metrics"""
-
-    @staticmethod
-    def plot_collection_efficiency(
-        collection_history: Dict[str, Any],
-        save_path: str = None,
-    ) -> None:
-        """Plot aggregated collection efficiency metrics"""
-        fig = plt.figure(figsize=DEFAULT_FIGURE_SIZE)
-        gs = GridSpec(2, 1, figure=fig)
-
-        # System-wide efficiency
-        ax1 = fig.add_subplot(gs[0])
-        EfficiencyPlotter._plot_system_collection_efficiency(ax1, collection_history)
-
-        # Regional comparison
-        ax2 = fig.add_subplot(gs[1])
-        EfficiencyPlotter._plot_collection_statistics(ax2, collection_history)
-
-        plt.tight_layout()
-        save_plot(fig, save_path)
-
-    @staticmethod
-    def plot_treatment_metrics(
+    
+    def __init__(self):
+        super().__init__()
+        self.production_plotter = ProductionPlotter()
+        self.waste_plotter = WastePlotter()
+        
+    def plot_accumulated_products(
+        self,
         processing_history: Dict[str, Any],
         save_path: str = None,
     ) -> None:
-        """Plot aggregated treatment facility metrics"""
-        fig = plt.figure(figsize=DEFAULT_FIGURE_SIZE)
-        gs = GridSpec(2, 1, figure=fig)
+        """Plot accumulated products over time"""
+        self.production_plotter.plot_accumulated_products(processing_history, save_path)
 
-        # Operational efficiency metrics
-        ax1 = fig.add_subplot(gs[0])
-        EfficiencyPlotter._plot_operational_metrics(ax1, processing_history)
-
-        # Resource utilization
-        ax2 = fig.add_subplot(gs[1])
-        EfficiencyPlotter._plot_resource_utilization(ax2, processing_history)
-
-        plt.tight_layout()
-        save_plot(fig, save_path)
-
-    @staticmethod
-    def _plot_system_collection_efficiency(
-        ax: plt.Axes, collection_history: Dict[str, Any]
+    def plot_waste_mix(
+        self,
+        processing_history: Dict[str, Any],
+        save_path: str = None,
     ) -> None:
-        """Plot system-wide collection efficiency with moving average"""
-        timestamps = next(iter(collection_history.values()))["timestamps"]
-        window = 5
+        """Plot waste mix analysis"""
+        self.waste_plotter.plot_waste_mix(processing_history, save_path)
 
-        # Calculate average efficiency across collectors
+    def plot_collection_efficiency(
+        self,
+        collection_history: Dict[str, Any],
+        save_path: str = None,
+    ) -> None:
+        """Plot collection efficiency metrics"""
+        fig, axes = self.setup_figure(2, 1)
+        
+        # Plot system-wide efficiency
+        self._plot_system_collection_efficiency(axes[0], collection_history)
+        
+        # Plot collection statistics
+        self._plot_collection_statistics(axes[1], collection_history)
+        
+        self.save_figure(fig, save_path)
+
+    def plot_treatment_metrics(
+        self,
+        processing_history: Dict[str, Any],
+        save_path: str = None,
+    ) -> None:
+        """Plot treatment facility metrics"""
+        fig, axes = self.setup_figure(2, 1)
+        
+        # Plot operational metrics
+        self._plot_operational_metrics(axes[0], processing_history)
+        
+        # Plot resource utilization
+        self._plot_resource_utilization(axes[1], processing_history)
+        
+        self.save_figure(fig, save_path)
+
+    def plot_demand_metrics(
+        self,
+        processing_history: Dict[str, Any],
+        save_path: str = None,
+    ) -> None:
+        """Plot demand satisfaction metrics"""
+        fig, axes = self.setup_figure(2, 1)
+        
+        # Plot processing vs demand
+        self._plot_aggregated_processing_vs_demand(axes[0], processing_history)
+        
+        # Plot system satisfaction
+        self._plot_system_satisfaction(axes[1], processing_history)
+        
+        self.save_figure(fig, save_path)
+
+    def _plot_system_collection_efficiency(
+        self,
+        ax: plt.Axes,
+        collection_history: Dict[str, Any]
+    ) -> None:
+        """Plot system-wide collection efficiency"""
+        timestamps = self.get_timestamps(collection_history)
+        
+        # Calculate average efficiency
         avg_efficiency = []
         for t_idx in range(len(timestamps)):
             efficiencies = [
@@ -74,55 +103,52 @@ class EfficiencyPlotter:
             avg_efficiency.append(
                 sum(efficiencies) / len(efficiencies) if efficiencies else 0
             )
-
-        # Plot raw data and moving average
-        ax.plot(
-            timestamps,
-            avg_efficiency,
-            alpha=0.2,
-            color="blue",
-            label="Efficiency (Raw)",
+        
+        # Plot with moving average
+        add_moving_average_plot(
+            ax=ax,
+            timestamps=timestamps,
+            data=avg_efficiency,
+            label="Efficiency",
+            color="blue"
         )
-
-        # Calculate and plot moving average
-        ma = [
-            sum(
-                avg_efficiency[
-                    max(0, i - window) : min(len(avg_efficiency), i + window + 1)
-                ]
-            )
-            / (min(len(avg_efficiency), i + window + 1) - max(0, i - window))
-            for i in range(len(avg_efficiency))
-        ]
-        ax.plot(timestamps, ma, color="blue", linewidth=2, label="Efficiency (MA)")
-
+        
         setup_axis_labels(
             ax,
             "System-wide Collection Efficiency",
-            ylabel="Efficiency",
+            ylabel="Efficiency"
         )
         ax.legend()
         ax.grid(True, linestyle="--", alpha=GRID_ALPHA)
 
-    @staticmethod
     def _plot_collection_statistics(
-        ax: plt.Axes, collection_history: Dict[str, Any]
+        self,
+        ax: plt.Axes,
+        collection_history: Dict[str, Any]
     ) -> None:
         """Plot collection statistics summary"""
         ax.axis("off")
-
+        
         # Calculate statistics for each collector
         stats_data = []
         for name, history in collection_history.items():
             efficiency = history["efficiency"]
-            total_collections = sum(
-                sum(volumes) for volumes in history["collected_volumes"].values()
+            # Calculate end-of-simulation volume
+            final_volume = sum(
+                volumes[-1] if volumes else 0 
+                for volumes in history["collected_volumes"].values()
             )
+            # Calculate average volume across all timesteps
+            avg_volume = np.mean([
+                sum(vol[i] if len(vol) > i else 0 for vol in history["collected_volumes"].values())
+                for i in range(len(history["timestamps"]))
+            ])
             stats_data.append(
                 [
                     name,
                     f"{sum(efficiency) / len(efficiency):.1f}%",
-                    f"{total_collections:.1f}",
+                    f"{final_volume:.1f}",
+                    f"{avg_volume:.1f}",
                     f"{min(efficiency):.1f}%",
                     f"{max(efficiency):.1f}%",
                 ]
@@ -137,7 +163,8 @@ class EfficiencyPlotter:
             colLabels=[
                 "Collector",
                 "Avg Efficiency",
-                "Total Volume",
+                "Final Volume",
+                "Avg Volume",
                 "Min Efficiency",
                 "Max Efficiency",
             ],
@@ -149,23 +176,25 @@ class EfficiencyPlotter:
         table.scale(1.2, 1.5)
 
         # Style header
-        for j in range(5):
+        for j in range(6):
             table[(0, j)].set_facecolor("#E6E6E6")
 
         ax.set_title("Collection Performance Summary", pad=20)
 
-    @staticmethod
     def _plot_operational_metrics(
-        ax: plt.Axes, processing_history: Dict[str, Any]
+        self,
+        ax: plt.Axes,
+        processing_history: Dict[str, Any]
     ) -> None:
-        """Plot aggregated operational metrics with moving averages"""
-        timestamps = next(iter(processing_history.values()))["timestamps"]
-        window = 5
+        """Plot operational metrics with moving averages"""
+        timestamps = self.get_timestamps(processing_history)
 
-        # Calculate average metrics
-        conversion_rate = []
-        energy_efficiency = []
-
+        # Calculate metrics
+        metrics = {
+            "Conversion": [],
+            "Energy": []
+        }
+        
         for t_idx in range(len(timestamps)):
             # Average conversion rate
             rates = [
@@ -173,7 +202,7 @@ class EfficiencyPlotter:
                 for history in processing_history.values()
                 if len(history["operational"]["conversion_rate"]) > t_idx
             ]
-            conversion_rate.append(sum(rates) / len(rates) if rates else 0)
+            metrics["Conversion"].append(sum(rates) / len(rates) if rates else 0)
 
             # Average energy efficiency
             energy = [
@@ -181,55 +210,31 @@ class EfficiencyPlotter:
                 for history in processing_history.values()
                 if len(history["operational"]["energy_consumption"]) > t_idx
             ]
-            energy_efficiency.append(sum(energy) / len(energy) if energy else 0)
+            metrics["Energy"].append(sum(energy) / len(energy) if energy else 0)
 
-        # Plot raw data
-        ax.plot(
-            timestamps,
-            conversion_rate,
-            alpha=0.2,
-            color="blue",
-            label="Conversion (Raw)",
-        )
-        ax.plot(
-            timestamps,
-            energy_efficiency,
-            alpha=0.2,
-            color="green",
-            label="Energy (Raw)",
+        # Plot metrics using utility function
+        colors = {
+            "Conversion": "blue",
+            "Energy": "green"
+        }
+        plot_multi_series(
+            ax=ax,
+            timestamps=timestamps,
+            series_data=metrics,
+            colors=colors,
+            title="Operational Performance",
+            ylabel="Rate"
         )
 
-        # Calculate and plot moving averages
-        def calc_ma(data):
-            return [
-                sum(data[max(0, i - window) : min(len(data), i + window + 1)])
-                / (min(len(data), i + window + 1) - max(0, i - window))
-                for i in range(len(data))
-            ]
-
-        conv_ma = calc_ma(conversion_rate)
-        energy_ma = calc_ma(energy_efficiency)
-
-        ax.plot(timestamps, conv_ma, color="blue", linewidth=2, label="Conversion (MA)")
-        ax.plot(timestamps, energy_ma, color="green", linewidth=2, label="Energy (MA)")
-
-        setup_axis_labels(
-            ax,
-            "Operational Performance",
-            ylabel="Rate",
-        )
-        ax.legend()
-        ax.grid(True, linestyle="--", alpha=GRID_ALPHA)
-
-    @staticmethod
     def _plot_resource_utilization(
-        ax: plt.Axes, processing_history: Dict[str, Any]
+        self,
+        ax: plt.Axes,
+        processing_history: Dict[str, Any]
     ) -> None:
-        """Plot aggregated resource utilization metrics"""
-        timestamps = next(iter(processing_history.values()))["timestamps"]
-        window = 5
+        """Plot resource utilization metrics"""
+        timestamps = self.get_timestamps(processing_history)
 
-        # Calculate average processing/storage ratio
+        # Calculate processing/storage ratios
         ratios = []
         for t_idx in range(len(timestamps)):
             timestep_ratios = []
@@ -246,133 +251,77 @@ class EfficiencyPlotter:
                 sum(timestep_ratios) / len(timestep_ratios) if timestep_ratios else 0
             )
 
-        # Plot raw data
-        ax.plot(timestamps, ratios, alpha=0.2, color="blue", label="Utilization (Raw)")
+        # Plot using utility function
+        add_moving_average_plot(
+            ax=ax,
+            timestamps=timestamps,
+            data=ratios,
+            label="Utilization",
+            color="blue"
+        )
 
-        # Calculate and plot moving average
-        ma = [
-            sum(ratios[max(0, i - window) : min(len(ratios), i + window + 1)])
-            / (min(len(ratios), i + window + 1) - max(0, i - window))
-            for i in range(len(ratios))
-        ]
-        ax.plot(timestamps, ma, color="blue", linewidth=2, label="Utilization (MA)")
-
-        setup_axis_labels(ax, "Resource Utilization", ylabel="Processing/Storage Ratio")
+        setup_axis_labels(
+            ax,
+            "Resource Utilization",
+            ylabel="Processing/Storage Ratio"
+        )
         ax.legend()
         ax.grid(True, linestyle="--", alpha=GRID_ALPHA)
 
-    @staticmethod
-    def plot_demand_metrics(
-        processing_history: Dict[str, Any],
-        save_path: str = None,
-    ) -> None:
-        """Plot aggregated demand satisfaction metrics"""
-        fig = plt.figure(figsize=DEFAULT_FIGURE_SIZE)
-        gs = GridSpec(2, 1, figure=fig)
-
-        # Average processing vs. demand
-        ax1 = fig.add_subplot(gs[0])
-        EfficiencyPlotter._plot_aggregated_processing_vs_demand(ax1, processing_history)
-
-        # System-wide demand satisfaction
-        ax2 = fig.add_subplot(gs[1])
-        EfficiencyPlotter._plot_system_satisfaction(ax2, processing_history)
-
-        plt.tight_layout()
-        save_plot(fig, save_path)
-
-    @staticmethod
-    def plot_product_mix(
-        processing_history: Dict[str, Any],
-        save_path: str = None,
-    ) -> None:
-        """Plot aggregated product mix analysis"""
-        fig = plt.figure(figsize=DEFAULT_FIGURE_SIZE)
-        gs = GridSpec(2, 1, figure=fig)
-
-        # Aggregated product mix
-        ax1 = fig.add_subplot(gs[0])
-        EfficiencyPlotter._plot_aggregated_product_mix(ax1, processing_history)
-
-        # Summary statistics
-        ax2 = fig.add_subplot(gs[1])
-        EfficiencyPlotter._plot_product_summary(ax2, processing_history)
-
-        plt.tight_layout()
-        save_plot(fig, save_path)
-
-    @staticmethod
     def _plot_aggregated_processing_vs_demand(
-        ax: plt.Axes, processing_history: Dict[str, Any]
+        self,
+        ax: plt.Axes,
+        processing_history: Dict[str, Any]
     ) -> None:
-        """Plot aggregated processing vs. demand with moving average"""
-        timestamps = next(iter(processing_history.values()))["timestamps"]
-        window = 5
+        """Plot processing vs demand with moving average"""
+        timestamps = self.get_timestamps(processing_history)
 
-        # Calculate total processing and demand
-        total_processed = []
-        total_demand = []
-
+        # Calculate metrics
+        metrics = {
+            "Processing": [],
+            "Demand": []
+        }
+        
         for t_idx in range(len(timestamps)):
-            # Sum processing across all facilities
+            # Sum processing
             proc_sum = sum(
                 history["processed"]["total"][t_idx]
                 for history in processing_history.values()
                 if len(history["processed"]["total"]) > t_idx
             )
-            total_processed.append(proc_sum)
+            metrics["Processing"].append(proc_sum)
 
-            # Sum demand across all facilities
+            # Sum demand
             demand_sum = sum(
                 history["operational"]["demand"][t_idx]
                 for history in processing_history.values()
                 if len(history["operational"]["demand"]) > t_idx
             )
-            total_demand.append(demand_sum)
+            metrics["Demand"].append(demand_sum)
 
-        # Plot raw data (transparent)
-        ax.plot(
-            timestamps,
-            total_processed,
-            alpha=0.2,
-            color="blue",
-            label="Processing (Raw)",
-        )
-        ax.plot(
-            timestamps,
-            total_demand,
-            alpha=0.2,
-            color="red",
-            label="Demand (Raw)",
+        # Plot metrics using utility function
+        colors = {
+            "Processing": "blue",
+            "Demand": "red"
+        }
+        plot_multi_series(
+            ax=ax,
+            timestamps=timestamps,
+            series_data=metrics,
+            colors=colors,
+            title="System-wide Processing vs. Demand",
+            ylabel=VOLUME_LABEL
         )
 
-        # Calculate and plot moving averages
-        def calc_ma(data):
-            return [
-                sum(data[max(0, i - window) : min(len(data), i + window + 1)])
-                / (min(len(data), i + window + 1) - max(0, i - window))
-                for i in range(len(data))
-            ]
-
-        proc_ma = calc_ma(total_processed)
-        demand_ma = calc_ma(total_demand)
-
-        ax.plot(timestamps, proc_ma, color="blue", linewidth=2, label="Processing (MA)")
-        ax.plot(timestamps, demand_ma, color="red", linewidth=2, label="Demand (MA)")
-
-        setup_axis_labels(ax, "System-wide Processing vs. Demand", ylabel=VOLUME_LABEL)
-        ax.legend()
-        ax.grid(True, linestyle="--", alpha=GRID_ALPHA)
-
-    @staticmethod
     def _plot_system_satisfaction(
-        ax: plt.Axes, processing_history: Dict[str, Any]
+        self,
+        ax: plt.Axes,
+        processing_history: Dict[str, Any]
     ) -> None:
         """Plot system-wide demand satisfaction rate"""
-        timestamps = next(iter(processing_history.values()))["timestamps"]
-        window = 5
+        timestamps = self.get_timestamps(processing_history)
 
-        # Calculate overall satisfaction rate
+        # Calculate satisfaction rate
         satisfaction_rate = []
         for t_idx in range(len(timestamps)):
             total_processed = sum(
@@ -388,124 +337,19 @@ class EfficiencyPlotter:
             rate = (total_processed / total_demand * 100) if total_demand > 0 else 0
             satisfaction_rate.append(rate)
 
-        # Plot raw data
-        ax.plot(
-            timestamps,
-            satisfaction_rate,
-            alpha=0.2,
-            color="blue",
-            label="Satisfaction (Raw)",
+        # Plot using utility function
+        add_moving_average_plot(
+            ax=ax,
+            timestamps=timestamps,
+            data=satisfaction_rate,
+            label="Satisfaction",
+            color="blue"
         )
 
-        # Calculate and plot moving average
-        ma = [
-            sum(
-                satisfaction_rate[
-                    max(0, i - window) : min(len(satisfaction_rate), i + window + 1)
-                ]
-            )
-            / (min(len(satisfaction_rate), i + window + 1) - max(0, i - window))
-            for i in range(len(satisfaction_rate))
-        ]
-        ax.plot(timestamps, ma, color="blue", linewidth=2, label="Satisfaction (MA)")
-
         setup_axis_labels(
-            ax, "System-wide Demand Satisfaction", ylabel="Satisfaction Rate (%)"
+            ax,
+            "System-wide Demand Satisfaction",
+            ylabel="Satisfaction Rate (%)"
         )
         ax.legend()
         ax.grid(True, linestyle="--", alpha=GRID_ALPHA)
-
-    @staticmethod
-    def _plot_aggregated_product_mix(
-        ax: plt.Axes, processing_history: Dict[str, Any]
-    ) -> None:
-        """Plot aggregated product mix across all facilities"""
-        timestamps = next(iter(processing_history.values()))["timestamps"]
-        window = 5
-
-        # Aggregate by waste type
-        waste_types = set()
-        for history in processing_history.values():
-            waste_types.update(history["processed"]["by_type"].keys())
-
-        # Calculate totals for each waste type
-        waste_totals = {}
-        for waste_type in waste_types:
-            totals = []
-            for t_idx in range(len(timestamps)):
-                total = sum(
-                    history["processed"]["by_type"][waste_type][t_idx]
-                    for history in processing_history.values()
-                    if waste_type in history["processed"]["by_type"]
-                    and len(history["processed"]["by_type"][waste_type]) > t_idx
-                )
-                totals.append(total)
-            waste_totals[waste_type] = totals
-
-        # Plot with moving averages
-        colors = plt.cm.tab10(np.linspace(0, 1, len(waste_types)))
-        for (waste_type, totals), color in zip(waste_totals.items(), colors):
-            # Raw data
-            ax.plot(
-                timestamps,
-                totals,
-                alpha=0.2,
-                color=color,
-                label=f"{waste_type.value} (Raw)",
-            )
-
-            # Moving average
-            ma = [
-                sum(totals[max(0, i - window) : min(len(totals), i + window + 1)])
-                / (min(len(totals), i + window + 1) - max(0, i - window))
-                for i in range(len(totals))
-            ]
-            ax.plot(
-                timestamps,
-                ma,
-                color=color,
-                linewidth=2,
-                label=f"{waste_type.value} (MA)",
-            )
-
-        setup_axis_labels(ax, "Product Mix Over Time", ylabel=VOLUME_LABEL)
-        ax.legend(bbox_to_anchor=(1.05, 1))
-        ax.grid(True, linestyle="--", alpha=GRID_ALPHA)
-
-    @staticmethod
-    def _plot_product_summary(ax: plt.Axes, processing_history: Dict[str, Any]) -> None:
-        """Plot summary of product mix distribution"""
-        # Create summary table
-        ax.axis("off")
-        waste_types = set()
-        for history in processing_history.values():
-            waste_types.update(history["processed"]["by_type"].keys())
-
-        summary_data = []
-        for waste_type in waste_types:
-            total_volume = sum(
-                sum(history["processed"]["by_type"][waste_type])
-                for history in processing_history.values()
-                if waste_type in history["processed"]["by_type"]
-            )
-            summary_data.append([waste_type.value, f"{total_volume:.1f}"])
-
-        # Sort by volume
-        summary_data.sort(key=lambda x: float(x[1]), reverse=True)
-
-        # Create table
-        table = ax.table(
-            cellText=summary_data,
-            colLabels=["Product Type", "Total Volume"],
-            loc="center",
-            cellLoc="center",
-        )
-        table.auto_set_font_size(False)
-        table.set_fontsize(9)
-        table.scale(1.2, 1.5)
-
-        # Style header
-        for j in range(2):
-            table[(0, j)].set_facecolor("#E6E6E6")
-
-        ax.set_title("Product Distribution Summary", pad=20)

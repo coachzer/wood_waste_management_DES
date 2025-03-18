@@ -1,5 +1,4 @@
 from typing import Dict, Any
-from models.enums import WasteType
 
 
 class MetricsAnalyzer:
@@ -53,7 +52,16 @@ class MetricsAnalyzer:
         report = []
         report.append("\n=== Waste Management System Summary Report ===\n")
 
-        # Generation Summary
+        # Add each section
+        self._add_generation_summary(report, generation_history)
+        self._add_collection_summary(report, collection_history)
+        self._add_processing_summary(report, processing_history)
+        self._add_efficiency_metrics(report)
+
+        return "\n".join(report)
+        
+    def _add_generation_summary(self, report: list, generation_history: Dict[str, Any]) -> None:
+        """Add generation summary to the report"""
         report.append("Generation Summary:")
         for generator_name, history in generation_history.items():
             report.append(f"\n{generator_name}:")
@@ -68,7 +76,8 @@ class MetricsAnalyzer:
                     f"- Current storage utilization: {history['storage_utilization'][-1]:.1f}%"
                 )
 
-        # Collection Summary
+    def _add_collection_summary(self, report: list, collection_history: Dict[str, Any]) -> None:
+        """Add collection summary to the report"""
         report.append("\nCollection Summary:")
         for collector_name, history in collection_history.items():
             report.append(f"\n{collector_name}:")
@@ -81,7 +90,8 @@ class MetricsAnalyzer:
             if history["efficiency"]:
                 report.append(f"- Current efficiency: {history['efficiency'][-1]:.2f}")
 
-        # Processing Summary
+    def _add_processing_summary(self, report: list, processing_history: Dict[str, Any]) -> None:
+        """Add processing summary to the report"""
         report.append("\nProcessing Summary:")
         for facility_name, history in processing_history.items():
             report.append(f"\n{facility_name}:")
@@ -100,7 +110,8 @@ class MetricsAnalyzer:
                     f"- Current demand satisfaction rate: {satisfaction_rate:.1f}%"
                 )
 
-        # System Efficiency Metrics
+    def _add_efficiency_metrics(self, report: list) -> None:
+        """Add efficiency metrics to the report"""
         report.append("\nSystem Efficiency Metrics:")
         report.append(
             f"- Overall collection rate: {self.efficiency_metrics['collection_rate']:.1f}%"
@@ -111,8 +122,6 @@ class MetricsAnalyzer:
         report.append(
             f"- System-wide efficiency: {self.efficiency_metrics['overall_efficiency']:.1f}%"
         )
-
-        return "\n".join(report)
 
     def _sum_totals(self, history_dict: Dict[str, Any], key: str) -> float:
         """Helper function to sum totals across all entities with structure handling"""

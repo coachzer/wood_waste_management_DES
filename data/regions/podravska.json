@@ -5,7 +5,7 @@
             "waste_generation_rates": {
                 "sawdust": 11.0,
                 "wood_cuttings": 7.0,
-                "bark_waste": 19.0
+                "waste_wooden_packaging": 10.0
             },
             "generation_frequency": 24,
             "storage_capacity": 1100,
@@ -14,14 +14,14 @@
             "initial_stock": {
                 "sawdust": 20.0,
                 "wood_cuttings": 18.0,
-                "bark_waste": 12.0
+                "waste_wooden_packaging": 2.0
             }
         }
     ],
     "collectors": [
         {
             "id": "col_podravska_1",
-            "waste_types": ["sawdust", "wood_cuttings", "bark_waste"],
+            "waste_types": ["sawdust", "wood_cuttings", "waste_wooden_packaging"],
             "collection_capacity": 1800,
             "collection_frequency": 24,
             "transport_cost": 50.0,
@@ -33,8 +33,8 @@
     ],
     "processors": [
         {
-            "id": "proc_podravska_1",
-            "input_types": ["sawdust", "wood_cuttings"],
+            "id": "proc_podravska_wood",
+            "input_types": ["sawdust", "wood_cuttings", "waste_wooden_packaging"],
             "output_types": ["wooden_packaging"],
             "processing_capacity": 1400,
             "processing_time": 12,
@@ -43,6 +43,18 @@
             "environmental_impact": 1.0,
             "conversion_rate": 0.8,
             "operational_costs": 200.0
+        },
+        {
+            "id": "proc_podravska_furniture",
+            "input_types": ["wood_cuttings", "waste_wooden_packaging"],
+            "output_types": ["wooden_furniture"],
+            "processing_capacity": 800,
+            "processing_time": 12,
+            "storage_capacity": 1400,
+            "energy_consumption": 80.0,
+            "environmental_impact": 1.0,
+            "conversion_rate": 0.85,
+            "operational_costs": 160.0
         }
     ]
 }

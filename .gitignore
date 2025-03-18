@@ -47,3 +47,13 @@ pytestcache/
 *.DS_Store
 *.pyo
 *.pyd
+
+# Plots
+plots/
+*.png
+*.jpg
+*.jpeg
+*.html
+
+# GEOJSON files
+*.geojson

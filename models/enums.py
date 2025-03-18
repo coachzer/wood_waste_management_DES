@@ -29,8 +29,9 @@ class WasteType(Enum):
     MIXED_WOOD = "mixed_wood"           # 20 01 38
     WASTE_WOODEN_PACKAGING = "waste_wooden_packaging"  # 15 01 03 (input)
     WASTE_PAPER_PACKAGING = "waste_paper_packaging"   # 15 01 01 (input)
-    
-    # Output product types
+
+class OutputType(Enum):
+    """Types of output products produced by the system."""
     WOODEN_PACKAGING = "wooden_packaging"    # 15 01 03 (output)
     PAPER_PACKAGING = "paper_packaging"      # 15 01 01 (output)
     WOODEN_FURNITURE = "wooden_furniture"    # 20 03 07 (output)

@@ -6,7 +6,7 @@
                 "bark_waste": 7.0,
                 "sawdust": 11.0,
                 "wood_cuttings": 10.0,
-                "construction_wood": 25.0,
+                "construction_wood": 15.0,
                 "mixed_wood": 6.0
             },
             "generation_frequency": 24,
@@ -25,7 +25,7 @@
     "collectors": [
         {
             "id": "col_koroska_1",
-            "waste_types": ["bark_waste", "sawdust", "wood_cuttings", "construction_wood", "mixed_wood"],
+            "waste_types": ["bark_waste", "sawdust", "wood_cuttings", "construction_wood", "mixed_wood", "waste_wooden_packaging", "waste_paper_packaging"],
             "collection_capacity": 1400,
             "collection_frequency": 24,
             "transport_cost": 50.0,
@@ -50,7 +50,7 @@
         },
         {
             "id": "proc_koroska_paper",
-            "input_types": ["bark_waste", "mixed_wood"],
+            "input_types": ["bark_waste", "mixed_wood", "waste_paper_packaging"],
             "output_types": ["paper_packaging"],
             "processing_capacity": 800,
             "processing_time": 12,
@@ -59,6 +59,18 @@
             "environmental_impact": 1.0,
             "conversion_rate": 0.7,
             "operational_costs": 180.0
+        },
+        {
+            "id": "proc_koroska_furniture",
+            "input_types": ["construction_wood", "wood_cuttings", "waste_wooden_packaging"],
+            "output_types": ["wooden_furniture"],
+            "processing_capacity": 900,
+            "processing_time": 12,
+            "storage_capacity": 1400,
+            "energy_consumption": 80.0,
+            "environmental_impact": 1.0,
+            "conversion_rate": 0.85,
+            "operational_costs": 160.0
         }
     ]
 }

@@ -64,25 +64,31 @@ class WasteMonitor:
         )
 
         # Efficiency metrics
-        EfficiencyPlotter.plot_collection_efficiency(
+        efficiency_plotter = EfficiencyPlotter()
+        efficiency_plotter.plot_collection_efficiency(
             collection_history,
             "plots/collector_metrics.png",
         )
 
-        EfficiencyPlotter.plot_treatment_metrics(
+        efficiency_plotter.plot_treatment_metrics(
             processing_history,
             "plots/treatment_metrics.png",
         )
 
         # Product analysis plots
-        EfficiencyPlotter.plot_demand_metrics(
+        efficiency_plotter.plot_demand_metrics(
             processing_history,
             "plots/demand_metrics.png",
         )
 
-        EfficiencyPlotter.plot_product_mix(
+        efficiency_plotter.plot_waste_mix(
             processing_history,
-            "plots/product_mix.png",
+            "plots/waste_mix.png",
+        )
+
+        efficiency_plotter.plot_accumulated_products(
+            processing_history,
+            "plots/accumulated_products.png",
         )
 
         # Create material flow analysis plot

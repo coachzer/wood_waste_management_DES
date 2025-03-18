@@ -1,6 +1,6 @@
 import plotly.graph_objects as go
-from typing import Dict
-from models.enums import WasteType
+from typing import Dict, List, Tuple
+from models.enums import OutputType, WasteType
 from models.state import SimulationState
 
 def _calculate_volumes(
@@ -43,13 +43,7 @@ def _calculate_volumes(
             if volumes:
                 product_by_type[product_type].append(volumes[-1])
 
-    # Aggregate product volumes by type
-    processed_volumes = {
-        product_type: sum(volumes)
-        for product_type, volumes in product_by_type.items()
-    }
-
-    return generator_volumes, collector_volumes, treatment_volumes, processed_volumes
+    return generator_volumes, collector_volumes, treatment_volumes
 
 def _get_demand_volumes():
     """Get demand volumes from demand.json."""
@@ -58,7 +52,7 @@ def _get_demand_volumes():
     with open('data/demand.json', 'r') as f:
         demand_data = json.load(f)
     
-    target_products = [WasteType.WOODEN_PACKAGING, WasteType.PAPER_PACKAGING, WasteType.WOODEN_FURNITURE]
+    target_products = [OutputType.WOODEN_PACKAGING, OutputType.PAPER_PACKAGING, OutputType.WOODEN_FURNITURE]
     demand_volumes = {}
     for product in target_products:
         key = product.value.lower()
@@ -72,7 +66,6 @@ def _create_nodes(
     collector_volumes: Dict,
     treatment_volumes: Dict,
     demand_volumes: Dict,
-    processed_volumes: Dict,
     volume_threshold: float
 ):
     """Create nodes for the Sankey diagram."""
@@ -122,7 +115,7 @@ def _create_nodes(
     # Get current production from simulation state
     state = SimulationState.get_instance()
     demand_start_idx = len(labels)
-    target_products = [WasteType.WOODEN_PACKAGING, WasteType.PAPER_PACKAGING, WasteType.WOODEN_FURNITURE]
+    target_products = [OutputType.WOODEN_PACKAGING, OutputType.PAPER_PACKAGING, OutputType.WOODEN_FURNITURE]
     
     for product in target_products:
         target_volume = demand_volumes.get(product, 0)
@@ -151,86 +144,170 @@ def _create_nodes(
         sorted_treatments
     )
 
-def _create_flows(
+# Helper function to create flows from generators to collectors
+def _generator_to_collector_flows(
+    sorted_generators: Dict,
+    sorted_collectors: Dict,
+    generator_start_idx: int,
+    collector_start_idx: int,
+    volume_threshold: float
+) -> Tuple[List[int], List[int], List[float]]:
+    sources, targets, values = [], [], []
+    total_collected = sum(sorted_collectors.values())
+    if total_collected > 0:
+        for gen_idx, (gen, gen_vol) in enumerate(sorted_generators.items()):
+            for col_idx, (col, col_vol) in enumerate(sorted_collectors.items()):
+                allocation = (col_vol / total_collected) * gen_vol
+                if allocation >= volume_threshold:
+                    sources.append(generator_start_idx + gen_idx)
+                    targets.append(collector_start_idx + col_idx)
+                    values.append(allocation)
+    return sources, targets, values
+
+# Fallback: generator flows directly to treatment if no collectors exist.
+def _generator_to_treatment_flows(
+    sorted_generators: Dict,
+    sorted_treatments: Dict,
+    generator_start_idx: int,
+    treatment_start_idx: int,
+    volume_threshold: float
+) -> Tuple[List[int], List[int], List[float]]:
+    sources, targets, values = [], [], []
+    total_treated = sum(sorted_treatments.values())
+    if total_treated > 0:
+        for gen_idx, (gen, gen_vol) in enumerate(sorted_generators.items()):
+            for treat_idx, (treat, treat_vol) in enumerate(sorted_treatments.items()):
+                allocation = (treat_vol / total_treated) * gen_vol
+                if allocation >= volume_threshold:
+                    sources.append(generator_start_idx + gen_idx)
+                    targets.append(treatment_start_idx + treat_idx)
+                    values.append(allocation)
+    return sources, targets, values
+
+# Create flows from collectors to treatments
+def _collector_to_treatment_flows(
+    sorted_collectors: Dict,
+    sorted_treatments: Dict,
+    collector_start_idx: int,
+    treatment_start_idx: int,
+    volume_threshold: float
+) -> Tuple[List[int], List[int], List[float]]:
+    sources, targets, values = [], [], []
+    total_treated = sum(sorted_treatments.values())
+    if total_treated > 0:
+        for col_idx, (col, col_vol) in enumerate(sorted_collectors.items()):
+            for treat_idx, (treat, treat_vol) in enumerate(sorted_treatments.items()):
+                allocation = (treat_vol / total_treated) * col_vol
+                if allocation >= volume_threshold:
+                    sources.append(collector_start_idx + col_idx)
+                    targets.append(treatment_start_idx + treat_idx)
+                    values.append(allocation)
+    return sources, targets, values
+
+# Fallback: collectors send directly to demand if no treatments exist.
+def _collector_to_demand_flows(
+    sorted_collectors: Dict,
+    demand_volumes: Dict,
+    collector_start_idx: int,
+    demand_start_idx: int,
+    volume_threshold: float
+) -> Tuple[List[int], List[int], List[float]]:
+    sources, targets, values = [], [], []
+    total_demand = sum(demand_volumes.values())
+    for col_idx, (col, col_vol) in enumerate(sorted_collectors.items()):
+        for demand_idx, (product, demand_vol) in enumerate(demand_volumes.items()):
+            allocation = (demand_vol / total_demand) * col_vol
+            if allocation >= volume_threshold:
+                sources.append(collector_start_idx + col_idx)
+                targets.append(demand_start_idx + demand_idx)
+                values.append(allocation)
+    return sources, targets, values
+
+# Create flows from treatments to demand based on actual production
+def _treatment_to_demand_flows(
+    sorted_treatments: Dict,
+    demand_volumes: Dict,
+    treatment_start_idx: int,
+    demand_start_idx: int,
+    volume_threshold: float
+) -> Tuple[List[int], List[int], List[float]]:
+    sources, targets, values = [], [], []
+    # Get the singleton SimulationState instance (assumed defined elsewhere)
+    state = SimulationState.get_instance()
+    total_treatment_volume = sum(sorted_treatments.values())
+    if total_treatment_volume > 0:
+        for demand_idx, product in enumerate(demand_volumes.keys()):
+            product_type = product.value.lower()  # Assuming product has a value attribute
+            actual_production = state.total_products.get(product_type, 0)
+            if actual_production >= volume_threshold:
+                for treat_idx, (treat, treat_vol) in enumerate(sorted_treatments.items()):
+                    treatment_share = treat_vol / total_treatment_volume
+                    flow_value = actual_production * treatment_share
+                    if flow_value >= volume_threshold:
+                        sources.append(treatment_start_idx + treat_idx)
+                        targets.append(demand_start_idx + demand_idx)
+                        values.append(flow_value)
+    return sources, targets, values
+
+# Main function that assembles all flows
+def create_flows(
     sorted_generators: Dict,
     sorted_collectors: Dict,
     sorted_treatments: Dict,
-    processing_history: Dict,
     generator_start_idx: int,
     collector_start_idx: int,
     treatment_start_idx: int,
     demand_start_idx: int,
     demand_volumes: Dict,
     volume_threshold: float
-):
+) -> Tuple[List[int], List[int], List[float]]:
     """Create flows for the Sankey diagram while preserving volume proportions."""
-    source, target, value = [], [], []
-
-    # Generator to Collector flows - distribute proportionally based on collection history
-    total_collected = sum(sorted_collectors.values())
-
-    if total_collected > 0:
-        for gen_idx, (gen, gen_vol) in enumerate(sorted_generators.items()):
-            for col_idx, (col, col_vol) in enumerate(sorted_collectors.items()):
-                # Determine proportional allocation from generator to collector
-                allocation = (col_vol / total_collected) * gen_vol
-                if allocation >= volume_threshold:
-                    source.append(generator_start_idx + gen_idx)
-                    target.append(collector_start_idx + col_idx)
-                    value.append(allocation)
-    else:  # If no collectors, generators send directly to treatment
-        total_treated = sum(sorted_treatments.values())
-        if total_treated > 0:
-            for gen_idx, (gen, gen_vol) in enumerate(sorted_generators.items()):
-                for treat_idx, (treat, treat_vol) in enumerate(sorted_treatments.items()):
-                    allocation = (treat_vol / total_treated) * gen_vol
-                    if allocation >= volume_threshold:
-                        source.append(generator_start_idx + gen_idx)
-                        target.append(treatment_start_idx + treat_idx)
-                        value.append(allocation)
-
-    # Collector to Treatment flows - distribute proportionally based on processing history
-    total_treated = sum(sorted_treatments.values())
-
-    if total_treated > 0:
-        for col_idx, (col, col_vol) in enumerate(sorted_collectors.items()):
-            for treat_idx, (treat, treat_vol) in enumerate(sorted_treatments.items()):
-                allocation = (treat_vol / total_treated) * col_vol
-                if allocation >= volume_threshold:
-                    source.append(collector_start_idx + col_idx)
-                    target.append(treatment_start_idx + treat_idx)
-                    value.append(allocation)
-    else:  # If no treatments, collectors send directly to demand
-        for col_idx, (col, col_vol) in enumerate(sorted_collectors.items()):
-            for demand_idx, (product, demand_vol) in enumerate(demand_volumes.items()):
-                allocation = (demand_vol / sum(demand_volumes.values())) * col_vol
-                if allocation >= volume_threshold:
-                    source.append(collector_start_idx + col_idx)
-                    target.append(demand_start_idx + demand_idx)
-                    value.append(allocation)
-
-    # Treatment to Demand flows - use actual production from SimulationState
-    state = SimulationState.get_instance()
-    total_treatment_volume = sum(sorted_treatments.values())
+    src, tgt, val = [], [], []
     
-    if total_treatment_volume > 0:
-        for demand_idx, product in enumerate(demand_volumes.keys()):
-            product_type = product.value.lower()
-            actual_production = state.total_products.get(product_type, 0)
-            
-            if actual_production >= volume_threshold:
-                # Distribute the production across treatment facilities proportionally
-                for treat_idx, (treat, treat_vol) in enumerate(sorted_treatments.items()):
-                    # Calculate this treatment's contribution based on its share of total treatment
-                    treatment_share = treat_vol / total_treatment_volume
-                    flow_value = actual_production * treatment_share
-                    
-                    if flow_value >= volume_threshold:
-                        source.append(treatment_start_idx + treat_idx)
-                        target.append(demand_start_idx + demand_idx)
-                        value.append(flow_value)
-
-    return source, target, value
+    # Generator flows: use generator -> collector if collectors exist;
+    # otherwise, send generators directly to treatment.
+    total_collected = sum(sorted_collectors.values())
+    if total_collected > 0:
+        gen_src, gen_tgt, gen_val = _generator_to_collector_flows(
+            sorted_generators, sorted_collectors,
+            generator_start_idx, collector_start_idx, volume_threshold
+        )
+    else:
+        gen_src, gen_tgt, gen_val = _generator_to_treatment_flows(
+            sorted_generators, sorted_treatments,
+            generator_start_idx, treatment_start_idx, volume_threshold
+        )
+    src.extend(gen_src)
+    tgt.extend(gen_tgt)
+    val.extend(gen_val)
+    
+    # Collector flows: use collector -> treatment if treatments exist;
+    # otherwise, send collectors directly to demand.
+    total_treated = sum(sorted_treatments.values())
+    if total_treated > 0:
+        col_src, col_tgt, col_val = _collector_to_treatment_flows(
+            sorted_collectors, sorted_treatments,
+            collector_start_idx, treatment_start_idx, volume_threshold
+        )
+    else:
+        col_src, col_tgt, col_val = _collector_to_demand_flows(
+            sorted_collectors, demand_volumes,
+            collector_start_idx, demand_start_idx, volume_threshold
+        )
+    src.extend(col_src)
+    tgt.extend(col_tgt)
+    val.extend(col_val)
+    
+    # Treatment to demand flows based on actual production
+    treat_src, treat_tgt, treat_val = _treatment_to_demand_flows(
+        sorted_treatments, demand_volumes,
+        treatment_start_idx, demand_start_idx, volume_threshold
+    )
+    src.extend(treat_src)
+    tgt.extend(treat_tgt)
+    val.extend(treat_val)
+    
+    return src, tgt, val
 
 def create_material_flow_analysis(
     generation_history: Dict,
@@ -240,7 +317,7 @@ def create_material_flow_analysis(
 ):
     """Create a Sankey diagram visualization of material flows through the waste management system."""
     # Calculate volumes for each stage and processed volumes by type
-    generator_volumes, collector_volumes, treatment_volumes, processed_volumes = _calculate_volumes(
+    generator_volumes, collector_volumes, treatment_volumes = _calculate_volumes(
         generation_history, collection_history, processing_history
     )
     
@@ -264,16 +341,14 @@ def create_material_flow_analysis(
         collector_volumes,
         treatment_volumes,
         demand_volumes,
-        processed_volumes,  # Add processed volumes
         volume_threshold
     )
 
     # Create flows between stages
-    source, target, value = _create_flows(
+    source, target, value = create_flows(
         sorted_generators,
         sorted_collectors,
         sorted_treatments,
-        processing_history,
         generator_start_idx,
         collector_start_idx,
         treatment_start_idx,

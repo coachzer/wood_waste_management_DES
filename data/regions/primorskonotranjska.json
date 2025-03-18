@@ -4,10 +4,8 @@
             "id": "gen_primorskonotranjska_1",
             "waste_generation_rates": {
                 "bark_waste": 8.0,
-                "sawdust": 12.0,
-                "wood_cuttings": 11.0,
-                "construction_wood": 15.0,
-                "mixed_wood": 6.0
+                "mixed_wood": 6.0,
+                "waste_paper_packaging": 10.0
             },
             "generation_frequency": 24,
             "storage_capacity": 900,
@@ -15,17 +13,15 @@
             "environmental_impact": 1.0,
             "initial_stock": {
                 "bark_waste": 16.0,
-                "sawdust": 19.0,
-                "wood_cuttings": 17.0,
-                "construction_wood": 11.0,
-                "mixed_wood": 13.0
+                "mixed_wood": 13.0,
+                "waste_paper_packaging": 28.0
             }
         }
     ],
     "collectors": [
         {
             "id": "col_primorskonotranjska_1",
-            "waste_types": ["bark_waste", "sawdust", "wood_cuttings", "construction_wood", "mixed_wood"],
+            "waste_types": ["bark_waste", "mixed_wood", "waste_paper_packaging"],
             "collection_capacity": 1500,
             "collection_frequency": 24,
             "transport_cost": 50.0,
@@ -37,20 +33,8 @@
     ],
     "processors": [
         {
-            "id": "proc_primorskonotranjska_wood",
-            "input_types": ["sawdust", "wood_cuttings", "construction_wood"],
-            "output_types": ["wooden_packaging"],
-            "processing_capacity": 1100,
-            "processing_time": 12,
-            "storage_capacity": 1700,
-            "energy_consumption": 100.0,
-            "environmental_impact": 1.0,
-            "conversion_rate": 0.8,
-            "operational_costs": 200.0
-        },
-        {
             "id": "proc_primorskonotranjska_paper",
-            "input_types": ["bark_waste", "mixed_wood"],
+            "input_types": ["bark_waste", "mixed_wood", "waste_paper_packaging"],
             "output_types": ["paper_packaging"],
             "processing_capacity": 800,
             "processing_time": 12,

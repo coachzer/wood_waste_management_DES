@@ -1,7 +1,7 @@
-from typing import Tuple, List
+from typing import Dict, Tuple, List
 from simpy import Environment
 from models.facility_data import FacilityDataManager
-from models.enums import RegionType, WasteType
+from models.enums import RegionType, WasteType, OutputType
 from models.data_classes import WasteTransformation
 from core.generator import WasteGenerator
 from core.collector import CollectorCompany
@@ -106,11 +106,11 @@ class FacilityBuilder:
                 if output_type.lower() == waste_type.value.lower():
                     continue  # Skip if input and output are the same
 
-                output_waste_type = WasteType(output_type)
+                output_waste_type = OutputType(output_type)
                 key = (waste_type, output_waste_type)
 
                 # Apply special rules for furniture production
-                if output_waste_type == WasteType.WOODEN_FURNITURE:
+                if output_waste_type == OutputType.WOODEN_FURNITURE:
                     if not is_furniture_processor:
                         continue  # Skip if not a furniture processor
                     if waste_type not in furniture_materials:
@@ -177,9 +177,19 @@ class FacilityBuilder:
 def initialize_simulation_entities(
     env: Environment, 
     uncertainty_set: UncertaintySet = None,
-    data_collector: DataCollector = None
+    data_collector: DataCollector = None,
+    distribution_mode: str = "balanced",
+    priority_types: List[str] = None
 ) -> Tuple[List, List, List]:
-    """Initialize all simulation entities from facility data"""
+    """Initialize all simulation entities from facility data
+    
+    Args:
+        env: SimPy environment
+        uncertainty_set: Optional uncertainty parameters
+        data_collector: Optional data collector instance
+        distribution_mode: Type of distribution strategy ("balanced" or "priority")
+        priority_types: List of output types to prioritize when in priority mode
+    """
     # Load facility data
     facility_manager = FacilityDataManager()
     facility_manager.load_data()
@@ -192,40 +202,88 @@ def initialize_simulation_entities(
     builder = FacilityBuilder(env, facility_manager, data_collector, uncertainty_set)
     generators, collectors, processors = builder.build_all_facilities()
 
-    # Distribute demand among treatment operators
-    national_demand = facility_manager.demand
+    # Group processors by output type
     processor_by_output = {}
-    # First, group processors by output type
     for processor in processors:
         for transformation in processor.transformations.values():
             output_type_str = transformation.output_type.value
             if output_type_str not in processor_by_output:
                 processor_by_output[output_type_str] = []
             processor_by_output[output_type_str].append(processor)
+    
+    national_demand = facility_manager.demand
 
-    # Then distribute demand among processors that can produce each type
-    # Handle furniture demand first to ensure it gets priority
-    furniture_demand = national_demand.get('wooden_furniture', 0)
-    if furniture_demand > 0 and 'wooden_furniture' in processor_by_output:
-        furniture_processors = [p for p in processor_by_output['wooden_furniture'] 
-                              if 'furniture' in p.name.lower()]
-        if furniture_processors:
-            # Only distribute to dedicated furniture processors
-            demand_per_processor = furniture_demand / len(furniture_processors)
-            print(f"\nDistributing furniture demand {furniture_demand} among {len(furniture_processors)} processors")
-            for processor in furniture_processors:
-                processor.demand = demand_per_processor
-                print(f"Assigned {demand_per_processor:.2f} m³ furniture demand to {processor.name}")
-
-    # Then handle other product types
-    for product_type, total_demand in national_demand.items():
-        if product_type == 'wooden_furniture':  # Skip furniture as it's already handled
-            continue
-        if product_type in processor_by_output:
-            processors_for_type = processor_by_output[product_type]
-            # Distribute demand equally among processors that can produce this type
-            demand_per_processor = total_demand / len(processors_for_type)
-            for processor in processors_for_type:
-                processor.demand = demand_per_processor
+    if distribution_mode == "priority":
+        _distribute_with_priority(processor_by_output, national_demand, priority_types)
+    else:  # balanced mode
+        _distribute_balanced(processor_by_output, national_demand)
 
     return generators, collectors, processors
+
+def _distribute_with_priority(processor_by_output: Dict, national_demand: Dict, priority_types: List[str]) -> None:
+    """Distribute demand with priority given to specified types"""
+    if not priority_types:
+        priority_types = ['wooden_furniture']  # Default priority if none specified
+    
+    # Handle priority types first
+    for product_type in priority_types:
+        if product_type not in national_demand or product_type not in processor_by_output:
+            continue
+            
+        total_demand = national_demand[product_type]
+        processors = processor_by_output[product_type]
+        
+        # For furniture, only use dedicated processors
+        if product_type == 'wooden_furniture':
+            processors = [p for p in processors if 'furniture' in p.name.lower()]
+            
+        if not processors:
+            continue
+            
+        # Distribute demand among priority processors
+        demand_per_processor = total_demand / len(processors)
+        print(f"\nDistributing {product_type} demand {total_demand} among {len(processors)} processors (PRIORITY)")
+        for processor in processors:
+            processor.demand = demand_per_processor
+            print(f"Assigned {demand_per_processor:.2f} m³ {product_type} demand to {processor.name}")
+    
+    # Handle remaining types with lower priority
+    remaining_types = set(national_demand.keys()) - set(priority_types)
+    for product_type in remaining_types:
+        if product_type not in processor_by_output:
+            continue
+            
+        total_demand = national_demand[product_type]
+        processors = processor_by_output[product_type]
+        
+        if not processors:
+            continue
+            
+        # Distribute remaining demand
+        demand_per_processor = total_demand / len(processors)
+        print(f"\nDistributing {product_type} demand {total_demand} among {len(processors)} processors")
+        for processor in processors:
+            processor.demand = demand_per_processor
+            print(f"Assigned {demand_per_processor:.2f} m³ {product_type} demand to {processor.name}")
+
+def _distribute_balanced(processor_by_output: Dict, national_demand: Dict) -> None:
+    """Distribute demand evenly among all processors"""
+    for product_type, total_demand in national_demand.items():
+        if product_type not in processor_by_output:
+            continue
+            
+        processors = processor_by_output[product_type]
+        
+        # For furniture, only use dedicated processors
+        if product_type == 'wooden_furniture':
+            processors = [p for p in processors if 'furniture' in p.name.lower()]
+            
+        if not processors:
+            continue
+            
+        # Distribute demand equally
+        demand_per_processor = total_demand / len(processors)
+        print(f"\nDistributing {product_type} demand {total_demand} among {len(processors)} processors")
+        for processor in processors:
+            processor.demand = demand_per_processor
+            print(f"Assigned {demand_per_processor:.2f} m³ {product_type} demand to {processor.name}")

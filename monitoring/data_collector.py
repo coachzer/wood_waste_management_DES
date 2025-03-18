@@ -157,17 +157,28 @@ class DataCollector:
             history["operational"]["demand_satisfaction"].append(
                 total_processed >= treatment.demand if treatment.demand > 0 else 1.0
             )
-
-            # Product metrics
-            total_products = sum(treatment.product_volumes.values()) if hasattr(treatment, 'product_volumes') else 0
+            
+            if hasattr(treatment, 'product_volumes'):
+                total_products = sum(treatment.product_volumes.values())
+            else:
+                total_products = 0
+                
             history["products"]["total"].append(total_products)
             
-            # Track products by type
-            if hasattr(treatment, 'product_volumes'):
-                for product_type, volume in treatment.product_volumes.items():
+            # Track actually fulfilled production amounts
+            if hasattr(treatment, 'production_history'):
+                # Initialize history for each product type
+                current_totals = {'wooden_furniture': 0, 'wooden_packaging': 0, 'paper_packaging': 0}
+                # Sum up all production until this timestamp
+                for t, product_type, amount in treatment.production_history:
+                    if t <= timestamp:
+                        current_totals[product_type] += amount
+
+                # Store current totals in history
+                for product_type, total in current_totals.items():
                     if product_type not in history["products"]["by_type"]:
                         history["products"]["by_type"][product_type] = []
-                    history["products"]["by_type"][product_type].append(volume)
+                    history["products"]["by_type"][product_type].append(total)
             
             # Track product quality
             quality = treatment.product_quality if hasattr(treatment, 'product_quality') else 1.0

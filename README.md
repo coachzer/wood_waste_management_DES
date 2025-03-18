@@ -1,269 +1,274 @@
 # Discrete Event Wood Waste Management Simulation
 
-A Python-based simulation system for modeling and optimizing wood waste management operations. The system simulates waste generation, collection, and treatment processes while providing comprehensive monitoring and optimization capabilities.
+A Python-based simulation system for modeling and optimizing wood waste management operations, featuring stochastic optimization and monitoring capabilities.
 
 ## Project Structure
 
 ```
-├── core/               # Core simulation components
-│   ├── generator.py    # Waste generation simulation
-│   ├── collector.py    # Collection process simulation
-│   └── treatment.py    # Treatment facility simulation
-├── models/             # Data models and configurations
-│   ├── config.py       # System configuration
-│   ├── data_classes.py # Data structure definitions
-│   ├── enums.py       # Enumeration definitions
-│   └── state.py       # State management
-├── monitoring/         # Monitoring and visualization
-│   ├── monitor.py      # System monitoring
-│   └── mfa_visualization.py # Material flow analysis
-├── optimization/       # System optimization
-│   ├── objectives.py   # Optimization objectives
-│   ├── optimizer.py    # Main optimizer
-│   ├── stochastic.py   # Stochastic optimization
-│   └── strategies.py   # Optimization strategies
-└── utils/             # Utility functions
-    └── helpers.py     # Helper functions
+├── config/                 # Configuration modules
+│   ├── base_config.py     # Base simulation parameters
+│   ├── cost_config.py     # Cost-related configurations
+│   └── facility_config.py # Facility-specific settings
+├── core/                  # Core simulation components
+│   ├── collection_coordinator.py # Collection coordination
+│   ├── collector.py       # Waste collection simulation
+│   ├── collector_utils.py # Collection utilities
+│   ├── cost_tracker.py    # Cost tracking system
+│   ├── facility_builder.py # Facility initialization
+│   ├── generator.py       # Waste generation simulation
+│   ├── generator_utils.py # Generation utilities
+│   ├── overflow.py        # Overflow handling
+│   ├── simulation_manager.py # Core simulation orchestration
+│   ├── storage_manager.py # Storage management
+│   ├── treatment.py       # Treatment facility simulation
+│   └── treatment_utils.py # Treatment utilities
+├── data/                  # Data files
+│   ├── demand.json        # Demand specifications
+│   └── regions/           # Regional data
+├── models/                # Data models
+│   ├── data_classes.py    # Core data structures
+│   ├── distances.py       # Distance calculations
+│   ├── enums.py          # Enumeration definitions
+│   ├── facility_data.py   # Facility data management
+│   ├── regional_tracker.py # Regional statistics
+│   └── state.py          # System state management
+├── monitoring/            # Monitoring and visualization
+│   ├── data_collector.py  # Data collection
+│   ├── metrics_analyzer.py # Metrics analysis
+│   ├── mfa_visualization.py # Material flow analysis
+│   ├── monitor.py         # System monitoring
+│   ├── system_monitor.py  # Overall system monitoring
+│   └── visualizations/    # Visualization modules
+│       ├── efficiency_plots.py
+│       ├── production_plots.py
+│       ├── regional_waste_plots.py
+│       ├── storage_plots.py
+│       ├── system_plots.py
+│       └── waste_plots.py
+└── optimization/          # Optimization system
+    ├── entity_params.py   # Entity parameters
+    ├── objectives/        # Optimization objectives
+    │   ├── collection.py  # Collection optimization
+    │   ├── cost.py       # Cost optimization
+    │   ├── overflow.py    # Overflow prevention
+    │   ├── storage.py     # Storage optimization
+    │   └── treatment.py   # Treatment optimization
+    ├── uncertainty/       # Uncertainty handling
+    │   ├── base.py       # Base uncertainty
+    │   ├── optimization.py # Uncertainty optimization
+    │   └── scenarios.py   # Scenario generation
+    └── utils/             # Optimization utilities
+        └── simulation_tracker.py # Simulation tracking
 ```
+
+## Project Components
+
+### Entry Point (main.py)
+
+The main entry point of the simulation system, responsible for:
+
+- Initializing the simulation manager
+- Setting up baseline uncertainty parameters
+- Configuring optimization components
+- Running the simulation process
+- Generating visualizations
+
+### Core Components
+
+#### Simulation Manager
+
+The `SimulationManager` (core/simulation_manager.py) orchestrates the entire simulation:
+
+- Environment setup and initialization
+- Entity management (generators, collectors, operators)
+- Optimization process coordination
+- System state monitoring
+- Performance tracking and visualization
+- Results analysis and reporting
+
+## Dependencies
+
+Core dependencies:
+
+- simpy>=4.0.1 (Discrete Event Simulation)
+- matplotlib>=3.5.0 (Visualization)
+- seaborn>=0.11.2 (Enhanced visualizations)
+- pandas>=1.3.0 (Data handling)
+- numpy>=1.21.0 (Numerical operations)
 
 ## Installation & Setup
 
 1. Clone the repository
-2. Create a virtual environment (recommended):
-
+2. Create a virtual environment:
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-3. Install required dependencies:
-
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
 4. Configure the simulation:
-
-   - Adjust parameters in `models/config.py`
-   - Modify enumeration values in `models/enums.py`
-   - Update state definitions in `models/state.py`
+   - Adjust simulation parameters in `config/base_config.py`
+   - Set cost parameters in `config/cost_config.py`
+   - Configure facilities in `config/facility_config.py`
+   - Modify regional settings in `data/regions/`
 
 5. Run the simulation:
-
 ```bash
 python main.py
 ```
 
-The system will generate visualizations and metrics in the `plots/` directory.
+## Key Features
 
-## Features
+### Advanced Simulation System
 
-### Core Components
+- **Multi-Year Simulation**
+  - Dynamic parameter adjustment across years
+  - Automatic efficiency scaling
+  - Progressive demand adjustments
 
-- **Waste Generation**: Simulates multiple waste generators with:
-  - Configurable waste types (sawdust, wood cuttings, bark, etc.)
-  - Dynamic generation rates with seasonal factors and stochastic variations
-  - Advanced storage capacity management with dynamic adjustments
-  - Priority-based collection scheduling with automatic adjustment
-  - Multi-level state monitoring and operational control
-  - Regional waste distribution and prioritization
+- **Stochastic Optimization**
+  - Risk-aware objective evaluation
+  - Scenario-based optimization
+  - Robust decision making with uncertainty
 
-- **Waste Collection**: Models collection operations with:
-  - Multiple collection strategies:
-    - Collaborative Strategy: Collectors work together within assigned regions, coordinating with other available collectors to handle waste collection efficiently. When a collector operates collaboratively, it first allows other collectors to process waste, then handles any remaining volume itself. This approach optimizes resource utilization and ensures balanced workload distribution across the collection fleet.
-    - Competitive Strategy: Collectors operate independently, targeting high-priority generators first. Each collector dynamically adjusts its collection capacity based on efficiency ratings and modifies transport costs accordingly. This creates a performance-driven system where collectors compete for waste from prioritized generators while balancing operational costs.
-  - Regional-based collection routing with availability checking
-  - Transport cost optimization with efficiency modulation
-  - Collection efficiency tracking and performance monitoring
-  - Dynamic demand-based scheduling with storage level adjustments
-  - Storage-aware collection rate modification (80-120% base demand)
-  - Threshold-based collection triggers with regional prioritization
+- **Regional Management**
+  - Region-specific configurations
+  - Local demand handling
+  - Regional performance tracking
 
-- **Treatment Processing**: Simulates treatment facilities with:
-  - Waste-specific transformation processes with defined efficiencies:
-    - Sawdust → Mixed Wood (95% efficiency)
-    - Wood Cuttings → Mixed Wood (90% efficiency)
-    - Bark → Mixed Wood (85% efficiency)
-    - Cork → Mixed Wood (92% efficiency)
-    - Solid Wood → Mixed Wood (98% efficiency)
-    - Paper Packaging → Mixed Wood (80% efficiency)
-    - Wood Packaging → Mixed Wood (88% efficiency)
-  - Storage management with dynamic capacity
-  - Batch processing (40% of current storage per cycle)
-  - Real-time energy consumption tracking
-  - Quality-dependent conversion rates with stochastic variations
-  - Early warning system for overflow prevention
+### Simulation Components
 
-### System States & Behavior
+#### Waste Generation
 
-- **Storage States**:
-  - Normal Operation (30-85% utilization)
-    - Standard processing rates
-    - Balanced collection requests
-  - Near-Capacity Operations (>85%)
-    - Accelerated processing (30% faster)
-    - Reduced collection
-    - Capacity expansion triggered
-  - Under-Utilization Handling (<30%)
-    - Slowed processing (30% slower)
-    - Increased collection
-    - Capacity contraction considered
+- Multiple waste type support
+- Dynamic generation rates
+- Seasonal variations
+- Storage management
+- Priority-based scheduling
 
-- **Inventory States**:
-  - Optimal Zone (40-60% capacity)
-    - Standard operations
-    - Balanced collection/processing
-  - Buffer Zone (20-40% or 60-80% capacity)
-    - Adjusted operations
-    - Modified collection rates
-  - Critical Zone (<20% or >80% capacity)
-    - Emergency measures
-    - Extreme rate adjustments
+#### Collection System
 
-- **Treatment States**:
-  - High-Volume Processing (>80% capacity)
-    - Increased processing capacity
-    - Higher energy consumption
-  - Standard Processing (20-80% capacity)
-    - Normal operation mode
-    - Balanced energy usage
-  - Low-Volume Processing (<20% capacity)
-    - Reduced processing capacity
-    - Energy conservation
+- Multiple collection strategies:
+  - Collaborative: Region-based coordination
+  - Competitive: Priority-based independent operation
+- Dynamic routing
+- Cost optimization
+- Performance monitoring
+- Demand-based scheduling
 
-### Monitoring System
+#### Treatment Processing
 
-- **Real-time Tracking**:
-  - Generation rates and volumes
-  - Collection efficiency
+- **Waste-specific Transformations**
+  - Quality-dependent conversion rates
+  - Material quality assessment
+  - Furniture material grading
+  - Efficiency variations by type
+- **Process Management**
+  - Dynamic capacity adjustment
+  - Equipment failure handling
+  - Automated recovery procedures
+  - Batch optimization
+- **Resource Tracking**
+  - Energy consumption monitoring
+  - Processing cost calculation
+  - Utilization metrics
+  - Performance analysis
+- **Demand Fulfillment**
+  - Priority-based processing
+  - Quality-driven output
+  - Target tracking
+  - Efficiency optimization
+
+### Monitoring & Visualization
+
+- **Real-time Monitoring**
+  - Generation Metrics:
+    - Volume by waste type
+    - Temporal patterns
+    - Regional distribution
+  - Collection Analysis:
+    - Transport efficiency
+    - Route optimization
+    - Vehicle utilization
+  - Cost Tracking:
+    - Processing costs
+    - Transportation costs
+    - Storage costs
+    - Landfill costs
+  - Performance Metrics:
+    - Storage utilization
+    - Processing efficiency
+    - Equipment reliability
+    - Environmental impact
+
+- **Visualization Types**
+  - Efficiency analysis
+  - Production tracking
+  - Regional waste distribution
   - Storage utilization
-  - Processing performance
-  - Environmental impact metrics
+  - System performance
+  - Material flow analysis
 
-- **Visualization**:
-  - Material Flow Analysis (MFA)
-  - Generation trends and patterns
-  - Collection efficiency metrics
-  - Storage level analysis
-  - System performance indicators
-  - Treatment process monitoring
-  - Optimization progress tracking
+### Optimization Framework
 
-### Available Visualizations
+- **Multi-objective Optimization**
+  - Storage Utilization: Optimizes storage capacity usage across facilities
+  - Collection Efficiency: Maximizes waste collection performance and routing
+  - Treatment Efficiency: Optimizes processing rates and resource utilization
+  - Cost Optimization: Minimizes operational costs while maintaining performance
+  - Overflow Prevention: Penalizes and prevents storage capacity violations
+  - Environmental Impact: Tracks and reduces environmental footprint
 
-The system generates comprehensive visualizations in the `plots/` directory:
+- **Risk-Aware Decision Making**
+  - Scenario Generation: Creates diverse operational scenarios
+  - Uncertainty Handling: Manages variability in:
+    - Waste generation rates
+    - Collection times
+    - Treatment efficiency
+    - Equipment reliability
+  - Risk Measures: Calculates:
+    - Value at Risk (VaR)
+    - Operation confidence levels
+    - Reliability metrics
+  - Robustness Analysis: Ensures solutions perform well across scenarios
 
-- **Generation Analysis**:
-  - Generation trends over time
-  - Time-specific snapshots (t100, t500)
-  - Generator performance metrics
+- **Performance Tracking**
+  - Metrics:
+    - Processing scores
+    - Storage utilization
+    - Energy efficiency
+    - Environmental impact
+    - Cost breakdown
+  - Historical Analysis:
+    - Trend analysis
+    - Performance patterns
+    - Efficiency evolution
+  - Real-time Monitoring:
+    - Current state evaluation
+    - Risk level assessment
+    - Optimization progress
 
-- **Collection Analysis**:
-  - Collection efficiency metrics
-  - Time-based collection analysis
-  - Collector performance indicators
+## Simulation States
 
-- **Storage Analysis**:
-  - Detailed storage utilization
-  - Time-specific storage states
-  - Storage efficiency metrics
+### Storage Management
 
-- **Treatment Analysis**:
-  - Processing volume analysis
-  - Treatment metrics
-  - Detailed treatment monitoring
+- Normal: 30-85% utilization
+- Near-Capacity: >85% utilization
+- Under-Utilization: <30% utilization
 
-- **System Analysis**:
-  - Material Flow Analysis (MFA)
-  - System efficiency metrics
-  - Production analysis
-  - Cumulative performance tracking
+### Processing States
 
-### Optimization System
+- High-Volume: >80% capacity
+- Standard: 20-80% capacity
+- Low-Volume: <20% capacity
 
-The optimization module (`optimization/`) provides comprehensive system optimization:
+### Results & Analysis
 
-- **Optimization Objectives** (`objectives.py`):
-  - Storage utilization optimization
-  - Collection route optimization
-  - Treatment process optimization
-  - Environmental impact minimization
-  - Energy consumption reduction
-  - Resource utilization maximization
+The simulation generates comprehensive results in:
 
-- **Optimization Strategies** (`strategies.py`):
-  - Multi-objective optimization
-  - Stochastic optimization approaches
-  - Constraint-based optimization
-  - Dynamic parameter adjustment
-  - Adaptive strategy selection
-
-- **Optimization History** (`optimization_history.py`):
-  - Progress tracking
-  - Performance metrics logging
-  - Improvement visualization
-  - Strategy effectiveness analysis
-
-- **Visualization** (`visualization.py`):
-  - Optimization progress plots
-  - Performance comparison charts
-  - Strategy effectiveness visualization
-  - Parameter sensitivity analysis
-
-## Documentation
-
-Detailed documentation is available in the `docs/` directory:
-
-### Behavior Model (`docs/behavior_model.md`)
-
-Comprehensive documentation of system states, transitions, and behaviors:
-
-- Storage behavior models and capacity management
-- Treatment process models and efficiency optimization
-- Inventory management strategies
-- Production control mechanisms
-- Operating modes and state transitions
-- System adaptation and learning capabilities
-
-### Configuration
-
-The system can be configured through:
-
-1. **Base Configuration** (`models/config.py`):
-   - Generator parameters
-   - Collection settings
-   - Treatment facility specifications
-   - Monitoring intervals
-   - Visualization preferences
-
-2. **State Definitions** (`models/state.py`):
-   - System state specifications
-   - Transition rules
-   - State-dependent behaviors
-   - Performance thresholds
-
-3. **Data Structures** (`models/data_classes.py`):
-   - Core data models
-   - Performance metrics
-   - System statistics
-   - Event definitions
-
-## Performance Metrics
-
-The system tracks and analyzes:
-
-1. **Storage Efficiency**:
-   - Utilization rates
-   - Capacity adjustments
-   - Overflow prevention
-
-2. **Treatment Efficiency**:
-   - Conversion rates
-   - Energy consumption
-   - Processing times
-
-3. **System Performance**:
-   - Demand satisfaction
-   - Collection efficiency
-   - Environmental impact
-   - Resource utilization
+- `plots/`: Visualization outputs
+- `results/`: Simulation history and metrics

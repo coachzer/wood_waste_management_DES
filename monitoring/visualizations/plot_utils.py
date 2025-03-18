@@ -1,5 +1,5 @@
 import os
-from typing import List, Optional
+from typing import List, Optional, Dict
 from matplotlib import pyplot as plt
 
 # Constants for plot styling
@@ -161,6 +161,98 @@ def create_grouped_plot(
             ax, data_dict, grouped_entities, metric_key, group_threshold
         )
 
+
+def calculate_moving_average(data: List[float], window: int = 5) -> List[float]:
+    """Calculate moving average of a time series.
+    
+    Args:
+        data: List of values to calculate moving average for
+        window: Window size for the moving average calculation
+        
+    Returns:
+        List of moving average values
+    """
+    return [
+        sum(data[max(0, i - window) : min(len(data), i + window + 1)])
+        / (min(len(data), i + window + 1) - max(0, i - window))
+        for i in range(len(data))
+    ]
+
+def add_moving_average_plot(
+    ax: plt.Axes,
+    timestamps: List[float],
+    data: List[float],
+    label: str,
+    color: str,
+    window: int = 5,
+    alpha: float = 0.2
+) -> None:
+    """Add raw data and moving average plots to axes.
+    
+    Args:
+        ax: Matplotlib axes to plot on
+        timestamps: List of timestamp values
+        data: List of data values
+        label: Label for the plot legend
+        color: Color for the plot lines
+        window: Window size for moving average calculation
+        alpha: Alpha value for raw data plot
+    """
+    # Plot raw data
+    ax.plot(
+        timestamps,
+        data,
+        alpha=alpha,
+        color=color,
+        label=f"{label} (Raw)",
+    )
+    
+    # Calculate and plot moving average
+    ma = calculate_moving_average(data, window)
+    ax.plot(
+        timestamps,
+        ma,
+        color=color,
+        linewidth=2,
+        label=f"{label} (MA)"
+    )
+
+def plot_multi_series(
+    ax: plt.Axes,
+    timestamps: List[float],
+    series_data: Dict[str, List[float]],
+    colors: Dict[str, str],
+    title: str,
+    ylabel: str,
+    window: int = 5,
+    alpha: float = 0.2
+) -> None:
+    """Plot multiple time series with moving averages.
+    
+    Args:
+        ax: Matplotlib axes to plot on
+        timestamps: List of timestamp values
+        series_data: Dictionary mapping series names to data values
+        colors: Dictionary mapping series names to colors
+        title: Title for the plot
+        ylabel: Label for y-axis
+        window: Window size for moving average calculation
+        alpha: Alpha value for raw data plots
+    """
+    for name, data in series_data.items():
+        add_moving_average_plot(
+            ax=ax,
+            timestamps=timestamps,
+            data=data,
+            label=name,
+            color=colors[name],
+            window=window,
+            alpha=alpha
+        )
+    
+    setup_axis_labels(ax, title, ylabel=ylabel)
+    ax.legend()
+    ax.grid(True, linestyle="--", alpha=GRID_ALPHA)
 
 def _plot_grouped_entities(
     ax: plt.Axes,

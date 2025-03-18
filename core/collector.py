@@ -1,11 +1,23 @@
 from models.enums import WasteType, RegionType, EntityStatus
 from models.state import SimulationState
 from models.data_classes import Vehicle, CollectionCenter, OperationalEntity
-from models.distances import REGION_COORDINATES, get_distance
+from models.distances import REGION_COORDINATES
 import numpy as np
-from typing import List, Optional, Tuple
+from typing import Optional
 from core.overflow import OverflowTracker
 from optimization.stochastic import UncertaintySet
+from core.collector_utils import (
+    calculate_transport_route,
+    get_available_vehicle,
+    handle_completed_transport,
+    check_completed_transports,
+    handle_transport_delays,
+    handle_collector_capacity,
+    collect_from_single_generator,
+    get_prioritized_generators,
+    handle_competitive_collection,
+    handle_collaborative_collection,
+)
 
 class CollectorCompany(OperationalEntity):
     """A company that collects waste from generators"""
@@ -78,22 +90,6 @@ class CollectorCompany(OperationalEntity):
         self.process = env.process(self.collect_waste())
         self.transport_process = env.process(self.manage_transport())
 
-    def calculate_transport_route(
-        self, target_region: RegionType
-    ) -> Tuple[List[RegionType], float]:
-        """Calculate shortest path to target region and total distance"""
-        if self.region_type == target_region:
-            return [], 0.0
-
-        distance = get_distance(self.region_type, target_region)
-        return [target_region], distance
-
-    def get_available_vehicle(self) -> Optional[Vehicle]:
-        """Get first available vehicle"""
-        return next(
-            (v for v in self.vehicles if not v.in_transit and v.current_load == 0), None
-        )
-
     def schedule_transport(
         self, waste_type: WasteType, volume: float, target_region: RegionType
     ) -> bool:
@@ -104,12 +100,12 @@ class CollectorCompany(OperationalEntity):
             return False
 
         # Get route and distance
-        route, total_distance = self.calculate_transport_route(target_region)
+        route, total_distance = calculate_transport_route(self.region_type, target_region)
         if not route:
             return False
 
         # Find available vehicle
-        vehicle = self.get_available_vehicle()
+        vehicle = get_available_vehicle(self.vehicles)
         if not vehicle:
             print(f"{self.env.now}: No vehicles available for transport")
             return False
@@ -143,69 +139,6 @@ class CollectorCompany(OperationalEntity):
 
         return True
 
-    def _handle_completed_transport(self, transport, current_time):
-        """Process a completed transport"""
-        # Update target collection center
-        target_collector = next(
-            (
-                c
-                for c in SimulationState.get_instance().collectors
-                if c.region_type == transport["vehicle"].current_region
-            ),
-            None,
-        )
-        if target_collector:
-            # Track waste addition to destination region
-            SimulationState.get_instance().track_waste_generation(
-                target_collector.region,
-                transport["waste_type"],
-                transport["volume"],
-            )
-            target_collector.collection_center.current_storage[
-                transport["waste_type"]
-            ] += transport["volume"]
-            print(
-                f"{current_time}: Added {transport['volume']:.8f} m³ to "
-                f"{target_collector.name}'s collection center"
-            )
-
-    def _check_completed_transports(self, current_time):
-        """Identify completed transports and update vehicle status"""
-        completed = []
-        for transport in self.active_transports:
-            if current_time >= transport["arrival_time"]:
-                vehicle = transport["vehicle"]
-                # Update vehicle status
-                vehicle.in_transit = False
-                vehicle.current_load = 0
-                vehicle.current_region = vehicle.destination
-                vehicle.destination = None
-                vehicle.estimated_arrival = None
-                completed.append(transport)
-                print(
-                    f"{current_time}: Transport completed - Vehicle {vehicle.id} "
-                    f"arrived at {vehicle.current_region.value}"
-                )
-        return completed
-
-    def _handle_transport_delays(self, current_time):
-        """Process potential delays for active transports"""
-        for transport in self.active_transports:
-            if (
-                not transport["vehicle"].in_transit
-                or current_time < transport["arrival_time"]
-            ):
-                continue
-
-            # Simulate potential transport issues
-            if self.rng.random() < 0.05:  # 5% chance of delay
-                delay_hours = self.rng.uniform(1, 4)
-                transport["arrival_time"] += delay_hours
-                print(
-                    f"{current_time}: Transport delayed - Vehicle {transport['vehicle'].id} "
-                    f"new ETA: +{delay_hours:.1f} hours"
-                )
-
     def manage_transport(self):
         """Process to manage ongoing transports"""
         while True:
@@ -213,14 +146,14 @@ class CollectorCompany(OperationalEntity):
 
             try:
                 # Check completed transports
-                completed = self._check_completed_transports(current_time)
+                completed = check_completed_transports(self.active_transports, current_time)
                 
                 # Handle potential vehicle delays
-                self._handle_transport_delays(current_time)
+                handle_transport_delays(self.active_transports, current_time, self.rng)
 
                 # Process completed transports and update collection centers
                 for transport in completed:
-                    self._handle_completed_transport(transport, current_time)
+                    handle_completed_transport(transport, current_time)
                     self.active_transports.remove(transport)
 
             except Exception as e:
@@ -271,109 +204,10 @@ class CollectorCompany(OperationalEntity):
                 remaining_capacity -= collectable_amount
                 total_collected += collectable_amount
 
-                # print(
-                #     f"{self.env.now}: {self.name} collected {collectable_amount:.8f} m³ of {waste_type.value} from {generator.name}"
-                # )
-
         if total_collected > 0:
             generator.mark_collected()
             return self.transport_cost + (0.1 * total_collected)
         return 0
-
-    def _process_collection(
-        self,
-        collector,
-        waste_type,
-        waste_stream,
-        remaining_volume,
-        remaining_capacity,
-        generator,
-        is_collaborative=False,
-    ):
-        """Helper method to process waste collection for a collector"""
-        if remaining_volume <= 0 or remaining_capacity[collector.name] <= 0:
-            return remaining_volume
-
-        collectable_amount = min(remaining_volume, remaining_capacity[collector.name])
-
-        if collectable_amount > 0:
-            # Update generator
-            waste_stream.volume -= collectable_amount
-            generator.current_storage -= collectable_amount
-
-            # Track waste removal from generator's region
-            SimulationState.get_instance().track_waste_collection(
-                generator.region, waste_type, collectable_amount
-            )
-
-            # Update collector
-            collector.collected_waste[waste_type] += collectable_amount
-            remaining_capacity[collector.name] -= collectable_amount
-
-            # Track waste addition to collector's region
-            SimulationState.get_instance().track_waste_generation(
-                collector.region, waste_type, collectable_amount
-            )
-
-            collection_type = (
-                "collaboratively collected"
-                if is_collaborative
-                else "collected remaining"
-            )
-            print(
-                f"{self.env.now}: {collector.name} {collection_type} {collectable_amount:.8f} m³ of {waste_type.value}"
-            )
-
-        return remaining_volume - collectable_amount
-
-    def transfer_waste_to_region(
-        self, waste_type: WasteType, volume: float, target_region: RegionType
-    ) -> bool:
-        """Transfer waste from this collector to another region"""
-        state = SimulationState.get_instance()
-        target_collectors = [
-            c
-            for c in state.collectors
-            if c.region_type == target_region and c.availability
-        ]
-
-        if not target_collectors:
-            print(
-                f"{self.env.now}: No available collectors in target region {target_region.value}"
-            )
-            return False
-
-        # Schedule the transport
-        if self.schedule_transport(waste_type, volume, target_region):
-            print(f"{self.env.now}: Waste transfer initiated to {target_region.value}")
-            return True
-        return False
-
-    def _handle_collector_capacity(self, waste_type, target_volume, waste_stream, 
-                                  collector, remaining_capacity, generator):
-        """Handle waste collection for a specific collector"""
-        if collector.region_type != self.region_type:
-            # If different region, schedule transport
-            if target_volume > 0:
-                success = self.transfer_waste_to_region(
-                    waste_type, target_volume, collector.region_type
-                )
-                if success:
-                    # Track waste removal from current region
-                    SimulationState.get_instance().track_waste_collection(
-                        self.region, waste_type, target_volume
-                    )
-        else:
-            # Same region, use normal collection process
-            self._process_collection(
-                collector,
-                waste_type,
-                waste_stream,
-                target_volume,
-                remaining_capacity,
-                generator,
-                True,
-            )
 
     def collect_with_collaboration(self, generator, other_collectors):
         """Collaborative collection handling multiple waste types"""
@@ -402,55 +236,10 @@ class CollectorCompany(OperationalEntity):
             for collector in available_collectors:
                 capacity_ratio = remaining_capacity[collector.name] / total_storage
                 target_volume = waste_stream.volume * capacity_ratio
-                self._handle_collector_capacity(
-                    waste_type, target_volume, waste_stream, 
-                    collector, remaining_capacity, generator
+                handle_collector_capacity(self,
+                    collector, waste_type, target_volume, waste_stream, 
+                    remaining_capacity, generator
                 )
-
-    def _collect_from_single_generator(
-        self, generator, required_amount, total_collected, collected_amounts
-    ):
-        """Collect waste from a single generator based on demand"""
-        active_streams = {
-            waste_type: stream
-            for waste_type, stream in generator.waste_streams.items()
-            if stream.volume > 0 and total_collected < required_amount
-        }
-
-        for waste_type, stream in active_streams.items():
-            collectable_amount = min(
-                stream.volume,
-                required_amount - total_collected,
-                self.collection_capacity * self.efficiency,
-            )
-
-            if collectable_amount > 0:
-                stream.volume -= collectable_amount
-                generator.current_storage -= collectable_amount
-
-                # Track waste removal from generator's region
-                SimulationState.get_instance().track_waste_collection(
-                    generator.region, waste_type, collectable_amount
-                )
-
-                # Track waste addition to collector's region
-                SimulationState.get_instance().track_waste_generation(
-                    self.region, waste_type, collectable_amount
-                )
-
-                # Update collection center storage
-                self.collection_center.current_storage[waste_type] += collectable_amount
-                collected_amounts[waste_type] += collectable_amount
-                total_collected += collectable_amount
-
-                print(
-                    f"{self.env.now}: {self.name} collected {collectable_amount:.8f} m³ of {waste_type.value} from {generator.name}"
-                )
-
-                # Immediately remove from collector storage since it's going to treatment
-                self.collection_center.current_storage[waste_type] -= collectable_amount
-
-        return total_collected
 
     def collect_waste_for_demand(self, required_amount):
         """Collect waste based on treatment plant demand with storage-based adjustments"""
@@ -477,11 +266,10 @@ class CollectorCompany(OperationalEntity):
         eligible_generators = [g for g, _ in generators_storage]
 
         for generator in eligible_generators:
-            total_collected = self._collect_from_single_generator(
-                generator, required_amount, total_collected, collected_amounts
+            total_collected = collect_from_single_generator(
+                self, generator, required_amount, total_collected, collected_amounts
             )
             if total_collected >= required_amount:
-                # print(f"{self.name} collected enough waste for demand")
                 break
 
         # Check for overflow (if the collector can't store all waste collected)
@@ -534,47 +322,6 @@ class CollectorCompany(OperationalEntity):
             if amount > 0
         }
 
-    def _get_prioritized_generators(self):
-        """Get generators sorted by priority and filtered by region"""
-        state = SimulationState.get_instance()
-        regional_generators = [
-            g
-            for g in state.generators
-            if g.current_storage > 0 and g.region_type == self.region_type
-        ]
-
-        if not regional_generators:
-            regional_generators = [g for g in state.generators if g.current_storage > 0]
-
-        regional_generators.sort(key=lambda x: x.priority_level, reverse=True)
-        return regional_generators
-
-    def _handle_competitive_collection(self, prioritized_generators):
-        """Handle competitive collection strategy"""
-        if prioritized_generators and self.availability:
-            return self.collect_from_generator(prioritized_generators[0])
-        return 0
-
-    def _handle_collaborative_collection(self, prioritized_generators):
-        """Handle collaborative collection strategy"""
-        if not self.availability:
-            return
-
-        state = SimulationState.get_instance()
-        other_collectors = [
-            c
-            for c in state.collectors
-            if c != self and c.availability and c.region_type == self.region_type
-        ]
-
-        total_collection_cost = 0
-        for generator in prioritized_generators:
-            if generator.current_storage <= 0:
-                continue
-            self.collect_with_collaboration(generator, other_collectors)
-            total_collection_cost += self.transport_cost
-        return total_collection_cost
-
     def collect_waste(self):
         """Periodically collect waste from generators based on strategy"""
         while True:
@@ -609,16 +356,16 @@ class CollectorCompany(OperationalEntity):
                 self.failure_time = None
                 self.recovery_time = None
 
-            prioritized_generators = self._get_prioritized_generators()
+            prioritized_generators = get_prioritized_generators()
 
             collection_cost = 0
             if self.strategy == "competitive":
-                collection_cost = self._handle_competitive_collection(
-                    prioritized_generators
+                collection_cost = handle_competitive_collection(
+                    self, prioritized_generators
                 )
             elif self.strategy == "collaborative":
-                collection_cost = self._handle_collaborative_collection(
-                    prioritized_generators
+                collection_cost = handle_collaborative_collection(
+                    self, prioritized_generators
                 )
 
             if collection_cost > 0:
