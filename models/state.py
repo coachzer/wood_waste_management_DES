@@ -110,3 +110,33 @@ class SimulationState:
             product: max(0, demand - self.total_products[product])
             for product, demand in self.target_demands.items()
         }
+        
+    def reset(self):
+        """Reset simulation state to initial values"""
+        # Reset waste tracker
+        self.waste_tracker = RegionalWasteTracker()
+        
+        # Reset component lists
+        self.generators = []
+        self.collectors = []
+        self.treatment_operators = []
+        
+        # Reset product tracking with values from demand.json
+        demand = _demand_data["national_demand"]
+        self.total_products = {
+            'wooden_packaging': 0,
+            'paper_packaging': 0,
+            'wooden_furniture': 0
+        }
+        self.target_demands = {
+            'wooden_packaging': demand["wooden_packaging"],
+            'paper_packaging': demand["paper_packaging"],
+            'wooden_furniture': demand["wooden_furniture"]
+        }
+        
+        # Reset demand met times
+        self.demand_met_times = {
+            'wooden_packaging': None,
+            'paper_packaging': None,
+            'wooden_furniture': None
+        }

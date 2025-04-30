@@ -1,6 +1,6 @@
-from typing import Dict, Any, Set, List
 import numpy as np
 import matplotlib.pyplot as plt
+from typing import Dict, Any, Set
 from models.enums import WasteType
 from ..visualizations.plot_utils import (
     VOLUME_LABEL,

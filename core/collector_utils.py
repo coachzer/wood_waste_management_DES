@@ -9,7 +9,7 @@ def calculate_transport_route(
 ) -> Tuple[List[RegionType], float]:
     """Calculate shortest path to target region and total distance"""
     if region_type == target_region:
-        return [], 0.0
+        return [target_region], 0.0
 
     distance = get_distance(region_type, target_region)
     return [target_region], distance
@@ -17,7 +17,7 @@ def calculate_transport_route(
 def get_available_vehicle(vehicles: List[Vehicle]) -> Optional[Vehicle]:
     """Get first available vehicle"""
     return next(
-        (v for v in vehicles if not v.in_transit and v.current_load == 0), None
+        (v for v in vehicles if not v.in_transit and v.current_load == 0 and v.destination is None), None
     )
 
 def handle_completed_transport(transport: Dict, current_time: float) -> None:
@@ -138,28 +138,43 @@ def handle_collector_capacity(
     generator,
 ) -> None:
     """Handle waste collection for a specific collector"""
+    if target_volume <= 0:
+        return
+
     if collector2.region_type != collector1.region_type:
         # If different region, schedule transport
-        if target_volume > 0:
-            success = collector1.transfer_waste_to_region(
-                waste_type, target_volume, collector2.region_type
-            )
-            if success:
-                # Track waste removal from current region
-                SimulationState.get_instance().track_waste_collection(
-                    collector1.region, waste_type, target_volume
-                )
-    else:
-        # Same region, use normal collection process
-        process_collection(
-            collector2,
-            waste_type,
-            waste_stream,
-            target_volume,
-            remaining_capacity,
-            generator,
-            True,
+        success = collector1.transfer_waste_to_region(
+            waste_type, target_volume, collector2.region_type
         )
+        if success:
+            # Track waste removal from current region
+            SimulationState.get_instance().track_waste_collection(
+                collector1.region, waste_type, target_volume
+            )
+    else:
+        # Same region, update collection center storage
+        collectable = min(target_volume, remaining_capacity[collector2.name])
+        if collectable > 0:
+            # Update generator
+            waste_stream.volume -= collectable
+            generator.current_storage -= collectable
+
+            # Update collector's storage
+            collector2.collection_center.current_storage[waste_type] += collectable
+            collector2.collected_waste[waste_type] += collectable
+            remaining_capacity[collector2.name] -= collectable
+
+            # Track waste movement
+            SimulationState.get_instance().track_waste_collection(
+                generator.region, waste_type, collectable
+            )
+            SimulationState.get_instance().track_waste_generation(
+                collector2.region, waste_type, collectable
+            )
+
+            print(
+                f"{collector2.env.now}: {collector2.name} collected {collectable:.8f} m³ of {waste_type.value}"
+            )
 
 def collect_from_single_generator(
     collector: OperationalEntity,

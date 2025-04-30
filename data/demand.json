@@ -8,5 +8,5 @@
         "unit": "month",
         "length": 1
     },
-    "note": "Volumes are in cubic meters per period. Demand represents the minimum required processed output across all regions combined. Updated to match waste codes 15 01 03 (wooden packaging) and 15 01 01 (paper packaging)."
+    "note": "Volumes are in cubic meters per period. Demand represents the minimum required processed output across all regions combined."
 }

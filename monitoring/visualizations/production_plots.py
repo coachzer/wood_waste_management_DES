@@ -1,7 +1,7 @@
-from typing import Dict, Any, List, Optional, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
-from models.enums import OutputType, WasteType
+from typing import Dict, Any, List
+from models.enums import OutputType
 from models.state import SimulationState
 from utils.helpers import load_json
 from ..visualizations.plot_utils import (
@@ -51,6 +51,37 @@ class ProductionPlotter(BasePlotter):
         self._format_production_plot(ax, timestamps, y_max, product_mapping, state, demand_data)
         self.save_figure(fig, save_path)
 
+    def _calculate_cumulative_production(
+        self,
+        timestamps: List[float],
+        state_key: str,
+        state: SimulationState,
+        demand_data: Dict[str, Any]
+    ) -> List[float]:
+        """Calculate cumulative production for a product type at each timestamp"""
+        result = []
+        demand_met_time = state.demand_met_times[state_key]
+        target_demand = demand_data['national_demand'][state_key]
+        final_production = state.total_products[state_key]
+        
+        for t in timestamps:
+            # If we've passed the demand met time, we know we reached the target
+            if demand_met_time is not None and t >= demand_met_time:
+                cumulative_production = target_demand
+            # Otherwise interpolate based on final production and demand met time
+            elif demand_met_time is not None:
+                # Linear interpolation up to demand met time
+                progress = min(t / demand_met_time, 1.0)
+                cumulative_production = target_demand * progress
+            else:
+                # Linear interpolation over entire simulation
+                progress = t / timestamps[-1]
+                cumulative_production = final_production * progress
+            
+            result.append(cumulative_production)
+        
+        return result
+
     def _plot_product_lines(
         self,
         ax: plt.Axes,
@@ -67,30 +98,8 @@ class ProductionPlotter(BasePlotter):
         
         # For each product type, calculate cumulative production at each timestamp
         for _, state_key in product_mapping.items():
-            product_histories[state_key] = []
-            cumulative_production = 0
-            
-            # Get the demand met time for this product
-            demand_met_time = state.demand_met_times[state_key]
-            target_demand = demand_data['national_demand'][state_key]
-            
-            for t in timestamps:
-                # If we've passed the demand met time, we know we reached the target
-                if demand_met_time is not None and t >= demand_met_time:
-                    cumulative_production = target_demand
-                # Otherwise interpolate based on final production and demand met time
-                else:
-                    final_production = state.total_products[state_key]
-                    if demand_met_time is not None:
-                        # Linear interpolation up to demand met time
-                        progress = min(t / demand_met_time, 1.0)
-                        cumulative_production = target_demand * progress
-                    else:
-                        # Linear interpolation over entire simulation
-                        progress = t / timestamps[-1]
-                        cumulative_production = final_production * progress
-                
-                product_histories[state_key].append(cumulative_production)
+            product_histories[state_key] = self._calculate_cumulative_production(
+                timestamps, state_key, state, demand_data)
                             
         for (product_type, state_key), color, style in zip(product_mapping.items(), colors, linestyles):
             target_demand = demand_data['national_demand'][state_key]

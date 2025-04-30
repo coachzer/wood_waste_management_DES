@@ -34,35 +34,46 @@ class UncertaintySet:
 
     def _validate_distribution_params(self):
         """Validate statistical distribution parameters"""
-        # Validate waste generation parameters
+        self._validate_waste_generation()
+        self._validate_collection_efficiency()
+        self._validate_treatment_conversion()
+        self._validate_transportation_time()
+        self._validate_market_demand()
+        
+    def _validate_waste_generation(self):
+        """Validate waste generation parameters"""
         for waste_type, (mean, std) in self.waste_generation.items():
             if mean <= 0:
                 raise ValueError(f"Mean waste generation for {waste_type} must be positive")
             if std < 0:
                 raise ValueError(f"Standard deviation for {waste_type} must be non-negative")
-
-        # Validate collection efficiency
+                
+    def _validate_collection_efficiency(self):
+        """Validate collection efficiency parameters"""
         mean, std = self.collection_efficiency
         if not 0 < mean <= 1:
             raise ValueError(f"Mean collection efficiency must be between 0 and 1, got {mean}")
         if std < 0:
             raise ValueError("Collection efficiency std dev must be non-negative")
-
-        # Validate treatment conversion rates
+            
+    def _validate_treatment_conversion(self):
+        """Validate treatment conversion parameters"""
         for waste_type, (mean, std) in self.treatment_conversion.items():
             if not 0 < mean <= 1:
                 raise ValueError(f"Mean conversion rate for {waste_type} must be between 0 and 1")
             if std < 0:
                 raise ValueError(f"Conversion rate std dev for {waste_type} must be non-negative")
-
-        # Validate transportation time
+                
+    def _validate_transportation_time(self):
+        """Validate transportation time parameters"""
         mean, std = self.transportation_time
         if mean <= 0:
-            raise ValueError(f"Mean transportation time must be positive")
+            raise ValueError("Mean transportation time must be positive")
         if std < 0:
             raise ValueError("Transportation time std dev must be non-negative")
-
-        # Validate market demand
+            
+    def _validate_market_demand(self):
+        """Validate market demand parameters"""
         for waste_type, (mean, std) in self.market_demand.items():
             if mean < 0:
                 raise ValueError(f"Mean market demand for {waste_type} must be non-negative")

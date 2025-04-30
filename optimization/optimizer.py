@@ -1,12 +1,10 @@
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 from dataclasses import dataclass
 from models.state import SimulationState
 from optimization.objectives import OptimizationObjective
 from optimization.optimization_history import OptimizationHistory
 from optimization.strategies import OptimizationStrategy, OptimizationAction
 from optimization.entity_params import (
-    CollectorParams,
-    TreatmentParams,
     get_param_name,
     validate_adjustment
 )

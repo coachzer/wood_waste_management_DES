@@ -57,3 +57,6 @@ plots/
 
 # GEOJSON files
 *.geojson
+
+# memory bank folder
+memory-bank/

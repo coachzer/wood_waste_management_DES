@@ -7,7 +7,6 @@ from optimization.uncertainty import (
     UncertaintySet,
     create_default_uncertainty_set,
     ScenarioGenerator,
-    ScenarioGenerationError,
     StochasticOptimizer
 )
 

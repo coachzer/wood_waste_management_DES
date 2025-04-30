@@ -50,6 +50,7 @@ class FacilityBuilder:
             region=region.value,
             uncertainty_set=self.uncertainty_set,
             initial_stock=initial_stock,
+            data_collector=self.data_collector,
         )
 
     def create_collector(self, col_data, region: RegionType) -> CollectorCompany:
@@ -66,10 +67,9 @@ class FacilityBuilder:
             uncertainty_set=self.uncertainty_set,
         )
 
-    def create_processor(self, proc_data, region: RegionType) -> TreatmentOperator:
-        """Create a TreatmentOperator from facility data"""
-        # Base transformation parameters - updated with furniture-specific efficiencies
-        base_transformations = {
+    def _get_base_transformations(self):
+        """Get base transformation parameters"""
+        return {
             # Primary materials (best for furniture)
             WasteType.CONSTRUCTION_WOOD: (0.98, 0.90),   # High quality, high energy
             WasteType.WOOD_CUTTINGS: (0.92, 0.85),       # Good quality, high energy
@@ -82,10 +82,39 @@ class FacilityBuilder:
             WasteType.WASTE_PAPER_PACKAGING: (0.82, 0.65),
         }
 
-        # Create WasteTransformation objects based on facility type and capabilities
+    def _adjust_furniture_efficiency(self, waste_type: WasteType, proc_data) -> float:
+        """Adjust efficiency for furniture production"""
+        efficiency = proc_data.conversion_rate
+        if waste_type == WasteType.CONSTRUCTION_WOOD:
+            return efficiency * 1.2
+        elif waste_type == WasteType.WOOD_CUTTINGS:
+            return efficiency * 1.1
+        return efficiency
+
+    def _should_process_furniture(self, is_furniture_processor, waste_type, furniture_materials, output_waste_type):
+        """Determine if we should process furniture based on processor type and waste type"""
+        if output_waste_type != OutputType.WOODEN_FURNITURE:
+            return True
+            
+        return is_furniture_processor and waste_type in furniture_materials
+
+    def _create_transformation(self, waste_type, output_waste_type, efficiency, energy, proc_data):
+        """Create a transformation object with appropriate efficiency"""
+        if output_waste_type == OutputType.WOODEN_FURNITURE:
+            efficiency = self._adjust_furniture_efficiency(waste_type, proc_data)
+            
+        return WasteTransformation(
+            input_type=waste_type,
+            output_type=output_waste_type,
+            conversion_efficiency=efficiency,
+            energy_required=energy,
+        )
+
+    def _build_transformations(self, proc_data):
+        """Build waste transformations for a processor"""
+        base_transformations = self._get_base_transformations()
         transformations = {}
         
-        # Check if this is a furniture-capable processor
         is_furniture_processor = "furniture" in proc_data.id.lower()
         furniture_materials = {
             WasteType.CONSTRUCTION_WOOD,
@@ -93,7 +122,6 @@ class FacilityBuilder:
             WasteType.WASTE_WOODEN_PACKAGING
         }
         
-        # Process each input type
         for input_type in proc_data.input_types:
             waste_type = WasteType(input_type)
             if waste_type not in base_transformations:
@@ -101,35 +129,26 @@ class FacilityBuilder:
 
             efficiency, energy = base_transformations[waste_type]
             
-            # For each configured output type
             for output_type in proc_data.output_types:
                 if output_type.lower() == waste_type.value.lower():
-                    continue  # Skip if input and output are the same
+                    continue
 
                 output_waste_type = OutputType(output_type)
                 key = (waste_type, output_waste_type)
 
-                # Apply special rules for furniture production
-                if output_waste_type == OutputType.WOODEN_FURNITURE:
-                    if not is_furniture_processor:
-                        continue  # Skip if not a furniture processor
-                    if waste_type not in furniture_materials:
-                        continue  # Skip if not suitable for furniture
-                    # Use processor's configured conversion rate for furniture
-                    efficiency = proc_data.conversion_rate
-                    if waste_type == WasteType.CONSTRUCTION_WOOD:
-                        efficiency *= 1.2  # Extra boost for best quality material
-                    elif waste_type == WasteType.WOOD_CUTTINGS:
-                        efficiency *= 1.1  # Medium boost for good quality material
-                    # waste_wooden_packaging uses base rate
+                if not self._should_process_furniture(is_furniture_processor, waste_type, 
+                                                    furniture_materials, output_waste_type):
+                    continue
 
-                # Create the transformation
-                transformations[key] = WasteTransformation(
-                    input_type=waste_type,
-                    output_type=output_waste_type,
-                    conversion_efficiency=efficiency,
-                    energy_required=energy,
+                transformations[key] = self._create_transformation(
+                    waste_type, output_waste_type, efficiency, energy, proc_data
                 )
+                
+        return transformations
+
+    def create_processor(self, proc_data, region: RegionType) -> TreatmentOperator:
+        """Create a TreatmentOperator from facility data"""
+        transformations = self._build_transformations(proc_data)
 
         return TreatmentOperator(
             env=self.env,
@@ -220,51 +239,43 @@ def initialize_simulation_entities(
 
     return generators, collectors, processors
 
+def _distribute_demand(product_type: str, total_demand: float, processors: List, is_priority: bool = False) -> None:
+    """Helper function to distribute demand among processors"""
+    if not processors:
+        return
+    
+    demand_per_processor = total_demand / len(processors)
+    priority_tag = "(PRIORITY)" if is_priority else ""
+    print(f"\nDistributing {product_type} demand {total_demand} among {len(processors)} processors {priority_tag}")
+    for processor in processors:
+        processor.demand = demand_per_processor
+        print(f"Assigned {demand_per_processor:.2f} m³ {product_type} demand to {processor.name}")
+
+def _get_valid_processors(product_type: str, processor_by_output: Dict) -> List:
+    """Helper function to get valid processors for a product type"""
+    processors = processor_by_output.get(product_type, [])
+    if product_type == 'wooden_furniture':
+        return [p for p in processors if 'furniture' in p.name.lower()]
+    return processors
+
 def _distribute_with_priority(processor_by_output: Dict, national_demand: Dict, priority_types: List[str]) -> None:
     """Distribute demand with priority given to specified types"""
     if not priority_types:
-        priority_types = ['wooden_furniture']  # Default priority if none specified
+        priority_types = ['wooden_furniture']
     
     # Handle priority types first
     for product_type in priority_types:
-        if product_type not in national_demand or product_type not in processor_by_output:
+        if product_type not in national_demand:
             continue
-            
-        total_demand = national_demand[product_type]
-        processors = processor_by_output[product_type]
         
-        # For furniture, only use dedicated processors
-        if product_type == 'wooden_furniture':
-            processors = [p for p in processors if 'furniture' in p.name.lower()]
-            
-        if not processors:
-            continue
-            
-        # Distribute demand among priority processors
-        demand_per_processor = total_demand / len(processors)
-        print(f"\nDistributing {product_type} demand {total_demand} among {len(processors)} processors (PRIORITY)")
-        for processor in processors:
-            processor.demand = demand_per_processor
-            print(f"Assigned {demand_per_processor:.2f} m³ {product_type} demand to {processor.name}")
+        processors = _get_valid_processors(product_type, processor_by_output)
+        _distribute_demand(product_type, national_demand[product_type], processors, True)
     
-    # Handle remaining types with lower priority
+    # Handle remaining types
     remaining_types = set(national_demand.keys()) - set(priority_types)
     for product_type in remaining_types:
-        if product_type not in processor_by_output:
-            continue
-            
-        total_demand = national_demand[product_type]
-        processors = processor_by_output[product_type]
-        
-        if not processors:
-            continue
-            
-        # Distribute remaining demand
-        demand_per_processor = total_demand / len(processors)
-        print(f"\nDistributing {product_type} demand {total_demand} among {len(processors)} processors")
-        for processor in processors:
-            processor.demand = demand_per_processor
-            print(f"Assigned {demand_per_processor:.2f} m³ {product_type} demand to {processor.name}")
+        processors = _get_valid_processors(product_type, processor_by_output)
+        _distribute_demand(product_type, national_demand[product_type], processors)
 
 def _distribute_balanced(processor_by_output: Dict, national_demand: Dict) -> None:
     """Distribute demand evenly among all processors"""

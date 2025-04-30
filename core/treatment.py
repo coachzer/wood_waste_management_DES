@@ -1,9 +1,9 @@
 import numpy as np
-from typing import Dict, Optional
+from typing import Dict, Iterable, Optional
 from models.data_classes import WasteTransformation, OperationalEntity
 from models.enums import OutputType, RegionType, WasteType, EntityStatus
 from models.state import SimulationState
-from optimization.stochastic import UncertaintySet
+from optimization.uncertainty import UncertaintySet
 from monitoring.data_collector import DataCollector
 from core.collection_coordinator import CollectionCoordinator
 from core.treatment_utils import (
@@ -16,6 +16,25 @@ from core.treatment_utils import (
     update_utilization_metrics,
     calculate_required_waste
 )
+
+class StorageDict(dict):
+    def __init__(self, owner, *args, **kwargs):
+        self.owner = owner
+        super().__init__(*args, **kwargs)
+
+    def __setitem__(self, key, value):
+        current_excluding = sum(self.values()) - self.get(key, 0)
+        allowed = max(0, self.owner.storage_capacity - current_excluding)
+        if value > allowed:
+            overflow_amount = value - allowed
+            self.owner.data_collector.track_overflow(
+                "treatment", 
+                overflow_amount,
+                "landfill",  # Default strategy for dictionary storage overflow
+                self.owner.env.now
+            )
+            value = allowed
+        super().__setitem__(key, value)
 
 class TreatmentOperator(OperationalEntity):
     """Treatment operator that processes waste into products"""
@@ -77,7 +96,7 @@ class TreatmentOperator(OperationalEntity):
         self.demand_history = []
         self.production_history = []
 
-        self.waste_storage = {waste_type: 0.0 for waste_type in WasteType}
+        self._waste_storage = StorageDict(self, {waste_type: 0.0 for waste_type in WasteType})
         self.processed_volumes = {waste_type: 0.0 for waste_type in WasteType}
         self.product_volumes = {
             "wooden_furniture": 0.0,
@@ -119,6 +138,90 @@ class TreatmentOperator(OperationalEntity):
             if self.storage_capacity > 0
             else 0.0
         )
+
+    @property
+    def waste_storage(self) -> Dict[WasteType, float]:
+        """Get the waste storage dictionary"""
+        return self._waste_storage
+
+    @waste_storage.setter
+    def waste_storage(self, new_storage: Dict[WasteType, float]):
+        """Set waste storage with capacity constraints"""
+        if not isinstance(new_storage, dict):
+            return
+        
+        if len(new_storage) == len(self._waste_storage):
+            self._handle_full_storage_update(new_storage)
+        else:
+            self._handle_partial_storage_update(new_storage)
+
+    def _handle_full_storage_update(self, new_storage: Dict[WasteType, float]) -> None:
+        """Update all storage values while respecting capacity constraints"""
+        total = sum(new_storage.values())
+        if total <= self.storage_capacity:
+            self._waste_storage = StorageDict(self, new_storage)
+            return
+        
+        scaling_factor = self.storage_capacity / total
+        updated_storage = {
+            waste_type: amount * scaling_factor
+            for waste_type, amount in new_storage.items()
+        }
+        overflow_amount = total - self.storage_capacity
+        self.data_collector.track_overflow(
+            "treatment",
+            overflow_amount,
+            "landfill",  # Use landfill for full storage update overflow
+            self.env.now
+        )
+        self._waste_storage = StorageDict(self, updated_storage)
+
+    def _handle_partial_storage_update(self, partial_update: Dict[WasteType, float]) -> None:
+        """Update specific storage values while respecting capacity constraints"""
+        current_total = self._calculate_current_total_excluding(partial_update.keys())
+        total_new = sum(partial_update.values())
+        updated_total = current_total + total_new
+        
+        if updated_total <= self.storage_capacity:
+            self._apply_partial_update_without_overflow(partial_update)
+            return
+        
+        available = self.storage_capacity - current_total
+        if available <= 0:
+            self.data_collector.track_overflow(
+                "treatment",
+                total_new,
+                "landfill",  # Use landfill when no storage is available
+                self.env.now
+            )
+            return
+        
+        self._apply_partial_update_with_scaling(partial_update, available / total_new)
+
+    def _calculate_current_total_excluding(self, waste_types_to_exclude: Iterable[WasteType]) -> float:
+        """Calculate current storage total excluding specified waste types"""
+        return sum(
+            amount for wtype, amount in self._waste_storage.items() 
+            if wtype not in waste_types_to_exclude
+        )
+
+    def _apply_partial_update_without_overflow(self, partial_update: Dict[WasteType, float]) -> None:
+        """Apply partial update when there's no capacity overflow"""
+        for waste_type, amount in partial_update.items():
+            self._waste_storage[waste_type] = amount
+
+    def _apply_partial_update_with_scaling(self, partial_update: Dict[WasteType, float], scaling_factor: float) -> None:
+        """Apply partial update with scaling to avoid overflow"""
+        for waste_type, amount in partial_update.items():
+            scaled_amount = amount * scaling_factor
+            self._waste_storage[waste_type] = scaled_amount
+            overflow_amount = amount - scaled_amount
+            self.data_collector.track_overflow(
+                "treatment",
+                overflow_amount,
+                "landfill",  # Use landfill for scaled overflow
+                self.env.now
+            )
 
     def run_collection(self):
         """Process to periodically trigger collection based on demand"""
@@ -251,7 +354,7 @@ class TreatmentOperator(OperationalEntity):
             amount_to_process = min(self.waste_storage[input_type], self.processing_capacity)
         
         # Get transformation efficiency with uncertainty
-        efficiency = get_transformation_efficiency(self, input_type, transformation)
+        efficiency = min(get_transformation_efficiency(self, input_type, transformation), 1.0)
         
         # Calculate output and handle capacity constraints
         amount_to_process, output_amount = calculate_output_amounts(
@@ -328,7 +431,12 @@ class TreatmentOperator(OperationalEntity):
             )
             # Track overflow through data collector
             overflow_amount = collection_result.total_collected - actually_stored
-            self.data_collector.track_overflow("treatment", overflow_amount)
+            self.data_collector.track_overflow(
+                "treatment",
+                overflow_amount,
+                "landfill",  # Use landfill for collection overflow
+                self.env.now
+            )
             
         return actually_stored, collection_result.total_collected
 
@@ -413,7 +521,12 @@ class TreatmentOperator(OperationalEntity):
             }
             # Track overflow through data collector
             overflow_amount = total_incoming - available_capacity
-            self.data_collector.track_overflow("treatment", overflow_amount)
+            self.data_collector.track_overflow(
+                "treatment",
+                overflow_amount,
+                "landfill",  # Use landfill for storage capacity overflow
+                self.env.now
+            )
 
         # Add waste to storage
         for waste_type, amount in waste_amounts.items():

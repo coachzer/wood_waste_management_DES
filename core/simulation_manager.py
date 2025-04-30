@@ -238,7 +238,7 @@ class SimulationManager:
         self._print_final_status()
         
         # Save simulation history
-        self.tracker.save_history("results/simulation_history.json")
+        # self.tracker.save_history("results/simulation_history.json")
 
     def _print_optimization_results(self, result):
         """Print detailed optimization results"""

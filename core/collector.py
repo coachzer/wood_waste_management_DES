@@ -4,8 +4,7 @@ from models.data_classes import Vehicle, CollectionCenter, OperationalEntity
 from models.distances import REGION_COORDINATES
 import numpy as np
 from typing import Optional
-from core.overflow import OverflowTracker
-from optimization.stochastic import UncertaintySet
+from optimization.uncertainty import UncertaintySet
 from core.collector_utils import (
     calculate_transport_route,
     get_available_vehicle,
@@ -74,9 +73,6 @@ class CollectorCompany(OperationalEntity):
             for i in range(num_vehicles)
         ]
 
-        # Initialize overflow tracker
-        self.overflow_tracker = OverflowTracker()
-
         # Track active transports
         self.active_transports = []
 
@@ -104,28 +100,29 @@ class CollectorCompany(OperationalEntity):
         if not route:
             return False
 
-        # Find available vehicle
+        # Find available vehicle and verify capacity
         vehicle = get_available_vehicle(self.vehicles)
-        if not vehicle:
-            print(f"{self.env.now}: No vehicles available for transport")
+        if not vehicle or volume > vehicle.capacity:
+            print(f"{self.env.now}: No suitable vehicles available for transport")
             return False
 
         # Calculate transport time (assume 60 km/h average speed)
         transport_time = total_distance / 60.0
 
-        # Update vehicle status
-        vehicle.in_transit = True
+        # Remove waste from collection center before updating vehicle
+        self.collection_center.current_storage[waste_type] -= volume
+
+        # First update the vehicle status
         vehicle.current_load = volume
         vehicle.destination = target_region
         vehicle.estimated_arrival = self.env.now + transport_time
+        # Mark as in_transit last to ensure atomic operation
+        vehicle.in_transit = True
 
-        # Track waste removal from current region before moving
+        # Track waste removal from current region
         SimulationState.get_instance().track_waste_collection(
             self.region, waste_type, volume
         )
-
-        # Remove waste from collection center
-        self.collection_center.current_storage[waste_type] -= volume
 
         # Add to active transports
         self.active_transports.append(
@@ -134,8 +131,11 @@ class CollectorCompany(OperationalEntity):
                 "waste_type": waste_type,
                 "volume": volume,
                 "arrival_time": vehicle.estimated_arrival,
+                "route": route
             }
         )
+
+        print(f"{self.env.now}: Scheduled transport of {volume:.2f} m³ {waste_type.value} from {self.region} to {target_region.value}")
 
         return True
 
@@ -287,19 +287,21 @@ class CollectorCompany(OperationalEntity):
             else:
                 severity = "warning"
 
-            # Landfill the excess waste and track it
+            # Print overflow message
             print(
-                f"{self.env.now}: Landfilling {overflow_volume:.8f} m³ of waste from {self.name}"
-            )
-            self.overflow_tracker.track_overflow(
-                facility_type="collector", volume=overflow_volume
+                f"{self.env.now}: {self.name} overflow detected: {overflow_volume:.8f} m³ ({severity})"
             )
 
-            # Calculate and apply penalty
-            penalty = self.overflow_tracker.calculate_penalty(
-                facility_type="collector", severity=severity, volume=overflow_volume
+            # Track overflow through data collector
+            print(
+                f"{self.env.now}: Overflow of {overflow_volume:.8f} m³ of waste from {self.name}"
             )
-            print(f"Overflow penalty applied to {self.name}: {penalty:.8f}")
+            self.data_collector.track_overflow(
+                "collector",
+                overflow_volume,
+                "landfill",  # Default to landfill for collection overflow
+                self.env.now
+            )
 
             # Reduce collected waste
             reduction_factor = (self.collection_capacity * self.efficiency) / sum(

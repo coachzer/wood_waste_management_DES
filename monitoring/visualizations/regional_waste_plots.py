@@ -116,7 +116,6 @@ def plot_waste_type_composition(region: RegionType):
 
     return fig
 
-
 def plot_products_overview():
     """Create an overview of current products vs targets"""
     state = SimulationState.get_instance()
@@ -186,7 +185,6 @@ def plot_waste_type_trends():
     )
 
     return fig
-
 
 def generate_waste_analysis_report(output_dir: str = "plots"):
     """Generate a comprehensive waste analysis report with multiple visualizations"""

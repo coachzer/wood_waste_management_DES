@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, Tuple, Optional
 from .enums import WasteType, RegionType, EntityStatus
 import random
@@ -71,10 +71,6 @@ class WasteStream:
 
     waste_type: WasteType
     volume: float
-
-    @property
-    def mass(self) -> float:
-        return self.volume * self.density
 
 
 @dataclass

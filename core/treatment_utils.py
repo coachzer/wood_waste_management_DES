@@ -35,7 +35,13 @@ def calculate_output_amounts(treatment_operator, amount_to_process, efficiency):
         output_amount = available_capacity
         # Track overflow through data collector
         overflow_amount = potential_output - available_capacity
-        treatment_operator.data_collector.track_overflow("treatment", overflow_amount)
+        treatment_operator.data_collector.track_overflow(
+            "treatment",
+            overflow_amount,
+            "landfill",  # Use landfill for full storage update overflow
+            treatment_operator.env.now
+        )
+
     else:
         output_amount = potential_output
         

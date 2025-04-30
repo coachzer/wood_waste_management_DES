@@ -2,8 +2,7 @@ import numpy as np
 from typing import Dict, Optional
 from models.enums import WasteType, RegionType, EntityStatus
 from models.data_classes import WasteStream, OperationalEntity
-from optimization.stochastic import UncertaintySet
-from core.overflow import OverflowTracker
+from optimization.uncertainty import UncertaintySet
 from core.generator_utils import (
     handle_overflow,
     generate_waste_for_period,
@@ -22,6 +21,7 @@ class WasteGenerator(OperationalEntity):
         region: str,
         uncertainty_set: Optional[UncertaintySet] = None,
         initial_stock: Optional[Dict[WasteType, float]] = None,
+        data_collector = None,
     ):
         super().__init__()
         self.env = env
@@ -56,8 +56,9 @@ class WasteGenerator(OperationalEntity):
         # Convert region string to enum, replacing hyphen with underscore for lookup
         self.region_type = RegionType[region.upper().replace('-', '_')] if region else None
 
-        # Initialize overflow tracker
-        self.overflow_tracker = OverflowTracker()
+        self.data_collector = data_collector
+        if data_collector is None:
+            raise ValueError("data_collector is required for WasteGenerator")
 
         # Track total generation efficiently
         # Initialize total generated with initial stock
@@ -114,7 +115,7 @@ class WasteGenerator(OperationalEntity):
             if available_storage <= 0:
                 self.current_storage = handle_overflow(
                     self.env, self.name, self.current_storage, self.storage_capacity,
-                    self.waste_streams, self.region, self.overflow_tracker
+                    self.waste_streams, self.region, self.data_collector
                 )
                 yield self.env.timeout(self.generation_frequency)
                 continue

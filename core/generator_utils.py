@@ -36,25 +36,18 @@ def update_waste_stream(waste_streams, total_generated, current_storage, region,
 
     return current_storage
 
-def handle_overflow(env, name, current_storage, storage_capacity, waste_streams, region, overflow_tracker):
+def handle_overflow(env, name, current_storage, storage_capacity, waste_streams, region, data_collector):
     """Handle storage overflow situation"""
-    # Determine severity level
-    if current_storage / storage_capacity > 0.95:
-        severity = "emergency"
-    elif current_storage / storage_capacity > 0.90:
-        severity = "critical"
-    else:
-        severity = "warning"
-
     # Calculate overflow volume
     overflow_volume = max(0, current_storage - storage_capacity)
 
-    # Landfill the excess waste and track it
-    print(
-        f"{env.now}: Landfilling {overflow_volume:.2f} m³ of waste from {name}"
-    )
-    overflow_tracker.track_overflow(
-        facility_type="generator", volume=overflow_volume
+    # Track overflow through data collector
+    print(f"{env.now}: Overflow of {overflow_volume:.2f} m³ of waste from {name}")
+    data_collector.track_overflow(
+        "generator",
+        overflow_volume,
+        "landfill",  # Default to landfill for generator overflow
+        env.now
     )
 
     # Calculate the reduction factor to bring total storage within capacity
@@ -74,13 +67,6 @@ def handle_overflow(env, name, current_storage, storage_capacity, waste_streams,
             total_reduced += reduced_volume
     
     current_storage -= total_reduced
-
-    # Calculate and apply penalty
-    penalty = overflow_tracker.calculate_penalty(
-        facility_type="generator", severity=severity, volume=overflow_volume
-    )
-    print(f"Overflow penalty applied to {name}: {penalty:.2f}")
-    
     return current_storage
 
 def generate_waste_for_period(

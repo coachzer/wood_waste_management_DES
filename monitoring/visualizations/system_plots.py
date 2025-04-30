@@ -134,7 +134,6 @@ class SystemPlotter:
     ) -> None:
         """Create heatmaps for processor metrics"""
         entities = list(processing_history.keys())
-        timestamps = processing_history[entities[0]]["timestamps"]
 
         # Storage utilization heatmap
         storage_data = np.array(

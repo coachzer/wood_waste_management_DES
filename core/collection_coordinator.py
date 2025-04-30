@@ -76,15 +76,13 @@ class CollectionCoordinator:
         ]
         
         if not local_collectors:
-            # print(f"No collectors with stored waste found in {self.region}. Looking in other regions...")
-            # If no local collectors have waste, look in other regions
+           
             other_collectors = [
                 c for c in state.collectors
                 if c.availability
                 and sum(c.collection_center.current_storage.values()) > 0
             ]
-            # if not other_collectors:
-            #     print("No collectors with stored waste found in any region.")
+
             return other_collectors
         return local_collectors
 

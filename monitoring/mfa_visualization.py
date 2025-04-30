@@ -1,6 +1,6 @@
 import plotly.graph_objects as go
 from typing import Dict, List, Tuple
-from models.enums import OutputType, WasteType
+from models.enums import OutputType
 from models.state import SimulationState
 
 def _calculate_volumes(
@@ -155,8 +155,8 @@ def _generator_to_collector_flows(
     sources, targets, values = [], [], []
     total_collected = sum(sorted_collectors.values())
     if total_collected > 0:
-        for gen_idx, (gen, gen_vol) in enumerate(sorted_generators.items()):
-            for col_idx, (col, col_vol) in enumerate(sorted_collectors.items()):
+        for gen_idx, (_, gen_vol) in enumerate(sorted_generators.items()):
+            for col_idx, (_, col_vol) in enumerate(sorted_collectors.items()):
                 allocation = (col_vol / total_collected) * gen_vol
                 if allocation >= volume_threshold:
                     sources.append(generator_start_idx + gen_idx)
@@ -175,8 +175,8 @@ def _generator_to_treatment_flows(
     sources, targets, values = [], [], []
     total_treated = sum(sorted_treatments.values())
     if total_treated > 0:
-        for gen_idx, (gen, gen_vol) in enumerate(sorted_generators.items()):
-            for treat_idx, (treat, treat_vol) in enumerate(sorted_treatments.items()):
+        for gen_idx, (_, gen_vol) in enumerate(sorted_generators.items()):
+            for treat_idx, (_, treat_vol) in enumerate(sorted_treatments.items()):
                 allocation = (treat_vol / total_treated) * gen_vol
                 if allocation >= volume_threshold:
                     sources.append(generator_start_idx + gen_idx)
@@ -195,8 +195,8 @@ def _collector_to_treatment_flows(
     sources, targets, values = [], [], []
     total_treated = sum(sorted_treatments.values())
     if total_treated > 0:
-        for col_idx, (col, col_vol) in enumerate(sorted_collectors.items()):
-            for treat_idx, (treat, treat_vol) in enumerate(sorted_treatments.items()):
+        for col_idx, (_, col_vol) in enumerate(sorted_collectors.items()):
+            for treat_idx, (_, treat_vol) in enumerate(sorted_treatments.items()):
                 allocation = (treat_vol / total_treated) * col_vol
                 if allocation >= volume_threshold:
                     sources.append(collector_start_idx + col_idx)
@@ -214,8 +214,8 @@ def _collector_to_demand_flows(
 ) -> Tuple[List[int], List[int], List[float]]:
     sources, targets, values = [], [], []
     total_demand = sum(demand_volumes.values())
-    for col_idx, (col, col_vol) in enumerate(sorted_collectors.items()):
-        for demand_idx, (product, demand_vol) in enumerate(demand_volumes.items()):
+    for col_idx, (_, col_vol) in enumerate(sorted_collectors.items()):
+        for demand_idx, (_, demand_vol) in enumerate(demand_volumes.items()):
             allocation = (demand_vol / total_demand) * col_vol
             if allocation >= volume_threshold:
                 sources.append(collector_start_idx + col_idx)
@@ -240,7 +240,7 @@ def _treatment_to_demand_flows(
             product_type = product.value.lower()  # Assuming product has a value attribute
             actual_production = state.total_products.get(product_type, 0)
             if actual_production >= volume_threshold:
-                for treat_idx, (treat, treat_vol) in enumerate(sorted_treatments.items()):
+                for treat_idx, (_, treat_vol) in enumerate(sorted_treatments.items()):
                     treatment_share = treat_vol / total_treatment_volume
                     flow_value = actual_production * treatment_share
                     if flow_value >= volume_threshold:
