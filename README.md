@@ -100,12 +100,14 @@ Core dependencies:
 
 1. Clone the repository
 2. Create a virtual environment:
+
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
 3. Install dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
@@ -117,6 +119,7 @@ pip install -r requirements.txt
    - Modify regional settings in `data/regions/`
 
 5. Run the simulation:
+
 ```bash
 python main.py
 ```

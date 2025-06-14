@@ -3,6 +3,7 @@ from models.enums import WasteType, RegionType
 from models.data_classes import Vehicle, OperationalEntity
 from models.state import SimulationState
 from models.distances import get_distance
+from utils.capacity_utils import apply_capacity_constraints, handle_overflow_generic
 
 def calculate_transport_route(
     region_type: RegionType, target_region: RegionType
@@ -96,25 +97,29 @@ def process_collection(
     if remaining_volume <= 0 or remaining_capacity[collector.name] <= 0:
         return remaining_volume
 
-    collectable_amount = min(remaining_volume, remaining_capacity[collector.name])
+    result = apply_capacity_constraints(
+        current_total=0,  # We're checking against the remaining capacity
+        additional_amount=remaining_volume,
+        capacity=remaining_capacity[collector.name]
+    )
 
-    if collectable_amount > 0:
+    if result.allowed_amount > 0:
         # Update generator
-        waste_stream.volume -= collectable_amount
-        generator.current_storage -= collectable_amount
+        waste_stream.volume -= result.allowed_amount
+        generator.current_storage -= result.allowed_amount
 
         # Track waste removal from generator's region
         SimulationState.get_instance().track_waste_collection(
-            generator.region, waste_type, collectable_amount
+            generator.region, waste_type, result.allowed_amount
         )
 
         # Update collector
-        collector.collected_waste[waste_type] += collectable_amount
-        remaining_capacity[collector.name] -= collectable_amount
+        collector.collected_waste[waste_type] += result.allowed_amount
+        remaining_capacity[collector.name] -= result.allowed_amount
 
         # Track waste addition to collector's region
         SimulationState.get_instance().track_waste_generation(
-            collector.region, waste_type, collectable_amount
+            collector.region, waste_type, result.allowed_amount
         )
 
         collection_type = (
@@ -123,10 +128,10 @@ def process_collection(
             else "collected remaining"
         )
         print(
-            f"{collector.env.now}: {collector.name} {collection_type} {collectable_amount:.8f} m³ of {waste_type.value}"
+            f"{collector.env.now}: {collector.name} {collection_type} {result.allowed_amount:.8f} m³ of {waste_type.value}"
         )
 
-    return remaining_volume - collectable_amount
+    return remaining_volume - result.allowed_amount
 
 def handle_collector_capacity(
     collector1: OperationalEntity,
@@ -152,28 +157,42 @@ def handle_collector_capacity(
                 collector1.region, waste_type, target_volume
             )
     else:
-        # Same region, update collection center storage
-        collectable = min(target_volume, remaining_capacity[collector2.name])
-        if collectable > 0:
+        # Same region, check storage capacity
+        result = apply_capacity_constraints(
+            current_total=sum(collector2.collection_center.current_storage.values()),
+            additional_amount=target_volume,
+            capacity=collector2.collection_center.storage_capacity
+        )
+        
+        if result.allowed_amount > 0:
             # Update generator
-            waste_stream.volume -= collectable
-            generator.current_storage -= collectable
+            waste_stream.volume -= result.allowed_amount
+            generator.current_storage -= result.allowed_amount
 
             # Update collector's storage
-            collector2.collection_center.current_storage[waste_type] += collectable
-            collector2.collected_waste[waste_type] += collectable
-            remaining_capacity[collector2.name] -= collectable
+            collector2.collection_center.current_storage[waste_type] += result.allowed_amount
+            collector2.collected_waste[waste_type] += result.allowed_amount
+            remaining_capacity[collector2.name] -= result.allowed_amount
 
             # Track waste movement
             SimulationState.get_instance().track_waste_collection(
-                generator.region, waste_type, collectable
+                generator.region, waste_type, result.allowed_amount
             )
             SimulationState.get_instance().track_waste_generation(
-                collector2.region, waste_type, collectable
+                collector2.region, waste_type, result.allowed_amount
             )
 
             print(
-                f"{collector2.env.now}: {collector2.name} collected {collectable:.8f} m³ of {waste_type.value}"
+                f"{collector2.env.now}: {collector2.name} collected {result.allowed_amount:.8f} m³ of {waste_type.value}"
+            )
+
+        if result.overflow_amount > 0:
+            handle_overflow_generic(
+                collector2.data_collector,
+                "collector",
+                result.overflow_amount,
+                "landfill",
+                collector2.env.now
             )
 
 def collect_from_single_generator(
@@ -191,37 +210,49 @@ def collect_from_single_generator(
     }
 
     for waste_type, stream in active_streams.items():
-        collectable_amount = min(
-            stream.volume,
-            required_amount - total_collected,
-            collector.collection_capacity * collector.efficiency,
+        # First check collection capacity
+        collection_result = apply_capacity_constraints(
+            current_total=total_collected,
+            additional_amount=min(
+                stream.volume,
+                collector.collection_capacity * collector.efficiency
+            ),
+            capacity=required_amount
         )
 
-        if collectable_amount > 0:
-            stream.volume -= collectable_amount
-            generator.current_storage -= collectable_amount
+        if collection_result.allowed_amount > 0:
+            # Update generator
+            stream.volume -= collection_result.allowed_amount
+            generator.current_storage -= collection_result.allowed_amount
 
-            # Track waste removal from generator's region
+            # Track waste movement
             SimulationState.get_instance().track_waste_collection(
-                generator.region, waste_type, collectable_amount
+                generator.region, waste_type, collection_result.allowed_amount
             )
-
-            # Track waste addition to collector's region
             SimulationState.get_instance().track_waste_generation(
-                collector.region, waste_type, collectable_amount
+                collector.region, waste_type, collection_result.allowed_amount
             )
 
-            # Update collection center storage
-            collector.collection_center.current_storage[waste_type] += collectable_amount
-            collected_amounts[waste_type] += collectable_amount
-            total_collected += collectable_amount
+            # Update collection amounts
+            collected_amounts[waste_type] += collection_result.allowed_amount
+            total_collected += collection_result.allowed_amount
 
             print(
-                f"{collector.env.now}: {collector.name} collected {collectable_amount:.8f} m³ of {waste_type.value} from {generator.name}"
+                f"{collector.env.now}: {collector.name} collected {collection_result.allowed_amount:.8f} m³ of {waste_type.value} from {generator.name}"
             )
 
-            # Immediately remove from collector storage since it's going to treatment
-            collector.collection_center.current_storage[waste_type] -= collectable_amount
+            # Add to collection center then immediately remove since it's going to treatment
+            collector.collection_center.current_storage[waste_type] += collection_result.allowed_amount
+            collector.collection_center.current_storage[waste_type] -= collection_result.allowed_amount
+
+            if collection_result.overflow_amount > 0:
+                handle_overflow_generic(
+                    collector.data_collector,
+                    "collector",
+                    collection_result.overflow_amount,
+                    "landfill",
+                    collector.env.now
+                )
 
     return total_collected
 

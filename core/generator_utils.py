@@ -36,37 +36,46 @@ def update_waste_stream(waste_streams, total_generated, current_storage, region,
 
     return current_storage
 
+from utils.capacity_utils import apply_capacity_constraints, apply_partial_update_with_constraints, handle_overflow_generic
+
 def handle_overflow(env, name, current_storage, storage_capacity, waste_streams, region, data_collector):
     """Handle storage overflow situation"""
-    # Calculate overflow volume
-    overflow_volume = max(0, current_storage - storage_capacity)
-
-    # Track overflow through data collector
-    print(f"{env.now}: Overflow of {overflow_volume:.2f} m³ of waste from {name}")
-    data_collector.track_overflow(
-        "generator",
-        overflow_volume,
-        "landfill",  # Default to landfill for generator overflow
-        env.now
+    # Create dictionary of current volumes
+    current_volumes = {
+        waste_type: stream.volume
+        for waste_type, stream in waste_streams.items()
+    }
+    
+    # Use the partial update function to calculate scaled values
+    result = apply_partial_update_with_constraints(
+        current_values={},  # Empty since we're scaling everything
+        updates=current_volumes,
+        capacity=storage_capacity
     )
-
-    # Calculate the reduction factor to bring total storage within capacity
-    reduction_factor = storage_capacity / current_storage
     
-    # Track waste removal from the region using original region string
-    state = SimulationState.get_instance()
-    total_reduced = 0.0
-    
-    # Proportionally reduce each waste stream
-    for waste_type in waste_streams:
-        current_volume = waste_streams[waste_type].volume
-        reduced_volume = current_volume * (1 - reduction_factor)
-        if reduced_volume > 0:
-            state.track_waste_collection(region, waste_type, reduced_volume)
-            waste_streams[waste_type].volume = current_volume - reduced_volume
-            total_reduced += reduced_volume
-    
-    current_storage -= total_reduced
+    if result.overflow_amount > 0:
+        handle_overflow_generic(
+            data_collector,
+            "generator",
+            result.overflow_amount,
+            "landfill",
+            env.now
+        )
+        
+        # Track waste removal and update waste streams
+        state = SimulationState.get_instance()
+        total_reduced = 0.0
+        
+        for waste_type, stream in waste_streams.items():
+            new_volume = result.scaled_values[waste_type]
+            reduced_volume = stream.volume - new_volume
+            if reduced_volume > 0:
+                state.track_waste_collection(region, waste_type, reduced_volume)
+                stream.volume = new_volume
+                total_reduced += reduced_volume
+        
+        current_storage -= total_reduced
+        
     return current_storage
 
 def generate_waste_for_period(
@@ -86,19 +95,22 @@ def generate_waste_for_period(
     for (waste_type, base_rate), daily_factor in zip(
         waste_generation_rates.items(), daily_factors
     ):
-        if available_storage <= 0:
-            break
-
-        generated_volume = min(
-            base_rate * seasonal_factor * daily_factor, available_storage
+        # Calculate potential generation amount
+        potential_volume = base_rate * seasonal_factor * daily_factor
+        
+        # Check capacity constraints
+        result = apply_capacity_constraints(
+            current_total=current_storage,
+            additional_amount=potential_volume,
+            capacity=current_storage + available_storage
         )
 
-        if generated_volume > 0:
+        if result.allowed_amount > 0:
             current_storage = update_waste_stream(
                 waste_streams, total_generated, current_storage,
-                region, waste_type, generated_volume, current_time,
+                region, waste_type, result.allowed_amount, current_time,
                 history_index, generation_history[waste_type]
             )
-            available_storage -= generated_volume
+            available_storage -= result.allowed_amount
 
     return available_storage, current_storage, history_index

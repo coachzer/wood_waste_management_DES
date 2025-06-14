@@ -17,24 +17,29 @@ from core.treatment_utils import (
     calculate_required_waste
 )
 
+from utils.capacity_utils import apply_capacity_constraints, apply_partial_update_with_constraints, handle_overflow_generic, check_storage_capacity
+
 class StorageDict(dict):
     def __init__(self, owner, *args, **kwargs):
         self.owner = owner
         super().__init__(*args, **kwargs)
 
     def __setitem__(self, key, value):
-        current_excluding = sum(self.values()) - self.get(key, 0)
-        allowed = max(0, self.owner.storage_capacity - current_excluding)
-        if value > allowed:
-            overflow_amount = value - allowed
-            self.owner.data_collector.track_overflow(
-                "treatment", 
-                overflow_amount,
-                "landfill",  # Default strategy for dictionary storage overflow
+        excluded_keys = {key}
+        result = apply_capacity_constraints(
+            sum(v for k, v in self.items() if k not in excluded_keys),
+            value,
+            self.owner.storage_capacity
+        )
+        if result.overflow_amount > 0:
+            handle_overflow_generic(
+                self.owner.data_collector,
+                "treatment",
+                result.overflow_amount,
+                "landfill",
                 self.owner.env.now
             )
-            value = allowed
-        super().__setitem__(key, value)
+        super().__setitem__(key, result.allowed_amount)
 
 class TreatmentOperator(OperationalEntity):
     """Treatment operator that processes waste into products"""
@@ -157,46 +162,39 @@ class TreatmentOperator(OperationalEntity):
 
     def _handle_full_storage_update(self, new_storage: Dict[WasteType, float]) -> None:
         """Update all storage values while respecting capacity constraints"""
-        total = sum(new_storage.values())
-        if total <= self.storage_capacity:
-            self._waste_storage = StorageDict(self, new_storage)
-            return
-        
-        scaling_factor = self.storage_capacity / total
-        updated_storage = {
-            waste_type: amount * scaling_factor
-            for waste_type, amount in new_storage.items()
-        }
-        overflow_amount = total - self.storage_capacity
-        self.data_collector.track_overflow(
-            "treatment",
-            overflow_amount,
-            "landfill",  # Use landfill for full storage update overflow
-            self.env.now
+        result = apply_partial_update_with_constraints(
+            current_values=self._waste_storage,
+            updates=new_storage,
+            capacity=self.storage_capacity
         )
-        self._waste_storage = StorageDict(self, updated_storage)
+        if result.overflow_amount > 0:
+            handle_overflow_generic(
+                self.data_collector,
+                "treatment",
+                result.overflow_amount,
+                "landfill",
+                self.env.now
+            )
+        self._waste_storage = StorageDict(self, result.scaled_values)
 
     def _handle_partial_storage_update(self, partial_update: Dict[WasteType, float]) -> None:
         """Update specific storage values while respecting capacity constraints"""
-        current_total = self._calculate_current_total_excluding(partial_update.keys())
-        total_new = sum(partial_update.values())
-        updated_total = current_total + total_new
-        
-        if updated_total <= self.storage_capacity:
-            self._apply_partial_update_without_overflow(partial_update)
-            return
-        
-        available = self.storage_capacity - current_total
-        if available <= 0:
-            self.data_collector.track_overflow(
+        result = apply_partial_update_with_constraints(
+            current_values=self._waste_storage,
+            updates=partial_update,
+            capacity=self.storage_capacity,
+            excluded_keys=set(partial_update.keys())
+        )
+        if result.overflow_amount > 0:
+            handle_overflow_generic(
+                self.data_collector,
                 "treatment",
-                total_new,
-                "landfill",  # Use landfill when no storage is available
+                result.overflow_amount,
+                "landfill",
                 self.env.now
             )
-            return
-        
-        self._apply_partial_update_with_scaling(partial_update, available / total_new)
+        for waste_type, amount in result.scaled_values.items():
+            self._waste_storage[waste_type] = amount
 
     def _calculate_current_total_excluding(self, waste_types_to_exclude: Iterable[WasteType]) -> float:
         """Calculate current storage total excluding specified waste types"""
@@ -501,35 +499,26 @@ class TreatmentOperator(OperationalEntity):
 
     def _add_to_storage(self, waste_amounts: Dict[WasteType, float]) -> float:
         """Add waste to storage considering capacity constraints"""
-        total_added = 0.0
-
-        # Calculate available capacity
-        available_capacity = self.storage_capacity - self.current_storage
-
-        # Calculate total incoming waste
-        total_incoming = sum(waste_amounts.values())
-
-        if total_incoming <= 0:
+        if not waste_amounts:
             return 0.0
 
-        # If not enough capacity, scale down amounts proportionally
-        if total_incoming > available_capacity:
-            scaling_factor = available_capacity / total_incoming
-            waste_amounts = {
-                waste_type: amount * scaling_factor
-                for waste_type, amount in waste_amounts.items()
-            }
-            # Track overflow through data collector
-            overflow_amount = total_incoming - available_capacity
-            self.data_collector.track_overflow(
+        allowed_additions, overflow_amount = check_storage_capacity(
+            self.waste_storage,
+            waste_amounts,
+            self.storage_capacity
+        )
+
+        if overflow_amount > 0:
+            handle_overflow_generic(
+                self.data_collector,
                 "treatment",
                 overflow_amount,
-                "landfill",  # Use landfill for storage capacity overflow
+                "landfill",
                 self.env.now
             )
 
-        # Add waste to storage
-        for waste_type, amount in waste_amounts.items():
+        total_added = 0.0
+        for waste_type, amount in allowed_additions.items():
             self.waste_storage[waste_type] += amount
             total_added += amount
 

@@ -18,6 +18,8 @@ from core.collector_utils import (
     handle_collaborative_collection,
 )
 
+from utils.capacity_utils import apply_capacity_constraints, handle_overflow_generic, check_storage_capacity
+
 class CollectorCompany(OperationalEntity):
     """A company that collects waste from generators"""
 
@@ -163,13 +165,7 @@ class CollectorCompany(OperationalEntity):
 
     def collect_from_generator(self, generator):
         """Collect waste from a generator, handling multiple waste types"""
-        total_collected = 0
-        # Consider both vehicle capacity and collection center remaining capacity
-        remaining_capacity = min(
-            self.collection_capacity * self.efficiency,
-            self.collection_center.storage_capacity
-            - sum(self.collection_center.current_storage.values()),
-        )
+        
 
         # Pre-filter active waste streams
         active_streams = {
@@ -178,31 +174,57 @@ class CollectorCompany(OperationalEntity):
             if stream.volume > 0
         }
 
-        for waste_type, waste_stream in active_streams.items():
-            collectable_amount = min(waste_stream.volume, remaining_capacity)
+        if not active_streams:
+            return 0
 
-            if collectable_amount > 0:
+        # Calculate potential collections
+        potential_collections = {
+            waste_type: min(
+                stream.volume,
+                self.collection_capacity * self.efficiency
+            )
+            for waste_type, stream in active_streams.items()
+        }
+
+        # Check storage capacity constraints
+        allowed_collections, overflow_amount = check_storage_capacity(
+            self.collection_center.current_storage,
+            potential_collections,
+            self.collection_center.storage_capacity
+        )
+
+        if overflow_amount > 0:
+            handle_overflow_generic(
+                self.data_collector,
+                "collector",
+                overflow_amount,
+                "landfill",
+                self.env.now
+            )
+
+        # Process allowed collections
+        total_collected = 0.0
+        for waste_type, amount in allowed_collections.items():
+            if amount > 0:
                 # Update generator's waste stream
-                waste_stream.volume -= collectable_amount
-                generator.current_storage -= collectable_amount
+                active_streams[waste_type].volume -= amount
+                generator.current_storage -= amount
 
                 # Track waste removal from generator's region
                 SimulationState.get_instance().track_waste_collection(
-                    generator.region, waste_type, collectable_amount
+                    generator.region, waste_type, amount
                 )
 
-                # Update collection center storage
-                self.collection_center.current_storage[waste_type] += collectable_amount
-                # Update tracking
-                self.collected_waste[waste_type] += collectable_amount
+                # Update collection center storage and tracking
+                self.collection_center.current_storage[waste_type] += amount
+                self.collected_waste[waste_type] += amount
 
                 # Track waste addition to collector's region
                 SimulationState.get_instance().track_waste_generation(
-                    self.region, waste_type, collectable_amount
+                    self.region, waste_type, amount
                 )
 
-                remaining_capacity -= collectable_amount
-                total_collected += collectable_amount
+                total_collected += amount
 
         if total_collected > 0:
             generator.mark_collected()
@@ -272,43 +294,25 @@ class CollectorCompany(OperationalEntity):
             if total_collected >= required_amount:
                 break
 
-        # Check for overflow (if the collector can't store all waste collected)
-        if sum(collected_amounts.values()) > self.collection_capacity * self.efficiency:
-            overflow_volume = (
-                sum(collected_amounts.values())
-                - self.collection_capacity * self.efficiency
-            )
+        result = apply_capacity_constraints(
+            sum(collected_amounts.values()),
+            0,  # No additional amount to add
+            self.collection_capacity * self.efficiency
+        )
 
-            # Determine severity level
-            if self.collection_capacity * self.efficiency > 0.90:
-                severity = "emergency"
-            elif self.collection_capacity * self.efficiency > 0.85:
-                severity = "critical"
-            else:
-                severity = "warning"
+        if result.overflow_amount > 0:
+            # Scale down collected amounts proportionally
+            scaling_factor = result.allowed_amount / sum(collected_amounts.values())
+            for waste_type in collected_amounts:
+                collected_amounts[waste_type] *= scaling_factor
 
-            # Print overflow message
-            print(
-                f"{self.env.now}: {self.name} overflow detected: {overflow_volume:.8f} m³ ({severity})"
-            )
-
-            # Track overflow through data collector
-            print(
-                f"{self.env.now}: Overflow of {overflow_volume:.8f} m³ of waste from {self.name}"
-            )
-            self.data_collector.track_overflow(
+            handle_overflow_generic(
+                self.data_collector,
                 "collector",
-                overflow_volume,
-                "landfill",  # Default to landfill for collection overflow
+                result.overflow_amount,
+                "landfill",
                 self.env.now
             )
-
-            # Reduce collected waste
-            reduction_factor = (self.collection_capacity * self.efficiency) / sum(
-                collected_amounts.values()
-            )
-            for waste_type in collected_amounts:
-                collected_amounts[waste_type] *= reduction_factor
 
         return collected_amounts
 

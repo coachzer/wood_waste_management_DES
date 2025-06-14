@@ -59,7 +59,6 @@ def update_waste_storage(treatment_operator, input_type, output_type, amount_to_
     )
     treatment_operator.total_products_created += output_amount
 
-
 def fulfill_demand(treatment_operator, output_type, output_amount):
     """Fulfill demand for final products"""
     # Get current unmet demand for this specific product type

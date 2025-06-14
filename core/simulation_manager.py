@@ -2,12 +2,12 @@ import simpy
 import traceback
 import numpy as np
 from typing import Dict
-from config import (
+from config.base_config import (
     SIMULATION_DURATION,
     TIME_PERIOD,
-    TOTAL_YEARS
+    TOTAL_YEARS,
+    get_uncertainty_set
 )
-from config.base_config import get_uncertainty_set
 from models.state import SimulationState
 from monitoring.monitor import WasteMonitor
 from monitoring.system_monitor import monitor_system
