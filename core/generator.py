@@ -2,7 +2,6 @@ import numpy as np
 from typing import Dict, Optional
 from models.enums import WasteType, RegionType, EntityStatus
 from models.data_classes import WasteStream, OperationalEntity
-from optimization.uncertainty import UncertaintySet
 from core.generator_utils import (
     handle_overflow,
     generate_waste_for_period,
@@ -19,7 +18,7 @@ class WasteGenerator(OperationalEntity):
         priority_level,
         environmental_impact,
         region: str,
-        uncertainty_set: Optional[UncertaintySet] = None,
+        uncertainty_set = None,
         initial_stock: Optional[Dict[WasteType, float]] = None,
         data_collector = None,
     ):

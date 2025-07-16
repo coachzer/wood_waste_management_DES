@@ -3,7 +3,6 @@ from typing import Dict, Iterable, Optional
 from models.data_classes import WasteTransformation, OperationalEntity
 from models.enums import OutputType, RegionType, WasteType, EntityStatus
 from models.state import SimulationState
-from optimization.uncertainty import UncertaintySet
 from monitoring.data_collector import DataCollector
 from core.collection_coordinator import CollectionCoordinator
 from core.treatment_utils import (
@@ -56,7 +55,7 @@ class TreatmentOperator(OperationalEntity):
         operational_costs,
         region: str,
         transformations: Optional[Dict[WasteType, WasteTransformation]] = None,
-        uncertainty_set: Optional[UncertaintySet] = None,
+        uncertainty_set = None,
         data_collector: Optional['DataCollector'] = None,
     ):
         super().__init__()

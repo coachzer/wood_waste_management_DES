@@ -82,6 +82,11 @@ class DataCollector:
                 history["collected_volumes"][waste_type] = []
             history["collected_volumes"][waste_type].append(amount)
 
+        # Debug: Track what's being recorded
+        total_collected = sum(collector.collected_waste.values())
+        if total_collected > 0:
+            print(f"[DATA COLLECTOR DEBUG] Recording {collector.name}: total collected = {total_collected:.2f}")
+
         # Track efficiency metrics
         history["efficiency"].append(collector.efficiency)
         history["transport_costs"].append(collector.transport_cost)

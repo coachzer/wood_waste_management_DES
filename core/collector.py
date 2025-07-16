@@ -4,7 +4,6 @@ from models.data_classes import Vehicle, CollectionCenter, OperationalEntity
 from models.distances import REGION_COORDINATES
 import numpy as np
 from typing import Optional
-from optimization.uncertainty import UncertaintySet
 from core.collector_utils import (
     calculate_transport_route,
     get_available_vehicle,
@@ -37,7 +36,7 @@ class CollectorCompany(OperationalEntity):
         region=None,
         num_vehicles: int = 3,
         vehicle_capacity: Optional[float] = None,
-        uncertainty_set: Optional[UncertaintySet] = None,
+        uncertainty_set = None,
     ):
         super().__init__()
         self.env = env
@@ -80,6 +79,10 @@ class CollectorCompany(OperationalEntity):
 
         # Initialize waste tracking
         self.collected_waste = {waste_type: 0.0 for waste_type in WasteType}
+
+        # Initialize data collector (required for tracking)
+        from monitoring.data_collector import DataCollector
+        self.data_collector = DataCollector()
 
         # Initialize RNG for collection adjustments
         self.rng = np.random.default_rng(42)  # For reproducibility
@@ -219,6 +222,10 @@ class CollectorCompany(OperationalEntity):
                 self.collection_center.current_storage[waste_type] += amount
                 self.collected_waste[waste_type] += amount
 
+                # Debug: Track collection activity
+                print(f"[COLLECTOR DEBUG] {self.name} collected {amount:.2f} m³ of {waste_type.value}")
+                print(f"[COLLECTOR DEBUG] {self.name} total collected {waste_type.value}: {self.collected_waste[waste_type]:.2f}")
+
                 # Track waste addition to collector's region
                 SimulationState.get_instance().track_waste_generation(
                     self.region, waste_type, amount
@@ -334,8 +341,8 @@ class CollectorCompany(OperationalEntity):
             current_time = self.env.now
             
             # Check for failures if uncertainty set is available
-            if self.uncertainty_set:
-                self.check_failure(current_time, self.uncertainty_set.equipment_failure_rate)
+            if self.uncertainty_set and hasattr(self.uncertainty_set, 'collector_failure'):
+                self.check_failure(current_time, self.uncertainty_set.collector_failure.probability)
             
             # Update collection parameters based on optimization
             self.collection_capacity = max(

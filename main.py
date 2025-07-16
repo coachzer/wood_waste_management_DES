@@ -10,9 +10,6 @@ def main():
     baseline_uncertainty = get_uncertainty_set("Baseline")
     manager.initialize_entities(baseline_uncertainty)
     
-    # Set up optimization
-    manager.setup_optimization()
-    
     # Set up simulation processes
     manager.setup_processes()
     
@@ -22,7 +19,7 @@ def main():
     # Create visualizations
     manager.create_visualizations()
     
-    return manager.waste_monitor, manager.optimizer
+    return manager.waste_monitor
 
 if __name__ == "__main__":
-    monitor, optimizer = main()
+    monitor = main()

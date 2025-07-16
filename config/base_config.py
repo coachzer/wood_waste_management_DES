@@ -7,10 +7,21 @@ from dataclasses import dataclass
 from typing import Dict, Tuple
 from models.enums import WasteType, OutputType
 from models.data_classes import FailureConfig
-from optimization.stochastic import UncertaintySet
 from utils.helpers import (
     load_json, validate_config, validate_all_numeric_positive
 )
+
+@dataclass
+class UncertaintySet:
+    """Simple uncertainty set replacement"""
+    waste_generation: Dict
+    collection_efficiency: Tuple[float, float]
+    treatment_conversion: Dict
+    transportation_time: Tuple[float, float]
+    market_demand: Dict
+    generator_failure: FailureConfig
+    collector_failure: FailureConfig
+    treatment_failure: FailureConfig
 
 # Load demand data from JSON
 _demand_data = load_json("data/demand.json")

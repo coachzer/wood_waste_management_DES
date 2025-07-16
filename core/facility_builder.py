@@ -6,7 +6,6 @@ from models.data_classes import WasteTransformation
 from core.generator import WasteGenerator
 from core.collector import CollectorCompany
 from core.treatment import TreatmentOperator
-from optimization.stochastic import UncertaintySet
 from monitoring.data_collector import DataCollector
 
 class FacilityBuilder:
@@ -17,7 +16,7 @@ class FacilityBuilder:
         env: Environment,
         facility_manager: FacilityDataManager,
         data_collector: DataCollector,
-        uncertainty_set: UncertaintySet = None,
+        uncertainty_set = None,
     ):
         self.env = env
         self.facility_manager = facility_manager
@@ -195,7 +194,7 @@ class FacilityBuilder:
 
 def initialize_simulation_entities(
     env: Environment, 
-    uncertainty_set: UncertaintySet = None,
+    uncertainty_set = None,
     data_collector: DataCollector = None,
     distribution_mode: str = "balanced",
     priority_types: List[str] = None
