@@ -497,17 +497,20 @@ class TreatmentOperator(OperationalEntity):
             # Construction wood waste (17 02 01) - Primary reuse pathways
             WasteType.CONSTRUCTION_WOOD_17_02_01: [
                 OutputType.PARTICLE_BOARD,    # Downcycling pathway
+                OutputType.OSB_WAFERBOARD,    # OSB from construction wood
             ],
             
             # Sawdust, shavings, cuttings (03 01 05) - Primary particleboard feedstock
             WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: [
                 OutputType.PARTICLE_BOARD,    # Primary pathway - supported by research
                 OutputType.MDF_FIBREBOARD,    # Secondary pathway
+                OutputType.OSB_WAFERBOARD,    # OSB from wood cuttings
             ],
             
             # Wooden packaging waste (15 01 03) - Cascading use
             WasteType.WOODEN_PACKAGING_15_01_03: [
                 OutputType.PARTICLE_BOARD,    # Recycling pathway
+                OutputType.OSB_WAFERBOARD,    # OSB from packaging wood
             ],
             
             # Bark waste (03 01 01) - Limited applications
@@ -520,6 +523,7 @@ class TreatmentOperator(OperationalEntity):
             WasteType.NON_HAZARDOUS_WOOD_20_01_38: [
                 OutputType.PARTICLE_BOARD,    # Primary recycling pathway
                 OutputType.MDF_FIBREBOARD,    # Secondary pathway
+                OutputType.OSB_WAFERBOARD,    # OSB from municipal wood
             ],
             
             # Paper packaging (15 01 01) - Paper cycle
