@@ -25,6 +25,9 @@ class FacilityBuilder:
 
     def create_generator(self, gen_data, region: RegionType) -> WasteGenerator:
         """Create a WasteGenerator from facility data"""
+        if gen_data.storage_capacity <= 0:
+            raise ValueError(f"Storage capacity must be positive, got {gen_data.storage_capacity}")
+
         waste_streams = {
             WasteType(wtype): rate  # Convert string type to enum
             for wtype, rate in gen_data.waste_generation_rates.items()
@@ -44,7 +47,6 @@ class FacilityBuilder:
             waste_streams=waste_streams,
             generation_frequency=gen_data.generation_frequency,
             storage_capacity=gen_data.storage_capacity,
-            priority_level=gen_data.priority_level,
             environmental_impact=gen_data.environmental_impact,
             region=region.value,
             uncertainty_set=self.uncertainty_set,
@@ -70,38 +72,25 @@ class FacilityBuilder:
         """Get base transformation parameters"""
         return {
             # Primary materials (best for furniture)
-            WasteType.CONSTRUCTION_WOOD: (0.98, 0.90),   # High quality, high energy
-            WasteType.WOOD_CUTTINGS: (0.92, 0.85),       # Good quality, high energy
-            WasteType.WASTE_WOODEN_PACKAGING: (0.88, 0.95), # Good for furniture after processing
+            WasteType.CONSTRUCTION_WOOD_17_02_01: (0.98, 0.90),   # High quality, high energy
+            WasteType.WOODEN_PACKAGING_15_01_03: (0.88, 0.95), # Good for furniture after processing
             
             # Secondary materials
-            WasteType.SAWDUST: (0.95, 0.50),
-            WasteType.BARK_WASTE: (0.85, 0.70),
-            WasteType.MIXED_WOOD: (0.88, 0.60),
-            WasteType.WASTE_PAPER_PACKAGING: (0.82, 0.65),
+            WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: (0.95, 0.50),
+            WasteType.BARK_WASTE_03_01_01: (0.85, 0.70),
+            WasteType.NON_HAZARDOUS_WOOD_20_01_38: (0.88, 0.60),
+            WasteType.PAPER_PACKAGING_15_01_01: (0.82, 0.65),
         }
 
     def _adjust_furniture_efficiency(self, waste_type: WasteType, proc_data) -> float:
         """Adjust efficiency for furniture production"""
         efficiency = proc_data.conversion_rate
-        if waste_type == WasteType.CONSTRUCTION_WOOD:
+        if waste_type == WasteType.CONSTRUCTION_WOOD_17_02_01:
             return efficiency * 1.2
-        elif waste_type == WasteType.WOOD_CUTTINGS:
-            return efficiency * 1.1
         return efficiency
 
-    def _should_process_furniture(self, is_furniture_processor, waste_type, furniture_materials, output_waste_type):
-        """Determine if we should process furniture based on processor type and waste type"""
-        if output_waste_type != OutputType.WOODEN_FURNITURE:
-            return True
-            
-        return is_furniture_processor and waste_type in furniture_materials
-
-    def _create_transformation(self, waste_type, output_waste_type, efficiency, energy, proc_data):
+    def _create_transformation(self, waste_type, output_waste_type, efficiency, energy):
         """Create a transformation object with appropriate efficiency"""
-        if output_waste_type == OutputType.WOODEN_FURNITURE:
-            efficiency = self._adjust_furniture_efficiency(waste_type, proc_data)
-            
         return WasteTransformation(
             input_type=waste_type,
             output_type=output_waste_type,
@@ -109,38 +98,66 @@ class FacilityBuilder:
             energy_required=energy,
         )
 
+    def _map_waste_type(self, input_type):
+        """Map invalid waste type strings to valid WasteType enum values"""
+        # Handle non-standard waste types from JSON data
+        waste_type_mapping = {
+            "wood_cuttings": "03 01 05",  # Map to sawdust/shavings/cuttings
+            "mixed_wood": "03 01 99",     # Map to other wood waste
+        }
+        
+        # Use mapping if available, otherwise use original input_type
+        mapped_type = waste_type_mapping.get(input_type, input_type)
+        return WasteType(mapped_type)
+
     def _build_transformations(self, proc_data):
         """Build waste transformations for a processor"""
         base_transformations = self._get_base_transformations()
         transformations = {}
         
-        is_furniture_processor = "furniture" in proc_data.id.lower()
-        furniture_materials = {
-            WasteType.CONSTRUCTION_WOOD,
-            WasteType.WOOD_CUTTINGS,
-            WasteType.WASTE_WOODEN_PACKAGING
+        # Define appropriate waste-to-product mappings
+        appropriate_mappings = {
+            WasteType.CONSTRUCTION_WOOD_17_02_01: ['particle_board'],
+            WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: ['particle_board', 'mdf_fibreboard'],
+            WasteType.WOODEN_PACKAGING_15_01_03: ['particle_board'],
+            WasteType.BARK_WASTE_03_01_01: ['mdf_fibreboard', 'particle_board'],
+            WasteType.NON_HAZARDOUS_WOOD_20_01_38: ['particle_board', 'mdf_fibreboard'],
+            WasteType.PAPER_PACKAGING_15_01_01: ['mdf_fibreboard'],
         }
         
         for input_type in proc_data.input_types:
-            waste_type = WasteType(input_type)
+            try:
+                waste_type = self._map_waste_type(input_type)
+            except ValueError:
+                print(f"Warning: Skipping invalid waste type: {input_type}")
+                continue
+
             if waste_type not in base_transformations:
                 continue
 
             efficiency, energy = base_transformations[waste_type]
             
+            # Only create transformations for appropriate waste-to-product combinations
+            appropriate_outputs = appropriate_mappings.get(waste_type, [])
+            
             for output_type in proc_data.output_types:
                 if output_type.lower() == waste_type.value.lower():
                     continue
-
-                output_waste_type = OutputType(output_type)
-                key = (waste_type, output_waste_type)
-
-                if not self._should_process_furniture(is_furniture_processor, waste_type, 
-                                                    furniture_materials, output_waste_type):
+                
+                # Skip if this waste type shouldn't produce this output type
+                if output_type.lower() not in appropriate_outputs:
                     continue
 
+                try:
+                    output_waste_type = OutputType(output_type)
+                except ValueError:
+                    print(f"Warning: Skipping invalid output type: {output_type}")
+                    continue
+                    
+                key = (waste_type, output_waste_type)
+
                 transformations[key] = self._create_transformation(
-                    waste_type, output_waste_type, efficiency, energy, proc_data
+                    waste_type, output_waste_type, efficiency, energy
                 )
                 
         return transformations
@@ -148,6 +165,9 @@ class FacilityBuilder:
     def create_processor(self, proc_data, region: RegionType) -> TreatmentOperator:
         """Create a TreatmentOperator from facility data"""
         transformations = self._build_transformations(proc_data)
+
+        # Use product_storage_capacity if present, else default to storage_capacity
+        product_storage_capacity = getattr(proc_data, "product_storage_capacity", proc_data.storage_capacity)
 
         return TreatmentOperator(
             env=self.env,
@@ -162,6 +182,7 @@ class FacilityBuilder:
             uncertainty_set=self.uncertainty_set,
             transformations=transformations,
             data_collector=self.data_collector,
+            product_storage_capacity=product_storage_capacity,
         )
 
     def build_all_facilities(

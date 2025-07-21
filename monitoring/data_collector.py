@@ -227,10 +227,10 @@ class DataCollector:
     def _track_production_history(self, treatment, history, timestamp):
         """Track detailed production history"""
         if hasattr(treatment, 'production_history'):
-            current_totals = {'wooden_furniture': 0, 'wooden_packaging': 0, 'paper_packaging': 0}
+            current_totals = {'wooden_packaging': 0, 'paper_packaging': 0}
             
             for t, product_type, amount in treatment.production_history:
-                if t <= timestamp:
+                if t <= timestamp and product_type in current_totals:  # Only track valid product types
                     current_totals[product_type] += amount
 
             for product_type, total in current_totals.items():

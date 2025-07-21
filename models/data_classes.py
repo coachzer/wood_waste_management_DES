@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import Dict, Tuple, Optional
-from .enums import WasteType, RegionType, EntityStatus
+from .enums import WasteType, RegionType, EntityStatus, OutputType
 import random
 
 @dataclass
@@ -113,3 +113,10 @@ class CollectionCenter(OperationalEntity):
         self.current_storage = current_storage
         self.coordinates = coordinates
         self.downtime_duration = 48.0  # Collection centers take longer to repair
+
+@dataclass
+class ProductStorage:
+    """Data class to represent storage for finished products"""
+    capacity: float
+    current_storage: Dict[OutputType, float]
+    densities: Optional[Dict[OutputType, float]] = None  # e.g., kg/m3 per product

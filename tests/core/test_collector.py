@@ -1,5 +1,6 @@
 import pytest
 import simpy
+from unittest.mock import Mock
 from core.collector import CollectorCompany
 from core.generator import WasteGenerator
 from models.enums import WasteType, RegionType
@@ -33,12 +34,12 @@ def basic_collector(env):
 @pytest.fixture
 def basic_generator(env):
     waste_streams = {
-        WasteType.CONSTRUCTION_WOOD: 10.0,
-        WasteType.SAWDUST: 5.0
+        WasteType.CONSTRUCTION_WOOD_17_02_01.value: 10.0,
+        WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05.value: 5.0
     }
     initial_stock = {
-        WasteType.CONSTRUCTION_WOOD: 50.0,
-        WasteType.SAWDUST: 25.0
+        WasteType.CONSTRUCTION_WOOD_17_02_01.value: 50.0,
+        WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05.value: 25.0
     }
     return WasteGenerator(
         env=env,
@@ -46,10 +47,10 @@ def basic_generator(env):
         waste_streams=waste_streams,
         generation_frequency=1.0,
         storage_capacity=200.0,
-        priority_level=1,
         environmental_impact=1.0,
         region="GORENJSKA",
-        initial_stock=initial_stock
+        initial_stock=initial_stock,
+        data_collector=Mock()  # Use Mock instead of None
     )
 
 def test_collector_initialization(basic_collector):
@@ -91,9 +92,19 @@ def test_vehicle_management(basic_collector):
     available_vehicles = [v for v in basic_collector.vehicles if not v.in_transit]
     assert len(available_vehicles) == 2
     
-    basic_collector.collection_center.current_storage[WasteType.CONSTRUCTION_WOOD] = 60.0
+    # Add waste to storage and schedule transport to put vehicle in transit
+    waste_type = WasteType.CONSTRUCTION_WOOD_17_02_01
+    basic_collector.collection_center.current_storage[waste_type] = 60.0
     
-    # Check vehicle allocation
+    # Schedule transport which should put a vehicle in transit
+    success = basic_collector.schedule_transport(
+        waste_type,
+        30.0,
+        RegionType.GORISKA
+    )
+    
+    assert success
+    # Check vehicle allocation after scheduling transport
     available_vehicles = [v for v in basic_collector.vehicles if not v.in_transit]
     assert len(available_vehicles) == 1  # One vehicle should be in transit
 
@@ -135,7 +146,7 @@ def test_collection_priority(env, basic_collector, basic_generator):
 def test_transport_scheduling(env, basic_collector):
     """Test transport scheduling and execution"""
     # Add some waste to collector's storage
-    waste_type = WasteType.CONSTRUCTION_WOOD
+    waste_type = WasteType.CONSTRUCTION_WOOD_17_02_01
     basic_collector.collection_center.current_storage[waste_type] = 75.0
     
     # Schedule transport

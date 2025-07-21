@@ -4,46 +4,33 @@ from models.state import SimulationState
 
 def get_furniture_material_quality(waste_type):
     """Define furniture material quality ratings"""
-    if waste_type == WasteType.CONSTRUCTION_WOOD:
+    if waste_type == WasteType.CONSTRUCTION_WOOD_17_02_01:
         return 1.0
-    elif waste_type == WasteType.WOOD_CUTTINGS:
-        return 0.9
     else:
         return 0.8
 
-def get_transformation_efficiency(treatment_operator, input_type, transformation):
+def get_transformation_efficiency(treatment_operator, transformation):
     """Calculate transformation efficiency with uncertainty if applicable"""
     efficiency = transformation.conversion_efficiency
     if treatment_operator.uncertainty_set:
-        # Get treatment conversion uncertainty for input type
-        mean, std = treatment_operator.uncertainty_set.treatment_conversion.get(
-            input_type,
-            (efficiency, 0.05),  # Default 5% variation if not specified
-        )
-        # Apply stochastic variation within reasonable bounds
-        efficiency = np.clip(treatment_operator.rng.normal(mean, std), 0.6, 1.0)
+        # Use simplified uncertainty set structure (tuple instead of dict)
+        if hasattr(treatment_operator.uncertainty_set.treatment_conversion, '__len__') and len(treatment_operator.uncertainty_set.treatment_conversion) == 2:
+            # treatment_conversion is a tuple (mean, std)
+            mean, std = treatment_operator.uncertainty_set.treatment_conversion
+            # Apply stochastic variation within reasonable bounds
+            efficiency = np.clip(treatment_operator.rng.normal(mean * efficiency, std), 0.6, 1.0)
+        # If uncertainty set doesn't have the expected structure, use base efficiency (no change needed)
     return efficiency
 
 def calculate_output_amounts(treatment_operator, amount_to_process, efficiency):
     """Calculate actual processing and output amounts considering capacity constraints"""
     potential_output = amount_to_process * efficiency
-    available_capacity = treatment_operator.storage_capacity - treatment_operator.current_storage
     
-    if potential_output > available_capacity:
-        scaling_factor = available_capacity / potential_output
-        amount_to_process *= scaling_factor
-        output_amount = available_capacity
-        # Track overflow through data collector
-        overflow_amount = potential_output - available_capacity
-        treatment_operator.data_collector.track_overflow(
-            "treatment",
-            overflow_amount,
-            "landfill",  # Use landfill for full storage update overflow
-            treatment_operator.env.now
-        )
-
-    else:
-        output_amount = potential_output
+    # For finished products that go directly to fulfillment, don't apply storage constraints
+    # Only apply storage capacity for intermediate products that need to be stored
+    # Since we're processing into final products (MDF, particle board, OSB), we skip capacity checks
+    output_amount = potential_output
+    print(f"[CALC DEBUG] Potential output: {potential_output:.2f}, Using full output (finished products)")
         
     return amount_to_process, output_amount
 
@@ -61,13 +48,21 @@ def update_waste_storage(treatment_operator, input_type, output_type, amount_to_
 
 def fulfill_demand(treatment_operator, output_type, output_amount):
     """Fulfill demand for final products"""
+    print(f"[FULFILL_DEMAND DEBUG] Called with {output_amount:.2f} m³ of {output_type.value}")
+    
     # Get current unmet demand for this specific product type
     state = SimulationState.get_instance()
     product_type = output_type.value.lower()
+    
+    print(f"[FULFILL_DEMAND DEBUG] Current state total for {product_type}: {state.total_products[product_type]:.2f}")
+    print(f"[FULFILL_DEMAND DEBUG] Target demand for {product_type}: {state.target_demands[product_type]:.2f}")
+    
     unmet_demand = state.target_demands[product_type] - state.total_products[product_type]
     
     # Use the actual unmet demand to limit production
     fulfilled_amount = min(output_amount, unmet_demand)
+    print(f"[FULFILL_DEMAND DEBUG] Will fulfill {fulfilled_amount:.2f} m³ of {product_type}")
+    
     if fulfilled_amount > 0:
         treatment_operator.waste_storage[output_type] -= fulfilled_amount
         treatment_operator.demand -= fulfilled_amount

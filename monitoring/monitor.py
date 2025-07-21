@@ -2,10 +2,6 @@ import os
 from .data_collector import DataCollector
 from .metrics_analyzer import MetricsAnalyzer
 from .mfa_visualization import create_material_flow_analysis
-from .visualizations.storage_plots import StoragePlotter
-from .visualizations.efficiency_plots import EfficiencyPlotter
-from .visualizations.system_plots import SystemPlotter
-from .visualizations.overflow_plots import OverflowPlotter
 
 class WasteMonitor:
     """Central monitoring system for waste management operations"""
@@ -13,7 +9,6 @@ class WasteMonitor:
     def __init__(self):
         self.data_collector = DataCollector()
         self.metrics_analyzer = MetricsAnalyzer()
-        self.overflow_plotter = OverflowPlotter()
 
         # Create plots directory if it doesn't exist
         if not os.path.exists("plots"):
@@ -46,56 +41,6 @@ class WasteMonitor:
             generation_history, collection_history, processing_history
         )
 
-        # Core system metrics
-        SystemPlotter.plot_system_performance(
-            efficiency_metrics,
-            collection_history,
-            processing_history,
-            "plots/system_performance.png",
-        )
-
-        # Storage analysis
-        StoragePlotter.plot_storage_levels(
-            generation_history,
-            processing_history,
-            collection_history,
-            f"plots/storage_t{int(end_time)}.png",
-        )
-
-        StoragePlotter.plot_detailed_storage_analysis(
-            generation_history,
-            processing_history,
-            collection_history,
-            f"plots/storage_detailed_t{int(end_time)}.png",
-        )
-
-        # Efficiency metrics
-        EfficiencyPlotter().plot_collection_efficiency(
-            collection_history,
-            "plots/collector_metrics.png",
-        )
-
-        EfficiencyPlotter().plot_treatment_metrics(
-            processing_history,
-            "plots/treatment_metrics.png",
-        )
-
-        # Product analysis plots
-        EfficiencyPlotter().plot_demand_metrics(
-            processing_history,
-            "plots/demand_metrics.png",
-        )
-
-        EfficiencyPlotter().plot_waste_mix(
-            processing_history,
-            "plots/waste_mix.png",
-        )
-
-        EfficiencyPlotter().plot_accumulated_products(
-            processing_history,
-            "plots/accumulated_products.png",
-        )
-
         # Create material flow analysis plot
         create_material_flow_analysis(
             generation_history,
@@ -103,20 +48,8 @@ class WasteMonitor:
             processing_history,
         )
 
-        # Combined analysis
-        SystemPlotter.plot_cumulative_analysis(
-            generation_history,
-            collection_history,
-            processing_history,
-            "plots/cumulative_analysis.png",
-        )
-
-        # Overflow analysis
-        overflow_history = self.data_collector.get_overflow_history()
-        self.overflow_plotter.plot_overflow_summary(
-            overflow_history,
-            f"plots/overflow_t{int(end_time)}.png"
-        )
+        print(f"Temporal analysis completed for time {end_time}")
+        print(f"Efficiency metrics: {efficiency_metrics}")
 
     def generate_summary_report(self) -> str:
         """Generate a comprehensive summary report"""

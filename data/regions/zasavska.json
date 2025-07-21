@@ -3,38 +3,62 @@
         {
             "id": "gen_zasavska_1",
             "waste_generation_rates": {
-                "bark_waste": 6.0,
-                "sawdust": 9.0,
-                "wood_cuttings": 8.0,
-                "construction_wood": 5.0,
-                "mixed_wood": 5.0,
-                "waste_wooden_packaging": 7.0,
-                "waste_paper_packaging": 8.0
+                "03 01 05": 15.0,
+                "03 03 08": 14.008,
+                "15 01 01": 20.716,
+                "15 01 03": 7.523,
+                "17 02 01": 0.646,
+                "19 12 01": 0.844,
+                "20 01 01": 13.875,
+                "20 01 38": 2.374,
+                "20 03 07": 2.374,
+                "03 01 01": 12.0,
+                "03 01 99": 7.0,
+                "02 01 07": 5.0
             },
-            "generation_frequency": 24,
-            "storage_capacity": 700,
-            "priority_level": 5,
+            "generation_frequency": 1,
+            "storage_capacity": 70000,
             "environmental_impact": 1.0,
             "initial_stock": {
-                "bark_waste": 12.0,
-                "sawdust": 15.0,
-                "wood_cuttings": 14.0,
-                "construction_wood": 10.0,
-                "mixed_wood": 11.0,
-                "waste_paper_packaging": 10.0,
-                "waste_wooden_packaging": 8.0
+                "03 01 05": 0.0,
+                "03 03 08": 0.0,
+                "15 01 01": 0.83,
+                "15 01 03": 0.35,
+                "17 02 01": 0.0,
+                "19 12 01": 0.0,
+                "20 01 01": 0.0,
+                "20 01 38": 0.5,
+                "20 03 07": 0.0,
+                "03 01 01": 0.0,
+                "03 01 99": 0.0,
+                "02 01 07": 0.0
             }
         }
     ],
     "collectors": [
         {
             "id": "col_zasavska_1",
-            "waste_types": ["bark_waste", "sawdust", "wood_cuttings", "construction_wood", "mixed_wood", "waste_wooden_packaging", "waste_paper_packaging"],
-            "collection_capacity": 1200,
+            "waste_types": [
+                "02 01 07",
+                "03 01 01",
+                "03 01 05",
+                "03 01 99",
+                "03 03 01",
+                "03 03 08",
+                "15 01 01",
+                "15 01 03",
+                "17 02 01",
+                "19 12 01",
+                "19 12 07",
+                "20 01 01",
+                "20 01 38",
+                "20 03 07"
+            ],
+            "collection_capacity": 10000,
             "collection_frequency": 24,
             "transport_cost": 50.0,
             "environmental_impact": 1.0,
-            "efficiency": 0.9,
+            "efficiency": 1.0,
             "availability": true,
             "strategy": "competitive"
         }
@@ -42,8 +66,19 @@
     "processors": [
         {
             "id": "proc_zasavska_wood",
-            "input_types": ["sawdust", "wood_cuttings", "construction_wood", "waste_wooden_packaging"],
-            "output_types": ["wooden_packaging"],
+            "input_types": [
+                "03 01 05",
+                "17 02 01",
+                "15 01 03",
+                "03 01 01",
+                "03 01 99",
+                "02 01 07"
+            ],
+            "output_types": [
+                "mdf_fibreboard",
+                "particle_board",
+                "osb_waferboard"
+            ],
             "processing_capacity": 800,
             "processing_time": 12,
             "storage_capacity": 1400,
@@ -54,14 +89,17 @@
         },
         {
             "id": "proc_zasavska_paper",
-            "input_types": ["bark_waste", "mixed_wood", "waste_paper_packaging"],
-            "output_types": ["paper_packaging"],
+            "input_types": [
+                "03 01 01",
+                "15 01 01"
+            ],
+            "output_types": [],
             "processing_capacity": 600,
             "processing_time": 12,
             "storage_capacity": 1000,
             "energy_consumption": 90.0,
             "environmental_impact": 1.0,
-            "conversion_rate": 0.7,
+            "conversion_rate": 1.0,
             "operational_costs": 180.0
         }
     ]

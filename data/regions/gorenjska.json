@@ -1,80 +1,95 @@
 {
     "generators": [
         {
-            "id": "gen_gorenjska_1",
+            "id": "gen_gorenjska",
             "waste_generation_rates": {
-                "bark_waste": 9.0,
-                "sawdust": 4.0,
-                "wood_cuttings": 13.0,
-                "construction_wood": 7.0,
-                "mixed_wood": 8.0,
-                "waste_wooden_packaging": 13.0,
-                "waste_paper_packaging": 4.0
+                "02 01 07": 3.0,
+                "03 01 01": 8.0,
+                "03 01 05": 15.0,
+                "03 01 99": 40.854,
+                "03 03 01": 0.243,
+                "03 03 08": 26.971,
+                "15 01 01": 94.629,
+                "15 01 03": 52.279,
+                "17 02 01": 6.733,
+                "19 12 01": 6.083,
+                "19 12 07": 0.922,
+                "20 01 01": 135.053,
+                "20 01 38": 16.589,
+                "20 03 07": 22.364
             },
-            "generation_frequency": 24,
-            "storage_capacity": 1100,
-            "priority_level": 5,
+            "generation_frequency": 1,
+            "storage_capacity": 100000,
             "environmental_impact": 1.0,
             "initial_stock": {
-                "bark_waste": 18.0,
-                "sawdust": 22.0,
-                "wood_cuttings": 20.0,
-                "construction_wood": 14.0,
-                "mixed_wood": 16.0,
-                "waste_wooden_packaging": 6.0,
-                "waste_paper_packaging": 8.0
+                "02 01 07": 0.0,
+                "03 01 01": 0.0,
+                "03 01 05": 0.0,
+                "03 01 99": 0.0,
+                "03 03 01": 0.0,
+                "03 03 08": 0.0,
+                "15 01 01": 5.057,
+                "15 01 03": 8.62,
+                "17 02 01": 0.0,
+                "19 12 01": 0.0,
+                "19 12 07": 0.0,
+                "20 01 01": 3.977,
+                "20 01 38": 0.0,
+                "20 03 07": 0.0
             }
         }
     ],
     "collectors": [
         {
-            "id": "col_gorenjska_1",
-            "waste_types": ["bark_waste", "sawdust", "wood_cuttings", "construction_wood", "mixed_wood", "waste_wooden_packaging", "waste_paper_packaging"],
-            "collection_capacity": 1800,
-            "collection_frequency": 24,
+            "id": "col_gorenjska",
+            "waste_types": [
+                "02 01 07",
+                "03 01 01",
+                "03 01 05",
+                "03 01 99",
+                "03 03 01",
+                "03 03 08",
+                "15 01 01",
+                "15 01 03",
+                "17 02 01",
+                "19 12 01",
+                "19 12 07",
+                "20 01 01",
+                "20 01 38",
+                "20 03 07"
+            ],
+            "collection_capacity": 80000,
+            "collection_frequency": 10,
             "transport_cost": 50.0,
             "environmental_impact": 1.0,
-            "efficiency": 0.9,
+            "efficiency": 1.0,
             "availability": true,
             "strategy": "collaborative"
         }
     ],
     "processors": [
         {
-            "id": "proc_gorenjska_wood",
-            "input_types": ["sawdust", "wood_cuttings", "construction_wood", "waste_wooden_packaging"],
-            "output_types": ["wooden_packaging"],
-            "processing_capacity": 1300,
-            "processing_time": 12,
-            "storage_capacity": 2000,
+            "id": "proc_gorenjska",
+            "input_types": [
+                "03 01 99",
+                "17 02 01",
+                "03 01 05",
+                "15 01 03",
+                "03 01 01",
+                "02 01 07"
+            ],
+            "output_types": [
+                "mdf_fibreboard",
+                "particle_board",
+                "osb_waferboard"
+            ],
+            "processing_capacity": 20000,
+            "processing_time": 20,
+            "storage_capacity": 80000,
             "energy_consumption": 100.0,
             "environmental_impact": 1.0,
-            "conversion_rate": 0.8,
+            "conversion_rate": 1.0,
             "operational_costs": 200.0
-        },
-        {
-            "id": "proc_gorenjska_paper",
-            "input_types": ["bark_waste", "mixed_wood", "waste_paper_packaging"],
-            "output_types": ["paper_packaging"],
-            "processing_capacity": 1000,
-            "processing_time": 12,
-            "storage_capacity": 1600,
-            "energy_consumption": 90.0,
-            "environmental_impact": 1.0,
-            "conversion_rate": 0.7,
-            "operational_costs": 180.0
-        },
-        {
-            "id": "proc_gorenjska_furniture",
-            "input_types": ["construction_wood", "wood_cuttings", "waste_wooden_packaging"],
-            "output_types": ["wooden_furniture"],
-            "processing_capacity": 800,
-            "processing_time": 12,
-            "storage_capacity": 1400,
-            "energy_consumption": 80.0,
-            "environmental_impact": 1.0,
-            "conversion_rate": 0.85,
-            "operational_costs": 160.0
         }
     ]
 }

@@ -3,30 +3,64 @@
         {
             "id": "gen_podravska_1",
             "waste_generation_rates": {
-                "sawdust": 11.0,
-                "wood_cuttings": 7.0,
-                "waste_wooden_packaging": 10.0
+                "02 01 07": 3.0,
+                "03 01 05": 15.0,
+                "03 03 08": 26.305,
+                "15 01 01": 202.721,
+                "15 01 03": 61.753,
+                "17 02 01": 8.014,
+                "19 12 01": 3.326,
+                "19 12 07": 0.721,
+                "20 01 01": 253.502,
+                "20 01 38": 41.006,
+                "20 03 07": 42.17,
+                "03 01 01": 25.0,
+                "03 01 99": 15.0
             },
-            "generation_frequency": 24,
+            "generation_frequency": 1,
             "storage_capacity": 1100,
-            "priority_level": 5,
             "environmental_impact": 1.0,
             "initial_stock": {
-                "sawdust": 20.0,
-                "wood_cuttings": 18.0,
-                "waste_wooden_packaging": 2.0
+                "02 01 07": 0.0,
+                "03 01 05": 0.0,
+                "03 03 08": 0.0,
+                "15 01 01": 0.94,
+                "15 01 03": 1.5,
+                "17 02 01": 0.0,
+                "19 12 01": 0.0,
+                "19 12 07": 0.0,
+                "20 01 01": 1.92,
+                "20 01 38": 0.0,
+                "20 03 07": 2.85,
+                "03 01 01": 0.0,
+                "03 01 99": 0.0
             }
         }
     ],
     "collectors": [
         {
             "id": "col_podravska_1",
-            "waste_types": ["sawdust", "wood_cuttings", "waste_wooden_packaging"],
-            "collection_capacity": 1800,
+            "waste_types": [
+                "02 01 07",
+                "03 01 01",
+                "03 01 05",
+                "03 01 99",
+                "03 03 01",
+                "03 03 08",
+                "15 01 01",
+                "15 01 03",
+                "17 02 01",
+                "19 12 01",
+                "19 12 07",
+                "20 01 01",
+                "20 01 38",
+                "20 03 07"
+            ],
+            "collection_capacity": 10000,
             "collection_frequency": 24,
             "transport_cost": 50.0,
             "environmental_impact": 1.0,
-            "efficiency": 0.9,
+            "efficiency": 1.0,
             "availability": true,
             "strategy": "competitive"
         }
@@ -34,8 +68,19 @@
     "processors": [
         {
             "id": "proc_podravska_wood",
-            "input_types": ["sawdust", "wood_cuttings", "waste_wooden_packaging"],
-            "output_types": ["wooden_packaging"],
+            "input_types": [
+                "wood_cuttings",
+                "03 01 99",
+                "03 01 01",
+                "03 01 05",
+                "15 01 03",
+                "02 01 07"
+            ],
+            "output_types": [
+                "mdf_fibreboard",
+                "particle_board",
+                "osb_waferboard"
+            ],
             "processing_capacity": 1400,
             "processing_time": 12,
             "storage_capacity": 2000,
@@ -46,8 +91,11 @@
         },
         {
             "id": "proc_podravska_furniture",
-            "input_types": ["wood_cuttings", "waste_wooden_packaging"],
-            "output_types": ["wooden_furniture"],
+            "input_types": [
+                "wood_cuttings",
+                "15 01 03"
+            ],
+            "output_types": [],
             "processing_capacity": 800,
             "processing_time": 12,
             "storage_capacity": 1400,

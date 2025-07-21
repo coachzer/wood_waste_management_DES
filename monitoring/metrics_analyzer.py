@@ -69,7 +69,7 @@ class MetricsAnalyzer:
                 if history["total_generated"][waste_type]:
                     total = history["total_generated"][waste_type][-1]
                     report.append(
-                        f"- Total {waste_type.value} generated: {total:.2f} m³"
+                        f"- Total {waste_type} generated: {total:.2f} m³"
                     )
             if history["storage_utilization"]:
                 report.append(
@@ -85,7 +85,7 @@ class MetricsAnalyzer:
                 if history["collected_volumes"][waste_type]:
                     total = history["collected_volumes"][waste_type][-1]
                     report.append(
-                        f"- Total {waste_type.value} collected: {total:.2f} m³"
+                        f"- Total {waste_type} collected: {total:.2f} m³"
                     )
             if history["efficiency"]:
                 report.append(f"- Current efficiency: {history['efficiency'][-1]:.2f}")

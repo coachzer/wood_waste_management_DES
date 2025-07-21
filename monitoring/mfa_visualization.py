@@ -78,7 +78,7 @@ def _get_demand_volumes():
     with open('data/demand.json', 'r') as f:
         demand_data = json.load(f)
     
-    target_products = [OutputType.WOODEN_PACKAGING, OutputType.PAPER_PACKAGING, OutputType.WOODEN_FURNITURE]
+    target_products = [OutputType.WOODEN_PACKAGING, OutputType.PAPER_PACKAGING]
     demand_volumes = {}
     for product in target_products:
         key = product.value.lower()
@@ -141,7 +141,7 @@ def _create_nodes(
     # Get current production from simulation state
     state = SimulationState.get_instance()
     demand_start_idx = len(labels)
-    target_products = [OutputType.WOODEN_PACKAGING, OutputType.PAPER_PACKAGING, OutputType.WOODEN_FURNITURE]
+    target_products = [OutputType.WOODEN_PACKAGING, OutputType.PAPER_PACKAGING]
     
     for product in target_products:
         target_volume = demand_volumes.get(product, 0)

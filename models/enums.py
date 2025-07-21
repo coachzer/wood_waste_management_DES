@@ -18,20 +18,58 @@ class RegionType(Enum):
     GORENJSKA = "gorenjska"
     PRIMORSKONOTRANJSKA = "primorskonotranjska"
     GORISKA = "goriska"
-    OBALNO_KRASKA = "obalno-kraska"
+    OBALNO_KRASKA = "obalno_kraska"
 
 class WasteType(Enum):
-    # Input waste types
-    BARK_WASTE = "bark_waste"           # 03 01 01 & 03 03 01 combined
-    SAWDUST = "sawdust"                 # Part of 03 01 05
-    WOOD_CUTTINGS = "wood_cuttings"     # Part of 03 01 05
-    CONSTRUCTION_WOOD = "construction_wood"  # 17 02 01
-    MIXED_WOOD = "mixed_wood"           # 20 01 38
-    WASTE_WOODEN_PACKAGING = "waste_wooden_packaging"  # 15 01 03 (input)
-    WASTE_PAPER_PACKAGING = "waste_paper_packaging"   # 15 01 01 (input)
+    # 02 - Agricultural, horticultural, aqua cultural, forestry, hunting, and fishing waste
+    FORESTRY_WASTE_02_01_07 = "02 01 07"
+
+    # 03 - Wood processing, panel & furniture production, paper & cardboard waste
+    BARK_WASTE_03_01_01 = "03 01 01"
+    CORK_WASTE_03_01_01 = "03 01 01"
+    SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05 = "03 01 05"
+    OTHER_WOOD_WASTE_03_01_99 = "03 01 99"
+    BARK_WOOD_WASTE_03_03_01 = "03 03 01"
+    PAPER_CARDBOARD_SORTING_WASTE_03_03_08 = "03 03 08"
+
+    # 15 - Waste packaging; absorbents, wipes, filter materials, protective clothing
+    PAPER_PACKAGING_15_01_01 = "15 01 01"
+    WOODEN_PACKAGING_15_01_03 = "15 01 03"
+
+    # 17 - Construction & demolition waste (including excavated soil from contaminated sites)
+    CONSTRUCTION_WOOD_17_02_01 = "17 02 01"
+
+    # 19 - Waste from waste treatment, water treatment, and water preparation
+    PAPER_CARDBOARD_19_12_01 = "19 12 01"
+    WOOD_19_12_07 = "19 12 07"
+
+    # 20 - Municipal waste (household & similar commercial/industrial/institutional waste)
+    PAPER_CARDBOARD_20_01_01 = "20 01 01"
+    NON_HAZARDOUS_WOOD_20_01_38 = "20 01 38"
+    BULKY_WASTE_20_03_07 = "20 03 07"
 
 class OutputType(Enum):
     """Types of output products produced by the system."""
-    WOODEN_PACKAGING = "wooden_packaging"    # 15 01 03 (output)
-    PAPER_PACKAGING = "paper_packaging"      # 15 01 01 (output)
-    WOODEN_FURNITURE = "wooden_furniture"    # 20 03 07 (output)
+    MDF_FIBREBOARD = "mdf_fibreboard"     
+    PARTICLE_BOARD = "particle_board"
+    OSB_WAFERBOARD = "osb_waferboard"
+    WOODEN_PACKAGING = "wooden_packaging"
+    PAPER_PACKAGING = "paper_packaging"
+
+class InventoryPolicy(Enum):
+    PUSH = "push"
+    PULL = "pull"
+
+class StockStrategy(Enum):
+    FULL_STOCK = "full_stock"
+    ON_DEMAND = "on_demand"
+    REORDER_90 = "reorder_90"
+    REORDER_50 = "reorder_50"
+
+class CoordinationStrategy(Enum):
+    COMPETITIVE = "competitive"
+    COLLABORATIVE = "collaborative"
+
+class LayoutType(Enum):
+    MONOLITHIC = "monolithic"
+    SPLINTERED = "splintered"

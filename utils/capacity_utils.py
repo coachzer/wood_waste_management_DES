@@ -77,7 +77,7 @@ def apply_partial_update_with_constraints(
         return CapacityResult(
             allowed_amount=0,
             overflow_amount=update_total,
-            scaled_values={key: 0.0 for key in updates}
+            scaled_values=dict(updates)
         )
     
     if update_total <= available:

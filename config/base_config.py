@@ -1,11 +1,9 @@
-"""
-Base configuration for the simulation system.
-Contains core simulation parameters, time settings, scenario configurations,
-and uncertainty set generation.
-"""
+# Note: Actual waste generation rates come from regional JSON files
+# This only provides the uncertainty/variability factors
+
 from dataclasses import dataclass
-from typing import Dict, Tuple
-from models.enums import WasteType, OutputType
+from typing import Dict, Tuple, List
+from models.enums import WasteType, OutputType, InventoryPolicy, StockStrategy, CoordinationStrategy
 from models.data_classes import FailureConfig
 from utils.helpers import (
     load_json, validate_config, validate_all_numeric_positive
@@ -13,22 +11,65 @@ from utils.helpers import (
 
 @dataclass
 class UncertaintySet:
-    """Simple uncertainty set replacement"""
-    waste_generation: Dict
+    """Simplified uncertainty set - only variability parameters"""
+    # Required fields first
     collection_efficiency: Tuple[float, float]
-    treatment_conversion: Dict
+    treatment_conversion: Tuple[float, float]
     transportation_time: Tuple[float, float]
     market_demand: Dict
     generator_failure: FailureConfig
     collector_failure: FailureConfig
     treatment_failure: FailureConfig
-
+    waste_generation_variability: float = 0.2      # ±20% variation on regional rates
+    
 # Load demand data from JSON
 _demand_data = load_json("data/demand.json")
 
 @dataclass
+class CostParams:
+    """Simplified cost parameters"""
+    processing_rate: float = 50.0      # Cost per unit processed
+    transport_rate: float = 2.0        # Cost per unit per km
+    storage_rate: float = 1.0          # Cost per unit per time period
+    energy_rate: float = 0.15          # Cost per kWh
+    landfill_rate: float = 75.0        # Cost per unit landfilled
+
+DEFAULT_COSTS = CostParams()
+
+@dataclass
+class FacilityParams:
+    """Simplified facility parameters"""
+    base_storage_capacity: float = 5000.0     # Base storage capacity
+    base_processing_efficiency: float = 0.85   # Base processing efficiency
+    base_processing_time: float = 1.2         # Base processing time
+    energy_consumption: float = 1.0           # Base energy consumption
+
+DEFAULT_FACILITY = FacilityParams()
+
+# Key waste types for the system (simplified list)
+PRIMARY_WASTE_TYPES = [
+    WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05,
+    WasteType.BARK_WASTE_03_01_01,
+    WasteType.CONSTRUCTION_WOOD_17_02_01,
+    WasteType.NON_HAZARDOUS_WOOD_20_01_38,
+    WasteType.WOODEN_PACKAGING_15_01_03,
+    WasteType.PAPER_PACKAGING_15_01_01
+]
+
+# Base transformation efficiencies (waste_type -> efficiency)
+BASE_TRANSFORMATIONS = {
+    WasteType.CONSTRUCTION_WOOD_17_02_01: 0.98,
+    WasteType.WOODEN_PACKAGING_15_01_03: 0.88,
+    WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: 0.95,
+    WasteType.BARK_WASTE_03_01_01: 0.85,
+    WasteType.NON_HAZARDOUS_WOOD_20_01_38: 0.88,
+    WasteType.PAPER_PACKAGING_15_01_01: 0.82,
+}
+
+@dataclass
 class ScenarioConfig:
-    """Configuration for a simulation scenario"""
+    """Configuration for a simulation scenario - unified and simplified"""
+    name: str
     waste_gen: Tuple[float, float]
     coll_eff: Tuple[float, float]
     treat_conv: Tuple[float, float]
@@ -38,107 +79,87 @@ class ScenarioConfig:
     collector_failure: FailureConfig
     treatment_failure: FailureConfig
     collaboration: bool
+    # Scenario behavior parameters
+    inventory_policy: InventoryPolicy = InventoryPolicy.PUSH
+    stock_strategy: StockStrategy = StockStrategy.FULL_STOCK
+    coordination_strategy: CoordinationStrategy = CoordinationStrategy.COMPETITIVE
 
     def to_uncertainty_set(self) -> UncertaintySet:
         """Convert scenario config to uncertainty set"""
-        # Set demand based on actual monthly demand values with some variation
-        base_demand = {
-            OutputType.WOODEN_PACKAGING: (MONTHLY_DEMAND[OutputType.WOODEN_PACKAGING], MONTHLY_DEMAND[OutputType.WOODEN_PACKAGING] * 0.2),
-            OutputType.PAPER_PACKAGING: (MONTHLY_DEMAND[OutputType.PAPER_PACKAGING], MONTHLY_DEMAND[OutputType.PAPER_PACKAGING] * 0.2),
-            OutputType.WOODEN_FURNITURE: (MONTHLY_DEMAND[OutputType.WOODEN_FURNITURE], MONTHLY_DEMAND[OutputType.WOODEN_FURNITURE] * 0.2)
+        # Market demand based on actual monthly demand values
+        market_demand = {
+            OutputType.MDF_FIBREBOARD: (
+                MONTHLY_DEMAND[OutputType.MDF_FIBREBOARD] * self.market_dem[0], 
+                MONTHLY_DEMAND[OutputType.MDF_FIBREBOARD] * self.market_dem[1]),
+            OutputType.PARTICLE_BOARD: (
+                MONTHLY_DEMAND[OutputType.PARTICLE_BOARD] * self.market_dem[0],
+                MONTHLY_DEMAND[OutputType.PARTICLE_BOARD] * self.market_dem[1]),
+            OutputType.OSB_WAFERBOARD: (
+                MONTHLY_DEMAND[OutputType.OSB_WAFERBOARD] * self.market_dem[0],
+                MONTHLY_DEMAND[OutputType.OSB_WAFERBOARD] * self.market_dem[1])
         }
 
-        # Set lower demand for input waste types
-        input_demand = {
-            waste_type: (demand * 0.1, demand * 0.02)  # 10% of output demand with less variation
-            for waste_type, (demand, _) in base_demand.items()
-        }
-
-        # Combine demands
-        market_demand = {**base_demand}
+        # Add reasonable demand for waste types (lower than output products)
         for waste_type in WasteType:
             if waste_type not in market_demand:
-                market_demand[waste_type] = input_demand.get(
-                    waste_type,
-                    (MONTHLY_DEMAND[OutputType.WOODEN_FURNITURE] * 0.05, MONTHLY_DEMAND[OutputType.WOODEN_FURNITURE] * 0.01)
-                    if "FURNITURE" in waste_type.name
-                    else (MONTHLY_DEMAND[OutputType.WOODEN_PACKAGING] * 0.05, MONTHLY_DEMAND[OutputType.WOODEN_PACKAGING] * 0.01)
-                )
-
-        # Create waste generation with values appropriate for input types
-        waste_generation = {
-            WasteType.SAWDUST: (3000, 600),          # High volume, fine particles
-            WasteType.WOOD_CUTTINGS: (4000, 800),    # Large volume, structural elements
-            WasteType.BARK_WASTE: (2000, 400),       # Medium volume
-            WasteType.CONSTRUCTION_WOOD: (3500, 700), # Significant volume
-            WasteType.MIXED_WOOD: (2500, 500),       # Medium volume
-            # Recyclable packaging waste (based on market demand)
-            WasteType.WASTE_WOODEN_PACKAGING: (1800, 360),  # ~15% of wooden packaging demand
-            WasteType.WASTE_PAPER_PACKAGING: (1200, 240),   # ~15% of paper packaging demand
-        }
-
-        # Apply scenario multipliers
-        waste_generation = {
-            waste_type: (mean * self.waste_gen[0], std * self.waste_gen[1])
-            for waste_type, (mean, std) in waste_generation.items()
-        }
-
-        treatment_conversion = {waste_type: self.treat_conv for waste_type in WasteType}
+                market_demand[waste_type] = (600 * self.market_dem[0], 240 * self.market_dem[1])
 
         return UncertaintySet(
-            waste_generation=waste_generation,
+            # Required fields
             collection_efficiency=self.coll_eff,
-            treatment_conversion=treatment_conversion,
+            treatment_conversion=self.treat_conv,
             transportation_time=self.trans_time,
             market_demand=market_demand,
             generator_failure=self.generator_failure,
             collector_failure=self.collector_failure,
-            treatment_failure=self.treatment_failure
+            treatment_failure=self.treatment_failure,
+            # Optional field
+            waste_generation_variability=self.waste_gen[1]  # Use std as variability factor
         )
 
 # Time configuration
-SIMULATION_DURATION = 300  # 3 years * 100 time units per year
-TIME_PERIOD = 100  # Length of one year in time units
-TOTAL_YEARS = 3  # Total number of years to simulate
+SIMULATION_DURATION = 365  # days in simulation (one full year)
+TIME_STEP = 1  # days per time step
 
-# Time periods documentation
 TIME_PERIODS = {
-    "year_1": (0, 99),    # First year time range
-    "year_2": (100, 199), # Second year time range
-    "year_3": (200, 299), # Third year time range
+    "quarter_1": (0, 90),     # Q1: Jan-Mar (91 days)
+    "quarter_2": (91, 181),   # Q2: Apr-Jun (91 days) 
+    "quarter_3": (182, 272),  # Q3: Jul-Sep (91 days)
+    "quarter_4": (273, 364),  # Q4: Oct-Dec (92 days)
 }
 
-# Demand configuration from data/demand.json
+# Demand configuration from data/demand.json - to check the file and UPDATE
 MONTHLY_DEMAND = {
-    OutputType.WOODEN_PACKAGING: _demand_data["national_demand"]["wooden_packaging"],
-    OutputType.PAPER_PACKAGING: _demand_data["national_demand"]["paper_packaging"],
-    OutputType.WOODEN_FURNITURE: _demand_data["national_demand"]["wooden_furniture"]
+    OutputType.MDF_FIBREBOARD: _demand_data["national_demand"]["mdf_fibreboard"],
+    OutputType.PARTICLE_BOARD: _demand_data["national_demand"]["particle_board"],
+    OutputType.OSB_WAFERBOARD: _demand_data["national_demand"]["osb_waferboard"]
 }
 
 LOW_FAILURE = FailureConfig(
-        probability=0.01,  # 1% chance per hour
-        min_duration=12.0,
-        max_duration=24.0,
-        check_interval=24.0  # Check once per day
+    probability=0.001,  # 0.1% chance per hour = ~2.4% chance per day
+    min_duration=12.0,
+    max_duration=24.0,
+    check_interval=24.0  # Check once per day
     )
 
 MEDIUM_FAILURE = FailureConfig(
-    probability=0.1,  # 10% chance per hour
+    probability=0.005,  # 0.5% chance per hour = ~12% chance per day
     min_duration=6.0,
     max_duration=12.0,
     check_interval=12.0  # Check twice per day
 )
 
 HIGH_FAILURE = FailureConfig(
-    probability=0.5,  # 50% chance per hour
+    probability=0.01,  # 1% chance per hour = ~24% chance per day
     min_duration=3.0,
     max_duration=6.0,
     check_interval=6.0  # Check four times per day
 )
 
-# Default scenario configurations
+# Default scenario configurations - simplified and unified
 SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
     "Baseline": ScenarioConfig(
+        name="Baseline",
         waste_gen=(1.0, 0.2),    # Base generation rates
         coll_eff=(0.85, 0.1),    # Good collection efficiency
         treat_conv=(0.9, 0.05),  # High conversion efficiency
@@ -147,9 +168,13 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
         generator_failure=LOW_FAILURE,
         collector_failure=LOW_FAILURE,
         treatment_failure=LOW_FAILURE,
-        collaboration=False
+        collaboration=False,
+        inventory_policy=InventoryPolicy.PUSH,
+        stock_strategy=StockStrategy.FULL_STOCK,
+        coordination_strategy=CoordinationStrategy.COMPETITIVE
     ),
     "High Uncertainty": ScenarioConfig(
+        name="High Uncertainty",
         waste_gen=(1.0, 0.4),    # Same generation but more variance
         coll_eff=(0.85, 0.2),    # More variable collection
         treat_conv=(0.9, 0.1),   # More variable conversion
@@ -158,9 +183,13 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
         generator_failure=HIGH_FAILURE,
         collector_failure=HIGH_FAILURE,
         treatment_failure=HIGH_FAILURE,
-        collaboration=True
+        collaboration=True,
+        inventory_policy=InventoryPolicy.PULL,
+        stock_strategy=StockStrategy.ON_DEMAND,
+        coordination_strategy=CoordinationStrategy.COLLABORATIVE
     ),
     "High Demand": ScenarioConfig(
+        name="High Demand",
         waste_gen=(1.5, 0.3),    # 50% more generation
         coll_eff=(0.85, 0.15),   # Standard collection
         treat_conv=(0.9, 0.05),  # Standard conversion
@@ -169,9 +198,13 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
         generator_failure=MEDIUM_FAILURE,
         collector_failure=MEDIUM_FAILURE,
         treatment_failure=MEDIUM_FAILURE,
-        collaboration=True
+        collaboration=True,
+        inventory_policy=InventoryPolicy.PULL,
+        stock_strategy=StockStrategy.REORDER_90,
+        coordination_strategy=CoordinationStrategy.COLLABORATIVE
     ),
     "Optimistic": ScenarioConfig(
+        name="Optimistic",
         waste_gen=(1.2, 0.1),    # 20% more generation, very stable
         coll_eff=(0.95, 0.05),   # Higher and stable collection
         treat_conv=(0.95, 0.03), # Higher and stable conversion
@@ -180,7 +213,10 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
         generator_failure=LOW_FAILURE,
         collector_failure=LOW_FAILURE,
         treatment_failure=LOW_FAILURE,
-        collaboration=True
+        collaboration=True,
+        inventory_policy=InventoryPolicy.PUSH,
+        stock_strategy=StockStrategy.FULL_STOCK,
+        coordination_strategy=CoordinationStrategy.COLLABORATIVE
     )
 }
 
@@ -210,46 +246,36 @@ uncertainty_sets = {}
 
 def _create_uncertainty_set(config: ScenarioConfig) -> UncertaintySet:
     """Create uncertainty set from a scenario configuration"""
-    # Create waste generation with values appropriate for input types
-    waste_generation = {
-        # Primary materials
-        WasteType.SAWDUST: (4320 * config.waste_gen[0], 864 * config.waste_gen[1]),
-        WasteType.WOOD_CUTTINGS: (3780 * config.waste_gen[0], 756 * config.waste_gen[1]),
-        WasteType.BARK_WASTE: (2850 * config.waste_gen[0], 570 * config.waste_gen[1]),
-        WasteType.CONSTRUCTION_WOOD: (2130 * config.waste_gen[0], 426 * config.waste_gen[1]),
-        WasteType.MIXED_WOOD: (2430 * config.waste_gen[0], 486 * config.waste_gen[1]),
-        # Recyclable materials
-        WasteType.WASTE_WOODEN_PACKAGING: (1800 * config.waste_gen[0], 360 * config.waste_gen[1]),
-        WasteType.WASTE_PAPER_PACKAGING: (1200 * config.waste_gen[0], 240 * config.waste_gen[1]),
-    }
-
-    # Create treatment conversion rates
-    treatment_conversion = {waste_type: config.treat_conv for waste_type in WasteType}
-
-    # Create market demand from demand.json
+    # Market demand from demand.json
     market_demand = {
-        OutputType.WOODEN_PACKAGING: (_demand_data["national_demand"]["wooden_packaging"] * config.market_dem[0],
-                                   _demand_data["national_demand"]["wooden_packaging"] * config.market_dem[1]),
-        OutputType.PAPER_PACKAGING: (_demand_data["national_demand"]["paper_packaging"] * config.market_dem[0],
-                                  _demand_data["national_demand"]["paper_packaging"] * config.market_dem[1]),
-        OutputType.WOODEN_FURNITURE: (_demand_data["national_demand"]["wooden_furniture"] * config.market_dem[0],
-                                   _demand_data["national_demand"]["wooden_furniture"] * config.market_dem[1]),
+        OutputType.MDF_FIBREBOARD: (
+            _demand_data["national_demand"]["mdf_fibreboard"] * config.market_dem[0],
+            _demand_data["national_demand"]["mdf_fibreboard"] * config.market_dem[1]),
+        OutputType.PARTICLE_BOARD: (
+            _demand_data["national_demand"]["particle_board"] * config.market_dem[0],
+            _demand_data["national_demand"]["particle_board"] * config.market_dem[1]),
+        OutputType.OSB_WAFERBOARD: (
+            _demand_data["national_demand"]["osb_waferboard"] * config.market_dem[0],
+            _demand_data["national_demand"]["osb_waferboard"] * config.market_dem[1]),
     }
-    # Add input waste types with lower demand
+    
+    # Add reasonable demand for waste types (lower than output products)
     for waste_type in WasteType:
         if waste_type not in market_demand:
             market_demand[waste_type] = (600 * config.market_dem[0], 240 * config.market_dem[1])
 
-    # Create uncertainty set
+    # Create uncertainty set with variability factors
     return UncertaintySet(
-        waste_generation=waste_generation,
+        # Required fields
         collection_efficiency=config.coll_eff,
-        treatment_conversion=treatment_conversion,
+        treatment_conversion=config.treat_conv,
         transportation_time=config.trans_time,
         market_demand=market_demand,
         generator_failure=config.generator_failure,
         collector_failure=config.collector_failure,
-        treatment_failure=config.treatment_failure
+        treatment_failure=config.treatment_failure,
+        # Optional field
+        waste_generation_variability=config.waste_gen[1]  # Use std as variability factor
     )
 
 def validate_time_periods() -> None:
@@ -280,3 +306,36 @@ default_uncertainty_set = uncertainty_sets["Baseline"]
 def get_uncertainty_set(scenario_name: str = "Baseline") -> UncertaintySet:
     """Get uncertainty set for a specific scenario"""
     return uncertainty_sets.get(scenario_name, default_uncertainty_set)
+
+def get_scenario_config(scenario_name: str = "Baseline") -> ScenarioConfig:
+    """Get scenario configuration by name"""
+    return SCENARIO_CONFIGS.get(scenario_name, SCENARIO_CONFIGS["Baseline"])
+
+def get_scenario_by_params(
+    inventory_policy: InventoryPolicy = InventoryPolicy.PUSH,
+    stock_strategy: StockStrategy = StockStrategy.FULL_STOCK,
+    coordination_strategy: CoordinationStrategy = CoordinationStrategy.COMPETITIVE
+) -> ScenarioConfig:
+    """Get scenario configuration by behavioral parameters"""
+    # Find first scenario that matches the parameters
+    for scenario in SCENARIO_CONFIGS.values():
+        if (scenario.inventory_policy == inventory_policy and 
+            scenario.stock_strategy == stock_strategy and
+            scenario.coordination_strategy == coordination_strategy):
+            return scenario
+    
+    # If no exact match, return baseline
+    return SCENARIO_CONFIGS["Baseline"]
+
+def list_available_scenarios() -> List[str]:
+    """List all available scenario names"""
+    return list(SCENARIO_CONFIGS.keys())
+
+# Convenience functions for costs and facility parameters
+def get_cost_params() -> CostParams:
+    """Get default cost parameters"""
+    return DEFAULT_COSTS
+
+def get_facility_params() -> FacilityParams:
+    """Get default facility parameters"""
+    return DEFAULT_FACILITY

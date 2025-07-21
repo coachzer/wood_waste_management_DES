@@ -1,0 +1,108 @@
+{
+    "generators": [
+        {
+            "id": "gen_obalno-kraska_1",
+            "waste_generation_rates": {
+                "02 01 07": 3.0,
+                "03 01 05": 20.165,
+                "03 03 08": 0.816,
+                "15 01 01": 54.199,
+                "15 01 03": 32.498,
+                "17 02 01": 1.645,
+                "19 12 01": 0.507,
+                "19 12 07": 0.237,
+                "20 01 01": 19.342,
+                "20 01 38": 16.802,
+                "20 03 07": 5.089,
+                "03 01 01": 20.0,
+                "03 01 99": 12.0
+            },
+            "generation_frequency": 1,
+            "storage_capacity": 1000,
+            "environmental_impact": 1.0,
+            "initial_stock": {
+                "02 01 07": 0.0,
+                "03 01 05": 0.0,
+                "03 03 01": 0.0,
+                "15 01 01": 4.744,
+                "15 01 03": 0.82,
+                "17 02 01": 0.0,
+                "19 12 01": 0.0,
+                "19 12 07": 0.0,
+                "20 01 01": 0.15,
+                "20 01 38": 1.1,
+                "20 03 07": 0.0,
+                "03 01 01": 0.0,
+                "03 01 99": 0.0
+            }
+        }
+    ],
+    "collectors": [
+        {
+            "id": "col_obalno-kraska_1",
+            "waste_types": [
+                "02 01 07",
+                "03 01 01",
+                "03 01 05",
+                "03 01 99",
+                "03 03 01",
+                "03 03 08",
+                "15 01 01",
+                "15 01 03",
+                "17 02 01",
+                "19 12 01",
+                "19 12 07",
+                "20 01 01",
+                "20 01 38",
+                "20 03 07"
+            ],
+            "collection_capacity": 10000,
+            "collection_frequency": 24,
+            "transport_cost": 50.0,
+            "environmental_impact": 1.0,
+            "efficiency": 1.0,
+            "availability": true,
+            "strategy": "competitive"
+        }
+    ],
+    "processors": [
+        {
+            "id": "proc_obalno-kraska_wood",
+            "input_types": [
+                "03 01 99",
+                "03 01 01",
+                "17 02 01",
+                "03 01 05",
+                "15 01 03",
+                "02 01 07"
+            ],
+            "output_types": [
+                "mdf_fibreboard",
+                "particle_board",
+                "osb_waferboard"
+            ],
+            "processing_capacity": 1200,
+            "processing_time": 12,
+            "storage_capacity": 1900,
+            "energy_consumption": 100.0,
+            "environmental_impact": 1.0,
+            "conversion_rate": 0.8,
+            "operational_costs": 200.0
+        },
+        {
+            "id": "proc_obalno-kraska_paper",
+            "input_types": [
+                "03 01 01",
+                "15 01 01"
+            ],
+            "output_types": [],
+            "processing_capacity": 900,
+            "processing_time": 12,
+            "storage_capacity": 1500,
+            "energy_consumption": 90.0,
+            "environmental_impact": 1.0,
+            "conversion_rate": 1.0,
+            "operational_costs": 180.0
+        }
+    ]
+}

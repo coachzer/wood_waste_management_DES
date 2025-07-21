@@ -128,7 +128,7 @@ def process_collection(
             else "collected remaining"
         )
         print(
-            f"{collector.env.now}: {collector.name} {collection_type} {result.allowed_amount:.8f} m³ of {waste_type.value}"
+            f"{collector.env.now}: {collector.name} {collection_type} {result.allowed_amount:.8f} m³ of {waste_type}"
         )
 
     return remaining_volume - result.allowed_amount
@@ -183,7 +183,7 @@ def handle_collector_capacity(
             )
 
             print(
-                f"{collector2.env.now}: {collector2.name} collected {result.allowed_amount:.8f} m³ of {waste_type.value}"
+                f"{collector2.env.now}: {collector2.name} collected {result.allowed_amount:.8f} m³ of {waste_type}"
             )
 
         if result.overflow_amount > 0:
@@ -238,7 +238,7 @@ def collect_from_single_generator(
             total_collected += collection_result.allowed_amount
 
             print(
-                f"{collector.env.now}: {collector.name} collected {collection_result.allowed_amount:.8f} m³ of {waste_type.value} from {generator.name}"
+                f"{collector.env.now}: {collector.name} collected {collection_result.allowed_amount:.8f} m³ of {waste_type} from {generator.name}"
             )
 
             # Add to collection center then immediately remove since it's going to treatment
@@ -264,8 +264,6 @@ def get_prioritized_generators() -> List:
         for g in state.generators
         if g.current_storage > 0
     ]
-
-    regional_generators.sort(key=lambda x: x.priority_level, reverse=True)
     return regional_generators
 
 def handle_competitive_collection(collector: OperationalEntity, prioritized_generators: List) -> float:

@@ -510,21 +510,6 @@ class FacilityConfig:
         self.environmental_impact: float
 ```
 
-#### Scenario Configuration
-```json
-{
-  "baseline_2025": {
-    "generators": {
-      "waste_streams": {
-        "construction_wood": {"rate": 10.0},
-        "wood_cuttings": {"rate": 5.0}
-      },
-      "generation_frequency": 1.0
-    }
-  }
-}
-```
-
 #### Cost Configuration
 ```python
 # cost_config.py

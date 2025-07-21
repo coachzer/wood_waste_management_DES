@@ -7,11 +7,12 @@ def calculate_daily_factors(rng, waste_generation_rates, uncertainty_set=None):
         return [1.0] * len(waste_generation_rates)
 
     daily_factors = []
-    for waste_type in waste_generation_rates.keys():
-        mean, std = uncertainty_set.waste_generation.get(
-            waste_type, (1.0, 0.2)
-        )
-        factor = rng.normal(mean, std)
+    # Use the simplified uncertainty set structure
+    variability = getattr(uncertainty_set, 'waste_generation_variability', 0.2)
+    
+    for _ in waste_generation_rates.keys():
+        # Apply variability factor to all waste types uniformly
+        factor = rng.normal(1.0, variability)
         daily_factors.append(np.clip(factor, 0.1, 2.0))
     return daily_factors
 
@@ -38,7 +39,7 @@ def update_waste_stream(waste_streams, total_generated, current_storage, region,
 
 from utils.capacity_utils import apply_capacity_constraints, apply_partial_update_with_constraints, handle_overflow_generic
 
-def handle_overflow(env, name, current_storage, storage_capacity, waste_streams, region, data_collector):
+def handle_overflow(env, current_storage, storage_capacity, waste_streams, region, data_collector):
     """Handle storage overflow situation"""
     # Create dictionary of current volumes
     current_volumes = {

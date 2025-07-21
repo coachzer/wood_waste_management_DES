@@ -4,8 +4,8 @@ import numpy as np
 from typing import Dict
 from config.base_config import (
     SIMULATION_DURATION,
-    TIME_PERIOD,
-    TOTAL_YEARS,
+    TIME_STEP,
+    TIME_PERIODS,
     get_uncertainty_set
 )
 from models.state import SimulationState
@@ -18,6 +18,8 @@ class SimulationManager:
     """Manages simulation setup, execution, and monitoring"""
     
     def __init__(self):
+        # Reset the SimulationState singleton for fresh simulation
+        SimulationState._instance = None
         self.env = simpy.Environment()
         self.waste_monitor = WasteMonitor()
         self.state = SimulationState.get_instance()

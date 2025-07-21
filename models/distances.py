@@ -1,72 +1,79 @@
-from typing import Dict, Tuple
-from math import sqrt
+from typing import Dict, Tuple, List
 from .enums import RegionType
+import csv
+import os
 
-# Approximate coordinates (latitude, longitude) for each region's center
-REGION_COORDINATES: Dict[RegionType, Tuple[float, float]] = {
-    RegionType.POMURSKA: (46.6521, 16.1667),  # Murska Sobota area
-    RegionType.PODRAVSKA: (46.5547, 15.6467),  # Maribor area
-    RegionType.KOROSKA: (46.5920, 14.9709),  # Slovenj Gradec area
-    RegionType.SAVINJSKA: (46.2392, 15.2676),  # Celje area
-    RegionType.ZASAVSKA: (46.1103, 15.0024),  # Trbovlje area
-    RegionType.POSAVSKA: (45.9588, 15.4925),  # Krško area
-    RegionType.JUGOVZHODNA_SLOVENIJA: (45.8033, 15.1695),  # Novo mesto area
-    RegionType.OSREDNJESLOVENSKA: (46.0552, 14.5149),  # Ljubljana area
-    RegionType.GORENJSKA: (46.3624, 14.1149),  # Kranj area
-    RegionType.PRIMORSKONOTRANJSKA: (45.7721, 14.3687),  # Postojna area
-    RegionType.GORISKA: (46.0003, 13.6554),  # Nova Gorica area
-    RegionType.OBALNO_KRASKA: (45.5480, 13.7315),  # Koper area
+CITY_TO_REGION = {
+    "Murska Sobota": RegionType.POMURSKA,
+    "Maribor": RegionType.PODRAVSKA,
+    "Slovenj Gradec": RegionType.KOROSKA,
+    "Celje": RegionType.SAVINJSKA,
+    "Trbovlje": RegionType.ZASAVSKA,
+    "Krško": RegionType.POSAVSKA,
+    "Novo Mesto": RegionType.JUGOVZHODNA_SLOVENIJA,
+    "Ljubljana": RegionType.OSREDNJESLOVENSKA,
+    "Kranj": RegionType.GORENJSKA,
+    "Postojna": RegionType.PRIMORSKONOTRANJSKA,
+    "Nova Gorica": RegionType.GORISKA,
+    "Koper": RegionType.OBALNO_KRASKA,
 }
 
+REGION_TO_CITY = {v: k for k, v in CITY_TO_REGION.items()}
 
-def euclidean_distance(
-    coord1: Tuple[float, float], coord2: Tuple[float, float]
-) -> float:
-    """
-    Calculate Euclidean distance between two geographic coordinates.
+CITY_COORDS = {
+    'Murska Sobota': (46.6597, 16.1668),
+    'Maribor': (46.55465, 15.645881),
+    'Slovenj Gradec': (46.5050, 15.1200),
+    'Celje': (46.2276, 15.2672),
+    'Trbovlje': (46.1539, 15.0547),
+    'Krško': (45.9551, 15.5025),
+    'Novo Mesto': (45.8038, 15.1652),
+    'Postojna': (45.7783, 14.2161),
+    'Ljubljana': (46.056947, 14.505751),
+    'Kranj': (46.238108, 14.3556),
+    'Nova Gorica': (45.95619, 13.64826),
+    'Koper': (45.548264, 13.7301),
+}
 
-    Args:
-        coord1: (latitude, longitude) of first point
-        coord2: (latitude, longitude) of second point
+REGION_COORDINATES: Dict[RegionType, Tuple[float, float]] = {
+    region: CITY_COORDS[city]
+    for city, region in CITY_TO_REGION.items()
+}
 
-    Returns:
-        Euclidean distance between the points
-    """
-    # Note: This is a simplified distance calculation.
-    # For more accuracy, one could use the Haversine formula for great-circle distance
-    lat1, lon1 = coord1
-    lat2, lon2 = coord2
-    return sqrt((lat1 - lat2) ** 2 + (lon1 - lon2) ** 2) * 111  # Rough conversion to km
+DISTANCE_MATRIX: Dict[Tuple[RegionType, RegionType], float] = {}
 
+def _load_distance_matrix():
+    csv_path = "data/slovenian_cities_distance_matrix_km.csv"
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(f"Distance matrix CSV not found at: {csv_path}")
+    with open(csv_path, newline='', encoding='utf-8') as csvfile:
+        reader = csv.reader(csvfile)
+        headers = next(reader)[1:]  
+        for row in reader:
+            from_city = row[0]
+            from_region = CITY_TO_REGION[from_city]
+            for to_city, dist in zip(headers, row[1:]):
+                to_region = CITY_TO_REGION[to_city]
+                DISTANCE_MATRIX[(from_region, to_region)] = float(dist)
+
+_load_distance_matrix()
 
 def get_distance(from_region: RegionType, to_region: RegionType) -> float:
-    """
-    Get the distance in kilometers between two regions.
-
-    Args:
-        from_region: Source region
-        to_region: Destination region
-
-    Returns:
-        Distance in kilometers between the regions
-    """
-    coord1 = REGION_COORDINATES[from_region]
-    coord2 = REGION_COORDINATES[to_region]
-    return euclidean_distance(coord1, coord2)
-
+    try:
+        return DISTANCE_MATRIX[(from_region, to_region)]
+    except KeyError:
+        raise ValueError(f"Distance not found for {from_region} to {to_region}")
 
 def get_closest_regions(
     region: RegionType, n: int = 3
-) -> list[tuple[RegionType, float]]:
-    """
-    Get the n closest regions to the specified region, sorted by distance.
-
-    Args:
-        region: The reference region
-        n: Number of closest regions to return (default 3)
-
-    Returns:
-        List of tuples containing (region, distance) pairs, sorted by distance
-    """
-    distances = [(r, get_distance(region, r)) for r in RegionType if r != region]
+) -> List[Tuple[RegionType, float]]:
+    distances = []
+    for r in RegionType:
+        if r == region:
+            continue
+        try:
+            dist = get_distance(region, r)
+            distances.append((r, dist))
+        except Exception:
+            continue
     return sorted(distances, key=lambda x: x[1])[:n]

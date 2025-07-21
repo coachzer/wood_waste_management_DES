@@ -7,6 +7,8 @@ from core.generator_utils import (
     generate_waste_for_period,
 )
 
+from models.enums import StockStrategy
+
 class WasteGenerator(OperationalEntity):
     def __init__(
         self,
@@ -15,16 +17,17 @@ class WasteGenerator(OperationalEntity):
         waste_streams: Dict[WasteType, float],
         generation_frequency,
         storage_capacity,
-        priority_level,
         environmental_impact,
         region: str,
         uncertainty_set = None,
         initial_stock: Optional[Dict[WasteType, float]] = None,
         data_collector = None,
+        stock_strategy: StockStrategy = StockStrategy.FULL_STOCK,
     ):
         super().__init__()
         self.env = env
         self.name = name
+        self.stock_strategy = stock_strategy
         # Validate initial stock against storage capacity
         if initial_stock:
             total_initial = sum(initial_stock.values())
@@ -44,7 +47,6 @@ class WasteGenerator(OperationalEntity):
         self.waste_generation_rates = waste_streams
         self.generation_frequency = generation_frequency
         self.storage_capacity = storage_capacity
-        self.priority_level = priority_level
         self.uncertainty_set = uncertainty_set
         self.environmental_impact = environmental_impact
         self.current_storage = sum(initial_stock.values() if initial_stock else [0])
@@ -98,7 +100,7 @@ class WasteGenerator(OperationalEntity):
         """Generate waste with optimized calculations and failure handling"""
         while True:
             current_time = self.env.now
-            
+
             # If we were failed but have recovered, log it
             if (self.status == EntityStatus.FAILED and 
                 current_time >= self.recovery_time):
@@ -110,22 +112,77 @@ class WasteGenerator(OperationalEntity):
             season_index = int(current_time % self.seasonal_periods)
             seasonal_factor = self.seasonal_factors[season_index]
 
-            available_storage = self.storage_capacity - self.current_storage
-            if available_storage <= 0:
-                self.current_storage = handle_overflow(
-                    self.env, self.name, self.current_storage, self.storage_capacity,
-                    self.waste_streams, self.region, self.data_collector
+            # Stock strategy logic
+            if self.stock_strategy == StockStrategy.FULL_STOCK:
+                available_storage = self.storage_capacity - self.current_storage
+                if available_storage <= 0:
+                    self.current_storage = handle_overflow(
+                        self.env, self.current_storage, self.storage_capacity,
+                        self.waste_streams, self.region, self.data_collector
+                    )
+                    yield self.env.timeout(self.generation_frequency)
+                    continue
+                available_storage, self.current_storage, self.history_index = generate_waste_for_period(
+                    self.name, self.status, self.uncertainty_set,
+                    self.waste_generation_rates, self.region, self.waste_streams,
+                    self.total_generated, self.generation_history, self.history_index,
+                    self.current_storage, self.rng, seasonal_factor, available_storage,
+                    current_time
                 )
-                yield self.env.timeout(self.generation_frequency)
-                continue
+            elif self.stock_strategy == StockStrategy.ON_DEMAND:
+                # Only generate what is needed, discard excess immediately
+                available_storage = self.storage_capacity - self.current_storage
+                demand = sum(self.waste_generation_rates.values())
+                if available_storage < demand:
+                    # Discard excess generation
+                    self.current_storage = handle_overflow(
+                        self.env, self.current_storage, self.storage_capacity,
+                        self.waste_streams, self.region, self.data_collector
+                    )
+                else:
+                    available_storage, self.current_storage, self.history_index = generate_waste_for_period(
+                        self.name, self.status, self.uncertainty_set,
+                        self.waste_generation_rates, self.region, self.waste_streams,
+                        self.total_generated, self.generation_history, self.history_index,
+                        self.current_storage, self.rng, seasonal_factor, available_storage,
+                        current_time
+                    )
+            elif self.stock_strategy == StockStrategy.REORDER_90:
+                # Trigger replenishment at 90% threshold
+                if self.current_storage < self.storage_capacity * 0.9:
+                    available_storage = self.storage_capacity - self.current_storage
+                    available_storage, self.current_storage, self.history_index = generate_waste_for_period(
+                        self.name, self.status, self.uncertainty_set,
+                        self.waste_generation_rates, self.region, self.waste_streams,
+                        self.total_generated, self.generation_history, self.history_index,
+                        self.current_storage, self.rng, seasonal_factor, available_storage,
+                        current_time
+                    )
+                else:
+                    # Discard excess
+                    self.current_storage = handle_overflow(
+                        self.env, self.current_storage, self.storage_capacity,
+                        self.waste_streams, self.region, self.data_collector
+                    )
+            elif self.stock_strategy == StockStrategy.REORDER_50:
+                # Trigger replenishment at 50% threshold
+                if self.current_storage < self.storage_capacity * 0.5:
+                    available_storage = self.storage_capacity - self.current_storage
+                    available_storage, self.current_storage, self.history_index = generate_waste_for_period(
+                        self.name, self.status, self.uncertainty_set,
+                        self.waste_generation_rates, self.region, self.waste_streams,
+                        self.total_generated, self.generation_history, self.history_index,
+                        self.current_storage, self.rng, seasonal_factor, available_storage,
+                        current_time
+                    )
+                else:
+                    # Discard excess
+                    self.current_storage = handle_overflow(
+                        self.env, self.current_storage, self.storage_capacity,
+                        self.waste_streams, self.region, self.data_collector
+                    )
+            # Kanban signal handling for pull systems can be added here
 
-            available_storage, self.current_storage, self.history_index = generate_waste_for_period(
-                self.name, self.status, self.uncertainty_set,
-                self.waste_generation_rates, self.region, self.waste_streams,
-                self.total_generated, self.generation_history, self.history_index,
-                self.current_storage, self.rng, seasonal_factor, available_storage,
-                current_time
-            )
             self.history_index += 1
             yield self.env.timeout(self.generation_frequency)
 
@@ -160,28 +217,6 @@ class WasteGenerator(OperationalEntity):
             }
         return summary
 
-    def adjust_priority(self):
-        """Adjust priority level based on storage utilization and time since last collection"""
-        utilization_ratio = self.current_storage / self.storage_capacity
-        time_since_collection = self.env.now - self.last_collected
-
-        # Storage-based priority adjustment
-        if utilization_ratio > 0.75:
-            self.priority_level = min(10, self.priority_level + 1)
-        elif utilization_ratio < 0.25:
-            self.priority_level = max(1, self.priority_level - 1)
-
-        # Time-based priority adjustment
-        if time_since_collection > 5:
-            self.priority_level = min(10, self.priority_level + 1)
-
-        print(
-            f"Priority for {self.name} adjusted to {self.priority_level} "
-            f"due to storage utilization ({utilization_ratio:.2f}) and "
-            f"time since last collection ({time_since_collection:.2f})"
-        )
-
     def mark_collected(self):
         """Update collection status"""
-        self.priority_level = max(1, self.priority_level - 1)
         self.last_collected = self.env.now

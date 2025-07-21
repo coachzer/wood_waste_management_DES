@@ -1,12 +1,7 @@
 {
     "national_demand": {
-        "wooden_packaging": 1600,
-        "paper_packaging": 1500,
-        "wooden_furniture": 500
-    },
-    "period": {
-        "unit": "month",
-        "length": 1
-    },
-    "note": "Volumes are in cubic meters per period. Demand represents the minimum required processed output across all regions combined."
+        "particle_board": 12000,
+        "osb_waferboard": 9000,
+        "mdf_fibreboard": 7000
+    }
 }

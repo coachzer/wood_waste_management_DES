@@ -1,3 +1,54 @@
 """
-Configuration package for waste management system.
+Unified configuration package for waste management system.
+Single source of truth following KISS principle.
 """
+
+from .base_config import (
+    # Core data structures
+    UncertaintySet,
+    ScenarioConfig,
+    CostParams,
+    FacilityParams,
+    
+    # Scenario access functions
+    get_uncertainty_set,
+    get_scenario_config,
+    get_scenario_by_params,
+    list_available_scenarios,
+    
+    # Parameter access functions
+    get_cost_params,
+    get_facility_params,
+    
+    # Constants
+    SIMULATION_DURATION,
+    TIME_STEP,
+    PRIMARY_WASTE_TYPES,
+    BASE_TRANSFORMATIONS,
+    DEFAULT_COSTS,
+    DEFAULT_FACILITY
+)
+
+__all__ = [
+    # Core data structures
+    'UncertaintySet',
+    'ScenarioConfig', 
+    'CostParams',
+    'FacilityParams',
+    
+    # Access functions
+    'get_uncertainty_set',
+    'get_scenario_config',
+    'get_scenario_by_params',
+    'list_available_scenarios',
+    'get_cost_params',
+    'get_facility_params',
+    
+    # Constants
+    'SIMULATION_DURATION',
+    'TIME_STEP',
+    'PRIMARY_WASTE_TYPES',
+    'BASE_TRANSFORMATIONS',
+    'DEFAULT_COSTS',
+    'DEFAULT_FACILITY'
+]

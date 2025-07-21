@@ -22,20 +22,20 @@ class SimulationState:
             # Initialize product tracking with values from demand.json
             demand = _demand_data["national_demand"]
             cls._instance.total_products = {
-                'wooden_packaging': 0,
-                'paper_packaging': 0,
-                'wooden_furniture': 0
+                'mdf_fibreboard': 0,
+                'particle_board': 0,
+                'osb_waferboard': 0
             }
             cls._instance.target_demands = {
-                'wooden_packaging': demand["wooden_packaging"],
-                'paper_packaging': demand["paper_packaging"],
-                'wooden_furniture': demand["wooden_furniture"]
+                'mdf_fibreboard': demand["mdf_fibreboard"],
+                'particle_board': demand["particle_board"],
+                'osb_waferboard': demand["osb_waferboard"]
             }
             # Track when each demand was met
             cls._instance.demand_met_times = {
-                'wooden_packaging': None,
-                'paper_packaging': None,
-                'wooden_furniture': None
+                'mdf_fibreboard': None,
+                'particle_board': None,
+                'osb_waferboard': None
             }
         return cls._instance
 
@@ -124,19 +124,19 @@ class SimulationState:
         # Reset product tracking with values from demand.json
         demand = _demand_data["national_demand"]
         self.total_products = {
-            'wooden_packaging': 0,
-            'paper_packaging': 0,
-            'wooden_furniture': 0
+            'mdf_fibreboard': 0,
+            'particle_board': 0,
+            'osb_waferboard': 0
         }
         self.target_demands = {
-            'wooden_packaging': demand["wooden_packaging"],
-            'paper_packaging': demand["paper_packaging"],
-            'wooden_furniture': demand["wooden_furniture"]
+            'mdf_fibreboard': demand["mdf_fibreboard"],
+            'particle_board': demand["particle_board"],
+            'osb_waferboard': demand["osb_waferboard"]
         }
         
         # Reset demand met times
         self.demand_met_times = {
-            'wooden_packaging': None,
-            'paper_packaging': None,
-            'wooden_furniture': None
+            'mdf_fibreboard': None,
+            'particle_board': None,
+            'osb_waferboard': None
         }
