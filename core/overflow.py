@@ -1,12 +1,11 @@
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple
 from enum import Enum
+from config.base_config import LANDILL_EMISSIONS_PER_M3
 
 class OverflowStrategy(Enum):
     """Available strategies for handling overflow."""
     LANDFILL = "landfill"  # Default - sends to landfill with penalty
     EXPAND_STORAGE = "expand_storage"  # Increase storage capacity at a cost
-    EMERGENCY_TRANSPORT = "emergency_transport"  # Transport to alternative facility
-    REDUCE_INTAKE = "reduce_intake"  # Temporarily reduce waste intake
 
 class OverflowTracker:
     """Central manager for tracking overflow and calculating penalties."""
@@ -18,59 +17,62 @@ class OverflowTracker:
             "treatment": 0.0,
         }
         self.total_landfilled: float = 0.0
+        self.total_landfill_emissions: float = 0.0
+        self.LANDILL_EMISSIONS_PER_M3 = LANDILL_EMISSIONS_PER_M3
         self.base_penalty_rate: float = 100.0  # Base penalty per unit of overflow
         self.storage_expansion_cost: float = 250.0  # Cost per unit of storage expansion
-        self.emergency_transport_cost: float = 400.0  # Cost per unit for emergency transport
 
         # Track cumulative costs by strategy
         self.strategy_costs: Dict[str, float] = {
             "landfill_penalties": 0.0,
-            "storage_expansion": 0.0,
-            "emergency_transport": 0.0
+            "storage_expansion": 0.0
         }
 
-    def track_overflow(self, facility_type: str, volume: float, strategy: OverflowStrategy = OverflowStrategy.LANDFILL) -> Tuple[float, str]:
+    def track_overflow(self, facility_type: str, volume: float, strategy: OverflowStrategy = OverflowStrategy.LANDFILL, region=None) -> Tuple[float, str]:
         """
-        Tracks overflow volume and handles it according to the specified strategy.
+        Tracks overflow volume and handles it according to the specified strategy, with region info.
         Returns: (cost, message) tuple with the cost incurred and status message.
         """
         if facility_type not in self.landfill_history:
             raise ValueError(f"Invalid facility type: {facility_type}")
 
-        if strategy == OverflowStrategy.LANDFILL:
-            return self._handle_landfill(facility_type, volume)
-        elif strategy == OverflowStrategy.EXPAND_STORAGE:
-            return self._handle_storage_expansion(volume)
-        elif strategy == OverflowStrategy.EMERGENCY_TRANSPORT:
-            return self._handle_emergency_transport(volume)
-        elif strategy == OverflowStrategy.REDUCE_INTAKE:
-            return self._handle_intake_reduction(volume)
-        else:
-            raise ValueError(f"Unknown strategy: {strategy}")
+        # Track region in a new history dict
+        if not hasattr(self, "overflow_region_history"):
+            self.overflow_region_history = {}
+        if facility_type not in self.overflow_region_history:
+            self.overflow_region_history[facility_type] = []
+        self.overflow_region_history[facility_type].append({
+            "volume": volume,
+            "strategy": strategy.value if isinstance(strategy, OverflowStrategy) else str(strategy),
+            "region": region
+        })
+
+        match strategy:
+            case OverflowStrategy.LANDFILL:
+                return self._handle_landfill(facility_type, volume)
+            case OverflowStrategy.EXPAND_STORAGE:
+                return self._handle_storage_expansion(volume)
+            case _:
+                raise ValueError(f"Unknown strategy: {strategy}")
 
     def _handle_landfill(self, facility_type: str, volume: float) -> Tuple[float, str]:
         """Handle overflow by sending to landfill."""
         self.landfill_history[facility_type] += volume
         self.total_landfilled += volume
-        
+        # Track emissions
+        emissions = volume * self.LANDILL_EMISSIONS_PER_M3
+        self.total_landfill_emissions += emissions
         # Calculate penalty with escalating severity based on volume
         severity = self._determine_severity(volume)
         penalty = self.calculate_penalty(facility_type, severity, volume)
-        
         self.strategy_costs["landfill_penalties"] += penalty
-        return penalty, f"Sent {volume:.2f} units to landfill with {severity} penalty"
+        return penalty, f"Sent {volume:.2f} units to landfill with {severity} penalty, emissions: {emissions:.2f}"
 
     def _handle_storage_expansion(self, volume: float) -> Tuple[float, str]:
         """Handle overflow by expanding storage capacity."""
         expansion_cost = volume * self.storage_expansion_cost
         self.strategy_costs["storage_expansion"] += expansion_cost
         return expansion_cost, f"Expanded storage by {volume:.2f} units"
-
-    def _handle_emergency_transport(self, volume: float) -> Tuple[float, str]:
-        """Handle overflow through emergency transport."""
-        transport_cost = volume * self.emergency_transport_cost
-        self.strategy_costs["emergency_transport"] += transport_cost
-        return transport_cost, f"Emergency transported {volume:.2f} units"
 
     def _handle_intake_reduction(self, volume: float) -> Tuple[float, str]:
         """Handle overflow by reducing intake temporarily."""
@@ -111,11 +113,14 @@ class OverflowTracker:
         return dict(self.strategy_costs)
 
     def get_overflow_statistics(self) -> Dict[str, float]:
-        """Get comprehensive overflow statistics."""
-        return {
+        """Get comprehensive overflow statistics, including region info if available."""
+        stats = {
             "total_landfilled": self.total_landfilled,
+            "total_landfill_emissions": self.total_landfill_emissions,
             "total_penalties": self.strategy_costs["landfill_penalties"],
             "total_expansion_costs": self.strategy_costs["storage_expansion"],
-            "total_transport_costs": self.strategy_costs["emergency_transport"],
             "total_cost": sum(self.strategy_costs.values())
         }
+        if hasattr(self, "overflow_region_history"):
+            stats["overflow_region_history"] = self.overflow_region_history
+        return stats

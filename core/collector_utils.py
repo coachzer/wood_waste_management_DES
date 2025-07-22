@@ -3,7 +3,7 @@ from models.enums import WasteType, RegionType
 from models.data_classes import Vehicle, OperationalEntity
 from models.state import SimulationState
 from models.distances import get_distance
-from utils.capacity_utils import apply_capacity_constraints, handle_overflow_generic
+from utils.capacity_utils import apply_capacity_constraints, handle_overflow_with_decision
 
 def calculate_transport_route(
     region_type: RegionType, target_region: RegionType
@@ -122,14 +122,14 @@ def process_collection(
             collector.region, waste_type, result.allowed_amount
         )
 
-        collection_type = (
-            "collaboratively collected"
-            if is_collaborative
-            else "collected remaining"
-        )
-        print(
-            f"{collector.env.now}: {collector.name} {collection_type} {result.allowed_amount:.8f} m³ of {waste_type}"
-        )
+        # collection_type = (
+        #     "collaboratively collected"
+        #     if is_collaborative
+        #     else "collected remaining"
+        # )
+        # print(
+        #     f"{collector.env.now}: {collector.name} {collection_type} {result.allowed_amount:.8f} m³ of {waste_type}"
+        # )
 
     return remaining_volume - result.allowed_amount
 
@@ -161,7 +161,7 @@ def handle_collector_capacity(
         result = apply_capacity_constraints(
             current_total=sum(collector2.collection_center.current_storage.values()),
             additional_amount=target_volume,
-            capacity=collector2.collection_center.storage_capacity
+            capacity=collector2.collection_center.waste_storage_capacity
         )
         
         if result.allowed_amount > 0:
@@ -182,16 +182,20 @@ def handle_collector_capacity(
                 collector2.region, waste_type, result.allowed_amount
             )
 
-            print(
-                f"{collector2.env.now}: {collector2.name} collected {result.allowed_amount:.8f} m³ of {waste_type}"
-            )
+            # print(
+            #     f"{collector2.env.now}: {collector2.name} collected {result.allowed_amount:.8f} m³ of {waste_type}"
+            # )
 
         if result.overflow_amount > 0:
-            handle_overflow_generic(
-                collector2.data_collector,
+            _, strategy = handle_overflow_with_decision(
+                collector2,
+                result.overflow_amount,
+                collector2.region
+            )
+            collector2.data_collector.track_overflow(
                 "collector",
                 result.overflow_amount,
-                "landfill",
+                strategy,
                 collector2.env.now
             )
 
@@ -237,20 +241,22 @@ def collect_from_single_generator(
             collected_amounts[waste_type] += collection_result.allowed_amount
             total_collected += collection_result.allowed_amount
 
-            print(
-                f"{collector.env.now}: {collector.name} collected {collection_result.allowed_amount:.8f} m³ of {waste_type} from {generator.name}"
-            )
+            # print(
+            #     f"{collector.env.now}: {collector.name} collected {collection_result.allowed_amount:.8f} m³ of {waste_type} from {generator.name}"
+            # )
 
-            # Add to collection center then immediately remove since it's going to treatment
-            collector.collection_center.current_storage[waste_type] += collection_result.allowed_amount
-            collector.collection_center.current_storage[waste_type] -= collection_result.allowed_amount
+            # Note: Waste is collected and directly transferred to treatment (no intermediate storage)
 
             if collection_result.overflow_amount > 0:
-                handle_overflow_generic(
-                    collector.data_collector,
+                _, strategy = handle_overflow_with_decision(
+                    collector,
+                    collection_result.overflow_amount,
+                    collector.region
+                )
+                collector.data_collector.track_overflow(
                     "collector",
                     collection_result.overflow_amount,
-                    "landfill",
+                    strategy,
                     collector.env.now
                 )
 

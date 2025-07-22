@@ -100,16 +100,16 @@ class Vehicle:
 class CollectionCenter(OperationalEntity):
     """Data class to represent a waste collection center"""
     region: RegionType
-    storage_capacity: float
+    waste_storage_capacity: float
     current_storage: Dict[WasteType, float]
     coordinates: Tuple[float, float]
 
-    def __init__(self, region: RegionType, storage_capacity: float, 
+    def __init__(self, region: RegionType, waste_storage_capacity: float, 
                  current_storage: Dict[WasteType, float], coordinates: Tuple[float, float]):
         """Initialize collection center with custom downtime duration"""
         super().__init__()
         self.region = region
-        self.storage_capacity = storage_capacity
+        self.waste_storage_capacity = waste_storage_capacity
         self.current_storage = current_storage
         self.coordinates = coordinates
         self.downtime_duration = 48.0  # Collection centers take longer to repair

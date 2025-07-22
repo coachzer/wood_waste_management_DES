@@ -14,21 +14,21 @@ class WasteMonitor:
         if not os.path.exists("plots"):
             os.makedirs("plots")
 
-    def track_generation(self, generator, timestamp: float) -> None:
-        """Track waste generation events with timestamps"""
-        self.data_collector.track_generation(generator, timestamp)
+    def track_generation(self, generator, timestamp: float, region=None) -> None:
+        """Track waste generation events with timestamps and region info"""
+        self.data_collector.track_generation(generator, timestamp, region=region)
 
-    def track_collection(self, collector, timestamp: float) -> None:
-        """Track waste collection events"""
-        self.data_collector.track_collection(collector, timestamp)
+    def track_collection(self, collector, timestamp: float, region=None) -> None:
+        """Track waste collection events with region info"""
+        self.data_collector.track_collection(collector, timestamp, region=region)
 
     def track_processing(self, treatment, timestamp: float) -> None:
         """Track treatment facility metrics"""
         self.data_collector.track_processing(treatment, timestamp)
 
-    def track_overflow(self, facility_type: str, volume: float, strategy: str, timestamp: float) -> None:
-        """Track overflow events and their handling strategies"""
-        self.data_collector.track_overflow(facility_type, volume, strategy, timestamp)
+    def track_overflow(self, facility_type: str, volume: float, strategy: str, timestamp: float, region=None) -> None:
+        """Track overflow events and their handling strategies, with region info"""
+        self.data_collector.track_overflow(facility_type, volume, strategy, timestamp, region=region)
 
     def plot_temporal_analysis(self, end_time: float) -> None:
         """Create streamlined temporal analysis plots"""

@@ -1,5 +1,6 @@
 import numpy as np
 from models.state import SimulationState
+from utils.capacity_utils import apply_capacity_constraints, apply_partial_update_with_constraints, handle_overflow_with_decision
 
 def calculate_daily_factors(rng, waste_generation_rates, uncertainty_set=None):
     """Calculate daily generation factors based on uncertainty"""
@@ -37,36 +38,35 @@ def update_waste_stream(waste_streams, total_generated, current_storage, region,
 
     return current_storage
 
-from utils.capacity_utils import apply_capacity_constraints, apply_partial_update_with_constraints, handle_overflow_generic
-
-def handle_overflow(env, current_storage, storage_capacity, waste_streams, region, data_collector):
+def handle_overflow(env, current_storage, waste_storage_capacity, waste_streams, region, data_collector, generator_entity):
     """Handle storage overflow situation"""
     # Create dictionary of current volumes
     current_volumes = {
         waste_type: stream.volume
         for waste_type, stream in waste_streams.items()
     }
-    
     # Use the partial update function to calculate scaled values
     result = apply_partial_update_with_constraints(
         current_values={},  # Empty since we're scaling everything
         updates=current_volumes,
-        capacity=storage_capacity
+        capacity=waste_storage_capacity
     )
-    
     if result.overflow_amount > 0:
-        handle_overflow_generic(
-            data_collector,
+        _, strategy = handle_overflow_with_decision(
+            generator_entity,
+            result.overflow_amount,
+            region
+        )
+        data_collector.track_overflow(
             "generator",
             result.overflow_amount,
-            "landfill",
-            env.now
+            strategy,
+            env.now,
+            region=region
         )
-        
         # Track waste removal and update waste streams
         state = SimulationState.get_instance()
         total_reduced = 0.0
-        
         for waste_type, stream in waste_streams.items():
             new_volume = result.scaled_values[waste_type]
             reduced_volume = stream.volume - new_volume
@@ -74,9 +74,7 @@ def handle_overflow(env, current_storage, storage_capacity, waste_streams, regio
                 state.track_waste_collection(region, waste_type, reduced_volume)
                 stream.volume = new_volume
                 total_reduced += reduced_volume
-        
         current_storage -= total_reduced
-        
     return current_storage
 
 def generate_waste_for_period(

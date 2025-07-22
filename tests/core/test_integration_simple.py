@@ -40,7 +40,7 @@ def test_simple_waste_flow(real_env, clean_state, real_data_collector):
         name="TestGen",
         waste_streams={WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: 10.0},
         generation_frequency=24,
-        storage_capacity=100.0,
+        waste_storage_capacity=100.0,
         environmental_impact=1.0,
         region=RegionType.GORENJSKA.value,
         data_collector=real_data_collector
@@ -65,7 +65,7 @@ def test_simple_waste_flow(real_env, clean_state, real_data_collector):
     
     # Test that entities were created properly
     assert generator.name == "TestGen"
-    assert generator.storage_capacity == 100.0
+    assert generator.waste_storage_capacity == 100.0
     assert collector.name == "TestCol"
     assert collector.collection_capacity == 50.0
     
@@ -79,7 +79,7 @@ def test_treatment_basic_operation(real_env, real_data_collector, clean_state):
         env=real_env,
         name="TestTreatment",
         processing_time=1.0,
-        storage_capacity=100.0,
+        waste_storage_capacity=100.0,
         energy_consumption=10.0,
         environmental_impact=5.0,
         conversion_rate=0.8,
@@ -98,7 +98,7 @@ def test_treatment_basic_operation(real_env, real_data_collector, clean_state):
     assert treatment.current_storage > 0
     
     # Test storage capacity
-    assert treatment.current_storage <= treatment.storage_capacity
+    assert treatment.current_storage <= treatment.waste_storage_capacity
 
 
 def test_entities_basic_interaction(real_env, clean_state, real_data_collector):
@@ -109,7 +109,7 @@ def test_entities_basic_interaction(real_env, clean_state, real_data_collector):
         name="Gen1",
         waste_streams={WasteType.CONSTRUCTION_WOOD_17_02_01: 5.0},
         generation_frequency=24,
-        storage_capacity=50.0,
+        waste_storage_capacity=50.0,
         environmental_impact=1.0,
         region=RegionType.GORENJSKA.value,
         data_collector=real_data_collector

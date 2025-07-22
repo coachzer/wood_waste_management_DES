@@ -4,7 +4,7 @@ A Python-based simulation system for modeling and optimizing wood waste manageme
 
 ## Project Structure
 
-```
+```text
 ├── config/                 # Configuration modules
 │   ├── base_config.py     # Base simulation parameters
 │   ├── cost_config.py     # Cost-related configurations

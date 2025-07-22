@@ -1,13 +1,10 @@
 import simpy
 import traceback
-import numpy as np
-from typing import Dict
 from config.base_config import (
     SIMULATION_DURATION,
-    TIME_STEP,
-    TIME_PERIODS,
-    get_uncertainty_set
+    ScenarioConfig
 )
+from models.enums import InventoryPolicy
 from models.state import SimulationState
 from monitoring.monitor import WasteMonitor
 from monitoring.system_monitor import monitor_system
@@ -25,16 +22,36 @@ class SimulationManager:
         self.state = SimulationState.get_instance()
         self.initial_params = {}
         
-    def initialize_entities(self, uncertainty_set) -> None:
-        """Initialize simulation entities"""
+    def initialize_entities(self, scenario_config: ScenarioConfig) -> None:
+        """Initialize simulation using the exact scenario the user requested."""
         try:
+            # 1) build the UncertaintySet from the ScenarioConfig
+            uncertainty_set = scenario_config.to_uncertainty_set()
+
+            # 2) pull the two key knobs directly from scenario_config
+            stock_strategy     = scenario_config.stock_strategy
+            inventory_policy   = scenario_config.inventory_policy
+
+            # 3) decide your distribution mode from inventory_policy if you'd like
+            dist_mode = (
+                "balanced"
+                if inventory_policy == InventoryPolicy.PUSH
+                else "priority"
+            )
+
+            # 4) hand both into the entity‑builder
             generators, collectors, operators = initialize_simulation_entities(
                 self.env,
                 uncertainty_set,
-                self.waste_monitor.data_collector
+                self.waste_monitor.data_collector,
+                dist_mode,       # formerly hard‑coded “balanced”
+                [],            # priority_types, if you ever want them
+                stock_strategy,  # now the real one
             )
+
             self.state.initialize(generators, collectors, operators)
             self._store_initial_parameters()
+
         except ValueError as e:
             self._handle_initialization_error(e)
 

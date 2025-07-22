@@ -1,7 +1,7 @@
 {
     "generators": [
         {
-            "id": "gen_posavska_1",
+            "id": "gen_posavska",
             "waste_generation_rates": {
                 "03 01 01": 8.493,
                 "03 01 05": 66.166,
@@ -18,7 +18,7 @@
                 "02 01 07": 10.0
             },
             "generation_frequency": 1,
-            "storage_capacity": 80000,
+            "waste_storage_capacity": 80000,
             "environmental_impact": 1.0,
             "initial_stock": {
                 "03 01 01": 0.0,
@@ -39,7 +39,7 @@
     ],
     "collectors": [
         {
-            "id": "col_posavska_1",
+            "id": "col_posavska",
             "waste_types": [
                 "02 01 07",
                 "03 01 01",
@@ -56,8 +56,8 @@
                 "20 01 38",
                 "20 03 07"
             ],
-            "collection_capacity": 10000,
-            "collection_frequency": 24,
+            "collection_capacity": 30000,
+            "collection_frequency": 12,
             "transport_cost": 50.0,
             "environmental_impact": 1.0,
             "efficiency": 1.0,
@@ -67,7 +67,7 @@
     ],
     "processors": [
         {
-            "id": "proc_posavska_wood",
+            "id": "proc_posavska",
             "input_types": [
                 "03 01 99",
                 "03 01 01",
@@ -81,28 +81,13 @@
                 "particle_board",
                 "osb_waferboard"
             ],
-            "processing_capacity": 900,
-            "processing_time": 12,
-            "storage_capacity": 1500,
+            "processing_capacity": 3000,
+            "processing_time": 24,
+            "waste_storage_capacity": 20000,
             "energy_consumption": 100.0,
             "environmental_impact": 1.0,
-            "conversion_rate": 0.8,
-            "operational_costs": 200.0
-        },
-        {
-            "id": "proc_posavska_paper",
-            "input_types": [
-                "03 01 01",
-                "15 01 01"
-            ],
-            "output_types": [],
-            "processing_capacity": 700,
-            "processing_time": 12,
-            "storage_capacity": 1100,
-            "energy_consumption": 90.0,
-            "environmental_impact": 1.0,
             "conversion_rate": 1.0,
-            "operational_costs": 180.0
+            "operational_costs": 200.0
         }
     ]
 }

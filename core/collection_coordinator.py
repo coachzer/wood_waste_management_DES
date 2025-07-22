@@ -58,7 +58,6 @@ class CollectionCoordinator:
         )
 
         if total_collected == 0:
-            # print("Warning: No eligible collectors found for waste collection.")
             return CollectionResult(total_collected=0, waste_by_type={})
 
         return CollectionResult(
@@ -67,29 +66,28 @@ class CollectionCoordinator:
         )
 
     def _get_collectors_with_waste(self, state: SimulationState) -> List[CollectorCompany]:
-        """Get collectors that have waste stored, starting with local region"""
+        """Get collectors that can collect waste, starting with local region"""
+        # First find collectors that have generators with waste in their region
         local_collectors = [
             c for c in state.collectors
             if hasattr(c, 'region_type') and c.region_type == self.region_type
             and getattr(c, 'availability', False)
-            and hasattr(c, 'collection_center')
-            and hasattr(c.collection_center, 'current_storage')
-            and sum(c.collection_center.current_storage.values()) > 0
+            and any(
+                g.current_storage > 0 
+                for g in state.generators 
+                if g.region_type == c.region_type
+            )
         ]
         
         if not local_collectors:
+            # Fallback to any collector with generators having waste
             other_collectors = [
                 c for c in state.collectors
                 if getattr(c, 'availability', False)
-                and hasattr(c, 'collection_center')
-                and hasattr(c.collection_center, 'current_storage')
-                and sum(c.collection_center.current_storage.values()) > 0
+                and any(g.current_storage > 0 for g in state.generators)
             ]
-            # If still empty, fallback to all collectors for test robustness
-            if not other_collectors:
-                print("[DEBUG] No collectors with waste found, returning all collectors for test robustness.")
-                return list(state.collectors)
             return other_collectors
+            
         return local_collectors
 
     def _get_available_collectors(self, state: SimulationState) -> List[CollectorCompany]:
@@ -122,31 +120,54 @@ class CollectionCoordinator:
 
         if len(collectors) > 0:
             print("Attempting to use stored waste from collectors...")
-            
+
         for collector in collectors:
-            # Robustness: skip if mock or missing attributes
-            if not hasattr(collector, 'collection_center') or \
-               not hasattr(collector.collection_center, 'current_storage'):
+            if not self._is_valid_collector_for_storage(collector):
                 continue
 
-            if total_collected >= required_waste:  # Stop if enough waste collected
+            if total_collected >= required_waste:
                 break
 
-            remaining_need = required_waste - total_collected
-            for waste_type in input_waste_types:
-                if (hasattr(collector.collection_center.current_storage, '__contains__') and
-                    waste_type in collector.collection_center.current_storage):
-                    available = collector.collection_center.current_storage[waste_type]
-                    if available >= self.minimum_collection_volume:
-                        transfer_amount = max(
-                            self.minimum_collection_volume,
-                            min(available, remaining_need)
-                        )
-                        
-                        collector.collection_center.current_storage[waste_type] -= transfer_amount
-                        total_by_type[waste_type] += transfer_amount
-                        total_collected += transfer_amount
+            total_collected = self._transfer_from_single_collector(
+                collector,
+                required_waste,
+                total_collected,
+                total_by_type,
+                input_waste_types
+            )
 
+        return total_collected
+
+    def _is_valid_collector_for_storage(self, collector: CollectorCompany) -> bool:
+        """Check if collector has valid storage attributes"""
+        return hasattr(collector, 'collection_center') and \
+               hasattr(collector.collection_center, 'current_storage')
+
+    def _transfer_from_single_collector(
+        self,
+        collector: CollectorCompany,
+        required_waste: float,
+        total_collected: float,
+        total_by_type: Dict[WasteType, float],
+        input_waste_types: set
+    ) -> float:
+        """Transfer waste from a single collector's storage"""
+        remaining_need = required_waste - total_collected
+        for waste_type in input_waste_types:
+            if (hasattr(collector.collection_center.current_storage, '__contains__') and
+                waste_type in collector.collection_center.current_storage):
+                available = collector.collection_center.current_storage[waste_type]
+                if available >= self.minimum_collection_volume:
+                    transfer_amount = max(
+                        self.minimum_collection_volume,
+                        min(available, remaining_need)
+                    )
+                    collector.collection_center.current_storage[waste_type] -= transfer_amount
+                    total_by_type[waste_type] += transfer_amount
+                    total_collected += transfer_amount
+                    remaining_need = required_waste - total_collected
+                    if remaining_need < self.minimum_collection_volume:
+                        break
         return total_collected
 
     def _request_additional_collection(
@@ -160,7 +181,6 @@ class CollectionCoordinator:
         if total_collected >= required_waste:
             return total_collected
 
-        # print("Attempting additional collection from collectors...")
         total_collected = self._collect_from_collector_group(
             collectors,
             required_waste,
@@ -207,9 +227,5 @@ class CollectionCoordinator:
             if amount > 0:
                 total_by_type[waste_type] += amount
                 total_collected += amount
-                if amount >= self.minimum_collection_volume:
-                    print(
-                        f"Collected {amount:.2f} m³ of {waste_type.value} from {collector.name}"
-                    )
                     
         return total_collected

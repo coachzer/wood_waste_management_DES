@@ -1,13 +1,5 @@
 import numpy as np
-from models.enums import WasteType
 from models.state import SimulationState
-
-def get_furniture_material_quality(waste_type):
-    """Define furniture material quality ratings"""
-    if waste_type == WasteType.CONSTRUCTION_WOOD_17_02_01:
-        return 1.0
-    else:
-        return 0.8
 
 def get_transformation_efficiency(treatment_operator, transformation):
     """Calculate transformation efficiency with uncertainty if applicable"""
@@ -22,15 +14,15 @@ def get_transformation_efficiency(treatment_operator, transformation):
         # If uncertainty set doesn't have the expected structure, use base efficiency (no change needed)
     return efficiency
 
-def calculate_output_amounts(treatment_operator, amount_to_process, efficiency):
+def calculate_output_amounts(amount_to_process, efficiency):
     """Calculate actual processing and output amounts considering capacity constraints"""
+
     potential_output = amount_to_process * efficiency
     
     # For finished products that go directly to fulfillment, don't apply storage constraints
     # Only apply storage capacity for intermediate products that need to be stored
     # Since we're processing into final products (MDF, particle board, OSB), we skip capacity checks
     output_amount = potential_output
-    print(f"[CALC DEBUG] Potential output: {potential_output:.2f}, Using full output (finished products)")
         
     return amount_to_process, output_amount
 
@@ -48,20 +40,15 @@ def update_waste_storage(treatment_operator, input_type, output_type, amount_to_
 
 def fulfill_demand(treatment_operator, output_type, output_amount):
     """Fulfill demand for final products"""
-    print(f"[FULFILL_DEMAND DEBUG] Called with {output_amount:.2f} m³ of {output_type.value}")
     
     # Get current unmet demand for this specific product type
     state = SimulationState.get_instance()
     product_type = output_type.value.lower()
     
-    print(f"[FULFILL_DEMAND DEBUG] Current state total for {product_type}: {state.total_products[product_type]:.2f}")
-    print(f"[FULFILL_DEMAND DEBUG] Target demand for {product_type}: {state.target_demands[product_type]:.2f}")
-    
     unmet_demand = state.target_demands[product_type] - state.total_products[product_type]
     
     # Use the actual unmet demand to limit production
     fulfilled_amount = min(output_amount, unmet_demand)
-    print(f"[FULFILL_DEMAND DEBUG] Will fulfill {fulfilled_amount:.2f} m³ of {product_type}")
     
     if fulfilled_amount > 0:
         treatment_operator.waste_storage[output_type] -= fulfilled_amount
@@ -102,7 +89,7 @@ def calculate_required_waste(treatment_operator):
     if treatment_operator.demand < treatment_operator.minimum_required_waste:
         return 0.0
         
-    available_storage = treatment_operator.storage_capacity - treatment_operator.current_storage
+    available_storage = treatment_operator.waste_storage_capacity - treatment_operator.current_storage
     if available_storage <= 0:
         return 0.0
         

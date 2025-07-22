@@ -1,6 +1,5 @@
-"""
-Common utilities for capacity checking and overflow handling across the system.
-"""
+from config.base_config import get_cost_params
+from core.overflow import OverflowTracker, OverflowStrategy
 from typing import Dict, Tuple, Optional, TypeVar
 from dataclasses import dataclass
 from models.enums import WasteType
@@ -12,7 +11,7 @@ class CapacityResult:
     overflow_amount: float
     scaled_values: Optional[Dict] = None
 
-T = TypeVar('T')  # For generic type hints
+T = TypeVar('T') 
 
 def apply_capacity_constraints(
     current_total: float,
@@ -100,35 +99,47 @@ def apply_partial_update_with_constraints(
         scaled_values=scaled_values
     )
 
-def handle_overflow_generic(
-    data_collector,
-    facility_type: str,
-    overflow_amount: float,
-    strategy: str = "landfill",
-    current_time: float = None
-) -> None:
-    """
-    Generic handler for overflow situations that interacts with the data collector.
+def handle_overflow_with_decision(entity, volume, region):
+    import sys
+    if entity is None:
+        print("[DEBUG] entity is None in handle_overflow_with_decision. Args:")
+        print(f"volume: {volume}, region: {region}")
+        sys.exit(1)
     
-    Args:
-        data_collector: Instance of DataCollector
-        facility_type: Type of facility (e.g., "generator", "collector", "treatment")
-        overflow_amount: Amount of overflow to handle
-        strategy: Strategy for handling overflow (default: "landfill")
-        current_time: Current simulation time (optional)
-    """
-    if overflow_amount <= 0:
-        return
-        
-    if overflow_amount >= 0.01:  # Only log significant overflow
-        print(f"{current_time}: Overflow of {overflow_amount:.2f} m³ from {facility_type}")
-        
-    data_collector.track_overflow(
-        facility_type,
-        overflow_amount,
-        strategy,
-        current_time
-    )
+    config = get_cost_params()
+
+    # Track how many times expansion has occurred for this entity
+    expansion_count = getattr(entity, 'expansion_count', 0)
+    base_expansion_cost_per_m3 = config.expansion_cost_per_m3
+    expansion_cost_per_m3 = base_expansion_cost_per_m3 * (10 * expansion_count)
+    expansion_cost = volume * expansion_cost_per_m3
+    landfill_cost = volume * config.landfill_per_m3
+
+    
+    tracker = OverflowTracker()
+    FIXED_EXPANSION_AMOUNT = 10000.0
+    # Only expand storage if entity is not None
+    if entity is not None and expansion_cost < landfill_cost:
+        cost, _ = tracker.track_overflow(
+            facility_type=getattr(entity, 'facility_type', 'generator'),
+            volume=FIXED_EXPANSION_AMOUNT,
+            strategy=OverflowStrategy.EXPAND_STORAGE,
+            region=region
+        )
+        entity.waste_storage_capacity += FIXED_EXPANSION_AMOUNT
+        # Note: Expansion costs are tracked both per entity (here) and globally in OverflowTracker
+        entity.expansion_costs = getattr(entity, 'expansion_costs', 0) + cost
+        entity.expansion_count = expansion_count + 1
+        return cost, "expand_storage"
+    else:
+        # Send to landfill using tracker
+        cost, _ = tracker.track_overflow(
+            facility_type=getattr(entity, 'facility_type', 'generator') if entity is not None else 'generator',
+            volume=volume,
+            strategy=OverflowStrategy.LANDFILL,
+            region=region
+        )
+        return cost, "landfill"
 
 def check_storage_capacity(
     current_storage: Dict[WasteType, float],

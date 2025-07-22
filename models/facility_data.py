@@ -13,7 +13,6 @@ class FacilityDataManager:
         self.data_dir = Path(data_dir)
         self.regions: Dict[RegionType, RegionalFacilities] = {}
         self.demand: Dict[str, float] = {}
-        self.period_info: Dict = {}
         self.product_manager = ProductDataManager()
 
     def load_data(self):
@@ -41,7 +40,6 @@ class FacilityDataManager:
             with open(demand_path, "r") as f:
                 data = json.load(f)
                 self.demand = data["national_demand"]
-                self.period_info = data.get("period", {})
 
     def get_region_facilities(self, region: RegionType) -> Optional[RegionalFacilities]:
         """Get facilities for a specific region"""

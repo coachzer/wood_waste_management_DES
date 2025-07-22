@@ -23,7 +23,7 @@ def test_generator_collector_treatment_workflow(setup_env):
         name="test_generator",
         waste_streams=waste_streams,
         generation_frequency=1,
-        storage_capacity=500,
+        waste_storage_capacity=500,
         environmental_impact=0.5,
         region=RegionType.GORENJSKA.value,
         data_collector=data_collector
@@ -47,7 +47,7 @@ def test_generator_collector_treatment_workflow(setup_env):
         env=env,
         name="test_treatment",
         processing_time=1.0,
-        storage_capacity=300,
+        waste_storage_capacity=300,
         energy_consumption=10.0,
         environmental_impact=2.0,
         conversion_rate=0.8,

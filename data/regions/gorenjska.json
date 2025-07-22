@@ -19,7 +19,7 @@
                 "20 03 07": 22.364
             },
             "generation_frequency": 1,
-            "storage_capacity": 100000,
+            "waste_storage_capacity": 100000,
             "environmental_impact": 1.0,
             "initial_stock": {
                 "02 01 07": 0.0,
@@ -59,7 +59,7 @@
                 "20 03 07"
             ],
             "collection_capacity": 80000,
-            "collection_frequency": 10,
+            "collection_frequency": 12,
             "transport_cost": 50.0,
             "environmental_impact": 1.0,
             "efficiency": 1.0,
@@ -84,8 +84,8 @@
                 "osb_waferboard"
             ],
             "processing_capacity": 20000,
-            "processing_time": 20,
-            "storage_capacity": 80000,
+            "processing_time": 24,
+            "waste_storage_capacity": 80000,
             "energy_consumption": 100.0,
             "environmental_impact": 1.0,
             "conversion_rate": 1.0,

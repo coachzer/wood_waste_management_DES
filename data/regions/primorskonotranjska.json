@@ -1,7 +1,7 @@
 {
     "generators": [
         {
-            "id": "gen_primorskonotranjska_1",
+            "id": "gen_primorskonotranjska",
             "waste_generation_rates": {
                 "03 01 05": 80.049,
                 "03 03 01": 0.126,
@@ -18,7 +18,7 @@
                 "02 01 07": 6.0
             },
             "generation_frequency": 1,
-            "storage_capacity": 90000,
+            "waste_storage_capacity": 90000,
             "environmental_impact": 1.0,
             "initial_stock": {
                 "03 01 05": 0.0,
@@ -39,7 +39,7 @@
     ],
     "collectors": [
         {
-            "id": "col_primorskonotranjska_1",
+            "id": "col_primorskonotranjska",
             "waste_types": [
                 "02 01 07",
                 "03 01 01",
@@ -56,8 +56,8 @@
                 "20 01 38",
                 "20 03 07"
             ],
-            "collection_capacity": 10000,
-            "collection_frequency": 24,
+            "collection_capacity": 30000,
+            "collection_frequency": 12,
             "transport_cost": 50.0,
             "environmental_impact": 1.0,
             "efficiency": 1.0,
@@ -67,7 +67,7 @@
     ],
     "processors": [
         {
-            "id": "proc_primorskonotranjska_paper",
+            "id": "proc_primorskonotranjska",
             "input_types": [
                 "03 01 05",
                 "15 01 03",
@@ -81,9 +81,9 @@
                 "particle_board",
                 "osb_waferboard"
             ],
-            "processing_capacity": 800,
-            "processing_time": 12,
-            "storage_capacity": 1300,
+            "processing_capacity": 5000,
+            "processing_time": 24,
+            "waste_storage_capacity": 20000,
             "energy_consumption": 90.0,
             "environmental_impact": 1.0,
             "conversion_rate": 1.0,

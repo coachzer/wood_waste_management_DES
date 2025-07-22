@@ -14,7 +14,6 @@ def test_state_initialization():
 
 def test_state_has_expected_attributes():
     state = SimulationState()
-    # Example: check for common attributes, adjust as needed
     assert hasattr(state, "generators")
     assert hasattr(state, "collectors")
     assert hasattr(state, "treatment_operators")

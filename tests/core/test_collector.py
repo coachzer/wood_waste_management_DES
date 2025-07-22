@@ -46,7 +46,7 @@ def basic_generator(env):
         name="TestGenerator",
         waste_streams=waste_streams,
         generation_frequency=1.0,
-        storage_capacity=200.0,
+        waste_storage_capacity=200.0,
         environmental_impact=1.0,
         region="GORENJSKA",
         initial_stock=initial_stock,
@@ -65,12 +65,12 @@ def test_collector_initialization(basic_collector):
 def test_collector_capacity_constraints(basic_collector):
     """Test that collector respects capacity constraints"""
     # Check initial state
-    assert basic_collector.collection_center.storage_capacity == 400.0  # Double the collection capacity
+    assert basic_collector.collection_center.waste_storage_capacity == 400.0  # Double the collection capacity
     
     # Verify capacity constraints are enforced
     for waste_type in WasteType:
         actual_added = basic_collector.collection_center.current_storage.get(waste_type, 0.0)
-        assert actual_added <= basic_collector.collection_center.storage_capacity
+        assert actual_added <= basic_collector.collection_center.waste_storage_capacity
 
 def test_collection_from_generator(basic_collector, basic_generator):
     """Test waste collection from a generator"""

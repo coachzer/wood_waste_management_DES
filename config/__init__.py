@@ -22,7 +22,6 @@ from .base_config import (
     
     # Constants
     SIMULATION_DURATION,
-    TIME_STEP,
     PRIMARY_WASTE_TYPES,
     BASE_TRANSFORMATIONS,
     DEFAULT_COSTS,
@@ -46,7 +45,6 @@ __all__ = [
     
     # Constants
     'SIMULATION_DURATION',
-    'TIME_STEP',
     'PRIMARY_WASTE_TYPES',
     'BASE_TRANSFORMATIONS',
     'DEFAULT_COSTS',

@@ -48,7 +48,7 @@ def generator(env):
     return WasteGenerator(
         env=env,
         name="TestGenerator",
-        storage_capacity=100.0,
+        waste_storage_capacity=100.0,
         waste_streams={
             waste_type.value: 50.0  # Base generation rate
         },

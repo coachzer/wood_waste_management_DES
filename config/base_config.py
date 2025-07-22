@@ -1,8 +1,9 @@
 # Note: Actual waste generation rates come from regional JSON files
 # This only provides the uncertainty/variability factors
 
+from copy import deepcopy
 from dataclasses import dataclass
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Optional
 from models.enums import WasteType, OutputType, InventoryPolicy, StockStrategy, CoordinationStrategy
 from models.data_classes import FailureConfig
 from utils.helpers import (
@@ -32,8 +33,12 @@ class CostParams:
     transport_rate: float = 2.0        # Cost per unit per km
     storage_rate: float = 1.0          # Cost per unit per time period
     energy_rate: float = 0.15          # Cost per kWh
+    landfill_per_m3: float = 50.0  # Cost per m³ landfilled
+    expansion_cost_per_m3: float = 100.0  # Cost to expand storage by 1m³
     landfill_rate: float = 75.0        # Cost per unit landfilled
 
+# Add emissions factor
+LANDILL_EMISSIONS_PER_M3 = 0.24  # t CO2e per m³
 DEFAULT_COSTS = CostParams()
 
 @dataclass
@@ -79,7 +84,6 @@ class ScenarioConfig:
     collector_failure: FailureConfig
     treatment_failure: FailureConfig
     collaboration: bool
-    # Scenario behavior parameters
     inventory_policy: InventoryPolicy = InventoryPolicy.PUSH
     stock_strategy: StockStrategy = StockStrategy.FULL_STOCK
     coordination_strategy: CoordinationStrategy = CoordinationStrategy.COMPETITIVE
@@ -99,11 +103,6 @@ class ScenarioConfig:
                 MONTHLY_DEMAND[OutputType.OSB_WAFERBOARD] * self.market_dem[1])
         }
 
-        # Add reasonable demand for waste types (lower than output products)
-        for waste_type in WasteType:
-            if waste_type not in market_demand:
-                market_demand[waste_type] = (600 * self.market_dem[0], 240 * self.market_dem[1])
-
         return UncertaintySet(
             # Required fields
             collection_efficiency=self.coll_eff,
@@ -119,7 +118,6 @@ class ScenarioConfig:
 
 # Time configuration
 SIMULATION_DURATION = 365  # days in simulation (one full year)
-TIME_STEP = 1  # days per time step
 
 TIME_PERIODS = {
     "quarter_1": (0, 90),     # Q1: Jan-Mar (91 days)
@@ -136,35 +134,35 @@ MONTHLY_DEMAND = {
 }
 
 LOW_FAILURE = FailureConfig(
-    probability=0.001,  # 0.1% chance per hour = ~2.4% chance per day
-    min_duration=12.0,
-    max_duration=24.0,
-    check_interval=24.0  # Check once per day
-    )
+    probability=0.024,  # ~2.4% chance per day
+    min_duration=0.5,   # 0.5 days (12 hours)
+    max_duration=1.0,   # 1 day (24 hours)
+    check_interval=1.0  # Check once per day
+)
 
 MEDIUM_FAILURE = FailureConfig(
-    probability=0.005,  # 0.5% chance per hour = ~12% chance per day
-    min_duration=6.0,
-    max_duration=12.0,
-    check_interval=12.0  # Check twice per day
+    probability=0.12,   # ~12% chance per day
+    min_duration=0.25,  # 0.25 days (6 hours)
+    max_duration=0.5,   # 0.5 days (12 hours)
+    check_interval=0.5  # Check twice per day
 )
 
 HIGH_FAILURE = FailureConfig(
-    probability=0.01,  # 1% chance per hour = ~24% chance per day
-    min_duration=3.0,
-    max_duration=6.0,
-    check_interval=6.0  # Check four times per day
+    probability=0.24,   # ~24% chance per day
+    min_duration=0.125, # 0.125 days (3 hours)
+    max_duration=0.25,  # 0.25 days (6 hours)
+    check_interval=0.25 # Check four times per day
 )
 
 # Default scenario configurations - simplified and unified
 SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
     "Baseline": ScenarioConfig(
         name="Baseline",
-        waste_gen=(1.0, 0.2),    # Base generation rates
-        coll_eff=(0.85, 0.1),    # Good collection efficiency
-        treat_conv=(0.9, 0.05),  # High conversion efficiency
-        trans_time=(2.0, 0.5),   # Standard transportation time
-        market_dem=(1.0, 0.2),   # Base demand rates
+        waste_gen=(1.0, 0.1),    # Standard generation, low variability
+        coll_eff=(0.85, 0.05),   # Good, stable collection efficiency
+        treat_conv=(0.9, 0.03),  # High, stable conversion efficiency
+        trans_time=(2.0, 0.2),   # Fast, predictable transport
+        market_dem=(1.0, 0.1),   # Standard, stable demand
         generator_failure=LOW_FAILURE,
         collector_failure=LOW_FAILURE,
         treatment_failure=LOW_FAILURE,
@@ -173,48 +171,33 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
         stock_strategy=StockStrategy.FULL_STOCK,
         coordination_strategy=CoordinationStrategy.COMPETITIVE
     ),
-    "High Uncertainty": ScenarioConfig(
-        name="High Uncertainty",
-        waste_gen=(1.0, 0.4),    # Same generation but more variance
-        coll_eff=(0.85, 0.2),    # More variable collection
-        treat_conv=(0.9, 0.1),   # More variable conversion
-        trans_time=(2.0, 1.0),   # More variable transport
-        market_dem=(1.0, 0.4),   # More variable demand
+    "Disrupted": ScenarioConfig(
+        name="Disrupted",
+        waste_gen=(0.7, 0.5),    # Much lower, highly variable generation
+        coll_eff=(0.5, 0.3),     # Poor, highly variable collection
+        treat_conv=(0.6, 0.2),   # Poor, highly variable conversion
+        trans_time=(5.0, 2.0),   # Slow, unpredictable transport
+        market_dem=(0.6, 0.4),   # Low, volatile demand
         generator_failure=HIGH_FAILURE,
         collector_failure=HIGH_FAILURE,
         treatment_failure=HIGH_FAILURE,
-        collaboration=True,
-        inventory_policy=InventoryPolicy.PULL,
+        collaboration=False,
+        inventory_policy=InventoryPolicy.PUSH,
         stock_strategy=StockStrategy.ON_DEMAND,
-        coordination_strategy=CoordinationStrategy.COLLABORATIVE
+        coordination_strategy=CoordinationStrategy.COMPETITIVE
     ),
-    "High Demand": ScenarioConfig(
-        name="High Demand",
-        waste_gen=(1.5, 0.3),    # 50% more generation
-        coll_eff=(0.85, 0.15),   # Standard collection
-        treat_conv=(0.9, 0.05),  # Standard conversion
-        trans_time=(2.0, 0.7),   # More variable transport due to volume
-        market_dem=(1.5, 0.3),   # 50% more demand
-        generator_failure=MEDIUM_FAILURE,
-        collector_failure=MEDIUM_FAILURE,
-        treatment_failure=MEDIUM_FAILURE,
-        collaboration=True,
-        inventory_policy=InventoryPolicy.PULL,
-        stock_strategy=StockStrategy.REORDER_90,
-        coordination_strategy=CoordinationStrategy.COLLABORATIVE
-    ),
-    "Optimistic": ScenarioConfig(
-        name="Optimistic",
-        waste_gen=(1.2, 0.1),    # 20% more generation, very stable
-        coll_eff=(0.95, 0.05),   # Higher and stable collection
-        treat_conv=(0.95, 0.03), # Higher and stable conversion
-        trans_time=(1.5, 0.3),   # Faster and stable transport
-        market_dem=(1.2, 0.1),   # 20% more demand, very stable
+    "Boom": ScenarioConfig(
+        name="Boom",
+        waste_gen=(2.0, 0.2),    # Double generation, moderate variability
+        coll_eff=(0.98, 0.02),   # Excellent, stable collection
+        treat_conv=(0.98, 0.01), # Excellent, stable conversion
+        trans_time=(1.0, 0.1),   # Very fast, predictable transport
+        market_dem=(2.0, 0.2),   # Double, stable demand
         generator_failure=LOW_FAILURE,
         collector_failure=LOW_FAILURE,
         treatment_failure=LOW_FAILURE,
         collaboration=True,
-        inventory_policy=InventoryPolicy.PUSH,
+        inventory_policy=InventoryPolicy.PULL,
         stock_strategy=StockStrategy.FULL_STOCK,
         coordination_strategy=CoordinationStrategy.COLLABORATIVE
     )
@@ -314,18 +297,22 @@ def get_scenario_config(scenario_name: str = "Baseline") -> ScenarioConfig:
 def get_scenario_by_params(
     inventory_policy: InventoryPolicy = InventoryPolicy.PUSH,
     stock_strategy: StockStrategy = StockStrategy.FULL_STOCK,
-    coordination_strategy: CoordinationStrategy = CoordinationStrategy.COMPETITIVE
+    coordination_strategy: Optional[CoordinationStrategy] = None
 ) -> ScenarioConfig:
     """Get scenario configuration by behavioral parameters"""
-    # Find first scenario that matches the parameters
     for scenario in SCENARIO_CONFIGS.values():
         if (scenario.inventory_policy == inventory_policy and 
             scenario.stock_strategy == stock_strategy and
-            scenario.coordination_strategy == coordination_strategy):
+            (coordination_strategy is None or scenario.coordination_strategy == coordination_strategy)):
             return scenario
-    
-    # If no exact match, return baseline
-    return SCENARIO_CONFIGS["Baseline"]
+
+    # If no exact match, return a Baseline variant with requested strategies
+    baseline = deepcopy(SCENARIO_CONFIGS["Baseline"])
+    baseline.inventory_policy = inventory_policy
+    baseline.stock_strategy = stock_strategy
+    if coordination_strategy is not None:
+        baseline.coordination_strategy = coordination_strategy
+    return baseline
 
 def list_available_scenarios() -> List[str]:
     """List all available scenario names"""

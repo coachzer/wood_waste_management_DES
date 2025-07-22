@@ -18,7 +18,7 @@ def setup_generator():
         name="test_generator",
         waste_streams=waste_streams,
         generation_frequency=1,
-        storage_capacity=1000,
+        waste_storage_capacity=1000,
         environmental_impact=0.5,
         region=RegionType.OSREDNJESLOVENSKA.value,
         data_collector=data_collector
@@ -53,7 +53,7 @@ def test_generate_waste_various_regions(region, time):
         name=f"generator_{region.value}",
         waste_streams=waste_streams,
         generation_frequency=1,
-        storage_capacity=1000,
+        waste_storage_capacity=1000,
         environmental_impact=0.5,
         region=region.value,
         data_collector=data_collector
@@ -76,7 +76,7 @@ def test_storage_capacity_limit(setup_generator):
     env.run(until=20)
     
     final_storage = sum(generator.get_current_waste_volumes().values())
-    assert final_storage <= generator.storage_capacity
+    assert final_storage <= generator.waste_storage_capacity
     assert final_storage >= initial_storage
 
 def test_generation_history(setup_generator):
@@ -110,7 +110,7 @@ def test_invalid_initial_stock():
             name="test_generator",
             waste_streams=waste_streams,
             generation_frequency=1,
-            storage_capacity=1000,
+            waste_storage_capacity=1000,
             environmental_impact=0.5,
             region=RegionType.OSREDNJESLOVENSKA.value,
             initial_stock={WasteType.CONSTRUCTION_WOOD_17_02_01: 2000.0},  # Exceeds capacity

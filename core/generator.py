@@ -16,13 +16,14 @@ class WasteGenerator(OperationalEntity):
         name,
         waste_streams: Dict[WasteType, float],
         generation_frequency,
-        storage_capacity,
+        waste_storage_capacity,
         environmental_impact,
         region: str,
         uncertainty_set = None,
         initial_stock: Optional[Dict[WasteType, float]] = None,
         data_collector = None,
         stock_strategy: StockStrategy = StockStrategy.FULL_STOCK,
+        kanban_manager=None,
     ):
         super().__init__()
         self.env = env
@@ -31,9 +32,9 @@ class WasteGenerator(OperationalEntity):
         # Validate initial stock against storage capacity
         if initial_stock:
             total_initial = sum(initial_stock.values())
-            if total_initial > storage_capacity:
+            if total_initial > waste_storage_capacity:
                 raise ValueError(
-                    f"Initial stock ({total_initial}) exceeds storage capacity ({storage_capacity})"
+                    f"Initial stock ({total_initial}) exceeds storage capacity ({waste_storage_capacity})"
                 )
 
         # Initialize waste streams with initial stock if provided
@@ -46,20 +47,21 @@ class WasteGenerator(OperationalEntity):
         }
         self.waste_generation_rates = waste_streams
         self.generation_frequency = generation_frequency
-        self.storage_capacity = storage_capacity
+        self.waste_storage_capacity = waste_storage_capacity
         self.uncertainty_set = uncertainty_set
         self.environmental_impact = environmental_impact
         self.current_storage = sum(initial_stock.values() if initial_stock else [0])
         self.last_collected = env.now
-        # Store original region string for tracking
         self.region = region
-        # Convert to enum for internal use
-        # Convert region string to enum, replacing hyphen with underscore for lookup
         self.region_type = RegionType[region.upper().replace('-', '_')] if region else None
 
         self.data_collector = data_collector
         if data_collector is None:
             raise ValueError("data_collector is required for WasteGenerator")
+
+        # KanbanManager for pull logic
+        from core.kanban_manager import KanbanManager
+        self.kanban_manager = kanban_manager or KanbanManager()
 
         # Track total generation efficiently
         # Initialize total generated with initial stock
@@ -97,94 +99,109 @@ class WasteGenerator(OperationalEntity):
         self.action = env.process(self.generate_waste())
 
     def generate_waste(self):
-        """Generate waste with optimized calculations and failure handling"""
+        """Generate waste with optimized calculations and failure handling, including Kanban pull logic"""
         while True:
             current_time = self.env.now
 
-            # If we were failed but have recovered, log it
-            if (self.status == EntityStatus.FAILED and 
-                current_time >= self.recovery_time):
-                print(f"{current_time}: Generator {self.name} has recovered from failure")
-                self.status = EntityStatus.OPERATIONAL
-                self.failure_time = None
-                self.recovery_time = None
+            self._handle_failure_recovery(current_time)
 
             season_index = int(current_time % self.seasonal_periods)
             seasonal_factor = self.seasonal_factors[season_index]
 
-            # Stock strategy logic
-            if self.stock_strategy == StockStrategy.FULL_STOCK:
-                available_storage = self.storage_capacity - self.current_storage
-                if available_storage <= 0:
-                    self.current_storage = handle_overflow(
-                        self.env, self.current_storage, self.storage_capacity,
-                        self.waste_streams, self.region, self.data_collector
-                    )
-                    yield self.env.timeout(self.generation_frequency)
-                    continue
-                available_storage, self.current_storage, self.history_index = generate_waste_for_period(
-                    self.name, self.status, self.uncertainty_set,
-                    self.waste_generation_rates, self.region, self.waste_streams,
-                    self.total_generated, self.generation_history, self.history_index,
-                    self.current_storage, self.rng, seasonal_factor, available_storage,
-                    current_time
-                )
-            elif self.stock_strategy == StockStrategy.ON_DEMAND:
-                # Only generate what is needed, discard excess immediately
-                available_storage = self.storage_capacity - self.current_storage
-                demand = sum(self.waste_generation_rates.values())
-                if available_storage < demand:
-                    # Discard excess generation
-                    self.current_storage = handle_overflow(
-                        self.env, self.current_storage, self.storage_capacity,
-                        self.waste_streams, self.region, self.data_collector
-                    )
-                else:
-                    available_storage, self.current_storage, self.history_index = generate_waste_for_period(
-                        self.name, self.status, self.uncertainty_set,
-                        self.waste_generation_rates, self.region, self.waste_streams,
-                        self.total_generated, self.generation_history, self.history_index,
-                        self.current_storage, self.rng, seasonal_factor, available_storage,
-                        current_time
-                    )
-            elif self.stock_strategy == StockStrategy.REORDER_90:
-                # Trigger replenishment at 90% threshold
-                if self.current_storage < self.storage_capacity * 0.9:
-                    available_storage = self.storage_capacity - self.current_storage
-                    available_storage, self.current_storage, self.history_index = generate_waste_for_period(
-                        self.name, self.status, self.uncertainty_set,
-                        self.waste_generation_rates, self.region, self.waste_streams,
-                        self.total_generated, self.generation_history, self.history_index,
-                        self.current_storage, self.rng, seasonal_factor, available_storage,
-                        current_time
-                    )
-                else:
-                    # Discard excess
-                    self.current_storage = handle_overflow(
-                        self.env, self.current_storage, self.storage_capacity,
-                        self.waste_streams, self.region, self.data_collector
-                    )
-            elif self.stock_strategy == StockStrategy.REORDER_50:
-                # Trigger replenishment at 50% threshold
-                if self.current_storage < self.storage_capacity * 0.5:
-                    available_storage = self.storage_capacity - self.current_storage
-                    available_storage, self.current_storage, self.history_index = generate_waste_for_period(
-                        self.name, self.status, self.uncertainty_set,
-                        self.waste_generation_rates, self.region, self.waste_streams,
-                        self.total_generated, self.generation_history, self.history_index,
-                        self.current_storage, self.rng, seasonal_factor, available_storage,
-                        current_time
-                    )
-                else:
-                    # Discard excess
-                    self.current_storage = handle_overflow(
-                        self.env, self.current_storage, self.storage_capacity,
-                        self.waste_streams, self.region, self.data_collector
-                    )
-            # Kanban signal handling for pull systems can be added here
+            strategy = self.stock_strategy
+
+            print(f"[STRATEGY DEBUG] {current_time}: WasteGenerator {self.name} using strategy {strategy}")
+            # raise SystemExit("Exiting for debugging purposes")
+
+            if strategy == StockStrategy.FULL_STOCK:
+                self._process_full_stock(current_time, seasonal_factor)
+            elif strategy == StockStrategy.ON_DEMAND:
+                self._process_on_demand(current_time, seasonal_factor)
+            elif strategy == StockStrategy.REORDER_90:
+                self._process_reorder(current_time, seasonal_factor, 0.9, 6)
+            elif strategy == StockStrategy.REORDER_50:
+                self._process_reorder(current_time, seasonal_factor, 0.5, 4)
 
             self.history_index += 1
             yield self.env.timeout(self.generation_frequency)
+
+    def _handle_failure_recovery(self, current_time):
+        if (self.status == EntityStatus.FAILED and 
+            current_time >= self.recovery_time):
+            print(f"{current_time}: Generator {self.name} has recovered from failure")
+            self.status = EntityStatus.OPERATIONAL
+            self.failure_time = None
+            self.recovery_time = None
+
+    def _process_full_stock(self, current_time, seasonal_factor):
+        available_storage = self.waste_storage_capacity - self.current_storage
+        if available_storage <= 0:
+            print(f"[STRATEGY DEBUG] {current_time}: FULL_STOCK overflow, cannot generate more waste.")
+            self.current_storage = handle_overflow(
+                self.env, self.current_storage, self.waste_storage_capacity,
+                self.waste_streams, self.region, self.data_collector,
+                self
+            )
+            self._kanban_signal(current_time, 10)
+        else:
+            available_storage, self.current_storage, self.history_index = generate_waste_for_period(
+                self.name, self.status, self.uncertainty_set,
+                self.waste_generation_rates, self.region, self.waste_streams,
+                self.total_generated, self.generation_history, self.history_index,
+                self.current_storage, self.rng, seasonal_factor, available_storage,
+                current_time
+            )
+
+    def _process_on_demand(self, current_time, seasonal_factor):
+        available_storage = self.waste_storage_capacity - self.current_storage
+        demand = sum(self.waste_generation_rates.values())
+        print(f"[STRATEGY DEBUG] {current_time}: WasteGenerator {self.name} (strategy=ON_DEMAND) available_storage={available_storage:.2f}, demand={demand:.2f}, current_storage={self.current_storage:.2f}")
+        if available_storage < demand:
+            print(f"[STRATEGY DEBUG] {current_time}: ON_DEMAND overflow, discarding excess.")
+            self.current_storage = handle_overflow(
+                self.env, self.current_storage, self.waste_storage_capacity,
+                self.waste_streams, self.region, self.data_collector,
+                self
+            )
+            self._kanban_signal(current_time, 8)
+        else:
+            available_storage, self.current_storage, self.history_index = generate_waste_for_period(
+                self.name, self.status, self.uncertainty_set,
+                self.waste_generation_rates, self.region, self.waste_streams,
+                self.total_generated, self.generation_history, self.history_index,
+                self.current_storage, self.rng, seasonal_factor, available_storage,
+                current_time
+            )
+
+    def _process_reorder(self, current_time, seasonal_factor, threshold_ratio, priority):
+        threshold = self.waste_storage_capacity * threshold_ratio
+        print(f"[STRATEGY DEBUG] {current_time}: WasteGenerator {self.name} (strategy=REORDER_{int(threshold_ratio*100)}) current_storage={self.current_storage:.2f}, threshold={threshold:.2f}")
+        if self.current_storage < threshold:
+            available_storage = self.waste_storage_capacity - self.current_storage
+            print(f"[STRATEGY DEBUG] {current_time}: REORDER_{int(threshold_ratio*100)} trigger, replenishing.")
+            available_storage, self.current_storage, self.history_index = generate_waste_for_period(
+                self.name, self.status, self.uncertainty_set,
+                self.waste_generation_rates, self.region, self.waste_streams,
+                self.total_generated, self.generation_history, self.history_index,
+                self.current_storage, self.rng, seasonal_factor, available_storage,
+                current_time
+            )
+        else:
+            print(f"[STRATEGY DEBUG] {current_time}: REORDER_{int(threshold_ratio*100)} no trigger, discarding excess.")
+            self.current_storage = handle_overflow(
+                self.env, self.current_storage, self.waste_storage_capacity,
+                self.waste_streams, self.region, self.data_collector,
+                self
+            )
+            self._kanban_signal(current_time, priority)
+
+    def _kanban_signal(self, current_time, priority):
+        for waste_type in self.waste_streams.keys():
+            self.kanban_manager.add_signal(
+                waste_type=waste_type,
+                priority=priority,
+                timestamp=current_time
+            )
 
     def get_total_generated_volume(self) -> float:
         """Returns total volume across all waste streams"""

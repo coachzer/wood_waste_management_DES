@@ -17,7 +17,7 @@
                 "02 01 07": 5.0
             },
             "generation_frequency": 1,
-            "storage_capacity": 70000,
+            "waste_storage_capacity": 70000,
             "environmental_impact": 1.0,
             "initial_stock": {
                 "03 01 05": 0.0,
@@ -54,8 +54,8 @@
                 "20 01 38",
                 "20 03 07"
             ],
-            "collection_capacity": 10000,
-            "collection_frequency": 24,
+            "collection_capacity": 30000,
+            "collection_frequency": 12,
             "transport_cost": 50.0,
             "environmental_impact": 1.0,
             "efficiency": 1.0,
@@ -65,7 +65,7 @@
     ],
     "processors": [
         {
-            "id": "proc_zasavska_wood",
+            "id": "proc_zasavska",
             "input_types": [
                 "03 01 05",
                 "17 02 01",
@@ -79,28 +79,13 @@
                 "particle_board",
                 "osb_waferboard"
             ],
-            "processing_capacity": 800,
-            "processing_time": 12,
-            "storage_capacity": 1400,
+            "processing_capacity": 5000,
+            "processing_time": 24,
+            "waste_storage_capacity": 30000,
             "energy_consumption": 100.0,
             "environmental_impact": 1.0,
-            "conversion_rate": 0.8,
-            "operational_costs": 200.0
-        },
-        {
-            "id": "proc_zasavska_paper",
-            "input_types": [
-                "03 01 01",
-                "15 01 01"
-            ],
-            "output_types": [],
-            "processing_capacity": 600,
-            "processing_time": 12,
-            "storage_capacity": 1000,
-            "energy_consumption": 90.0,
-            "environmental_impact": 1.0,
             "conversion_rate": 1.0,
-            "operational_costs": 180.0
+            "operational_costs": 200.0
         }
     ]
 }

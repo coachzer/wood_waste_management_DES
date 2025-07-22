@@ -97,7 +97,7 @@ def test_request_additional_collection(coordinator, simulation_state, collector)
     
     # Add some waste directly to collector's storage to simulate collected waste
     collector.collection_center.current_storage[waste_type] = 5.0  # Start with some waste
-    collector.collection_center.storage_capacity = 100.0
+    collector.collection_center.waste_storage_capacity = 100.0
     
     # Run collection request
     result = coordinator.request_collection(2.0, {waste_type})

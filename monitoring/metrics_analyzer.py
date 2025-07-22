@@ -52,7 +52,6 @@ class MetricsAnalyzer:
         report = []
         report.append("\n=== Waste Management System Summary Report ===\n")
 
-        # Add each section
         self._add_generation_summary(report, generation_history)
         self._add_collection_summary(report, collection_history)
         self._add_processing_summary(report, processing_history)

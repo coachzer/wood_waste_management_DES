@@ -60,7 +60,7 @@ def treatment_operator(real_env, real_data_collector, real_kanban_manager, clean
         env=real_env,
         name="TestOperator",
         processing_time=1.0,
-        storage_capacity=100.0,
+        waste_storage_capacity=100.0,
         energy_consumption=10.0,
         environmental_impact=5.0,
         conversion_rate=0.8,
@@ -75,7 +75,7 @@ def test_initialization(treatment_operator):
     """Test treatment operator initialization"""
     assert treatment_operator.name == "TestOperator"
     assert abs(treatment_operator.processing_time - 1.0) < 0.001
-    assert abs(treatment_operator.storage_capacity - 100.0) < 0.001
+    assert abs(treatment_operator.waste_storage_capacity - 100.0) < 0.001
     assert treatment_operator.region == "GORENJSKA"
     assert abs(treatment_operator.conversion_rate - 0.8) < 0.001
     assert treatment_operator.status == EntityStatus.OPERATIONAL
@@ -102,8 +102,8 @@ def test_storage_capacity_constraints(treatment_operator):
     }
     
     added = treatment_operator._add_to_storage(waste_amounts)
-    assert added <= treatment_operator.storage_capacity
-    assert treatment_operator.current_storage <= treatment_operator.storage_capacity
+    assert added <= treatment_operator.waste_storage_capacity
+    assert treatment_operator.current_storage <= treatment_operator.waste_storage_capacity
 
 def test_process_waste_transformation(treatment_operator, clean_state):
     """Test waste transformation processing"""
@@ -135,7 +135,7 @@ def test_trigger_collection(treatment_operator, clean_state):
     
     # With no collectors in the system, collected should be 0
     assert abs(collected - 0.0) < 0.001
-    assert stored <= treatment_operator.storage_capacity
+    assert stored <= treatment_operator.waste_storage_capacity
     assert len(treatment_operator.demand_history) > 0
 
 def test_inventory_policy_pull(real_env, real_data_collector, clean_state):
@@ -145,7 +145,7 @@ def test_inventory_policy_pull(real_env, real_data_collector, clean_state):
         env=real_env,
         name="PullOperator",
         processing_time=1.0,
-        storage_capacity=100.0,
+        waste_storage_capacity=100.0,
         energy_consumption=10.0,
         environmental_impact=5.0,
         conversion_rate=0.8,

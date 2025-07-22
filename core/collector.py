@@ -1,8 +1,8 @@
+import numpy as np
 from models.enums import WasteType, RegionType, EntityStatus
 from models.state import SimulationState
 from models.data_classes import Vehicle, CollectionCenter, OperationalEntity
 from models.distances import REGION_COORDINATES
-import numpy as np
 from typing import Optional
 from core.collector_utils import (
     calculate_transport_route,
@@ -17,17 +17,27 @@ from core.collector_utils import (
     handle_collaborative_collection,
 )
 
-from utils.capacity_utils import apply_capacity_constraints, handle_overflow_generic, check_storage_capacity
+from utils.capacity_utils import apply_capacity_constraints, handle_overflow_with_decision, check_storage_capacity
 
 from core.kanban_manager import KanbanManager
 
 class CollectorCompany(OperationalEntity):
+    @property
+    def waste_storage_capacity(self):
+        """Expose collection center's waste_storage_capacity for compatibility."""
+        return self.collection_center.waste_storage_capacity
+
+    @waste_storage_capacity.setter
+    def waste_storage_capacity(self, value):
+        self.collection_center.waste_storage_capacity = value
+    
     """A company that collects waste from generators"""
 
     def __init__(
         self,
         env,
         name,
+        waste_types,
         collection_capacity,
         collection_frequency,
         transport_cost,
@@ -44,6 +54,7 @@ class CollectorCompany(OperationalEntity):
         super().__init__()
         self.env = env
         self.name = name
+        self.waste_types = set(waste_types) if waste_types else set()
         self.kanban_manager = kanban_manager or KanbanManager()
         self.collection_capacity = collection_capacity
         self.collection_frequency = collection_frequency
@@ -60,7 +71,7 @@ class CollectorCompany(OperationalEntity):
         # Initialize collection center
         self.collection_center = CollectionCenter(
             region=self.region_type,  # Use enum for internal operations
-            storage_capacity=collection_capacity * 2,  # Double the collection capacity
+            waste_storage_capacity=collection_capacity * 2,  # Double the collection capacity
             current_storage=dict.fromkeys(WasteType, 0.0),
             coordinates=(
                 REGION_COORDINATES[self.region_type] if self.region_type else (0.0, 0.0)
@@ -171,17 +182,14 @@ class CollectorCompany(OperationalEntity):
             yield self.env.timeout(1.0)  # Check every hour
 
     def _check_failure_and_recovery(self, current_time) -> bool:
-        """Check failure state and handle recovery
-        
-        Returns:
-            bool: True if failed, False otherwise
-        """
+        """Check failure state and handle recovery"""
         if (self.status == EntityStatus.FAILED and 
             current_time >= self.recovery_time):
             print(f"{current_time}: Collector {self.name} has recovered from failure")
             self.status = EntityStatus.OPERATIONAL
             self.failure_time = None
             self.recovery_time = None
+            self.availability = True
             return False
         return self.status == EntityStatus.FAILED
 
@@ -191,18 +199,19 @@ class CollectorCompany(OperationalEntity):
             print(f"{current_time}: Collector {self.name} has failed")
             self.status = EntityStatus.FAILED
             self.failure_time = current_time
-            # Recovery time: uniform between 24 and 72 hours
-            self.recovery_time = current_time + self.rng.uniform(24, 72)
+            self.recovery_time = current_time + self.rng.uniform(24, 72) # Recovery time: uniform between 24 and 72 days
+            self.availability = False
 
     def collect_from_generator(self, generator):
         """Collect waste from a generator, handling multiple waste types"""
-        
+        if not self.availability:
+            return 0
 
-        # Pre-filter active waste streams
+        # Pre-filter active waste streams, only allow collector's waste_types
         active_streams = {
             waste_type: stream
             for waste_type, stream in generator.waste_streams.items()
-            if stream.volume > 0
+            if stream.volume > 0 and (waste_type in self.waste_types or (hasattr(waste_type, 'value') and waste_type.value in self.waste_types))
         }
 
         if not active_streams:
@@ -211,15 +220,14 @@ class CollectorCompany(OperationalEntity):
         # Calculate potential collections - convert waste_type to enum and maintain mapping
         potential_collections = {}
         enum_to_original = {}  # Track mapping from enum to original string
-        
+
         for waste_type_str, stream in active_streams.items():
             # Convert WasteType enum to string value if needed
             if isinstance(waste_type_str, WasteType):
                 waste_type_value = waste_type_str.value
             else:
                 waste_type_value = waste_type_str
-                
-            normalized_type = waste_type_value.replace(" ", "_").replace("-", "_")
+
             waste_type_enum = None
 
             # Map all WasteType enum values by .value
@@ -239,15 +247,19 @@ class CollectorCompany(OperationalEntity):
         allowed_collections, overflow_amount = check_storage_capacity(
             self.collection_center.current_storage,
             potential_collections,
-            self.collection_center.storage_capacity
+            self.collection_center.waste_storage_capacity
         )
 
         if overflow_amount > 0:
-            handle_overflow_generic(
-                self.data_collector,
+            _, strategy = handle_overflow_with_decision(
+                self,
+                overflow_amount,
+                self.region
+            )
+            self.data_collector.track_overflow(
                 "collector",
                 overflow_amount,
-                "landfill",
+                strategy,
                 self.env.now
             )
 
@@ -270,8 +282,8 @@ class CollectorCompany(OperationalEntity):
                 self.collected_waste[waste_type_enum] += amount
 
                 # Debug: Track collection activity
-                print(f"[COLLECTOR DEBUG] {self.name} collected {amount:.2f} m³ of {waste_type_enum}")
-                print(f"[COLLECTOR DEBUG] {self.name} total collected {waste_type_enum}: {self.collected_waste[waste_type_enum]:.2f}")
+                # print(f"[COLLECTOR DEBUG] {self.name} collected {amount:.2f} m³ of {waste_type_enum}")
+                # print(f"[COLLECTOR DEBUG] {self.name} total collected {waste_type_enum}: {self.collected_waste[waste_type_enum]:.2f}")
 
                 # Track waste addition to collector's region
                 SimulationState.get_instance().track_waste_generation(
@@ -291,7 +303,7 @@ class CollectorCompany(OperationalEntity):
         remaining_capacity = {
             collector.name: min(
                 collector.collection_capacity * collector.efficiency,
-                collector.collection_center.storage_capacity
+                collector.collection_center.waste_storage_capacity
                 - sum(collector.collection_center.current_storage.values()),
             )
             for collector in [self] + other_collectors
@@ -353,12 +365,18 @@ class CollectorCompany(OperationalEntity):
 
     def collect_waste_for_demand(self, required_amount):
         """Collect waste based on treatment plant demand with storage-based adjustments"""
-        collected_amounts = {waste_type: 0.0 for waste_type in WasteType}
+
+        state = SimulationState.get_instance()
+        for gen in state.generators:
+            if gen.region_type == self.region_type and hasattr(gen, "generate_on_demand"):
+                gen.generate_on_demand()
+
+        collected_amounts = dict.fromkeys(WasteType, 0.0)
         total_collected = 0
         state = SimulationState.get_instance()
 
         generators_storage = [
-            (g, g.current_storage / g.storage_capacity)
+            (g, g.current_storage / g.waste_storage_capacity)
             for g in state.generators
             if g.region_type == self.region_type and g.current_storage > 0
         ]
@@ -394,11 +412,16 @@ class CollectorCompany(OperationalEntity):
             for waste_type in collected_amounts:
                 collected_amounts[waste_type] *= scaling_factor
 
-            handle_overflow_generic(
-                self.data_collector,
+                
+            _, strategy = handle_overflow_with_decision(
+                self,
+                result.overflow_amount,
+                self.region
+            )
+            self.data_collector.track_overflow(
                 "collector",
                 result.overflow_amount,
-                "landfill",
+                strategy,
                 self.env.now
             )
 
@@ -449,6 +472,7 @@ class CollectorCompany(OperationalEntity):
                 self.status = EntityStatus.OPERATIONAL
                 self.failure_time = None
                 self.recovery_time = None
+                self.availability = True
 
             # Kanban signal processing for pull system
             kanban_signals = self.kanban_manager.get_signals()
@@ -488,7 +512,7 @@ class CollectorCompany(OperationalEntity):
                     )
                 elif self.strategy == "collaborative" and other_collectors:
                     collection_cost = handle_collaborative_collection(
-                        self, prioritized_generators, other_collectors
+                        self, prioritized_generators
                     )
 
                 if collection_cost > 0:

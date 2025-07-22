@@ -1,7 +1,7 @@
 {
     "generators": [
         {
-            "id": "gen_osrednjeslovenska_1",
+            "id": "gen_osrednjeslovenska",
             "waste_generation_rates": {
                 "02 01 07": 3.0,
                 "03 01 01": 8.0,
@@ -18,7 +18,7 @@
                 "20 03 07": 47.229
             },
             "generation_frequency": 1,
-            "storage_capacity": 1200,
+            "waste_storage_capacity": 120000,
             "environmental_impact": 1.0,
             "initial_stock": {
                 "02 01 07": 0.0,
@@ -40,7 +40,7 @@
     ],
     "collectors": [
         {
-            "id": "col_osrednjeslovenska_1",
+            "id": "col_osrednjeslovenska",
             "waste_types": [
                 "02 01 07",
                 "03 01 01",
@@ -57,18 +57,18 @@
                 "20 01 38",
                 "20 03 07"
             ],
-            "collection_capacity": 10000,
-            "collection_frequency": 24,
+            "collection_capacity": 60000,
+            "collection_frequency": 12,
             "transport_cost": 50.0,
             "environmental_impact": 1.0,
             "efficiency": 1.0,
             "availability": true,
-            "strategy": "collaborative"
+            "strategy": "competitive"
         }
     ],
     "processors": [
         {
-            "id": "proc_osrednjeslovenska_wood",
+            "id": "proc_osrednjeslovenska",
             "input_types": [
                 "03 01 99",
                 "17 02 01",
@@ -82,43 +82,13 @@
                 "particle_board",
                 "osb_waferboard"
             ],
-            "processing_capacity": 1500,
-            "processing_time": 12,
-            "storage_capacity": 2200,
+            "processing_capacity": 7000,
+            "processing_time": 24,
+            "waste_storage_capacity": 30000,
             "energy_consumption": 100.0,
             "environmental_impact": 1.0,
-            "conversion_rate": 0.8,
-            "operational_costs": 200.0
-        },
-        {
-            "id": "proc_osrednjeslovenska_paper",
-            "input_types": [
-                "03 01 01",
-                "15 01 01"
-            ],
-            "output_types": [],
-            "processing_capacity": 1200,
-            "processing_time": 12,
-            "storage_capacity": 1800,
-            "energy_consumption": 90.0,
-            "environmental_impact": 1.0,
             "conversion_rate": 1.0,
-            "operational_costs": 180.0
-        },
-        {
-            "id": "proc_osrednjeslovenska_furniture",
-            "input_types": [
-                "17 02 01",
-                "15 01 03"
-            ],
-            "output_types": [],
-            "processing_capacity": 1200,
-            "processing_time": 12,
-            "storage_capacity": 2000,
-            "energy_consumption": 80.0,
-            "environmental_impact": 1.0,
-            "conversion_rate": 0.85,
-            "operational_costs": 160.0
+            "operational_costs": 200.0
         }
     ]
 }

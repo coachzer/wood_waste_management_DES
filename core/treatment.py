@@ -17,7 +17,7 @@ from core.treatment_utils import (
     calculate_required_waste
 )
 
-from utils.capacity_utils import apply_capacity_constraints, apply_partial_update_with_constraints, handle_overflow_generic, check_storage_capacity
+from utils.capacity_utils import apply_capacity_constraints, apply_partial_update_with_constraints, handle_overflow_with_decision, check_storage_capacity
 
 class StorageDict(dict):
     def __init__(self, owner, *args, **kwargs):
@@ -29,15 +29,20 @@ class StorageDict(dict):
         result = apply_capacity_constraints(
             sum(v for k, v in self.items() if k not in excluded_keys),
             value,
-            self.owner.storage_capacity
+            self.owner.waste_storage_capacity
         )
         if result.overflow_amount > 0:
-            handle_overflow_generic(
-                self.owner.data_collector,
-                "treatment",
+            _, strategy = handle_overflow_with_decision(
+                self.owner,
                 result.overflow_amount,
-                "landfill",
-                self.owner.env.now
+                self.owner.region
+            )
+            self.owner.data_collector.track_overflow(
+                facility_type="treatment",
+                volume=result.overflow_amount,
+                strategy=strategy,
+                timestamp=self.owner.env.now,
+                region=self.owner.region
             )
         super().__setitem__(key, result.allowed_amount)
 
@@ -49,56 +54,58 @@ class TreatmentOperator(OperationalEntity):
         env,
         name,
         processing_time,
-        storage_capacity,
+        waste_storage_capacity,
         energy_consumption,
         environmental_impact,
         conversion_rate,
         operational_costs,
         region: str,
+        uncertainty_set=None,
         transformations: Optional[Dict[WasteType, WasteTransformation]] = None,
-        uncertainty_set = None,
         data_collector: Optional['DataCollector'] = None,
-        inventory_policy: InventoryPolicy = InventoryPolicy.PUSH,
         kanban_manager: KanbanManager = None,
         product_storage_capacity: float = 0.0,
+        product_to_sell_capacity: float = 0.0,
+        scenario_config=None,
     ):
         super().__init__()
-        # Initialize monitoring
+        # Monitoring
         if data_collector is None:
             raise ValueError("data_collector is required for TreatmentOperator")
         self.data_collector = data_collector
-        self.inventory_policy = inventory_policy
+        # Inventory policy from scenario_config if available
+        if scenario_config and hasattr(scenario_config, 'inventory_policy'):
+            self.inventory_policy = scenario_config.inventory_policy
+        else:
+            from config.base_config import get_scenario_config
+            self.inventory_policy = get_scenario_config().inventory_policy
         self.kanban_manager = kanban_manager or KanbanManager()
-        
-        # Initialize collection coordinator
+
+        # Collection coordinator
         self.collection_coordinator = CollectionCoordinator(env, region)
 
-        # Track utilization history for dynamic capacity management
+        # Utilization history
         self.utilization_history = []
-        self.utilization_window = 10  # Rolling window size
+        self.utilization_window = 10
         self.env = env
         self.name = name
-        self.processing_capacity = (
-            processing_time * storage_capacity * 0.8
-        )  # Initial processing capacity (80% of theoretical max)
-        self.initial_processing_capacity = (
-            self.processing_capacity
-        )  # Store initial value
-        self.processing_time = processing_time
-        # Storage capacity configuration
-        self.initial_storage_capacity = storage_capacity
-        self.storage_capacity = storage_capacity
-        self.min_capacity = storage_capacity * 0.75  # Minimum 75% of initial
-        self.max_capacity = storage_capacity * 2.0  # Maximum 200% of initial
 
+        # Facility parameters
+        self.processing_time = processing_time
+        self.waste_storage_capacity = waste_storage_capacity
         self.energy_consumption = energy_consumption
-        self.environmental_impact = environmental_impact
         self.conversion_rate = conversion_rate
         self.operational_costs = operational_costs
+        self.environmental_impact = environmental_impact
 
-        # Store original region string for tracking
+        self.processing_capacity = self.processing_time * self.waste_storage_capacity * 0.8
+        self.initial_processing_capacity = self.processing_capacity
+        self.initial_storage_capacity = self.waste_storage_capacity
+        self.min_capacity = self.waste_storage_capacity * 0.75
+        self.max_capacity = self.waste_storage_capacity * 2.0
+
+        # Region
         self.region = region
-        # Convert to enum for internal use, replacing hyphen with underscore for lookup
         self.region_type = RegionType[region.upper().replace('-', '_')] if region else None
         self.demand = 0
 
@@ -114,32 +121,35 @@ class TreatmentOperator(OperationalEntity):
             "osb_waferboard": 0.0
         }
 
-        # Initialize product storage for finished products
+        # Product storage
         self.product_storage_capacity = product_storage_capacity
+        self.product_to_sell_capacity = product_to_sell_capacity
         self.product_storage = ProductStorage(
-            capacity=product_storage_capacity,
+            capacity=self.product_storage_capacity,
+            current_storage=dict.fromkeys(OutputType, 0.0)
+        )
+        self.product_to_sell = ProductStorage(
+            capacity=self.product_to_sell_capacity,
             current_storage=dict.fromkeys(OutputType, 0.0)
         )
 
-        # Capacity management state
+        # Capacity management
         self.last_capacity_check = env.now
-        self.capacity_check_interval = 1.0  # Check every time unit
-        self.minimum_required_waste = 0.1  # Minimum waste required for collection
+        self.capacity_check_interval = 1.0
+        self.minimum_required_waste = 0.1
 
-        # Initialize stochastic components
+        # Stochastic components
         self.uncertainty_set = uncertainty_set
-        self.rng = np.random.default_rng(42)  # For reproducibility
-        self.transformation_efficiency = 0.95  # Base efficiency
-        
-        # Set failure check interval if configuration is available
-        if uncertainty_set and hasattr(uncertainty_set, 'treatment_failure'):
-            self.failure_check_interval = uncertainty_set.treatment_failure.check_interval
+        self.rng = np.random.default_rng(42)
+        self.transformation_efficiency = 0.95
+        if self.uncertainty_set and hasattr(self.uncertainty_set, 'treatment_failure'):
+            self.failure_check_interval = self.uncertainty_set.treatment_failure.check_interval
 
+        # Transformations
         self.transformations = transformations or self._default_transformations()
 
-        # Start processing loop
+        # Start processes
         self.process = env.process(self.run_facility())
-        # Start demand-based collection process
         env.process(self.run_collection())
 
     @property
@@ -151,8 +161,8 @@ class TreatmentOperator(OperationalEntity):
     def storage_utilization(self) -> float:
         """Get current storage utilization as a percentage"""
         return (
-            (self.current_storage / self.storage_capacity) * 100
-            if self.storage_capacity > 0
+            (self.current_storage / self.waste_storage_capacity) * 100
+            if self.waste_storage_capacity > 0
             else 0.0
         )
 
@@ -177,15 +187,20 @@ class TreatmentOperator(OperationalEntity):
         result = apply_partial_update_with_constraints(
             current_values=self._waste_storage,
             updates=new_storage,
-            capacity=self.storage_capacity
+            capacity=self.waste_storage_capacity
         )
         if result.overflow_amount > 0:
-            handle_overflow_generic(
-                self.data_collector,
-                "treatment",
+            _, strategy = handle_overflow_with_decision(
+                self,
                 result.overflow_amount,
-                "landfill",
-                self.env.now
+                self.region
+            )
+            self.data_collector.track_overflow(
+                facility_type="treatment",
+                volume=result.overflow_amount,
+                strategy=strategy,
+                timestamp=self.env.now,
+                region=self.region
             )
         self._waste_storage = StorageDict(self, result.scaled_values)
 
@@ -194,16 +209,21 @@ class TreatmentOperator(OperationalEntity):
         result = apply_partial_update_with_constraints(
             current_values=self._waste_storage,
             updates=partial_update,
-            capacity=self.storage_capacity,
+            capacity=self.waste_storage_capacity,
             excluded_keys=set(partial_update.keys())
         )
         if result.overflow_amount > 0:
-            handle_overflow_generic(
-                self.data_collector,
-                "treatment",
+            _, strategy = handle_overflow_with_decision(
+                self,
                 result.overflow_amount,
-                "landfill",
-                self.env.now
+                self.region
+            )
+            self.data_collector.track_overflow(
+                facility_type="treatment",
+                volume=result.overflow_amount,
+                strategy=strategy,
+                timestamp=self.env.now,
+                region=self.region
             )
         for waste_type, amount in result.scaled_values.items():
             self._waste_storage[waste_type] = amount
@@ -226,38 +246,34 @@ class TreatmentOperator(OperationalEntity):
             scaled_amount = amount * scaling_factor
             self._waste_storage[waste_type] = scaled_amount
             overflow_amount = amount - scaled_amount
-            self.data_collector.track_overflow(
-                "treatment",
-                overflow_amount,
-                "landfill",  # Use landfill for scaled overflow
-                self.env.now
-            )
+            if overflow_amount > 0:
+                self.data_collector.track_overflow(
+                    facility_type="treatment",
+                    volume=overflow_amount,
+                    strategy="landfill",
+                    timestamp=self.env.now,
+                    region=self.region
+                )
 
     def run_collection(self):
         """Process to periodically trigger collection based on demand or Kanban"""
         while True:
             if self.inventory_policy == InventoryPolicy.PUSH:
-                # Periodic review: forecast demand, calculate order-up-to, trigger collection
                 forecast = np.mean([d for _, d in self.demand_history[-4:]]) if self.demand_history else 0
                 safety_stock = 1.65 * np.std([d for _, d in self.demand_history[-4:]]) if self.demand_history else 0
                 order_up_to = forecast + safety_stock
-                
-                # If no demand history, use current demand as initial trigger
                 if len(self.demand_history) == 0 and self.demand > 0:
                     order_up_to = self.demand
-                
                 if order_up_to > 0:
                     self.demand = order_up_to
                     self.trigger_collection()
-                yield self.env.timeout(7)  # Weekly review
+                yield self.env.timeout(7)
             elif self.inventory_policy == InventoryPolicy.PULL:
-                # Kanban container management: check if any waste type drops below threshold
                 for waste_type, volume in self.waste_storage.items():
-                    # Example: trigger Kanban signal if below 1 container (customize as needed)
                     if volume < 1.0:
                         self.kanban_manager.add_signal(
                             waste_type=waste_type,
-                            priority=1,  # Could be weighted by biogenic value
+                            priority=1,
                             timestamp=self.env.now
                         )
                 yield self.env.timeout(self.processing_time)
@@ -341,33 +357,19 @@ class TreatmentOperator(OperationalEntity):
             
     def _process_waste_transformation(self, input_type, output_type, transformation):
         """Process a single waste transformation"""
-        print(f"[PROCESS DEBUG] Starting transformation {input_type.name} -> {output_type.name}")
-        print(f"[PROCESS DEBUG] Available waste: {self.waste_storage[input_type]:.2f} m³")
         
         # Skip processing if input type is already a final product
         final_products = {
             OutputType.MDF_FIBREBOARD,
             OutputType.PARTICLE_BOARD,
-            OutputType.OSB_WAFERBOARD,
-            OutputType.WOODEN_PACKAGING,
-            OutputType.PAPER_PACKAGING
+            OutputType.OSB_WAFERBOARD
         }
         if input_type in final_products:
             print("[PROCESS DEBUG] Skipping - input is already a final product")
             return
-            
-        # Get current demands from simulation state
-        state = SimulationState.get_instance()
-        product_demands = {
-            OutputType.MDF_FIBREBOARD: state.target_demands['mdf_fibreboard'] - state.total_products['mdf_fibreboard'],
-            OutputType.PARTICLE_BOARD: state.target_demands['particle_board'] - state.total_products['particle_board'],
-            OutputType.OSB_WAFERBOARD: state.target_demands['osb_waferboard'] - state.total_products['osb_waferboard']
-        }
-        print(f"[PROCESS DEBUG] Current unmet demand for {output_type.name}: {product_demands.get(output_type, 'N/A')}")
 
         # Process normally since we don't handle furniture anymore
         amount_to_process = min(self.waste_storage[input_type], self.processing_capacity)
-        print(f"[PROCESS DEBUG] Amount to process: {amount_to_process:.2f} m³ (capacity: {self.processing_capacity})")
         
         if amount_to_process <= 0:
             print("[PROCESS DEBUG] No waste to process")
@@ -375,45 +377,46 @@ class TreatmentOperator(OperationalEntity):
         
         # Get transformation efficiency with uncertainty
         efficiency = min(get_transformation_efficiency(self, transformation), 1.0)
-        print(f"[PROCESS DEBUG] Efficiency: {efficiency:.3f}")
         
         # Calculate output and handle capacity constraints
         amount_to_process, output_amount = calculate_output_amounts(
-            self,
-            amount_to_process, efficiency
+            amount_to_process, 
+            efficiency
         )
-        print(f"[PROCESS DEBUG] Final processing: {amount_to_process:.2f} m³ -> {output_amount:.2f} m³")
         
         # Update waste storage and tracking
         update_waste_storage(self, input_type, output_type, amount_to_process, output_amount)
         
         # Handle demand fulfillment for final products
         if output_type in final_products:
-            print("[PROCESS DEBUG] Output is final product, proceeding with fulfillment")
-            # Store finished product in product storage (shared capacity)
-            total_stored = sum(self.product_storage.current_storage.values())
-            capacity = self.product_storage.capacity
-            addable = min(output_amount, capacity - total_stored)
-            overflow = output_amount - addable
-            self.product_storage.current_storage[output_type] += addable
+            # First, fulfill demand using product_to_sell storage
+            total_to_sell_stored = sum(self.product_to_sell.current_storage.values())
+            to_sell_capacity = self.product_to_sell.capacity
+            addable_to_sell = min(output_amount, to_sell_capacity - total_to_sell_stored)
+            overflow_after_sell = output_amount - addable_to_sell
+            self.product_to_sell.current_storage[output_type] += addable_to_sell
 
-            # On overflow, simulate buying more inventory (increase capacity)
-            if overflow > 0:
-                # Log purchase event - increase capacity by overflow amount
-                self.product_storage.capacity += overflow # Increase capacity by overflow amount
-                self.product_storage.current_storage[output_type] += overflow # Add overflow to storage
+            # Fulfill demand and track in simulation state
+            if addable_to_sell > 0:
+                print(f"[PROCESS DEBUG] About to call fulfill_demand with {addable_to_sell:.2f} m³")
+                fulfill_demand(self, output_type, addable_to_sell)
 
-            # Update product volumes (legacy tracking)
+            # Any excess product goes to product_storage (no buyer)
+            if overflow_after_sell > 0:
+                total_stored = sum(self.product_storage.current_storage.values())
+                storage_capacity = self.product_storage.capacity
+                addable_to_storage = min(overflow_after_sell, storage_capacity - total_stored)
+                # No further action needed for overflow_storage
+                self.product_storage.current_storage[output_type] += addable_to_storage
+                # If overflow_storage > 0, optionally log or handle further overflow
+
+            # Track product volumes
             if output_type == OutputType.MDF_FIBREBOARD:
                 self.product_volumes["mdf_fibreboard"] += output_amount
             elif output_type == OutputType.PARTICLE_BOARD:
                 self.product_volumes["particle_board"] += output_amount
             elif output_type == OutputType.OSB_WAFERBOARD:
                 self.product_volumes["osb_waferboard"] += output_amount
-            
-            # Fulfill demand and track in simulation state
-            print(f"[PROCESS DEBUG] About to call fulfill_demand with {output_amount:.2f} m³")
-            fulfill_demand(self, output_type, output_amount)
         else:
             print("[PROCESS DEBUG] Output is not final product, skipping fulfillment")
         
@@ -453,12 +456,24 @@ class TreatmentOperator(OperationalEntity):
             input_waste_types
         )
 
+        # Validate collection result
+        if not collection_result.waste_by_type or sum(collection_result.waste_by_type.values()) == 0:
+            print(f"[VALIDATION] No waste collected at time {self.env.now} - skipping processing")
+            return 0, 0
+
+        # Verify waste types match expected inputs
+        # mismatched_types = set(collection_result.waste_by_type.keys()) - input_waste_types
+        # if mismatched_types:
+        #     print(f"[VALIDATION] Warning: Collected waste types {mismatched_types} don't match expected inputs")
+
         # Track this collection's demand
         self.demand_history.append((self.env.now, required_waste))
         self.data_collector.track_processing(self, self.env.now)
 
-        # Add to storage
+        # Add to storage with validation
         actually_stored = self._add_to_storage(collection_result.waste_by_type)
+        if actually_stored == 0:
+            print(f"[VALIDATION] Failed to store any collected waste at time {self.env.now}")
         if actually_stored < collection_result.total_collected:
             print(
                 f"Could only store {actually_stored:.12f} m³ due to capacity constraints"
@@ -551,16 +566,21 @@ class TreatmentOperator(OperationalEntity):
         allowed_additions, overflow_amount = check_storage_capacity(
             self.waste_storage,
             waste_amounts,
-            self.storage_capacity
+            self.waste_storage_capacity
         )
 
         if overflow_amount > 0:
-            handle_overflow_generic(
-                self.data_collector,
-                "treatment",
+            _, strategy = handle_overflow_with_decision(
+                self,
                 overflow_amount,
-                "landfill",
-                self.env.now
+                self.region
+            )
+            self.data_collector.track_overflow(
+                facility_type="treatment",
+                volume=overflow_amount,
+                strategy=strategy,
+                timestamp=self.env.now,
+                region=self.region
             )
 
         total_added = 0.0

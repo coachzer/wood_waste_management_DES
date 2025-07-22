@@ -1,5 +1,5 @@
-from .regional_tracker import RegionalWasteTracker
 from utils.helpers import load_json
+from models import regional_tracker
 
 # Load demand data
 _demand_data = load_json("data/demand.json")
@@ -13,12 +13,11 @@ class SimulationState:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            # Initialize waste tracker first
-            cls._instance.waste_tracker = RegionalWasteTracker()
-            # Then initialize component lists
             cls._instance.generators = []
             cls._instance.collectors = []
             cls._instance.treatment_operators = []
+            # Initialize regional waste tracker
+            cls._instance.waste_tracker = regional_tracker.RegionalWasteTracker()
             # Initialize product tracking with values from demand.json
             demand = _demand_data["national_demand"]
             cls._instance.total_products = {
@@ -113,14 +112,12 @@ class SimulationState:
         
     def reset(self):
         """Reset simulation state to initial values"""
-        # Reset waste tracker
-        self.waste_tracker = RegionalWasteTracker()
-        
         # Reset component lists
         self.generators = []
         self.collectors = []
         self.treatment_operators = []
-        
+        # Reset regional waste tracker
+        self.waste_tracker = regional_tracker.RegionalWasteTracker()
         # Reset product tracking with values from demand.json
         demand = _demand_data["national_demand"]
         self.total_products = {
@@ -133,7 +130,6 @@ class SimulationState:
             'particle_board': demand["particle_board"],
             'osb_waferboard': demand["osb_waferboard"]
         }
-        
         # Reset demand met times
         self.demand_met_times = {
             'mdf_fibreboard': None,
