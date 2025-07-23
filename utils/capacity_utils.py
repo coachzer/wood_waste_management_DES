@@ -3,6 +3,7 @@ from core.overflow import OverflowTracker, OverflowStrategy
 from typing import Dict, Tuple, Optional, TypeVar
 from dataclasses import dataclass
 from models.enums import WasteType
+import sys
 
 @dataclass
 class CapacityResult:
@@ -100,11 +101,11 @@ def apply_partial_update_with_constraints(
     )
 
 def handle_overflow_with_decision(entity, volume, region):
-    import sys
+    
     if entity is None:
         print("[DEBUG] entity is None in handle_overflow_with_decision. Args:")
         print(f"volume: {volume}, region: {region}")
-        sys.exit(1)
+        raise SystemExit("Entity cannot be None for overflow handling")
     
     config = get_cost_params()
 

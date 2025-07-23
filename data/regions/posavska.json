@@ -61,8 +61,7 @@
             "transport_cost": 50.0,
             "environmental_impact": 1.0,
             "efficiency": 1.0,
-            "availability": true,
-            "strategy": "competitive"
+            "availability": true
         }
     ],
     "processors": [

@@ -4,7 +4,7 @@
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Dict, Tuple, List, Optional
-from models.enums import WasteType, OutputType, InventoryPolicy, StockStrategy, CoordinationStrategy
+from models.enums import WasteType, OutputType, InventoryPolicy, StockStrategy
 from models.data_classes import FailureConfig
 from utils.helpers import (
     load_json, validate_config, validate_all_numeric_positive
@@ -83,10 +83,8 @@ class ScenarioConfig:
     generator_failure: FailureConfig
     collector_failure: FailureConfig
     treatment_failure: FailureConfig
-    collaboration: bool
     inventory_policy: InventoryPolicy = InventoryPolicy.PUSH
     stock_strategy: StockStrategy = StockStrategy.FULL_STOCK
-    coordination_strategy: CoordinationStrategy = CoordinationStrategy.COMPETITIVE
 
     def to_uncertainty_set(self) -> UncertaintySet:
         """Convert scenario config to uncertainty set"""
@@ -154,7 +152,6 @@ HIGH_FAILURE = FailureConfig(
     check_interval=0.25 # Check four times per day
 )
 
-# Default scenario configurations - simplified and unified
 SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
     "Baseline": ScenarioConfig(
         name="Baseline",
@@ -166,10 +163,8 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
         generator_failure=LOW_FAILURE,
         collector_failure=LOW_FAILURE,
         treatment_failure=LOW_FAILURE,
-        collaboration=False,
         inventory_policy=InventoryPolicy.PUSH,
-        stock_strategy=StockStrategy.FULL_STOCK,
-        coordination_strategy=CoordinationStrategy.COMPETITIVE
+        stock_strategy=StockStrategy.FULL_STOCK
     ),
     "Disrupted": ScenarioConfig(
         name="Disrupted",
@@ -181,10 +176,8 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
         generator_failure=HIGH_FAILURE,
         collector_failure=HIGH_FAILURE,
         treatment_failure=HIGH_FAILURE,
-        collaboration=False,
         inventory_policy=InventoryPolicy.PUSH,
-        stock_strategy=StockStrategy.ON_DEMAND,
-        coordination_strategy=CoordinationStrategy.COMPETITIVE
+        stock_strategy=StockStrategy.ON_DEMAND
     ),
     "Boom": ScenarioConfig(
         name="Boom",
@@ -193,13 +186,11 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
         treat_conv=(0.98, 0.01), # Excellent, stable conversion
         trans_time=(1.0, 0.1),   # Very fast, predictable transport
         market_dem=(2.0, 0.2),   # Double, stable demand
-        generator_failure=LOW_FAILURE,
-        collector_failure=LOW_FAILURE,
-        treatment_failure=LOW_FAILURE,
-        collaboration=True,
+        generator_failure=MEDIUM_FAILURE,
+        collector_failure=MEDIUM_FAILURE,
+        treatment_failure=MEDIUM_FAILURE,
         inventory_policy=InventoryPolicy.PULL,
-        stock_strategy=StockStrategy.FULL_STOCK,
-        coordination_strategy=CoordinationStrategy.COLLABORATIVE
+        stock_strategy=StockStrategy.FULL_STOCK
     )
 }
 
@@ -296,23 +287,38 @@ def get_scenario_config(scenario_name: str = "Baseline") -> ScenarioConfig:
 
 def get_scenario_by_params(
     inventory_policy: InventoryPolicy = InventoryPolicy.PUSH,
-    stock_strategy: StockStrategy = StockStrategy.FULL_STOCK,
-    coordination_strategy: Optional[CoordinationStrategy] = None
+    stock_strategy: StockStrategy = StockStrategy.FULL_STOCK
 ) -> ScenarioConfig:
     """Get scenario configuration by behavioral parameters"""
     for scenario in SCENARIO_CONFIGS.values():
         if (scenario.inventory_policy == inventory_policy and 
-            scenario.stock_strategy == stock_strategy and
-            (coordination_strategy is None or scenario.coordination_strategy == coordination_strategy)):
+            scenario.stock_strategy == stock_strategy):
             return scenario
 
-    # If no exact match, return a Baseline variant with requested strategies
+    # If no exact match, create a Baseline variant with requested strategies
+    print(f"Creating custom scenario with inventory policy {inventory_policy}, "
+          f"stock strategy {stock_strategy}")
+    
     baseline = deepcopy(SCENARIO_CONFIGS["Baseline"])
     baseline.inventory_policy = inventory_policy
     baseline.stock_strategy = stock_strategy
-    if coordination_strategy is not None:
-        baseline.coordination_strategy = coordination_strategy
     return baseline
+
+def get_scenario_with_strategies(
+    base_scenario_name: str,
+    inventory_policy: InventoryPolicy,
+    stock_strategy: StockStrategy
+) -> ScenarioConfig:
+    """Create a scenario config by combining a base scenario with specific strategies"""
+    base_scenario = SCENARIO_CONFIGS.get(base_scenario_name, SCENARIO_CONFIGS["Baseline"])
+    
+    # Create a copy and modify the strategies
+    modified_scenario = deepcopy(base_scenario)
+    modified_scenario.name = f"{base_scenario_name}_{inventory_policy.value}_{stock_strategy.value}"
+    modified_scenario.inventory_policy = inventory_policy
+    modified_scenario.stock_strategy = stock_strategy
+    
+    return modified_scenario
 
 def list_available_scenarios() -> List[str]:
     """List all available scenario names"""

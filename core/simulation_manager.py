@@ -6,8 +6,7 @@ from config.base_config import (
 )
 from models.enums import InventoryPolicy
 from models.state import SimulationState
-from monitoring.monitor import WasteMonitor
-from monitoring.system_monitor import monitor_system
+from monitoring.waste_monitor import WasteMonitor
 from models.facility_data import FacilityDataManager
 from core.facility_builder import initialize_simulation_entities
 
@@ -15,38 +14,33 @@ class SimulationManager:
     """Manages simulation setup, execution, and monitoring"""
     
     def __init__(self):
-        # Reset the SimulationState singleton for fresh simulation
         SimulationState._instance = None
         self.env = simpy.Environment()
-        self.waste_monitor = WasteMonitor()
+        self.waste_monitor = WasteMonitor(self.env)
         self.state = SimulationState.get_instance()
         self.initial_params = {}
         
     def initialize_entities(self, scenario_config: ScenarioConfig) -> None:
         """Initialize simulation using the exact scenario the user requested."""
         try:
-            # 1) build the UncertaintySet from the ScenarioConfig
             uncertainty_set = scenario_config.to_uncertainty_set()
 
-            # 2) pull the two key knobs directly from scenario_config
             stock_strategy     = scenario_config.stock_strategy
             inventory_policy   = scenario_config.inventory_policy
 
-            # 3) decide your distribution mode from inventory_policy if you'd like
             dist_mode = (
                 "balanced"
                 if inventory_policy == InventoryPolicy.PUSH
                 else "priority"
             )
 
-            # 4) hand both into the entity‑builder
             generators, collectors, operators = initialize_simulation_entities(
                 self.env,
                 uncertainty_set,
-                self.waste_monitor.data_collector,
-                dist_mode,       # formerly hard‑coded “balanced”
-                [],            # priority_types, if you ever want them
-                stock_strategy,  # now the real one
+                self.waste_monitor,
+                dist_mode,       
+                [],           
+                stock_strategy,  
             )
 
             self.state.initialize(generators, collectors, operators)
@@ -82,9 +76,7 @@ class SimulationManager:
     def setup_processes(self) -> None:
         """Set up simulation processes"""
         self.env.process(
-            monitor_system(
-                self.env,
-                self.waste_monitor,
+            self.waste_monitor.monitor_system_process(
                 self.state.generators,
                 self.state.collectors,
                 self.state.treatment_operators,
@@ -128,7 +120,3 @@ class SimulationManager:
                     print(f"- {product}: {achieved:.2f}/{target:.2f} m³ (remaining: {remaining:.2f} m³)")
         else:
             print("All demands were successfully met!")
-
-    def create_visualizations(self):
-        """Create visualization plots"""
-        self.waste_monitor.plot_temporal_analysis(SIMULATION_DURATION)

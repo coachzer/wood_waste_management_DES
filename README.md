@@ -33,7 +33,7 @@ A Python-based simulation system for modeling and optimizing wood waste manageme
 │   ├── regional_tracker.py # Regional statistics
 │   └── state.py          # System state management
 ├── monitoring/            # Monitoring and visualization
-│   ├── data_collector.py  # Data collection
+│   ├── waste_monitor.py  # Data collection
 │   ├── metrics_analyzer.py # Metrics analysis
 │   ├── mfa_visualization.py # Material flow analysis
 │   ├── monitor.py         # System monitoring

@@ -57,3 +57,6 @@ plots/
 
 # GEOJSON files
 *.geojson
+
+# plotting file
+data/plotting.py

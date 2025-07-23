@@ -25,12 +25,16 @@ class Collector(OperationalEntity):
     environmental_impact: float
     efficiency: float
     availability: bool
-    strategy: str
 
-    def __init__(self, id: str, waste_types: List[str], collection_capacity: float,
-                 collection_frequency: float, transport_cost: float,
-                 environmental_impact: float, efficiency: float,
-                 availability: bool, strategy: str):
+    def __init__(self, 
+                 id: str, 
+                 waste_types: List[str], 
+                 collection_capacity: float,
+                 collection_frequency: float, 
+                 transport_cost: float,
+                 environmental_impact: float, 
+                 efficiency: float,
+                 availability: bool):
         super().__init__()
         self.id = id
         self.waste_types = waste_types
@@ -40,7 +44,6 @@ class Collector(OperationalEntity):
         self.environmental_impact = environmental_impact
         self.efficiency = efficiency
         self.availability = availability
-        self.strategy = strategy
         self.downtime_duration = 12.0
 
 

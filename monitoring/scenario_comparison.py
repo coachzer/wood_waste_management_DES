@@ -1,3 +1,4 @@
+from unittest import result
 import plotly.graph_objects as go
 import plotly.subplots as sp
 import pandas as pd
@@ -5,21 +6,23 @@ import numpy as np
 from typing import Dict, List
 import os
 
+from monitoring.mfa_visualization import create_material_flow_analysis
+
 class ScenarioComparison:    
     def __init__(self, results: List[Dict]):
         self.results = results
         self.output_dir = "plots/scenario_comparison"
         os.makedirs(self.output_dir, exist_ok=True)
-    
+
     def create_storage_heatmaps(self):
         """Create heatmap visualizations of storage utilization over time for all scenarios"""
         # Generation and collection remain as before
         for entity_type in ['generation', 'collection']:
-            self._create_entity_storage_heatmap(entity_type)
+            self._create_entity_storage_heatmaps(entity_type)
 
-        self._create_processing_storage_heatmap('waste')
-        self._create_processing_storage_heatmap('product')
-        self._create_processing_storage_heatmap('product_to_sell')
+        self._create_processing_storage_heatmaps('waste')
+        self._create_processing_storage_heatmaps('product')
+        self._create_processing_storage_heatmaps('product_to_sell')
 
     def _create_processing_storage_heatmap(self, storage_type: str):
         """Create heatmap for a specific processor storage type"""
@@ -29,8 +32,9 @@ class ScenarioComparison:
             vertical_spacing=0.02
         )
         for idx, result in enumerate(self.results, 1):
-            monitor = result['monitor']
-            history = monitor.data_collector.get_processing_history()
+            monitor_data = result['monitor_data']
+            history = monitor_data['processing_history']
+            
             match storage_type:
                 case 'waste':
                     heatmap_data = self._extract_processor_waste_storage_data(history)
@@ -63,6 +67,52 @@ class ScenarioComparison:
         fig.update_xaxes(title_text="Time")
         fig.update_yaxes(title_text="Processor")
         fig.write_html(f"{self.output_dir}/processing_{storage_type}_storage_heatmap.html")
+
+    def _create_processing_storage_heatmaps(self, storage_type: str):
+        """Create separate heatmaps for each scenario for a specific processor storage type"""
+        for result in self.results:
+            monitor_data = result['monitor_data']
+            history = monitor_data['processing_history']
+            
+            # Generate filename-safe scenario identifier
+            scenario_id = f"{result['scenario_name']}_{result['inventory_policy']}_{result['stock_strategy']}"
+            scenario_id = scenario_id.replace(' ', '_').replace('|', '_').replace(',', '_')
+            
+            match storage_type:
+                case 'waste':
+                    heatmap_data = self._extract_processor_waste_storage_data(history)
+                    title = "Waste Storage Utilization (%)"
+                case 'product':
+                    heatmap_data = self._extract_processor_product_storage_data(history)
+                    title = "Product Storage Utilization (%)"
+                case 'product_to_sell':
+                    heatmap_data = self._extract_processor_product_to_sell_storage_data(history)
+                    title = "Product-to-Sell Storage Utilization (%)"
+
+            if heatmap_data['z_values']:
+                fig = go.Figure()
+                
+                fig.add_trace(
+                    go.Heatmap(
+                        z=heatmap_data['z_values'],
+                        x=heatmap_data['x_values'],
+                        y=heatmap_data['y_values'],
+                        colorscale='RdYlBu_r',
+                        zmin=0, zmax=100,
+                        colorbar={"title": title}
+                    )
+                )
+                
+                fig.update_layout(
+                    title=f"Processing {title} - {result['scenario_name']}<br>({result['inventory_policy']}, {result['stock_strategy']})",
+                    xaxis_title="Time",
+                    yaxis_title="Processor",
+                    height=400,
+                    showlegend=False
+                )
+                
+                filename = f"processing_{storage_type}_storage_heatmap_{scenario_id}.html"
+                fig.write_html(f"{self.output_dir}/{filename}")
 
     def _extract_processor_waste_storage_data(self, history: Dict) -> Dict:
         """Extract waste storage utilization for processors"""
@@ -171,16 +221,15 @@ class ScenarioComparison:
         )
         
         for idx, result in enumerate(self.results, 1):
-            monitor = result['monitor']
-            
+            monitor_data = result['monitor_data']
             if entity_type == 'generation':
-                history = monitor.data_collector.get_generation_history()
+                history = monitor_data['generation_history']
                 heatmap_data = self._extract_storage_data(history, 'storage_utilization')
             elif entity_type == 'collection':
-                history = monitor.data_collector.get_collection_history()
+                history = monitor_data['collection_history']
                 heatmap_data = self._extract_collection_storage_data(history)
             else:  # processing
-                history = monitor.data_collector.get_processing_history()
+                history = monitor_data['processing_history']
                 heatmap_data = self._extract_processing_storage_data(history)
             
             if heatmap_data['z_values']:
@@ -208,6 +257,51 @@ class ScenarioComparison:
         
         fig.write_html(f"{self.output_dir}/{entity_type}_storage_heatmap.html")
     
+    def _create_entity_storage_heatmaps(self, entity_type: str):
+        """Create separate storage heatmaps for each scenario for specific entity type"""
+        
+        for result in self.results:
+            monitor_data = result['monitor_data']
+
+            # Generate filename-safe scenario identifier
+            scenario_id = f"{result['scenario_name']}_{result['inventory_policy']}_{result['stock_strategy']}"
+            scenario_id = scenario_id.replace(' ', '_').replace('|', '_').replace(',', '_')
+            
+            if entity_type == 'generation':
+                history = monitor_data['generation_history']
+                heatmap_data = self._extract_storage_data(history, 'storage_utilization')
+            elif entity_type == 'collection':
+                history = monitor_data['collection_history']    
+                heatmap_data = self._extract_collection_storage_data(history)
+            else:  # processing
+                history = monitor_data['processing_history']
+                heatmap_data = self._extract_processing_storage_data(history)
+            
+            if heatmap_data['z_values']:
+                fig = go.Figure()
+                
+                fig.add_trace(
+                    go.Heatmap(
+                        z=heatmap_data['z_values'],
+                        x=heatmap_data['x_values'],
+                        y=heatmap_data['y_values'],
+                        colorscale='RdYlBu_r',
+                        zmin=0, zmax=100,
+                        colorbar={"title": "Storage Utilization (%)"}
+                    )
+                )
+                
+                fig.update_layout(
+                    title=f"{entity_type.title()} Storage Utilization - {result['scenario_name']}<br>({result['inventory_policy']}, {result['stock_strategy']})",
+                    xaxis_title="Time",
+                    yaxis_title="Entity",
+                    height=400,
+                    showlegend=False
+                )
+                
+                filename = f"{entity_type}_storage_heatmap_{scenario_id}.html"
+                fig.write_html(f"{self.output_dir}/{filename}")
+
     def _extract_storage_data(self, history: Dict, metric: str) -> Dict:
         """Extract storage utilization data for heatmap"""
         entities = list(history.keys())
@@ -239,7 +333,7 @@ class ScenarioComparison:
             'x_values': time_range,
             'y_values': entities,
             'z_values': z_matrix
-        }
+        }   
     
     def _extract_collection_storage_data(self, history: Dict) -> Dict:
         """Extract collection center storage data"""
@@ -333,9 +427,9 @@ class ScenarioComparison:
         fig = go.Figure()
         
         for result in self.results:
-            monitor = result['monitor']
-            history = monitor.data_collector.get_generation_history()
-            
+            monitor_data = result['monitor_data']
+            history = monitor_data['generation_history']
+
             total_generation = self._aggregate_generation_data(history)
             if total_generation['timestamps']:
                 fig.add_trace(go.Scatter(
@@ -381,9 +475,9 @@ class ScenarioComparison:
         fig = go.Figure()
         
         for result in self.results:
-            monitor = result['monitor']
-            history = monitor.data_collector.get_collection_history()
-            
+            monitor_data = result['monitor_data']
+            history = monitor_data['collection_history']
+
             avg_efficiency = self._calculate_average_efficiency(history)
             if avg_efficiency['timestamps']:
                 fig.add_trace(go.Scatter(
@@ -425,9 +519,9 @@ class ScenarioComparison:
         fig = go.Figure()
         
         for result in self.results:
-            monitor = result['monitor']
-            history = monitor.data_collector.get_processing_history()
-            
+            monitor_data = result['monitor_data']
+            history = monitor_data['processing_history']
+
             throughput = self._calculate_processing_throughput(history)
             if throughput['timestamps']:
                 fig.add_trace(go.Scatter(
@@ -473,9 +567,9 @@ class ScenarioComparison:
         fig = go.Figure()
         
         for result in self.results:
-            monitor = result['monitor']
-            cost_history = monitor.data_collector.cost_history
-            
+            monitor_data = result['monitor_data']
+            cost_history = monitor_data['cost_history']
+
             if cost_history['timestamps']:
                 total_costs = []
                 for i, _ in enumerate(cost_history['timestamps']):
@@ -522,8 +616,8 @@ class ScenarioComparison:
         ]
         
         for result in self.results:
-            monitor = result['monitor']
-            overflow_history = monitor.data_collector.overflow_history
+            monitor_data = result['monitor_data']
+            overflow_history = monitor_data['overflow_history']
             label = f"{result['inventory_policy']} | {result['stock_strategy']}"
             
             for overflow_type, row, col in overflow_types:
@@ -551,16 +645,16 @@ class ScenarioComparison:
     def create_cost_impact_comparison(self):
         """Create bar charts comparing cost and environmental impact breakdowns across scenarios"""
         cost_components = ['energy', 'processing', 'transport', 'overflow']
-        impact_components = ['emissions', 'resource_use']  # Add more if tracked
+        impact_components = ['emissions', 'resource_use']  
         scenario_labels = []
         cost_data = {comp: [] for comp in cost_components}
         impact_data = {comp: [] for comp in impact_components}
 
         for result in self.results:
-            monitor = result['monitor']
+            monitor_data = result['monitor_data']
             scenario_labels.append(f"{result['inventory_policy']} | {result['stock_strategy']}")
-            cost_history = monitor.data_collector.cost_history
-            overflow_history = monitor.data_collector.overflow_history
+            cost_history = monitor_data['cost_history']
+            overflow_history = monitor_data['overflow_history']
 
             # Extract final values for each cost component
             cost_data['energy'].append(np.sum(cost_history.get('energy', [])))
@@ -569,9 +663,7 @@ class ScenarioComparison:
             cost_data['overflow'].append(overflow_history.get('total_cost', {}).get('values', [0])[-1] if overflow_history.get('total_cost', {}).get('values') else 0)
 
             # Environmental impact extraction (example: emissions, resource use)
-            # If you track these in data_collector, extract similarly
-            impact_data['emissions'].append(getattr(monitor.data_collector, 'total_emissions', 0))
-            impact_data['resource_use'].append(getattr(monitor.data_collector, 'total_resource_use', 0))
+            # If you track these in waste_monitor, extract similarly
 
         # Bar chart for cost breakdown
         fig_cost = go.Figure()
@@ -594,13 +686,13 @@ class ScenarioComparison:
         total_impacts = []
 
         for result in self.results:
-            monitor = result['monitor']
+            monitor_data = result['monitor_data']
             scenario_labels.append(f"{result['inventory_policy']} | {result['stock_strategy']}")
-            cost_history = monitor.data_collector.cost_history
-            overflow_history = monitor.data_collector.overflow_history
+            cost_history = monitor_data['cost_history']
+            overflow_history = monitor_data['overflow_history']
             total_cost = np.sum(cost_history.get('energy', [])) + np.sum(cost_history.get('processing', [])) + np.sum(cost_history.get('transport', []))
             total_cost += overflow_history.get('total_cost', {}).get('values', [0])[-1] if overflow_history.get('total_cost', {}).get('values') else 0
-            total_impact = getattr(monitor.data_collector, 'total_emissions', 0)  # Replace with actual impact metric
+            total_impact = getattr(monitor_data['waste_monitor'], 'total_emissions', 0)  # Replace with actual impact metric, to be defined in waste_monitor
             total_costs.append(total_cost)
             total_impacts.append(total_impact)
 
@@ -705,7 +797,7 @@ class ScenarioComparison:
                         entity_total = processed_total
                     else:
                         # Sum all waste types if 'total' not available
-                        for waste_type, values in processed_data.items():
+                        for _, values in processed_data.items():
                             if isinstance(values, list) and values:
                                 entity_total += values[-1]
                             elif isinstance(values, (int, float)):
@@ -716,74 +808,42 @@ class ScenarioComparison:
             
             print(f"Total Processed: {total:.2f}")
             return total
-
-        def get_total_overflow_cost(overflow_history):
-            """Get total overflow cost"""
-            total_cost_data = safe_get_nested_value(overflow_history, ['total_cost', 'values'], [])
-            if isinstance(total_cost_data, list) and total_cost_data:
-                return total_cost_data[-1]
-            elif isinstance(total_cost_data, (int, float)):
-                return total_cost_data
-            return 0
-
-        def get_efficiency_metrics(monitor):
-            """Get efficiency metrics from the metrics analyzer"""
-            try:
-                generation_history = monitor.data_collector.get_generation_history()
-                collection_history = monitor.data_collector.get_collection_history()
-                processing_history = monitor.data_collector.get_processing_history()
-                
-                # Use the existing metrics analyzer if available
-                if hasattr(monitor, 'metrics_analyzer'):
-                    efficiency_metrics = monitor.metrics_analyzer.calculate_efficiency_metrics(
-                        generation_history, collection_history, processing_history
-                    )
-                    return efficiency_metrics
-                return {}
-            except Exception as e:
-                print(f"Warning: Could not calculate efficiency metrics: {e}")
-                return {}
             
-        def debug_data_structure(history_data, data_type):
-            """Debug function to understand data structure"""
-            print(f"\n=== DEBUG: {data_type} Data Structure ===")
-            for entity_id, data in list(history_data.items())[:2]:  # Show first 2 entities
-                print(f"Entity {entity_id}:")
-                print(f"  Keys: {list(data.keys())}")
-                for key, value in data.items():
-                    if isinstance(value, dict):
-                        print(f"  {key}: dict with keys {list(value.keys())}")
-                        # Show sample values
-                        for sub_key, sub_value in list(value.items())[:2]:
-                            if isinstance(sub_value, list):
-                                print(f"    {sub_key}: list of length {len(sub_value)}, sample: {sub_value[:3] if len(sub_value) >= 3 else sub_value}")
-                            else:
-                                print(f"    {sub_key}: {type(sub_value).__name__} = {sub_value}")
-                    elif isinstance(value, list):
-                        print(f"  {key}: list of length {len(value)}, sample: {value[:3] if len(value) >= 3 else value}")
-                    else:
-                        print(f"  {key}: {type(value).__name__} = {value}")
-            print("=" * 50)
+        # def debug_data_structure(history_data, data_type):
+        #     """Debug function to understand data structure"""
+        #     print(f"\n=== DEBUG: {data_type} Data Structure ===")
+        #     for entity_id, data in list(history_data.items())[:2]:  # Show first 2 entities
+        #         print(f"Entity {entity_id}:")
+        #         print(f"  Keys: {list(data.keys())}")
+        #         for key, value in data.items():
+        #             if isinstance(value, dict):
+        #                 print(f"  {key}: dict with keys {list(value.keys())}")
+        #                 # Show sample values
+        #                 for sub_key, sub_value in list(value.items())[:2]:
+        #                     if isinstance(sub_value, list):
+        #                         print(f"    {sub_key}: list of length {len(sub_value)}, sample: {sub_value[:3] if len(sub_value) >= 3 else sub_value}")
+        #                     else:
+        #                         print(f"    {sub_key}: {type(sub_value).__name__} = {sub_value}")
+        #             elif isinstance(value, list):
+        #                 print(f"  {key}: list of length {len(value)}, sample: {value[:3] if len(value) >= 3 else value}")
+        #             else:
+        #                 print(f"  {key}: {type(value).__name__} = {value}")
+        #     print("=" * 50)
 
         # Calculate metrics for each scenario
         metrics_data = []
         
         for result in self.results:
-            monitor = result['monitor']
-            generation_history = monitor.data_collector.get_generation_history()
-            collection_history = monitor.data_collector.get_collection_history()
-            processing_history = monitor.data_collector.get_processing_history()
-            overflow_history = monitor.data_collector.overflow_history
+            monitor_data = result['monitor_data']
+            generation_history = monitor_data['generation_history']
+            collection_history = monitor_data['collection_history']
+            processing_history = monitor_data['processing_history']
+            overflow_history = monitor_data['overflow_history']
 
             print(f"\n{'='*60}")
             print(f"SCENARIO: {result['scenario_name']}")
             print(f"Policy: {result['inventory_policy']}, Strategy: {result['stock_strategy']}")
             print(f"{'='*60}")
-
-            # Debug data structures
-            debug_data_structure(generation_history, "Generation")
-            debug_data_structure(collection_history, "Collection") 
-            debug_data_structure(processing_history, "Processing")
 
             # Calculate totals using fixed helper functions
             total_generated = get_total_generated(generation_history)
@@ -811,7 +871,11 @@ class ScenarioComparison:
 
             # Sanity check
             if collection_eff > 100:
-                print("⚠️  WARNING: Collection efficiency > 100% indicates data issue!")
+                print("[ WARNING ]: Collection efficiency > 100% indicates data issue!")
+                print("   This suggests double-counting or unit mismatch in tracking.")
+
+            if processing_eff > 100:
+                print("[ WARNING ]: Processing efficiency > 100% indicates data issue!")
                 print("   This suggests double-counting or unit mismatch in tracking.")
 
             # Store metrics
@@ -820,13 +884,17 @@ class ScenarioComparison:
                 'Total Generated': total_generated,
                 'Total Collected': total_collected,
                 'Total Processed': total_processed,
-                'Collection Efficiency': min(collection_eff, 100),  # Cap at 100% for display
+                'Collection Efficiency': collection_eff,
                 'Processing Efficiency': processing_eff,
                 'Overflow Cost': total_overflow_cost
             })
 
         # Create the dashboard visualization
         df = pd.DataFrame(metrics_data)
+
+        if df.empty or 'Scenario' not in df.columns:
+            print("No scenario metrics to display.")
+            return df
 
         fig = sp.make_subplots(
             rows=2, cols=3,

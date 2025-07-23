@@ -38,7 +38,7 @@ def update_waste_stream(waste_streams, total_generated, current_storage, region,
 
     return current_storage
 
-def handle_overflow(env, current_storage, waste_storage_capacity, waste_streams, region, data_collector, generator_entity):
+def handle_overflow(env, current_storage, waste_storage_capacity, waste_streams, region, waste_monitor, generator_entity):
     """Handle storage overflow situation"""
     # Create dictionary of current volumes
     current_volumes = {
@@ -57,7 +57,7 @@ def handle_overflow(env, current_storage, waste_storage_capacity, waste_streams,
             result.overflow_amount,
             region
         )
-        data_collector.track_overflow(
+        waste_monitor.track_overflow(
             "generator",
             result.overflow_amount,
             strategy,

@@ -21,7 +21,7 @@ class WasteGenerator(OperationalEntity):
         region: str,
         uncertainty_set = None,
         initial_stock: Optional[Dict[WasteType, float]] = None,
-        data_collector = None,
+        waste_monitor = None,
         stock_strategy: StockStrategy = StockStrategy.FULL_STOCK,
         kanban_manager=None,
     ):
@@ -55,9 +55,9 @@ class WasteGenerator(OperationalEntity):
         self.region = region
         self.region_type = RegionType[region.upper().replace('-', '_')] if region else None
 
-        self.data_collector = data_collector
-        if data_collector is None:
-            raise ValueError("data_collector is required for WasteGenerator")
+        self.waste_monitor = waste_monitor
+        if waste_monitor is None:
+            raise ValueError("waste_monitor is required for WasteGenerator")
 
         # KanbanManager for pull logic
         from core.kanban_manager import KanbanManager
@@ -110,9 +110,6 @@ class WasteGenerator(OperationalEntity):
 
             strategy = self.stock_strategy
 
-            print(f"[STRATEGY DEBUG] {current_time}: WasteGenerator {self.name} using strategy {strategy}")
-            # raise SystemExit("Exiting for debugging purposes")
-
             if strategy == StockStrategy.FULL_STOCK:
                 self._process_full_stock(current_time, seasonal_factor)
             elif strategy == StockStrategy.ON_DEMAND:
@@ -136,10 +133,10 @@ class WasteGenerator(OperationalEntity):
     def _process_full_stock(self, current_time, seasonal_factor):
         available_storage = self.waste_storage_capacity - self.current_storage
         if available_storage <= 0:
-            print(f"[STRATEGY DEBUG] {current_time}: FULL_STOCK overflow, cannot generate more waste.")
+            
             self.current_storage = handle_overflow(
                 self.env, self.current_storage, self.waste_storage_capacity,
-                self.waste_streams, self.region, self.data_collector,
+                self.waste_streams, self.region, self.waste_monitor,
                 self
             )
             self._kanban_signal(current_time, 10)
@@ -153,14 +150,16 @@ class WasteGenerator(OperationalEntity):
             )
 
     def _process_on_demand(self, current_time, seasonal_factor):
+
         available_storage = self.waste_storage_capacity - self.current_storage
+
         demand = sum(self.waste_generation_rates.values())
-        print(f"[STRATEGY DEBUG] {current_time}: WasteGenerator {self.name} (strategy=ON_DEMAND) available_storage={available_storage:.2f}, demand={demand:.2f}, current_storage={self.current_storage:.2f}")
+        
         if available_storage < demand:
-            print(f"[STRATEGY DEBUG] {current_time}: ON_DEMAND overflow, discarding excess.")
+            
             self.current_storage = handle_overflow(
                 self.env, self.current_storage, self.waste_storage_capacity,
-                self.waste_streams, self.region, self.data_collector,
+                self.waste_streams, self.region, self.waste_monitor,
                 self
             )
             self._kanban_signal(current_time, 8)
@@ -174,11 +173,13 @@ class WasteGenerator(OperationalEntity):
             )
 
     def _process_reorder(self, current_time, seasonal_factor, threshold_ratio, priority):
+
         threshold = self.waste_storage_capacity * threshold_ratio
-        print(f"[STRATEGY DEBUG] {current_time}: WasteGenerator {self.name} (strategy=REORDER_{int(threshold_ratio*100)}) current_storage={self.current_storage:.2f}, threshold={threshold:.2f}")
+        
         if self.current_storage < threshold:
+
             available_storage = self.waste_storage_capacity - self.current_storage
-            print(f"[STRATEGY DEBUG] {current_time}: REORDER_{int(threshold_ratio*100)} trigger, replenishing.")
+            
             available_storage, self.current_storage, self.history_index = generate_waste_for_period(
                 self.name, self.status, self.uncertainty_set,
                 self.waste_generation_rates, self.region, self.waste_streams,
@@ -187,10 +188,10 @@ class WasteGenerator(OperationalEntity):
                 current_time
             )
         else:
-            print(f"[STRATEGY DEBUG] {current_time}: REORDER_{int(threshold_ratio*100)} no trigger, discarding excess.")
+            
             self.current_storage = handle_overflow(
                 self.env, self.current_storage, self.waste_storage_capacity,
-                self.waste_streams, self.region, self.data_collector,
+                self.waste_streams, self.region, self.waste_monitor,
                 self
             )
             self._kanban_signal(current_time, priority)
@@ -202,37 +203,6 @@ class WasteGenerator(OperationalEntity):
                 priority=priority,
                 timestamp=current_time
             )
-
-    def get_total_generated_volume(self) -> float:
-        """Returns total volume across all waste streams"""
-        return sum(stream.volume for stream in self.waste_streams.values())
-
-    def get_current_waste_volumes(self) -> Dict[WasteType, float]:
-        """Returns dictionary of volumes by waste type"""
-        return {
-            waste_type: stream.volume
-            for waste_type, stream in self.waste_streams.items()
-        }
-
-    def get_generation_history_summary(self) -> Dict[str, Dict[WasteType, float]]:
-        """Get efficient summary of waste generation"""
-        summary = {}
-        for waste_type in self.total_generated:
-            history = self.generation_history[waste_type]
-            valid_entries = history["volumes"][: self.history_index]
-
-            if len(valid_entries) > 0:
-                avg_volume = np.mean(valid_entries)
-            else:
-                avg_volume = 0
-
-            summary[waste_type.value] = {
-                "total_generated": self.total_generated[waste_type],
-                "average_per_cycle": avg_volume,
-                "current_storage": self.waste_streams[waste_type].volume,
-                "generation_rate": self.waste_generation_rates[waste_type],
-            }
-        return summary
 
     def mark_collected(self):
         """Update collection status"""

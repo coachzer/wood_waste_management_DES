@@ -30,7 +30,7 @@ def _get_collector_volumes(collection_history: Dict) -> Dict:
         total = 0
         for _, volumes in history.get("collected_volumes", {}).items():
             if volumes:
-                total += volumes[-1] if volumes else 0 # total += sum(volumes)  # Sum all collections
+                total += volumes[-1] if volumes else 0 
         collector_volumes[collector] = total
     return collector_volumes
 
@@ -54,7 +54,7 @@ def _get_product_volumes() -> Dict:
     }
 
 
-def get_simple_volumes(generation_history: Dict, collection_history: Dict, processing_history: Dict):
+def get_volumes(generation_history: Dict, collection_history: Dict, processing_history: Dict):
     """Calculate volumes for each stage - simplified approach"""
     return (
         _get_generator_volumes(generation_history),
@@ -147,7 +147,7 @@ def _create_flows(generators: Dict, collectors: Dict, treatments: Dict, products
     return sources, targets, values
 
 
-def create_simple_sankey(generator_volumes: Dict, collector_volumes: Dict, 
+def create_sankey(generator_volumes: Dict, collector_volumes: Dict, 
                         treatment_volumes: Dict, product_volumes: Dict):
     """Create a simple Sankey diagram with clear flow chain"""
     
@@ -173,18 +173,36 @@ def create_simple_sankey(generator_volumes: Dict, collector_volumes: Dict,
 
 
 def create_material_flow_analysis(generation_history: Dict, collection_history: Dict, 
-                                 processing_history: Dict, save_path: str = "plots/material_flow_analysis.html"):
-    """Create simplified material flow analysis visualization"""
+                                 processing_history: Dict, 
+                                 scenario_name: str = None,
+                                 inventory_policy: str = None,
+                                 stock_strategy: str = None,
+                                 save_path: str = None):
+    """Create material flow analysis visualization"""
     
+    # Generate scenario-specific filename if not provided
+    if save_path is None:
+        scenario_suffix = ""
+        if scenario_name and inventory_policy and stock_strategy:
+            scenario_suffix = f"_{scenario_name}_{inventory_policy}_{stock_strategy}"
+        
+        save_path = f"plots/material_flow_analysis{scenario_suffix}.html"
+
     # Get volumes for each stage
-    generator_volumes, collector_volumes, treatment_volumes, product_volumes = get_simple_volumes(
+    generator_volumes, collector_volumes, treatment_volumes, product_volumes = get_volumes(
         generation_history, collection_history, processing_history
     )
     
     # Create Sankey diagram components
-    labels, node_colors, sources, targets, values = create_simple_sankey(
+    labels, node_colors, sources, targets, values = create_sankey(
         generator_volumes, collector_volumes, treatment_volumes, product_volumes
     )
+
+    title = "Wood Waste Material Flow Analysis"
+    if scenario_name:
+        title += f" - {scenario_name}"
+    elif inventory_policy and stock_strategy:
+        title += f" - {inventory_policy} | {stock_strategy}"
     
     # Create the visualization
     fig = go.Figure(data=[go.Sankey(
@@ -205,11 +223,23 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
     
     # Update layout
     fig.update_layout(
-        title="Wood Waste Material Flow Analysis",
+        title=title,
         font_size=12,
         height=600,
         margin={"l": 50, "r": 50, "t": 50, "b": 50}
     )
+
+    if inventory_policy and stock_strategy:
+        fig.add_annotation(
+            text=f"Scenario: {scenario_name}<br>Inventory Policy: {inventory_policy}<br>Stock Strategy: {stock_strategy}",
+            xref="paper", yref="paper",
+            x=0.98, y=0.98,
+            showarrow=False,
+            font={'size': 10},
+            bgcolor="rgba(255,255,255,0.8)",
+            bordercolor="black",
+            borderwidth=1
+        )
     
     # Save the plot
     fig.write_html(save_path)
@@ -236,3 +266,5 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
         print(f"  Collection: {collection_efficiency:.1f}%")
         print(f"  Treatment: {treatment_efficiency:.1f}%") 
         print(f"  Production: {product_efficiency:.1f}%")
+
+    return save_path

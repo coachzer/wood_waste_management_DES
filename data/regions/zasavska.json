@@ -1,7 +1,7 @@
 {
     "generators": [
         {
-            "id": "gen_zasavska_1",
+            "id": "gen_zasavska",
             "waste_generation_rates": {
                 "03 01 05": 15.0,
                 "03 03 08": 14.008,
@@ -37,7 +37,7 @@
     ],
     "collectors": [
         {
-            "id": "col_zasavska_1",
+            "id": "col_zasavska",
             "waste_types": [
                 "02 01 07",
                 "03 01 01",
@@ -59,8 +59,7 @@
             "transport_cost": 50.0,
             "environmental_impact": 1.0,
             "efficiency": 1.0,
-            "availability": true,
-            "strategy": "competitive"
+            "availability": true
         }
     ],
     "processors": [

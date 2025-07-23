@@ -61,10 +61,6 @@ class StockStrategy(Enum):
     REORDER_90 = "reorder_90"
     REORDER_50 = "reorder_50"
 
-class CoordinationStrategy(Enum):
-    COMPETITIVE = "competitive"
-    COLLABORATIVE = "collaborative"
-
 class LayoutType(Enum):
     MONOLITHIC = "monolithic"
     SPLINTERED = "splintered"

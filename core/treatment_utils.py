@@ -74,8 +74,8 @@ def track_processing_costs(treatment_operator, amount_to_process, transformation
     )
     operational_cost = amount_to_process * treatment_operator.operational_costs
     # Track costs through data collector
-    treatment_operator.data_collector.track_energy_cost(energy_cost, treatment_operator.env.now)
-    treatment_operator.data_collector.track_processing_cost(operational_cost, treatment_operator.env.now)
+    treatment_operator.waste_monitor.track_energy_cost(energy_cost, treatment_operator.env.now)
+    treatment_operator.waste_monitor.track_processing_cost(operational_cost, treatment_operator.env.now)
 
 def update_utilization_metrics(treatment_operator, amount_to_process):
     """Update utilization history for capacity management"""

@@ -3,10 +3,9 @@ from typing import Dict, Iterable, Optional
 from models.data_classes import WasteTransformation, OperationalEntity, ProductStorage
 from models.enums import OutputType, RegionType, WasteType, EntityStatus
 from models.state import SimulationState
-from monitoring.data_collector import DataCollector
+from monitoring.waste_monitor import WasteMonitor
 from core.kanban_manager import KanbanManager
 from models.enums import InventoryPolicy
-from core.collection_coordinator import CollectionCoordinator
 from core.treatment_utils import (
     get_transformation_efficiency,
     calculate_output_amounts,
@@ -37,7 +36,7 @@ class StorageDict(dict):
                 result.overflow_amount,
                 self.owner.region
             )
-            self.owner.data_collector.track_overflow(
+            self.owner.waste_monitor.track_overflow(
                 facility_type="treatment",
                 volume=result.overflow_amount,
                 strategy=strategy,
@@ -62,7 +61,7 @@ class TreatmentOperator(OperationalEntity):
         region: str,
         uncertainty_set=None,
         transformations: Optional[Dict[WasteType, WasteTransformation]] = None,
-        data_collector: Optional['DataCollector'] = None,
+        waste_monitor: Optional[WasteMonitor] = None,
         kanban_manager: KanbanManager = None,
         product_storage_capacity: float = 0.0,
         product_to_sell_capacity: float = 0.0,
@@ -70,9 +69,9 @@ class TreatmentOperator(OperationalEntity):
     ):
         super().__init__()
         # Monitoring
-        if data_collector is None:
-            raise ValueError("data_collector is required for TreatmentOperator")
-        self.data_collector = data_collector
+        if waste_monitor is None:
+            raise ValueError("waste_monitor is required for TreatmentOperator")
+        self.waste_monitor = waste_monitor
         # Inventory policy from scenario_config if available
         if scenario_config and hasattr(scenario_config, 'inventory_policy'):
             self.inventory_policy = scenario_config.inventory_policy
@@ -80,9 +79,6 @@ class TreatmentOperator(OperationalEntity):
             from config.base_config import get_scenario_config
             self.inventory_policy = get_scenario_config().inventory_policy
         self.kanban_manager = kanban_manager or KanbanManager()
-
-        # Collection coordinator
-        self.collection_coordinator = CollectionCoordinator(env, region)
 
         # Utilization history
         self.utilization_history = []
@@ -98,7 +94,7 @@ class TreatmentOperator(OperationalEntity):
         self.operational_costs = operational_costs
         self.environmental_impact = environmental_impact
 
-        self.processing_capacity = self.processing_time * self.waste_storage_capacity * 0.8
+        self.processing_capacity = self.waste_storage_capacity * 0.8
         self.initial_processing_capacity = self.processing_capacity
         self.initial_storage_capacity = self.waste_storage_capacity
         self.min_capacity = self.waste_storage_capacity * 0.75
@@ -195,7 +191,7 @@ class TreatmentOperator(OperationalEntity):
                 result.overflow_amount,
                 self.region
             )
-            self.data_collector.track_overflow(
+            self.waste_monitor.track_overflow(
                 facility_type="treatment",
                 volume=result.overflow_amount,
                 strategy=strategy,
@@ -218,7 +214,7 @@ class TreatmentOperator(OperationalEntity):
                 result.overflow_amount,
                 self.region
             )
-            self.data_collector.track_overflow(
+            self.waste_monitor.track_overflow(
                 facility_type="treatment",
                 volume=result.overflow_amount,
                 strategy=strategy,
@@ -247,7 +243,7 @@ class TreatmentOperator(OperationalEntity):
             self._waste_storage[waste_type] = scaled_amount
             overflow_amount = amount - scaled_amount
             if overflow_amount > 0:
-                self.data_collector.track_overflow(
+                self.waste_monitor.track_overflow(
                     facility_type="treatment",
                     volume=overflow_amount,
                     strategy="landfill",
@@ -425,16 +421,51 @@ class TreatmentOperator(OperationalEntity):
         
         # Update utilization metrics
         update_utilization_metrics(self, amount_to_process)
+
+    def request_waste_directly(self, required_waste: float, input_waste_types: set) -> Dict[WasteType, float]:
+        """Request waste directly from collectors in the same region"""
+        state = SimulationState.get_instance()
+        collected_waste = {}
+        
+        # Find collectors in same region first
+        local_collectors = [
+            c for c in state.collectors 
+            if c.region_type == self.region_type and c.availability
+        ]
+        
+        # If no local collectors, expand search
+        if not local_collectors:
+            local_collectors = [c for c in state.collectors if c.availability]
+        
+        remaining_needed = required_waste
+        
+        for collector in local_collectors:
+            if remaining_needed <= 0:
+                break
+                
+            # Get what this collector can provide
+            collector_waste = collector.provide_waste_for_treatment(
+                remaining_needed, input_waste_types
+            )
+            
+            # Add to our storage
+            for waste_type, amount in collector_waste.items():
+                if amount > 0:
+                    self.waste_storage[waste_type] += amount
+                    collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
+                    remaining_needed -= amount
+        
+        return collected_waste
     
     def trigger_collection(self):
         """Request waste collection based on current needs"""
         # Get current demands from simulation state
         state = SimulationState.get_instance()
         
-        # Use the actual product types that exist in the state
         product_demands = {}
+        
         for product_type in [OutputType.MDF_FIBREBOARD, OutputType.PARTICLE_BOARD, OutputType.OSB_WAFERBOARD]:
-            key = product_type.value.lower().replace('_', '_')  # mdf_fibreboard, particle_board, osb_waferboard
+            key = product_type.value.lower().replace('_', '_') 
             if key in state.target_demands and key in state.total_products:
                 unmet_demand = state.target_demands[key] - state.total_products[key]
                 if unmet_demand > 0:
@@ -451,38 +482,35 @@ class TreatmentOperator(OperationalEntity):
         input_waste_types = {key[0] for key in self.transformations.keys()}
         
         # Request collection through coordinator
-        collection_result = self.collection_coordinator.request_collection(
-            required_waste,
-            input_waste_types
-        )
+        collected_waste = self.request_waste_directly(required_waste, input_waste_types)
 
         # Validate collection result
-        if not collection_result.waste_by_type or sum(collection_result.waste_by_type.values()) == 0:
+        if not collected_waste or sum(collected_waste.values()) == 0:
             print(f"[VALIDATION] No waste collected at time {self.env.now} - skipping processing")
             return 0, 0
 
         # Track this collection's demand
         self.demand_history.append((self.env.now, required_waste))
-        self.data_collector.track_processing(self, self.env.now)
+        self.waste_monitor.track_processing(self, self.env.now)
 
         # Add to storage with validation
-        actually_stored = self._add_to_storage(collection_result.waste_by_type)
+        actually_stored = self._add_to_storage(collected_waste)
         if actually_stored == 0:
             print(f"[VALIDATION] Failed to store any collected waste at time {self.env.now}")
-        if actually_stored < collection_result.total_collected:
+        if actually_stored < sum(collected_waste.values()):
             print(
                 f"Could only store {actually_stored:.12f} m³ due to capacity constraints"
             )
             # Track overflow through data collector
-            overflow_amount = collection_result.total_collected - actually_stored
-            self.data_collector.track_overflow(
+            overflow_amount = sum(collected_waste.values()) - actually_stored
+            self.waste_monitor.track_overflow(
                 "treatment",
                 overflow_amount,
                 "landfill",  # Use landfill for collection overflow
                 self.env.now
             )
-            
-        return actually_stored, collection_result.total_collected
+
+        return actually_stored, sum(collected_waste.values())
 
     def _default_transformations(self) -> Dict[WasteType, WasteTransformation]:
         """Define default transformation pathways for all waste types"""
@@ -570,7 +598,7 @@ class TreatmentOperator(OperationalEntity):
                 overflow_amount,
                 self.region
             )
-            self.data_collector.track_overflow(
+            self.waste_monitor.track_overflow(
                 facility_type="treatment",
                 volume=overflow_amount,
                 strategy=strategy,

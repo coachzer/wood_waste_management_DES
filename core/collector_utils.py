@@ -1,19 +1,9 @@
-from typing import List, Optional, Tuple, Dict
-from models.enums import WasteType, RegionType
+from typing import List, Optional, Dict
+from models.enums import WasteType
 from models.data_classes import Vehicle, OperationalEntity
 from models.state import SimulationState
 from models.distances import get_distance
 from utils.capacity_utils import apply_capacity_constraints, handle_overflow_with_decision
-
-def calculate_transport_route(
-    region_type: RegionType, target_region: RegionType
-) -> Tuple[List[RegionType], float]:
-    """Calculate shortest path to target region and total distance"""
-    if region_type == target_region:
-        return [target_region], 0.0
-
-    distance = get_distance(region_type, target_region)
-    return [target_region], distance
 
 def get_available_vehicle(vehicles: List[Vehicle]) -> Optional[Vehicle]:
     """Get first available vehicle"""
@@ -66,73 +56,6 @@ def check_completed_transports(active_transports: List[Dict], current_time: floa
             )
     return completed
 
-def handle_transport_delays(active_transports: List[Dict], current_time: float, rng) -> None:
-    """Process potential delays for active transports"""
-    for transport in active_transports:
-        if (
-            not transport["vehicle"].in_transit
-            or current_time < transport["arrival_time"]
-        ):
-            continue
-
-        # Simulate potential transport issues
-        if rng.random() < 0.05:  # 5% chance of delay
-            delay_days = rng.uniform(1, 4)
-            transport["arrival_time"] += delay_days
-            print(
-                f"{current_time}: Transport delayed - Vehicle {transport['vehicle'].id} "
-                f"new ETA: +{delay_days:.1f} days"
-            )
-
-def process_collection(
-    collector: OperationalEntity,
-    waste_type: WasteType,
-    waste_stream,
-    remaining_volume: float,
-    remaining_capacity: Dict[str, float],
-    generator,
-    is_collaborative: bool = False,
-) -> float:
-    """Helper method to process waste collection for a collector"""
-    if remaining_volume <= 0 or remaining_capacity[collector.name] <= 0:
-        return remaining_volume
-
-    result = apply_capacity_constraints(
-        current_total=0,  # We're checking against the remaining capacity
-        additional_amount=remaining_volume,
-        capacity=remaining_capacity[collector.name]
-    )
-
-    if result.allowed_amount > 0:
-        # Update generator
-        waste_stream.volume -= result.allowed_amount
-        generator.current_storage -= result.allowed_amount
-
-        # Track waste removal from generator's region
-        SimulationState.get_instance().track_waste_collection(
-            generator.region, waste_type, result.allowed_amount
-        )
-
-        # Update collector
-        collector.collected_waste[waste_type] += result.allowed_amount
-        remaining_capacity[collector.name] -= result.allowed_amount
-
-        # Track waste addition to collector's region
-        SimulationState.get_instance().track_waste_generation(
-            collector.region, waste_type, result.allowed_amount
-        )
-
-        # collection_type = (
-        #     "collaboratively collected"
-        #     if is_collaborative
-        #     else "collected remaining"
-        # )
-        # print(
-        #     f"{collector.env.now}: {collector.name} {collection_type} {result.allowed_amount:.8f} m³ of {waste_type}"
-        # )
-
-    return remaining_volume - result.allowed_amount
-
 def handle_collector_capacity(
     collector1: OperationalEntity,
     collector2: OperationalEntity,
@@ -182,22 +105,28 @@ def handle_collector_capacity(
                 collector2.region, waste_type, result.allowed_amount
             )
 
-            # print(
-            #     f"{collector2.env.now}: {collector2.name} collected {result.allowed_amount:.8f} m³ of {waste_type}"
-            # )
-
         if result.overflow_amount > 0:
             _, strategy = handle_overflow_with_decision(
                 collector2,
                 result.overflow_amount,
                 collector2.region
             )
-            collector2.data_collector.track_overflow(
+            collector2.waste_monitor.track_overflow(
                 "collector",
                 result.overflow_amount,
                 strategy,
                 collector2.env.now
             )
+
+def get_prioritized_generators() -> List:
+    """Get generators sorted by priority and filtered by region"""
+    state = SimulationState.get_instance()
+    regional_generators = [
+        g
+        for g in state.generators
+        if g.current_storage > 0
+    ]
+    return regional_generators
 
 def collect_from_single_generator(
     collector: OperationalEntity,
@@ -229,23 +158,12 @@ def collect_from_single_generator(
             stream.volume -= collection_result.allowed_amount
             generator.current_storage -= collection_result.allowed_amount
 
-            # Track waste movement
             SimulationState.get_instance().track_waste_collection(
                 generator.region, waste_type, collection_result.allowed_amount
             )
-            SimulationState.get_instance().track_waste_generation(
-                collector.region, waste_type, collection_result.allowed_amount
-            )
 
-            # Update collection amounts
             collected_amounts[waste_type] += collection_result.allowed_amount
             total_collected += collection_result.allowed_amount
-
-            # print(
-            #     f"{collector.env.now}: {collector.name} collected {collection_result.allowed_amount:.8f} m³ of {waste_type} from {generator.name}"
-            # )
-
-            # Note: Waste is collected and directly transferred to treatment (no intermediate storage)
 
             if collection_result.overflow_amount > 0:
                 _, strategy = handle_overflow_with_decision(
@@ -253,7 +171,7 @@ def collect_from_single_generator(
                     collection_result.overflow_amount,
                     collector.region
                 )
-                collector.data_collector.track_overflow(
+                collector.waste_monitor.track_overflow(
                     "collector",
                     collection_result.overflow_amount,
                     strategy,
@@ -261,39 +179,3 @@ def collect_from_single_generator(
                 )
 
     return total_collected
-
-def get_prioritized_generators() -> List:
-    """Get generators sorted by priority and filtered by region"""
-    state = SimulationState.get_instance()
-    regional_generators = [
-        g
-        for g in state.generators
-        if g.current_storage > 0
-    ]
-    return regional_generators
-
-def handle_competitive_collection(collector: OperationalEntity, prioritized_generators: List) -> float:
-    """Handle competitive collection strategy"""
-    if prioritized_generators and collector.availability:
-        return collector.collect_from_generator(prioritized_generators[0])
-    return 0
-
-def handle_collaborative_collection(collector: OperationalEntity, prioritized_generators: List) -> float:
-    """Handle collaborative collection strategy"""
-    if not collector.availability:
-        return 0
-
-    state = SimulationState.get_instance()
-    other_collectors = [
-        c
-        for c in state.collectors
-        if c != collector and c.availability and c.region_type == collector.region_type
-    ]
-
-    total_collection_cost = 0
-    for generator in prioritized_generators:
-        if generator.current_storage <= 0:
-            continue
-        collector.collect_with_collaboration(generator, other_collectors)
-        total_collection_cost += collector.transport_cost
-    return total_collection_cost
