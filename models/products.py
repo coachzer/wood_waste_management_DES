@@ -7,7 +7,7 @@ class ProductRecipe:
     """Recipe defining how to produce a product from wood waste inputs"""
     product_type: str
     input_mappings: Dict[str, List[str]]  # waste_category -> list of EWC codes
-    processing_time: float  # hours per m³ of product
+    processing_time: float  # days per m³ of product
     energy_consumption: float  # kWh per m³ of product
     conversion_efficiency: float  # percentage (0-100) of input that becomes product
     description: str

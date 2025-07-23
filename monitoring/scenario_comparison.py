@@ -17,15 +17,12 @@ class ScenarioComparison:
         for entity_type in ['generation', 'collection']:
             self._create_entity_storage_heatmap(entity_type)
 
-        # Processing: three separate heatmaps for each storage type
         self._create_processing_storage_heatmap('waste')
         self._create_processing_storage_heatmap('product')
         self._create_processing_storage_heatmap('product_to_sell')
 
     def _create_processing_storage_heatmap(self, storage_type: str):
         """Create heatmap for a specific processor storage type"""
-        import plotly.subplots as sp
-        import plotly.graph_objects as go
         fig = sp.make_subplots(
             rows=len(self.results), cols=1,
             subplot_titles=[f"{r['scenario_name']} ({r['inventory_policy']}, {r['stock_strategy']})" for r in self.results],
@@ -636,40 +633,141 @@ class ScenarioComparison:
     def create_summary_dashboard(self):
         """Create a comprehensive dashboard with key metrics"""
 
+        def safe_get_nested_value(data, path, default=0):
+            """Safely navigate nested dictionary structure"""
+            try:
+                result = data
+                for key in path:
+                    if isinstance(result, dict) and key in result:
+                        result = result[key]
+                    elif isinstance(result, list) and isinstance(key, int) and key < len(result):
+                        result = result[key]
+                    else:
+                        return default
+                return result if result is not None else default
+            except (KeyError, TypeError, IndexError):
+                return default
+
         def get_total_generated(generation_history):
+            """Calculate total waste generated - use final cumulative values only"""
             total = 0
-            for data in generation_history.values():
-                for _, totals in data.get('total_generated', {}).items():
-                    if isinstance(totals, list) and totals:
-                        total += totals[-1]
-                    elif isinstance(totals, (int, float)):
-                        total += totals
+            print("\n--- Generation Analysis ---")
+            
+            for entity_id, data in generation_history.items():
+                entity_total = 0
+                total_generated = safe_get_nested_value(data, ['total_generated'], {})
+                
+                if isinstance(total_generated, dict):
+                    for waste_type, values in total_generated.items():
+                        if isinstance(values, list) and values:
+                            # Take only the FINAL cumulative value
+                            final_value = values[-1]
+                            entity_total += final_value
+                            print(f"  Entity {entity_id}, Type {waste_type}: {final_value:.2f}")
+                        elif isinstance(values, (int, float)):
+                            entity_total += values
+                            print(f"  Entity {entity_id}, Type {waste_type}: {values:.2f}")
+                
+                total += entity_total
+                print(f"  Entity {entity_id} total: {entity_total:.2f}")
+            
+            print(f"Total Generated: {total:.2f}")
             return total
-
-        def get_total_collected(collection_history):
-            total = 0
-            for data in collection_history.values():
-                for volumes in data.get('collected_volumes', {}).items():
-                    if isinstance(volumes, list):
-                        total += sum(volumes)
-                    elif isinstance(volumes, (int, float)):
-                        total += volumes
-            return total
-
+        
+        def get_total_collected(collection_history: Dict) -> Dict:
+            """Calculate collector volumes"""
+            collector_volumes = {}
+            for collector, history in collection_history.items():
+                total = 0
+                for _, volumes in history.get("collected_volumes", {}).items():
+                    if volumes:
+                        total += volumes[-1] if volumes else 0 
+                collector_volumes[collector] = total
+            return collector_volumes
+        
         def get_total_processed(processing_history):
+            """Calculate total waste processed"""
             total = 0
-            for data in processing_history.values():
-                processed_total = data.get('processed', {}).get('total', [])
-                if isinstance(processed_total, list) and processed_total:
-                    total += processed_total[-1]
-                elif isinstance(processed_total, (int, float)):
-                    total += processed_total
+            print("\n--- Processing Analysis ---")
+            
+            for entity_id, data in processing_history.items():
+                entity_total = 0
+                
+                # Try different possible data structures
+                processed_data = safe_get_nested_value(data, ['processed'], {})
+                
+                if isinstance(processed_data, dict):
+                    # Try 'total' field first
+                    processed_total = safe_get_nested_value(processed_data, ['total'], [])
+                    if isinstance(processed_total, list) and processed_total:
+                        entity_total = processed_total[-1]  # Final cumulative value
+                    elif isinstance(processed_total, (int, float)):
+                        entity_total = processed_total
+                    else:
+                        # Sum all waste types if 'total' not available
+                        for waste_type, values in processed_data.items():
+                            if isinstance(values, list) and values:
+                                entity_total += values[-1]
+                            elif isinstance(values, (int, float)):
+                                entity_total += values
+                
+                total += entity_total
+                print(f"  Entity {entity_id} total: {entity_total:.2f}")
+            
+            print(f"Total Processed: {total:.2f}")
             return total
 
         def get_total_overflow_cost(overflow_history):
-            return overflow_history.get('total_cost', {}).get('values', [])[-1] if overflow_history.get('total_cost', {}).get('values') else 0
+            """Get total overflow cost"""
+            total_cost_data = safe_get_nested_value(overflow_history, ['total_cost', 'values'], [])
+            if isinstance(total_cost_data, list) and total_cost_data:
+                return total_cost_data[-1]
+            elif isinstance(total_cost_data, (int, float)):
+                return total_cost_data
+            return 0
 
+        def get_efficiency_metrics(monitor):
+            """Get efficiency metrics from the metrics analyzer"""
+            try:
+                generation_history = monitor.data_collector.get_generation_history()
+                collection_history = monitor.data_collector.get_collection_history()
+                processing_history = monitor.data_collector.get_processing_history()
+                
+                # Use the existing metrics analyzer if available
+                if hasattr(monitor, 'metrics_analyzer'):
+                    efficiency_metrics = monitor.metrics_analyzer.calculate_efficiency_metrics(
+                        generation_history, collection_history, processing_history
+                    )
+                    return efficiency_metrics
+                return {}
+            except Exception as e:
+                print(f"Warning: Could not calculate efficiency metrics: {e}")
+                return {}
+            
+        def debug_data_structure(history_data, data_type):
+            """Debug function to understand data structure"""
+            print(f"\n=== DEBUG: {data_type} Data Structure ===")
+            for entity_id, data in list(history_data.items())[:2]:  # Show first 2 entities
+                print(f"Entity {entity_id}:")
+                print(f"  Keys: {list(data.keys())}")
+                for key, value in data.items():
+                    if isinstance(value, dict):
+                        print(f"  {key}: dict with keys {list(value.keys())}")
+                        # Show sample values
+                        for sub_key, sub_value in list(value.items())[:2]:
+                            if isinstance(sub_value, list):
+                                print(f"    {sub_key}: list of length {len(sub_value)}, sample: {sub_value[:3] if len(sub_value) >= 3 else sub_value}")
+                            else:
+                                print(f"    {sub_key}: {type(sub_value).__name__} = {sub_value}")
+                    elif isinstance(value, list):
+                        print(f"  {key}: list of length {len(value)}, sample: {value[:3] if len(value) >= 3 else value}")
+                    else:
+                        print(f"  {key}: {type(value).__name__} = {value}")
+            print("=" * 50)
+
+        # Calculate metrics for each scenario
         metrics_data = []
+        
         for result in self.results:
             monitor = result['monitor']
             generation_history = monitor.data_collector.get_generation_history()
@@ -677,31 +775,65 @@ class ScenarioComparison:
             processing_history = monitor.data_collector.get_processing_history()
             overflow_history = monitor.data_collector.overflow_history
 
-            total_generated = get_total_generated(generation_history)
-            total_collected = get_total_collected(collection_history)
-            total_processed = get_total_processed(processing_history)
-            total_overflow_cost = get_total_overflow_cost(overflow_history)
+            print(f"\n{'='*60}")
+            print(f"SCENARIO: {result['scenario_name']}")
+            print(f"Policy: {result['inventory_policy']}, Strategy: {result['stock_strategy']}")
+            print(f"{'='*60}")
 
+            # Debug data structures
+            debug_data_structure(generation_history, "Generation")
+            debug_data_structure(collection_history, "Collection") 
+            debug_data_structure(processing_history, "Processing")
+
+            # Calculate totals using fixed helper functions
+            total_generated = get_total_generated(generation_history)
+            total_collected = sum(get_total_collected(collection_history).values())
+            total_processed = get_total_processed(processing_history)
+
+            # Calculate overflow cost
+            total_overflow_cost = 0
+            if 'total_cost' in overflow_history and 'values' in overflow_history['total_cost']:
+                cost_values = overflow_history['total_cost']['values']
+                if cost_values:
+                    total_overflow_cost = cost_values[-1]
+
+            # Calculate realistic efficiency percentages
             collection_eff = (total_collected / total_generated * 100) if total_generated > 0 else 0
             processing_eff = (total_processed / total_collected * 100) if total_collected > 0 else 0
 
+            print("\n--- FINAL METRICS ---")
+            print(f"Total Generated: {total_generated:.2f} m³")
+            print(f"Total Collected: {total_collected:.2f} m³") 
+            print(f"Total Processed: {total_processed:.2f} m³")
+            print(f"Collection Efficiency: {collection_eff:.2f}%")
+            print(f"Processing Efficiency: {processing_eff:.2f}%")
+            print(f"Overflow Cost: {total_overflow_cost:.2f}")
+
+            # Sanity check
+            if collection_eff > 100:
+                print("⚠️  WARNING: Collection efficiency > 100% indicates data issue!")
+                print("   This suggests double-counting or unit mismatch in tracking.")
+
+            # Store metrics
             metrics_data.append({
                 'Scenario': f"{result['inventory_policy']} | {result['stock_strategy']}",
                 'Total Generated': total_generated,
                 'Total Collected': total_collected,
                 'Total Processed': total_processed,
-                'Collection Efficiency': collection_eff,
+                'Collection Efficiency': min(collection_eff, 100),  # Cap at 100% for display
                 'Processing Efficiency': processing_eff,
                 'Overflow Cost': total_overflow_cost
             })
 
+        # Create the dashboard visualization
         df = pd.DataFrame(metrics_data)
 
         fig = sp.make_subplots(
             rows=2, cols=3,
-            subplot_titles=['Total Generated', 'Total Collected', 'Total Processed',
+            subplot_titles=['Total Generated (m³)', 'Total Collected (m³)', 'Total Processed (m³)',
                             'Collection Efficiency (%)', 'Processing Efficiency (%)', 'Overflow Cost'],
-            vertical_spacing=0.1
+            vertical_spacing=0.15,
+            horizontal_spacing=0.1
         )
 
         metrics = [
@@ -713,13 +845,18 @@ class ScenarioComparison:
             ('Overflow Cost', 2, 3)
         ]
 
-        for metric, row, col in metrics:
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+
+        for i, (metric, row, col) in enumerate(metrics):
             fig.add_trace(
                 go.Bar(
                     x=df['Scenario'],
                     y=df[metric],
                     name=metric,
-                    showlegend=False
+                    showlegend=False,
+                    marker_color=colors[i % len(colors)],
+                    text=[f'{val:.1f}' for val in df[metric]],
+                    textposition='auto'
                 ),
                 row=row, col=col
             )
@@ -730,9 +867,15 @@ class ScenarioComparison:
             showlegend=False
         )
 
-        fig.update_xaxes(tickangle=45)
-        fig.write_html(f"{self.output_dir}/summary_dashboard.html")
+        # Rotate x-axis labels for better readability
+        for i in range(1, 7):
+            fig.update_xaxes(tickangle=45, row=(i-1)//3 + 1, col=(i-1)%3 + 1)
 
-        df.to_html(f"{self.output_dir}/metrics_summary.html", index=False)
+        # Save the plots
+        fig.write_html(f"{self.output_dir}/summary_dashboard.html")
+        
+        # Create and save metrics summary table
+        df.to_html(f"{self.output_dir}/metrics_summary.html", index=False, 
+                table_id="metrics-table", classes="table table-striped table-hover")
 
         return df

@@ -77,11 +77,11 @@ def handle_transport_delays(active_transports: List[Dict], current_time: float, 
 
         # Simulate potential transport issues
         if rng.random() < 0.05:  # 5% chance of delay
-            delay_hours = rng.uniform(1, 4)
-            transport["arrival_time"] += delay_hours
+            delay_days = rng.uniform(1, 4)
+            transport["arrival_time"] += delay_days
             print(
                 f"{current_time}: Transport delayed - Vehicle {transport['vehicle'].id} "
-                f"new ETA: +{delay_hours:.1f} hours"
+                f"new ETA: +{delay_days:.1f} days"
             )
 
 def process_collection(

@@ -6,10 +6,10 @@ import random
 @dataclass
 class FailureConfig:
     """Configuration for entity failure rates and durations"""
-    probability: float  # Hourly probability of failure
-    min_duration: float  # Minimum downtime in hours
-    max_duration: float  # Maximum downtime in hours
-    check_interval: float = 24.0  # Hours between failure checks
+    probability: float  # Daily probability of failure
+    min_duration: float  # Minimum downtime in days
+    max_duration: float  # Maximum downtime in days
+    check_interval: float = 24.0  # Daily between failure checks
 
 @dataclass(init=False)
 class OperationalEntity:
@@ -26,7 +26,7 @@ class OperationalEntity:
         self.status = EntityStatus.OPERATIONAL
         self.failure_time = None
         self.recovery_time = None
-        self.downtime_duration = 24.0  # Default 24 hour recovery time
+        self.downtime_duration = 24.0  # Default 24 days recovery time
         self.last_failure_check = 0.0
         self.failure_check_interval = 24.0  # Check for failures once per day by default
     
@@ -49,7 +49,7 @@ class OperationalEntity:
             
         # Check for new failure only if operational
         if self.status == EntityStatus.OPERATIONAL and random.random() < failure_probability:
-            # Scale probability by interval (since probability is typically per hour)
+            # Scale probability by interval (since probability is typically per day)
             scaled_probability = failure_probability * self.failure_check_interval
             if random.random() < scaled_probability:
                 self.status = EntityStatus.FAILED

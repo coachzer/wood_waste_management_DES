@@ -150,7 +150,7 @@ class TreatmentOperator(OperationalEntity):
 
         # Start processes
         self.process = env.process(self.run_facility())
-        env.process(self.run_collection())
+        env.process(self.schedule_collection_requests())
 
     @property
     def current_storage(self) -> float:
@@ -255,7 +255,7 @@ class TreatmentOperator(OperationalEntity):
                     region=self.region
                 )
 
-    def run_collection(self):
+    def schedule_collection_requests(self):
         """Process to periodically trigger collection based on demand or Kanban"""
         while True:
             if self.inventory_policy == InventoryPolicy.PUSH:
@@ -460,11 +460,6 @@ class TreatmentOperator(OperationalEntity):
         if not collection_result.waste_by_type or sum(collection_result.waste_by_type.values()) == 0:
             print(f"[VALIDATION] No waste collected at time {self.env.now} - skipping processing")
             return 0, 0
-
-        # Verify waste types match expected inputs
-        # mismatched_types = set(collection_result.waste_by_type.keys()) - input_waste_types
-        # if mismatched_types:
-        #     print(f"[VALIDATION] Warning: Collected waste types {mismatched_types} don't match expected inputs")
 
         # Track this collection's demand
         self.demand_history.append((self.env.now, required_waste))

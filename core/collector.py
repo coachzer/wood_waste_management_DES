@@ -103,7 +103,7 @@ class CollectorCompany(OperationalEntity):
         self.rng = np.random.default_rng(42)  # For reproducibility
 
         # Start collection process
-        self.process = env.process(self.collect_waste())
+        self.process = env.process(self.collection_loop())
         self.transport_process = env.process(self.manage_transport())
 
     def schedule_transport(
@@ -318,7 +318,6 @@ class CollectorCompany(OperationalEntity):
             # Normalize waste type string
             normalized_type = waste_type_str.replace(" ", "_").replace("-", "_")
             try:
-                # First try direct enum lookup
                 waste_type_enum = WasteType[normalized_type]
             except KeyError:
                 waste_type_mapping = {
@@ -439,7 +438,7 @@ class CollectorCompany(OperationalEntity):
             if amount > 0
         }
 
-    def collect_waste(self):
+    def collection_loop(self):
         """Periodically collect waste from generators based on strategy"""
         while True:
             current_time = self.env.now
@@ -448,14 +447,13 @@ class CollectorCompany(OperationalEntity):
             if self.uncertainty_set and hasattr(self.uncertainty_set, 'collector_failure'):
                 self.check_failure(current_time, self.uncertainty_set.collector_failure.probability)
 
-            # Update collection parameters based on optimization
             self.collection_capacity = max(
                 10, self.collection_capacity * self.efficiency
             )
             self.transport_cost = min(100, self.transport_cost * (2 - self.efficiency))
 
             # Add a small offset to avoid exact synchronization with generators
-            offset = self.rng.uniform(1, 4)  # Random 1-4 hour offset
+            offset = self.rng.uniform(1, 4)  # Random 1-4 day offset
             yield self.env.timeout(self.collection_frequency + offset)
 
             # Skip collection if failed or unavailable
