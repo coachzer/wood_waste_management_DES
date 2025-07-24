@@ -1,16 +1,15 @@
 import numpy as np
 from typing import Dict, List
-from models.enums import WasteType, RegionType, EntityStatus
+from core.transport_manager import PointToPointTransport, TransportPriority, TransportRequest
+from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
 from models.state import SimulationState
 from monitoring.waste_monitor import WasteMonitor
 from models.data_classes import Vehicle, CollectionCenter, OperationalEntity
-from models.distances import REGION_COORDINATES, get_distance
+from models.distances import REGION_COORDINATES
 from typing import Optional
-from utils.capacity_utils import apply_capacity_constraints, handle_overflow_with_decision, check_storage_capacity
+from utils.capacity_utils import handle_overflow_with_decision, check_storage_capacity
 from core.kanban_manager import KanbanManager
 from core.collector_utils import (
-    collect_from_single_generator,
-    get_available_vehicle,
     handle_completed_transport,
     check_completed_transports,
     handle_collector_capacity,
@@ -45,19 +44,24 @@ class CollectorCompany(OperationalEntity):
         vehicle_capacity: Optional[float] = None,
         uncertainty_set = None,
         kanban_manager: KanbanManager = None,
+        inventory_policy: InventoryPolicy = InventoryPolicy.PUSH,
+        stock_strategy: StockStrategy = StockStrategy.REORDER_90,
+        transport_manager: PointToPointTransport = None
     ):
         super().__init__()
         self.env = env
         self.name = name
         self.waste_types = set(waste_types) if waste_types else set()
         self.kanban_manager = kanban_manager or KanbanManager()
+        self.inventory_policy = inventory_policy
+        self.stock_strategy = stock_strategy
+        self.transport_manager = transport_manager or PointToPointTransport()
         self.collection_capacity = collection_capacity
         self.collection_frequency = collection_frequency
         self.transport_cost = transport_cost
         self.environmental_impact = environmental_impact
         self.efficiency = efficiency
         self.availability = availability
-        # Store original region string for tracking
         self.region = region
         self.region_type = RegionType[region.upper().replace('-', '_')] if region else None
         self.uncertainty_set = uncertainty_set
@@ -72,7 +76,6 @@ class CollectorCompany(OperationalEntity):
             ),
         )
 
-        # Initialize vehicle fleet
         self.vehicle_capacity = vehicle_capacity or collection_capacity
         self.vehicles = [
             Vehicle(
@@ -98,92 +101,27 @@ class CollectorCompany(OperationalEntity):
         self.process = env.process(self.collection_loop())
         self.transport_process = env.process(self.manage_transport())
 
-    def schedule_transport(
-            self, 
-            waste_type: WasteType, 
-            volume: float, 
-            target_region: RegionType
-        ) -> bool:
-        """Schedule waste transport to target region using actual distances"""
-        # Check if we have waste to transport
-        if self.collection_center.current_storage[waste_type] < volume:
-            print(f"{self.env.now}: Insufficient {waste_type} for transport")
-            return False
-
-        # Get route and distance using the distance matrix
-        route, total_distance = get_distance(self.region_type, target_region)
-
-        print(f"{self.env.now}: Transporting {volume:.2f} m³ of {waste_type} from {self.region} to {target_region.value}")
-        print(f"  Route: {route}, Total distance: {total_distance:.1f} km")
-
-        if not route or total_distance == 0:
-            print(f"{self.env.now}: No valid route from {self.region_type} to {target_region}")
-            return False
-
-        # Find available vehicle and verify capacity
-        vehicle = get_available_vehicle(self.vehicles)
-        if not vehicle or volume > vehicle.capacity:
-            print(f"{self.env.now}: No suitable vehicles available for transport")
-            return False
-
-        average_speed_kmh = 50.0
-        transport_time_hours = total_distance / average_speed_kmh
-        transport_time_days = transport_time_hours / 24.0  # Convert to days for simulation time
-
-        # Calculate transport cost based on distance
-        cost_per_km = 2.0  # Cost per kilometer
-        transport_cost = total_distance * cost_per_km * volume
-        
-        # Remove waste from collection center before updating vehicle
-        self.collection_center.current_storage[waste_type] -= volume
-
-        # Update vehicle status
-        vehicle.current_load = volume
-        vehicle.destination = target_region
-        vehicle.estimated_arrival = self.env.now + transport_time_days
-        vehicle.in_transit = True
-
-        # Track waste removal from current region
-        SimulationState.get_instance().track_waste_collection(
-            self.region, waste_type, volume
-        )
-
-        # Add to active transports with distance and cost information
-        self.active_transports.append(
-            {
-                "vehicle": vehicle,
-                "waste_type": waste_type,
-                "volume": volume,
-                "arrival_time": vehicle.estimated_arrival,
-                "route": route,
-                "distance": total_distance,
-                "transport_cost": transport_cost
-            }
-        )
-
-        print(f"{self.env.now}: Scheduled transport of {volume:.2f} m³ {waste_type} from {self.region} to {target_region.value}")
-        print(f"  Distance: {total_distance:.1f} km, Estimated travel time: {transport_time_hours:.1f} hours, Cost: ${transport_cost:.2f}")
-
-        return True
-
     def manage_transport(self):
-        """Process to manage ongoing transports"""
+        """Transport management using point-to-point system"""
         while True:
             current_time = self.env.now
-
+            
             try:
+                # Process new transport requests
+                new_transports = self.transport_manager.process_requests(current_time)
+                self.active_transports.extend(new_transports)
+                
                 # Check completed transports
                 completed = check_completed_transports(self.active_transports, current_time)
-
-                # Process completed transports and update collection centers
+                
                 for transport in completed:
                     handle_completed_transport(transport, current_time)
                     self.active_transports.remove(transport)
-
+                    
             except Exception as e:
                 print(f"Error in transport management: {str(e)}")
-
-            yield self.env.timeout(1.0)  # Check every hour
+            
+            yield self.env.timeout(1.0)
 
     def check_failure(self, current_time, failure_probability):
         """Check for failures based on probability"""
@@ -197,6 +135,7 @@ class CollectorCompany(OperationalEntity):
     def collect_from_generator(self, generator):
         """Collect waste from a generator, handling multiple waste types"""
         if not self.availability:
+            print(f"[DEBUG] Collector {self.name} is not available for collection.")
             return 0
 
         # Pre-filter active waste streams, only allow collector's waste_types
@@ -206,12 +145,14 @@ class CollectorCompany(OperationalEntity):
             if stream.volume > 0 and (waste_type in self.waste_types or (hasattr(waste_type, 'value') and waste_type.value in self.waste_types))
         }
 
+        print(f"[DEBUG] Collector {self.name} active streams: {active_streams.keys()}")
+
         if not active_streams:
+            print(f"[DEBUG] Collector {self.name}: No active waste streams to collect from generator {getattr(generator, 'name', str(generator))}.")
             return 0
 
-        # Calculate potential collections - convert waste_type to enum and maintain mapping
         potential_collections = {}
-        enum_to_original = {}  # Track mapping from enum to original string
+        enum_to_original = {}  
 
         for waste_type_str, stream in active_streams.items():
             # Convert WasteType enum to string value if needed
@@ -222,11 +163,10 @@ class CollectorCompany(OperationalEntity):
 
             waste_type_enum = None
 
-            # Map all WasteType enum values by .value
             mapping = {wt.value: wt for wt in WasteType}
             waste_type_enum = mapping.get(waste_type_value)
             if not waste_type_enum:
-                print(f"Warning: Invalid waste type {waste_type_value}")
+                print(f"[DEBUG] Warning: Invalid waste type {waste_type_value}")
                 continue
 
             potential_collections[waste_type_enum] = min(
@@ -252,8 +192,10 @@ class CollectorCompany(OperationalEntity):
                 "collector",
                 overflow_amount,
                 strategy,
-                self.env.now
+                self.env.now,
+                self.region
             )
+            print(f"[DEBUG] Collector {self.name}: Overflow of {overflow_amount:.2f} m³ handled with strategy {strategy}.")
 
         # Process allowed collections
         total_collected = 0.0
@@ -279,10 +221,13 @@ class CollectorCompany(OperationalEntity):
                 )
 
                 total_collected += amount
+                print(f"[DEBUG] Collector {self.name} collected {amount:.2f} m³ of {waste_type_enum.value} from generator {getattr(generator, 'name', str(generator))}.")
 
         if total_collected > 0:
             generator.mark_collected()
+            print(f"[DEBUG] Collector {self.name} finished collection from generator {getattr(generator, 'name', str(generator))}. Total collected: {total_collected:.2f} m³.")
             return self.transport_cost + (0.1 * total_collected)
+        print(f"[DEBUG] Collector {self.name}: No waste collected from generator {getattr(generator, 'name', str(generator))}.")
         return 0
 
     def collect_with_collaboration(self, generator, other_collectors):
@@ -350,6 +295,7 @@ class CollectorCompany(OperationalEntity):
         """Periodically collect waste from generators based on strategy"""
         while True:
             current_time = self.env.now
+            print(f"{current_time}: Collector {self.name} starting collection process")
 
             # Check for failures if uncertainty set is available
             if self.uncertainty_set and hasattr(self.uncertainty_set, 'collector_failure'):
@@ -360,9 +306,16 @@ class CollectorCompany(OperationalEntity):
             )
             self.transport_cost = min(100, self.transport_cost * (2 - self.efficiency))
 
-            # Add a small offset to avoid exact synchronization with generators
-            offset = self.rng.uniform(1, 4)  # Random 1-4 day offset
-            yield self.env.timeout(self.collection_frequency + offset)
+            base_timeout = self.collection_frequency
+
+            if self.inventory_policy == InventoryPolicy.PULL and self.kanban_manager.get_signals():
+                print(f"{current_time}: Collector {self.name} has kanban signals, using base frequency")
+                timeout = base_timeout
+            else:
+                print(f"{current_time}: Collector {self.name} no kanban signals, adjusting frequency")
+                timeout = base_timeout + self.rng.uniform(1, 4)
+            
+            yield self.env.timeout(timeout)
 
             # Skip collection if failed or unavailable
             if self.status == EntityStatus.FAILED or not self.availability:
@@ -378,96 +331,114 @@ class CollectorCompany(OperationalEntity):
                 self.recovery_time = None
                 self.availability = True
 
-            # Kanban signal processing for pull system
+            if not self.should_collect():
+                print(f"{current_time}: Collector {self.name} decided not to collect based on policy and strategy")
+                continue
+
             kanban_signals = self.kanban_manager.get_signals()
-            if kanban_signals:
-                # Prioritize collection based on Kanban signals
-                for signal in kanban_signals:
-                    try:
-                        # Convert waste_type string to enum
-                        waste_type_enum = WasteType[signal['waste_type']]
-                    except KeyError:
-                        print(f"Warning: Invalid waste type in Kanban signal: {signal['waste_type']}")
-                        continue
-                    
-                    # Find generators with matching waste type and region
-                    prioritized_generators = [
-                        g for g in get_prioritized_generators()
-                        if waste_type_enum in g.waste_streams and g.region == self.region
-                    ]
-                    for generator in prioritized_generators:
-                        self.collect_from_generator(generator)
+            if kanban_signals and self.inventory_policy == InventoryPolicy.PULL:
+                print(f"{current_time}: Collector {self.name} processing kanban signals")
+                self._process_kanban_signals(kanban_signals)
                 self.kanban_manager.clear_signals()
             else:
+                # Regular collection based on policy
+                print(f"{current_time}: Collector {self.name} performing unified collection strategy")
                 prioritized_generators = get_prioritized_generators()
                 collection_cost = self._unified_collection_strategy(prioritized_generators)
-
-                if collection_cost > 0:
-                    print(f"{self.env.now}: {self.name} collection operation cost: {collection_cost:.8f}")
-
-    def collect_waste_for_demand(self, required_amount):
-        """Collect waste based on treatment plant demand with storage-based adjustments"""
-
-        state = SimulationState.get_instance()
-        for gen in state.generators:
-            if gen.region_type == self.region_type and hasattr(gen, "generate_on_demand"):
-                gen.generate_on_demand()
-
-        collected_amounts = dict.fromkeys(WasteType, 0.0)
-        total_collected = 0
-        state = SimulationState.get_instance()
-
-        generators_storage = [
-            (g, g.current_storage / g.waste_storage_capacity)
-            for g in state.generators
-            if g.region_type == self.region_type and g.current_storage > 0
-        ]
-
-        if generators_storage:
-            avg_storage = sum(ratio for _, ratio in generators_storage) / len(
-                generators_storage
-            )
-            if avg_storage < 0.3:
-                required_amount *= self.rng.uniform(1.0, 1.2)
-            elif avg_storage > 0.7:
-                required_amount *= self.rng.uniform(0.6, 0.8)
-
-        generators_storage.sort(key=lambda x: x[1], reverse=True)
-        eligible_generators = [g for g, _ in generators_storage]
-
-        for generator in eligible_generators:
-            total_collected = collect_from_single_generator(
-                self, generator, required_amount, total_collected, collected_amounts
-            )
-            if total_collected >= required_amount:
-                break
-
-        result = apply_capacity_constraints(
-            sum(collected_amounts.values()),
-            0,  # No additional amount to add
-            self.collection_capacity * self.efficiency
-        )
-
-        if result.overflow_amount > 0:
-            # Scale down collected amounts proportionally
-            scaling_factor = result.allowed_amount / sum(collected_amounts.values())
-            for waste_type in collected_amounts:
-                collected_amounts[waste_type] *= scaling_factor
-
                 
-            _, strategy = handle_overflow_with_decision(
-                self,
-                result.overflow_amount,
-                self.region
-            )
-            self.waste_monitor.track_overflow(
-                "collector",
-                result.overflow_amount,
-                strategy,
-                self.env.now
-            )
+                if collection_cost > 0:
+                    print(f"{self.env.now}: {self.name} collection cost: {collection_cost:.8f}")
 
-        return collected_amounts
+    def _process_kanban_signals(self, signals):
+        """Handle kanban signals for PULL policy"""
+        for signal in signals:
+            try:
+                waste_type_enum = WasteType[signal['waste_type']]
+            except KeyError:
+                continue
+                
+            prioritized_generators = [
+                g for g in get_prioritized_generators()
+                if waste_type_enum in g.waste_streams and g.region == self.region
+            ]
+            
+            for generator in prioritized_generators:
+                self.collect_from_generator(generator)
+
+    def should_collect(self) -> bool:
+        current_utilization = sum(self.collection_center.current_storage.values()) / self.collection_center.waste_storage_capacity
+        
+        print(f"DEBUG: {self.name} - policy: {self.inventory_policy}, strategy: {self.stock_strategy}")
+        
+        if self.inventory_policy == InventoryPolicy.PULL:
+            has_demand = bool(self.kanban_manager.get_signals())
+            below_reorder = self._is_below_reorder_point(current_utilization)
+            
+            print(f"DEBUG: {self.name} - PULL policy: has_demand={has_demand}, below_reorder={below_reorder}, utilization={current_utilization}")
+            print(f"DEBUG: {self.name} - should_collect result: {has_demand or below_reorder}")
+            
+            return has_demand or below_reorder
+        
+        elif self.inventory_policy == InventoryPolicy.PUSH:
+            should_restock = self._should_restock(current_utilization)
+            print(f"DEBUG: {self.name} - PUSH policy: should_restock={should_restock}, utilization={current_utilization}")
+            return should_restock
+        
+        print(f"DEBUG: {self.name} - no policy matched, returning False")
+        return False
+    
+    def _is_below_reorder_point(self, utilization: float) -> bool:
+        """Check if we're below the reorder threshold"""
+        if self.stock_strategy == StockStrategy.REORDER_90:
+            return utilization < 0.90
+        elif self.stock_strategy == StockStrategy.REORDER_50:
+            return utilization < 0.50
+        elif self.stock_strategy == StockStrategy.ON_DEMAND:
+            return utilization < 0.10
+        elif self.stock_strategy == StockStrategy.FULL_STOCK:
+            return utilization < 0.95  
+        return False
+
+    def _should_restock(self, utilization: float) -> bool:
+        """Check if we should restock (for PUSH policy)"""
+        if self.stock_strategy == StockStrategy.FULL_STOCK:
+            return utilization < 0.95  # Keep nearly full
+        elif self.stock_strategy == StockStrategy.REORDER_90:
+            return utilization < 0.90
+        elif self.stock_strategy == StockStrategy.REORDER_50:
+            return utilization < 0.50
+        elif self.stock_strategy == StockStrategy.ON_DEMAND:
+            return False  # Never proactively restock
+        return False
+
+    def transfer_waste_to_region(self, waste_type: WasteType, volume: float, destination: RegionType) -> bool:
+        """Updated method using point-to-point transport"""
+        if volume <= 0:
+            print(f"{self.env.now}: {self.name} attempted to transfer zero or negative volume of {waste_type.value}")
+            return False
+        
+        # Create transport request
+        request = TransportRequest(
+            origin=self.region_type,
+            destination=destination,
+            waste_type=waste_type,
+            volume=volume,
+            priority=TransportPriority.NORMAL,
+            request_time=self.env.now,
+            requester_id=self.name
+        )
+        
+        # Submit request to transport manager
+        success = self.transport_manager.request_transport(request)
+        
+        if success:
+            # Remove from our storage immediately (it's now "in transit")
+            if self.collection_center.current_storage[waste_type] >= volume:
+                self.collection_center.current_storage[waste_type] -= volume
+                print(f"{self.env.now}: {self.name} scheduled transport of {volume:.2f} m³ {waste_type.value}")
+                return True
+        
+        return False
 
     def _unified_collection_strategy(self, prioritized_generators: List) -> float:
         """Unified collection strategy that considers both efficiency and collaboration"""
@@ -503,13 +474,13 @@ class CollectorCompany(OperationalEntity):
                     total_cost += cost
             
         return total_cost
-    
+
     def provide_waste_for_treatment(self, requested_amount: float, needed_types: set) -> Dict[WasteType, float]:
-        """Provide waste to treatment plant from storage or by collecting"""
+    
         provided_waste = {}
         remaining_request = requested_amount
-        
-        # First, check our storage
+
+        # ONLY provide from storage - no direct collection
         for waste_type in needed_types:
             if remaining_request <= 0:
                 break
@@ -517,55 +488,18 @@ class CollectorCompany(OperationalEntity):
             available_in_storage = self.collection_center.current_storage[waste_type]
             if available_in_storage > 0:
                 transfer_amount = min(available_in_storage, remaining_request)
+                
                 self.collection_center.current_storage[waste_type] -= transfer_amount
                 provided_waste[waste_type] = provided_waste.get(waste_type, 0) + transfer_amount
                 remaining_request -= transfer_amount
                 
                 print(f"Transferred {transfer_amount:.2f} m³ of {waste_type} from storage")
         
-        # If still need more, collect from generators
-        if remaining_request > 0:
-            fresh_collected = self.collect_for_immediate_transfer(remaining_request, needed_types)
-            for waste_type, amount in fresh_collected.items():
-                provided_waste[waste_type] = provided_waste.get(waste_type, 0) + amount
+        # If we can't fulfill the request, that's okay - treatment will have to wait
+        total_provided = sum(provided_waste.values())
+        if total_provided < requested_amount:
+            shortfall = requested_amount - total_provided
+            print(f"Collector {self.name} storage insufficient: requested {requested_amount:.2f} m³, "
+                f"provided {total_provided:.2f} m³, shortfall {shortfall:.2f} m³")
         
         return provided_waste
-
-    def collect_for_immediate_transfer(self, needed_amount: float, needed_types: set) -> Dict[WasteType, float]:
-        """Collect waste immediately for transfer to treatment plant"""
-        state = SimulationState.get_instance()
-        collected = {}
-        
-        # Find generators in our region with needed waste types
-        local_generators = [
-            g for g in state.generators 
-            if g.region_type == self.region_type and g.current_storage > 0
-        ]
-        
-        remaining_needed = needed_amount
-        
-        for generator in local_generators:
-            if remaining_needed <= 0:
-                break
-                
-            for waste_type in needed_types:
-                if remaining_needed <= 0:
-                    break
-                    
-                if waste_type in generator.waste_streams:
-                    available = generator.waste_streams[waste_type].volume
-                    if available > 0:
-                        collect_amount = min(available, remaining_needed)
-                        
-                        # Update generator
-                        generator.waste_streams[waste_type].volume -= collect_amount
-                        generator.current_storage -= collect_amount
-                        
-                        # Track collection
-                        collected[waste_type] = collected.get(waste_type, 0) + collect_amount
-                        remaining_needed -= collect_amount
-                        
-                        print(f"Collected {collect_amount:.2f} m³ of {waste_type} from {generator.name}")
-        
-        return collected
-

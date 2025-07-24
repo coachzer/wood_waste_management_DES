@@ -1,14 +1,16 @@
 import os
 import json
 from typing import Dict, Any
+from core.decision_manager import DecisionStrategy
 from models.enums import WasteType
 from config.base_config import SIMULATION_DURATION
 
 class WasteMonitor:
     """Unified monitoring system for waste management operations"""
     
-    def __init__(self, env=None):
+    def __init__(self, env=None, decision_tracker=None):
         self.env = env
+        self.decision_tracker = decision_tracker  
         # Data collection structures
         self.generation_history = {}
         self.collection_history = {}
@@ -90,6 +92,8 @@ class WasteMonitor:
                 "collected_volumes": {},
                 "efficiency": [],
                 "transport_costs": [],
+                "storage_utilization": [],
+                "utilization_rate": [],
                 "regions": []
             }
 
@@ -105,6 +109,18 @@ class WasteMonitor:
         history["efficiency"].append(collector.efficiency)
         history["transport_costs"].append(collector.transport_cost)
 
+        total_storage = sum(collector.collection_center.current_storage.values())
+        utilization = (total_storage / collector.collection_center.waste_storage_capacity) * 100
+
+        # print storage utilization for debugging
+        print(f"{collector.name} storage utilization at {timestamp}: {utilization:.2f}%")
+
+        history["storage_utilization"].append(utilization)
+
+        if len(history["storage_utilization"]) > 1:
+            rate_of_change = utilization - history["storage_utilization"][-2]
+            history.setdefault("utilization_rate", []).append(rate_of_change)
+
     def track_processing(self, treatment, timestamp: float):
         """Track treatment facility metrics"""
         if treatment.name not in self.processing_history:
@@ -119,44 +135,22 @@ class WasteMonitor:
             self._track_operational_metrics(treatment, history, total_processed)
             self._track_product_metrics(treatment, history, timestamp)
 
+    def get_overflow_statistics(self):
+        """Get overflow data from DecisionTracker for visualization"""
+        if self.decision_tracker:
+            return self.decision_tracker.get_overflow_statistics()
+        return {}
+    
     def track_overflow(self, facility_type: str, volume: float, strategy: str, timestamp: float, region=None):
-        """Track overflow events and their handling strategies"""
-        overflow_key = f"{facility_type}_overflow"
-        self.overflow_history[overflow_key]["values"].append(volume)
-        self.overflow_history[overflow_key]["timestamps"].append(timestamp)
-        
-        if "regions" not in self.overflow_history[overflow_key]:
-            self.overflow_history[overflow_key]["regions"] = []
-        self.overflow_history[overflow_key]["regions"].append(region)
-
-        for strat in ["landfill", "expand_storage"]:
-            usage_key = f"{strat}_usage"
-            value = 1.0 if strat == strategy else 0.0
-            self.overflow_history[usage_key]["values"].append(value)
-            self.overflow_history[usage_key]["timestamps"].append(timestamp)
-            if "regions" not in self.overflow_history[usage_key]:
-                self.overflow_history[usage_key]["regions"] = []
-            self.overflow_history[usage_key]["regions"].append(region)
-
-        cost = 0.0
-        match strategy:
-            case "landfill":
-                cost = volume * 100.0
-                self.overflow_history["landfill_penalties"]["values"].append(cost)
-                self.overflow_history["storage_expansion"]["values"].append(0.0)
-            case "expand_storage":
-                cost = volume * 250.0
-                self.overflow_history["landfill_penalties"]["values"].append(0.0)
-                self.overflow_history["storage_expansion"]["values"].append(cost)
-            case _:
-                self.overflow_history["landfill_penalties"]["values"].append(0.0)
-                self.overflow_history["storage_expansion"]["values"].append(0.0)
-
-        self.overflow_history["total_cost"]["values"].append(cost)
-        self.overflow_history["total_cost"]["timestamps"].append(timestamp)
-        if "regions" not in self.overflow_history["total_cost"]:
-            self.overflow_history["total_cost"]["regions"] = []
-        self.overflow_history["total_cost"]["regions"].append(region)
+        """Delegate to DecisionTracker and add timestamp/region tracking"""
+        if self.decision_tracker:
+            cost, message = self.decision_tracker.track_overflow(
+                facility_type, volume, 
+                DecisionStrategy(strategy), region
+            )
+            # Store timestamp for visualization
+            self._store_timestamp_data(facility_type, volume, strategy, timestamp, region)
+            return cost, message
 
     def track_energy_cost(self, energy_cost: float, timestamp: float):
         """Track energy costs incurred by treatment facilities"""
@@ -206,7 +200,7 @@ class WasteMonitor:
         return "\n".join(report)
 
     def monitor_system_process(self, generators, collectors, treatment_operators):
-        """SimPy process for continuous monitoring"""
+        """Process for continuous monitoring"""
         while True:
             for generator in generators:
                 self.track_generation(generator, self.env.now)

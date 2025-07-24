@@ -70,7 +70,6 @@
         {
             "id": "proc_savinjska",
             "input_types": [
-                "wood_cuttings",
                 "03 01 99",
                 "03 01 01",
                 "17 02 01",
@@ -87,9 +86,9 @@
             "processing_time": 24,
             "waste_storage_capacity": 30000,
             "energy_consumption": 100.0,
-            "environmental_impact": 1.0,
+            "environmental_impact": 1.2,
             "conversion_rate": 1.0,
-            "operational_costs": 200.0
+            "operational_costs": 130.0
         }
     ]
 }

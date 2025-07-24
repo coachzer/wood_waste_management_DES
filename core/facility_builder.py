@@ -1,5 +1,6 @@
 from typing import Dict, Tuple, List
 from simpy import Environment
+from core.transport_manager import PointToPointTransport
 from models.facility_data import FacilityDataManager
 from models.enums import RegionType, WasteType, OutputType
 from models.data_classes import WasteTransformation
@@ -15,11 +16,13 @@ class FacilityBuilder:
         facility_manager: FacilityDataManager,
         waste_monitor: WasteMonitor,
         uncertainty_set = None,
+        transport_manager: PointToPointTransport = None,
     ):
         self.env = env
         self.facility_manager = facility_manager
         self.waste_monitor = waste_monitor
         self.uncertainty_set = uncertainty_set
+        self.transport_manager = transport_manager or PointToPointTransport()
 
     def create_generator(self, gen_data, region: RegionType, stock_strategy=None) -> WasteGenerator:
         if gen_data.waste_storage_capacity <= 0:
@@ -57,7 +60,13 @@ class FacilityBuilder:
             stock_strategy=stock_strategy,
         )
 
-    def create_collector(self, col_data, region: RegionType) -> CollectorCompany:
+    def create_collector(self, col_data, region: RegionType, stock_strategy=None) -> CollectorCompany:
+
+        if stock_strategy is None and hasattr(self.uncertainty_set, 'stock_strategy'):
+            stock_strategy = self.uncertainty_set.stock_strategy
+            
+        if stock_strategy is None:
+            raise SystemExit(f"Error: No stock strategy specified for collector {col_data.id}")
 
         waste_types_enum = [WasteType(wtype) if not isinstance(wtype, WasteType) else wtype for wtype in col_data.waste_types]
         
@@ -73,6 +82,7 @@ class FacilityBuilder:
             availability=col_data.availability,
             region=region.value,
             uncertainty_set=self.uncertainty_set,
+            stock_strategy=stock_strategy,
         )
 
     def _get_base_transformations(self):
@@ -87,9 +97,13 @@ class FacilityBuilder:
 
     def _map_waste_type(self, input_type):
         waste_type_mapping = {
-            "wood_cuttings": "03 01 05",
-            "mixed_wood": "03 01 99",
-        }
+                    "03_01_05": WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05,
+                    "15_01_03": WasteType.WOODEN_PACKAGING_15_01_03,
+                    "17_02_01": WasteType.CONSTRUCTION_WOOD_17_02_01,
+                    "03_01_01": WasteType.BARK_WASTE_03_01_01,
+                    "20_01_38": WasteType.NON_HAZARDOUS_WOOD_20_01_38,
+                    "15_01_01": WasteType.PAPER_PACKAGING_15_01_01
+                }
         
         mapped_type = waste_type_mapping.get(input_type, input_type)
         return WasteType(mapped_type)
@@ -165,7 +179,7 @@ class FacilityBuilder:
             transformations=transformations,
             waste_monitor=self.waste_monitor,
             product_storage_capacity=product_storage_capacity,
-            product_to_sell_capacity=product_to_sell_capacity,
+            product_to_sell_capacity=product_to_sell_capacity
         )
 
     def build_all_facilities(self, stock_strategy=None) -> Tuple[List[WasteGenerator], List[CollectorCompany], List[TreatmentOperator]]:
@@ -181,7 +195,7 @@ class FacilityBuilder:
                     generators.append(generator)
 
                 for col_data in facilities.collectors:
-                    collector = self.create_collector(col_data, region)
+                    collector = self.create_collector(col_data, region, stock_strategy=stock_strategy)
                     collectors.append(collector)
 
                 for proc_data in facilities.processors:
@@ -197,14 +211,20 @@ def initialize_simulation_entities(
     distribution_mode: str = "balanced",
     priority_types: List[str] = None,
     stock_strategy=None,
+    transport_manager: PointToPointTransport = None,
 ) -> Tuple[List, List, List]:
+    
+
     facility_manager = FacilityDataManager()
     facility_manager.load_data()
     
     if waste_monitor is None:
         waste_monitor = WasteMonitor()
 
-    builder = FacilityBuilder(env, facility_manager, waste_monitor, uncertainty_set)
+    if transport_manager is None:
+        transport_manager = PointToPointTransport()
+
+    builder = FacilityBuilder(env, facility_manager, waste_monitor, uncertainty_set, transport_manager)
     generators, collectors, processors = builder.build_all_facilities(stock_strategy=stock_strategy)
 
     processor_by_output = {}

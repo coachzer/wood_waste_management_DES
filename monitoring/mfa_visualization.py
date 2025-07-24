@@ -190,8 +190,29 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
 
     # Get volumes for each stage
     generator_volumes, collector_volumes, treatment_volumes, product_volumes = get_volumes(
-        generation_history, collection_history, processing_history
+        generation_history, collection_history, 
+        processing_history
     )
+
+    print(f"\n=== DEBUG: Raw Volumes ===")
+    print(f"Generator volumes: {generator_volumes}")
+    print(f"Collector volumes: {collector_volumes}")
+    print(f"Treatment volumes: {treatment_volumes}")
+    print(f"Product volumes: {product_volumes}")
+    
+    # Filter volumes
+    min_volume = 1.0
+    generators = _filter_volumes(generator_volumes, min_volume)
+    collectors = _filter_volumes(collector_volumes, min_volume)
+    treatments = _filter_volumes(treatment_volumes, min_volume)
+    products = _filter_volumes(product_volumes, min_volume)
+    
+    # ADD MORE DEBUG PRINTS:
+    print(f"\n=== DEBUG: Filtered Volumes (min={min_volume}) ===")
+    print(f"Filtered generators: {generators}")
+    print(f"Filtered collectors: {collectors}")
+    print(f"Filtered treatments: {treatments}")
+    print(f"Filtered products: {products}")
     
     # Create Sankey diagram components
     labels, node_colors, sources, targets, values = create_sankey(

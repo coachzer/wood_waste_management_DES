@@ -1,5 +1,7 @@
 import numpy as np
 from typing import Dict, Iterable, Optional
+from core.transport_manager import PointToPointTransport, TransportPriority, TransportRequest
+from config.base_config import get_scenario_config
 from models.data_classes import WasteTransformation, OperationalEntity, ProductStorage
 from models.enums import OutputType, RegionType, WasteType, EntityStatus
 from models.state import SimulationState
@@ -66,6 +68,7 @@ class TreatmentOperator(OperationalEntity):
         product_storage_capacity: float = 0.0,
         product_to_sell_capacity: float = 0.0,
         scenario_config=None,
+        transport_manager: Optional[PointToPointTransport] = None
     ):
         super().__init__()
         # Monitoring
@@ -76,9 +79,9 @@ class TreatmentOperator(OperationalEntity):
         if scenario_config and hasattr(scenario_config, 'inventory_policy'):
             self.inventory_policy = scenario_config.inventory_policy
         else:
-            from config.base_config import get_scenario_config
             self.inventory_policy = get_scenario_config().inventory_policy
         self.kanban_manager = kanban_manager or KanbanManager()
+        self.transport_manager = transport_manager or PointToPointTransport()
 
         # Utilization history
         self.utilization_history = []
@@ -325,6 +328,20 @@ class TreatmentOperator(OperationalEntity):
                 key=lambda x: get_transformation_efficiency(self, x[1]),
                 reverse=True
             )
+        
+    def request_waste_delivery(self, waste_type: WasteType, volume: float, 
+                             from_region: RegionType, priority: TransportPriority = TransportPriority.NORMAL):
+        """Request waste delivery from a specific region"""
+        request = TransportRequest(
+            origin=from_region,
+            destination=self.region_type,
+            waste_type=waste_type,
+            volume=volume,
+            priority=priority,
+            request_time=self.env.now,
+            requester_id=self.name
+        )
+        return self.transport_manager.request_transport(request)
 
     def run_facility(self):
         """Main process loop for the treatment facility"""
@@ -506,8 +523,9 @@ class TreatmentOperator(OperationalEntity):
             self.waste_monitor.track_overflow(
                 "treatment",
                 overflow_amount,
-                "landfill",  # Use landfill for collection overflow
-                self.env.now
+                "landfill",  
+                self.env.now,
+                self.region
             )
 
         return actually_stored, sum(collected_waste.values())

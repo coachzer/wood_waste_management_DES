@@ -48,8 +48,6 @@ class OutputType(Enum):
     MDF_FIBREBOARD = "mdf_fibreboard"     
     PARTICLE_BOARD = "particle_board"
     OSB_WAFERBOARD = "osb_waferboard"
-    WOODEN_PACKAGING = "wooden_packaging"
-    PAPER_PACKAGING = "paper_packaging"
 
 class InventoryPolicy(Enum):
     PUSH = "push"
@@ -60,7 +58,3 @@ class StockStrategy(Enum):
     ON_DEMAND = "on_demand"
     REORDER_90 = "reorder_90"
     REORDER_50 = "reorder_50"
-
-class LayoutType(Enum):
-    MONOLITHIC = "monolithic"
-    SPLINTERED = "splintered"

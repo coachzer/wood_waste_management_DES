@@ -6,6 +6,7 @@ from core.generator_utils import (
     handle_overflow,
     generate_waste_for_period,
 )
+from core.kanban_manager import KanbanManager
 
 from models.enums import StockStrategy
 
@@ -58,9 +59,7 @@ class WasteGenerator(OperationalEntity):
         self.waste_monitor = waste_monitor
         if waste_monitor is None:
             raise ValueError("waste_monitor is required for WasteGenerator")
-
-        # KanbanManager for pull logic
-        from core.kanban_manager import KanbanManager
+        
         self.kanban_manager = kanban_manager or KanbanManager()
 
         # Track total generation efficiently
@@ -132,22 +131,22 @@ class WasteGenerator(OperationalEntity):
 
     def _process_full_stock(self, current_time, seasonal_factor):
         available_storage = self.waste_storage_capacity - self.current_storage
-        if available_storage <= 0:
-            
+
+        available_storage, self.current_storage, self.history_index = generate_waste_for_period(
+            self.name, self.status, self.uncertainty_set,
+            self.waste_generation_rates, self.region, self.waste_streams,
+            self.total_generated, self.generation_history, self.history_index,
+            self.current_storage, self.rng, seasonal_factor, available_storage,
+            current_time
+        )
+
+        if self.current_storage > self.waste_storage_capacity:
             self.current_storage = handle_overflow(
                 self.env, self.current_storage, self.waste_storage_capacity,
                 self.waste_streams, self.region, self.waste_monitor,
                 self
             )
             self._kanban_signal(current_time, 10)
-        else:
-            available_storage, self.current_storage, self.history_index = generate_waste_for_period(
-                self.name, self.status, self.uncertainty_set,
-                self.waste_generation_rates, self.region, self.waste_streams,
-                self.total_generated, self.generation_history, self.history_index,
-                self.current_storage, self.rng, seasonal_factor, available_storage,
-                current_time
-            )
 
     def _process_on_demand(self, current_time, seasonal_factor):
 

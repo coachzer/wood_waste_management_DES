@@ -1,15 +1,8 @@
-from typing import List, Optional, Dict
+from typing import List, Dict
 from models.enums import WasteType
-from models.data_classes import Vehicle, OperationalEntity
+from models.data_classes import OperationalEntity
 from models.state import SimulationState
-from models.distances import get_distance
 from utils.capacity_utils import apply_capacity_constraints, handle_overflow_with_decision
-
-def get_available_vehicle(vehicles: List[Vehicle]) -> Optional[Vehicle]:
-    """Get first available vehicle"""
-    return next(
-        (v for v in vehicles if not v.in_transit and v.current_load == 0 and v.destination is None), None
-    )
 
 def handle_completed_transport(transport: Dict, current_time: float) -> None:
     """Process a completed transport"""
@@ -112,10 +105,11 @@ def handle_collector_capacity(
                 collector2.region
             )
             collector2.waste_monitor.track_overflow(
-                "collector",
-                result.overflow_amount,
-                strategy,
-                collector2.env.now
+                facility_type="collector",
+                volume=result.overflow_amount,
+                strategy=strategy,
+                timestamp=collector2.env.now,
+                region=collector2.region
             )
 
 def get_prioritized_generators() -> List:
@@ -128,54 +122,3 @@ def get_prioritized_generators() -> List:
     ]
     return regional_generators
 
-def collect_from_single_generator(
-    collector: OperationalEntity,
-    generator,
-    required_amount: float,
-    total_collected: float,
-    collected_amounts: Dict[WasteType, float],
-) -> float:
-    """Collect waste from a single generator based on demand"""
-    active_streams = {
-        waste_type: stream
-        for waste_type, stream in generator.waste_streams.items()
-        if stream.volume > 0 and total_collected < required_amount
-    }
-
-    for waste_type, stream in active_streams.items():
-        # First check collection capacity
-        collection_result = apply_capacity_constraints(
-            current_total=total_collected,
-            additional_amount=min(
-                stream.volume,
-                collector.collection_capacity * collector.efficiency
-            ),
-            capacity=required_amount
-        )
-
-        if collection_result.allowed_amount > 0:
-            # Update generator
-            stream.volume -= collection_result.allowed_amount
-            generator.current_storage -= collection_result.allowed_amount
-
-            SimulationState.get_instance().track_waste_collection(
-                generator.region, waste_type, collection_result.allowed_amount
-            )
-
-            collected_amounts[waste_type] += collection_result.allowed_amount
-            total_collected += collection_result.allowed_amount
-
-            if collection_result.overflow_amount > 0:
-                _, strategy = handle_overflow_with_decision(
-                    collector,
-                    collection_result.overflow_amount,
-                    collector.region
-                )
-                collector.waste_monitor.track_overflow(
-                    "collector",
-                    collection_result.overflow_amount,
-                    strategy,
-                    collector.env.now
-                )
-
-    return total_collected

@@ -1,4 +1,6 @@
+from xml.dom.minidom import Entity
 import numpy as np
+from models.enums import EntityStatus
 from models.state import SimulationState
 from utils.capacity_utils import apply_capacity_constraints, apply_partial_update_with_constraints, handle_overflow_with_decision
 
@@ -58,10 +60,10 @@ def handle_overflow(env, current_storage, waste_storage_capacity, waste_streams,
             region
         )
         waste_monitor.track_overflow(
-            "generator",
-            result.overflow_amount,
-            strategy,
-            env.now,
+            facility_type="generator",
+            volume=result.overflow_amount,
+            strategy=strategy,
+            timestamp=env.now,
             region=region
         )
         # Track waste removal and update waste streams
@@ -85,7 +87,7 @@ def generate_waste_for_period(
     """Generate waste for all waste types in one period"""
     # Check for failure first
     if uncertainty_set:
-        if status == "FAILED":
+        if status == EntityStatus.FAILED:
             print(f"{current_time}: Generator {name} is currently failed, skipping waste generation")
             return available_storage, current_storage, history_index
 

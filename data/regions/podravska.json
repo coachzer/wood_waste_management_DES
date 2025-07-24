@@ -68,7 +68,6 @@
         {
             "id": "proc_podravska",
             "input_types": [
-                "wood_cuttings",
                 "03 01 99",
                 "03 01 01",
                 "03 01 05",
@@ -86,7 +85,7 @@
             "energy_consumption": 100.0,
             "environmental_impact": 1.0,
             "conversion_rate": 1.0,
-            "operational_costs": 200.0
+            "operational_costs": 260.0
         }
     ]
 }

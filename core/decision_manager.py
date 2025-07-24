@@ -2,12 +2,12 @@ from typing import Dict, Tuple
 from enum import Enum
 from config.base_config import LANDILL_EMISSIONS_PER_M3
 
-class OverflowStrategy(Enum):
+class DecisionStrategy(Enum):
     """Available strategies for handling overflow."""
-    LANDFILL = "landfill"  # Default - sends to landfill with penalty
-    EXPAND_STORAGE = "expand_storage"  # Increase storage capacity at a cost
+    LANDFILL = "landfill"  
+    EXPAND_STORAGE = "expand_storage"  
 
-class OverflowTracker:
+class DecisionTracker:
     """Central manager for tracking overflow and calculating penalties."""
 
     def __init__(self):
@@ -19,16 +19,15 @@ class OverflowTracker:
         self.total_landfilled: float = 0.0
         self.total_landfill_emissions: float = 0.0
         self.LANDILL_EMISSIONS_PER_M3 = LANDILL_EMISSIONS_PER_M3
-        self.base_penalty_rate: float = 100.0  # Base penalty per unit of overflow
-        self.storage_expansion_cost: float = 250.0  # Cost per unit of storage expansion
-
-        # Track cumulative costs by strategy
+        self.base_penalty_rate: float = 100.0  
+        self.storage_expansion_cost: float = 250.0  
         self.strategy_costs: Dict[str, float] = {
             "landfill_penalties": 0.0,
             "storage_expansion": 0.0
         }
+        self.overflow_timeline = []
 
-    def track_overflow(self, facility_type: str, volume: float, strategy: OverflowStrategy = OverflowStrategy.LANDFILL, region=None) -> Tuple[float, str]:
+    def track_overflow(self, facility_type: str, volume: float, strategy: DecisionStrategy = DecisionStrategy.LANDFILL, region=None, timestamp=None) -> Tuple[float, str]:
         """
         Tracks overflow volume and handles it according to the specified strategy, with region info.
         Returns: (cost, message) tuple with the cost incurred and status message.
@@ -43,14 +42,22 @@ class OverflowTracker:
             self.overflow_region_history[facility_type] = []
         self.overflow_region_history[facility_type].append({
             "volume": volume,
-            "strategy": strategy.value if isinstance(strategy, OverflowStrategy) else str(strategy),
+            "strategy": strategy.value if isinstance(strategy, DecisionStrategy) else str(strategy),
             "region": region
         })
 
+        self.overflow_timeline.append({
+            'timestamp': timestamp or 0,
+            'facility_type': facility_type,
+            'volume': volume,
+            'strategy': strategy.value if isinstance(strategy, DecisionStrategy) else str(strategy),
+            'region': region
+        })
+
         match strategy:
-            case OverflowStrategy.LANDFILL:
+            case DecisionStrategy.LANDFILL:
                 return self._handle_landfill(facility_type, volume)
-            case OverflowStrategy.EXPAND_STORAGE:
+            case DecisionStrategy.EXPAND_STORAGE:
                 return self._handle_storage_expansion(volume)
             case _:
                 raise ValueError(f"Unknown strategy: {strategy}")
@@ -81,9 +88,9 @@ class OverflowTracker:
 
     def _determine_severity(self, volume: float) -> str:
         """Determine overflow severity based on volume."""
-        if volume <= 10.0:
+        if volume <= 100.0:
             return "warning"
-        elif volume <= 30.0:
+        elif volume <= 300.0:
             return "critical"
         else:
             return "emergency"
@@ -111,15 +118,18 @@ class OverflowTracker:
     def get_strategy_costs(self) -> Dict[str, float]:
         """Get cumulative costs for each overflow handling strategy."""
         return dict(self.strategy_costs)
-
+            
     def get_overflow_statistics(self) -> Dict[str, float]:
-        """Get comprehensive overflow statistics, including region info if available."""
+        """Overflow statistics"""
         stats = {
             "total_landfilled": self.total_landfilled,
             "total_landfill_emissions": self.total_landfill_emissions,
             "total_penalties": self.strategy_costs["landfill_penalties"],
             "total_expansion_costs": self.strategy_costs["storage_expansion"],
-            "total_cost": sum(self.strategy_costs.values())
+            "total_cost": sum(self.strategy_costs.values()),
+            "landfill_history": self.landfill_history,
+            "strategy_costs": self.strategy_costs,
+            "overflow_timeline": self.overflow_timeline  
         }
         if hasattr(self, "overflow_region_history"):
             stats["overflow_region_history"] = self.overflow_region_history

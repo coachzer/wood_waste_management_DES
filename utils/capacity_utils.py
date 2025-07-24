@@ -1,9 +1,8 @@
 from config.base_config import get_cost_params
-from core.overflow import OverflowTracker, OverflowStrategy
+from core.decision_manager import DecisionTracker, DecisionStrategy
 from typing import Dict, Tuple, Optional, TypeVar
 from dataclasses import dataclass
 from models.enums import WasteType
-import sys
 
 @dataclass
 class CapacityResult:
@@ -117,29 +116,31 @@ def handle_overflow_with_decision(entity, volume, region):
     landfill_cost = volume * config.landfill_per_m3
 
     
-    tracker = OverflowTracker()
+    tracker = DecisionTracker()
     FIXED_EXPANSION_AMOUNT = 10000.0
     # Only expand storage if entity is not None
     if entity is not None and expansion_cost < landfill_cost:
         cost, _ = tracker.track_overflow(
             facility_type=getattr(entity, 'facility_type', 'generator'),
             volume=FIXED_EXPANSION_AMOUNT,
-            strategy=OverflowStrategy.EXPAND_STORAGE,
+            strategy=DecisionStrategy.EXPAND_STORAGE,
             region=region
         )
         entity.waste_storage_capacity += FIXED_EXPANSION_AMOUNT
-        # Note: Expansion costs are tracked both per entity (here) and globally in OverflowTracker
+        # Note: Expansion costs are tracked both per entity (here) and globally in DecisionTracker
         entity.expansion_costs = getattr(entity, 'expansion_costs', 0) + cost
         entity.expansion_count = expansion_count + 1
+        print(f"[STORAGE EXPANSION] {entity.name} expanded storage by {FIXED_EXPANSION_AMOUNT} m3. New capacity: {entity.waste_storage_capacity} m3")
         return cost, "expand_storage"
     else:
         # Send to landfill using tracker
         cost, _ = tracker.track_overflow(
             facility_type=getattr(entity, 'facility_type', 'generator') if entity is not None else 'generator',
             volume=volume,
-            strategy=OverflowStrategy.LANDFILL,
+            strategy=DecisionStrategy.LANDFILL,
             region=region
         )
+        print(f"[LANDFILL] {volume} m3 sent to landfill from {getattr(entity, 'name', 'unknown entity') if entity else 'unknown entity'}")
         return cost, "landfill"
 
 def check_storage_capacity(

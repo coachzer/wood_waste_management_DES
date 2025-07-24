@@ -28,7 +28,7 @@ class OperationalEntity:
         self.recovery_time = None
         self.downtime_duration = 24.0  # Default 24 days recovery time
         self.last_failure_check = 0.0
-        self.failure_check_interval = 24.0  # Check for failures once per day by default
+        self.failure_check_interval = 1.0  # Check for failures once per day by default
     
     def check_failure(self, current_time: float, failure_probability: float) -> bool:
         """Check if entity experiences a failure"""
