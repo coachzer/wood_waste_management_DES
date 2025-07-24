@@ -21,20 +21,20 @@ class SimulationState:
             # Initialize product tracking with values from demand.json
             demand = _demand_data["national_demand"]
             cls._instance.total_products = {
-                'mdf_fibreboard': 0,
+                'mdf': 0,
                 'particle_board': 0,
-                'osb_waferboard': 0
+                'osb': 0
             }
             cls._instance.target_demands = {
-                'mdf_fibreboard': demand["mdf_fibreboard"],
+                'mdf': demand["mdf"],
                 'particle_board': demand["particle_board"],
-                'osb_waferboard': demand["osb_waferboard"]
+                'osb': demand["osb"]
             }
             # Track when each demand was met
             cls._instance.demand_met_times = {
-                'mdf_fibreboard': None,
+                'mdf': None,
                 'particle_board': None,
-                'osb_waferboard': None
+                'osb': None
             }
         return cls._instance
 
@@ -121,18 +121,18 @@ class SimulationState:
         # Reset product tracking with values from demand.json
         demand = _demand_data["national_demand"]
         self.total_products = {
-            'mdf_fibreboard': 0,
+            'mdf': 0,
             'particle_board': 0,
-            'osb_waferboard': 0
+            'osb': 0
         }
         self.target_demands = {
-            'mdf_fibreboard': demand["mdf_fibreboard"],
+            'mdf': demand["mdf"],
             'particle_board': demand["particle_board"],
-            'osb_waferboard': demand["osb_waferboard"]
+            'osb': demand["osb"]
         }
         # Reset demand met times
         self.demand_met_times = {
-            'mdf_fibreboard': None,
+            'mdf': None,
             'particle_board': None,
-            'osb_waferboard': None
+            'osb': None
         }

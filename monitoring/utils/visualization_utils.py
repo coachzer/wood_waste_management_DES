@@ -35,44 +35,32 @@ def extract_storage_data(history: Dict, metric: str) -> Dict:
     }
 
 def extract_collection_storage_data(history: Dict) -> Dict:
-    """Extract collection center storage data"""
-    entities = list(history.keys())
-    if not entities:
-        return {'x_values': [], 'y_values': [], 'z_values': []}
-    
-    all_timestamps = []
-    for entity_data in history.values():
-        if 'timestamps' in entity_data:
-            all_timestamps.extend(entity_data['timestamps'])
-    
-    if not all_timestamps:
-        return {'x_values': [], 'y_values': [], 'z_values': []}
-    
-    time_range = np.linspace(min(all_timestamps), max(all_timestamps), 50)
-    z_matrix = []
-    
-    for entity in entities:
-        entity_data = history[entity]
-        if 'collected_volumes' in entity_data:
-            timestamps = entity_data['timestamps']
-            total_volumes = []
-            for _ in timestamps:
-                total = sum(sum(volumes) if isinstance(volumes, list) else volumes 
-                          for volumes in entity_data['collected_volumes'].values())
-                total_volumes.append(min(total / 1000 * 100, 100))  # Normalize to percentage
-            
-            if total_volumes:
-                interpolated = np.interp(time_range, timestamps, total_volumes)
-                z_matrix.append(interpolated)
+    """Extract collection center storage data for heatmap"""
+    collectors = list(history.keys())
+    timestamps = []
+    z_values = []
+
+    for collector_history in history.values():
+        timestamps.extend(collector_history.get('timestamps', []))
+    timestamps = sorted(set(timestamps))
+
+    for collector in collectors:
+        collector_history = history[collector]
+        collector_values = []
+        for ts in timestamps:
+            if ts in collector_history.get('timestamps', []):
+                idx = collector_history['timestamps'].index(ts)
+                collector_values.append(
+                    collector_history.get('storage_utilization', [0]*len(collector_history['timestamps']))[idx]
+                )
             else:
-                z_matrix.append(np.zeros(len(time_range)))
-        else:
-            z_matrix.append(np.zeros(len(time_range)))
-    
+                collector_values.append(0)
+        z_values.append(collector_values)
+
     return {
-        'x_values': time_range,
-        'y_values': entities,
-        'z_values': z_matrix
+        'z_values': z_values,
+        'x_values': timestamps,
+        'y_values': collectors
     }
 
 def extract_processing_storage_data(history: Dict) -> Dict:
@@ -181,6 +169,30 @@ def aggregate_generation_data(history: Dict) -> Dict:
         'volumes': [all_data[t] for t in sorted_times]
     }
 
+def aggregate_collection_data(history: Dict) -> Dict:
+    """Aggregate collection data across all collectors"""
+    all_timestamps = set()
+    all_data = {}
+    
+    for collector_data in history.values():
+        timestamps = collector_data.get('timestamps', [])
+        collected_volumes = collector_data.get('collected_volumes', {})
+        
+        # For each waste type, aggregate the volumes
+        for _, volumes in collected_volumes.items():
+            if len(timestamps) == len(volumes):
+                for t, v in zip(timestamps, volumes):
+                    all_timestamps.add(t)
+                    if t not in all_data:
+                        all_data[t] = 0
+                    all_data[t] += v
+    
+    sorted_times = sorted(all_timestamps)
+    return {
+        'timestamps': sorted_times,
+        'volumes': [all_data[t] for t in sorted_times]
+    }
+
 def calculate_average_efficiency(history: Dict) -> Dict:
     """Calculate average collection efficiency over time"""
     time_efficiency = {}
@@ -191,32 +203,33 @@ def calculate_average_efficiency(history: Dict) -> Dict:
             if t not in time_efficiency:
                 time_efficiency[t] = []
             time_efficiency[t].append(e)
+
     sorted_times = sorted(time_efficiency.keys())
-    avg_efficiency = [np.mean(time_efficiency[t]) for t in sorted_times]
+
+    avg_efficiency = [np.mean(time_efficiency[t]) if time_efficiency[t] else 0 for t in sorted_times]
+    
     return {
         'timestamps': sorted_times,
         'efficiency': avg_efficiency
     }
 
-def calculate_processing_throughput(history: Dict) -> Dict:
-    """Calculate cumulative processing throughput"""
-    time_throughput = {}
+def calculate_storage_levels(history: Dict) -> Dict:
+    """Calculate total storage levels at each timestamp"""
+    time_storage = {}
     for _, data in history.items():
         timestamps = data.get('timestamps', [])
-        processed_total = data.get('processed', {}).get('total', [])
-        for t, p in zip(timestamps, processed_total):
-            if t not in time_throughput:
-                time_throughput[t] = 0
-            time_throughput[t] += p
-    sorted_times = sorted(time_throughput.keys())
-    cumulative = 0
-    cumulative_processed = []
-    for t in sorted_times:
-        cumulative += time_throughput[t]
-        cumulative_processed.append(cumulative)
+        storage_total = data.get('storage', {}).get('total', [])  # Changed from 'processed'
+        for t, s in zip(timestamps, storage_total):
+            if t not in time_storage:
+                time_storage[t] = 0
+            time_storage[t] += s
+    
+    sorted_times = sorted(time_storage.keys())
+    storage_levels = [time_storage[t] for t in sorted_times]  # No cumulative calculation!
+    
     return {
         'timestamps': sorted_times,
-        'processed': cumulative_processed
+        'storage': storage_levels  # Changed from 'processed'
     }
 
 def find_pareto_front(points):

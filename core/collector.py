@@ -10,6 +10,10 @@ from typing import Optional
 from utils.capacity_utils import handle_overflow_with_decision, check_storage_capacity
 from core.kanban_manager import KanbanManager
 from core.collector_utils import (
+    calculate_efficiency_multiplier,
+    calculate_utilization,
+    filter_active_waste_streams,
+    get_adaptive_threshold,
     handle_completed_transport,
     check_completed_transports,
     handle_collector_capacity,
@@ -17,6 +21,8 @@ from core.collector_utils import (
 )
 
 class CollectorCompany(OperationalEntity):
+    """A company that collects waste from generators"""
+
     @property
     def waste_storage_capacity(self):
         """Expose collection center's waste_storage_capacity for compatibility."""
@@ -26,7 +32,15 @@ class CollectorCompany(OperationalEntity):
     def waste_storage_capacity(self, value):
         self.collection_center.waste_storage_capacity = value
     
-    """A company that collects waste from generators"""
+    @property
+    def availability(self):
+        """Map status to availability for backward compatibility"""
+        return self.status == EntityStatus.OPERATIONAL
+    
+    @availability.setter  
+    def availability(self, value):
+        """Allow setting availability for backward compatibility"""
+        self.status = EntityStatus.OPERATIONAL if value else EntityStatus.FAILED
 
     def __init__(
         self,
@@ -43,6 +57,7 @@ class CollectorCompany(OperationalEntity):
         num_vehicles: int = 3,
         vehicle_capacity: Optional[float] = None,
         uncertainty_set = None,
+        waste_monitor: Optional[WasteMonitor] = None,
         kanban_manager: KanbanManager = None,
         inventory_policy: InventoryPolicy = InventoryPolicy.PUSH,
         stock_strategy: StockStrategy = StockStrategy.REORDER_90,
@@ -92,7 +107,9 @@ class CollectorCompany(OperationalEntity):
         # Initialize waste tracking
         self.collected_waste = dict.fromkeys(WasteType, 0.0)
 
-        self.waste_monitor = WasteMonitor()
+        self.waste_monitor = waste_monitor
+        if waste_monitor is None:
+            raise ValueError("waste_monitor is required for TreatmentOperator")
 
         # Initialize RNG for collection adjustments
         self.rng = np.random.default_rng(42)  # For reproducibility
@@ -108,7 +125,7 @@ class CollectorCompany(OperationalEntity):
             
             try:
                 # Process new transport requests
-                new_transports = self.transport_manager.process_requests(current_time)
+                new_transports = self.transport_manager.process_requests(current_time) # Debugging line
                 self.active_transports.extend(new_transports)
                 
                 # Check completed transports
@@ -123,113 +140,100 @@ class CollectorCompany(OperationalEntity):
             
             yield self.env.timeout(1.0)
 
-    def check_failure(self, current_time, failure_probability):
-        """Check for failures based on probability"""
-        if self.rng.random() < failure_probability:
-            print(f"{current_time}: Collector {self.name} has failed")
-            self.status = EntityStatus.FAILED
-            self.failure_time = current_time
-            self.recovery_time = current_time + self.rng.uniform(24, 72) # Recovery time: uniform between 24 and 72 days
-            self.availability = False
+    def update_efficiency(self):
+        """Efficiency update"""
+        current_time = self.env.now
+        utilization = calculate_utilization(
+            self.collection_center.current_storage, 
+            self.collection_center.waste_storage_capacity
+        )
+        
+        kanban_signals = len(self.kanban_manager.get_signals())
+        
+        self.efficiency = calculate_efficiency_multiplier(
+            self.inventory_policy, self.stock_strategy, 
+            utilization, kanban_signals, current_time
+        )
+        
+        # Clamp efficiency
+        self.efficiency = max(0.3, min(1.2, self.efficiency))
+        
+        print(f"{current_time}: {self.name} ({self.inventory_policy.value}/{self.stock_strategy.value}) "
+            f"efficiency: {self.efficiency:.3f}, utilization: {utilization:.2f}")
 
     def collect_from_generator(self, generator):
-        """Collect waste from a generator, handling multiple waste types"""
+        """Collection method"""
         if not self.availability:
-            print(f"[DEBUG] Collector {self.name} is not available for collection.")
             return 0
 
-        # Pre-filter active waste streams, only allow collector's waste_types
-        active_streams = {
-            waste_type: stream
-            for waste_type, stream in generator.waste_streams.items()
-            if stream.volume > 0 and (waste_type in self.waste_types or (hasattr(waste_type, 'value') and waste_type.value in self.waste_types))
+        # Use utility function to filter streams
+        active_streams = filter_active_waste_streams(generator, self.waste_types)
+        
+        if not active_streams:
+            return 0
+
+        # Calculate potential collections
+        potential_collections = {
+            waste_type: min(stream.volume, self.collection_capacity * self.efficiency)
+            for waste_type, stream in active_streams.items()
         }
 
-        print(f"[DEBUG] Collector {self.name} active streams: {active_streams.keys()}")
-
-        if not active_streams:
-            print(f"[DEBUG] Collector {self.name}: No active waste streams to collect from generator {getattr(generator, 'name', str(generator))}.")
-            return 0
-
-        potential_collections = {}
-        enum_to_original = {}  
-
-        for waste_type_str, stream in active_streams.items():
-            # Convert WasteType enum to string value if needed
-            if isinstance(waste_type_str, WasteType):
-                waste_type_value = waste_type_str.value
-            else:
-                waste_type_value = waste_type_str
-
-            waste_type_enum = None
-
-            mapping = {wt.value: wt for wt in WasteType}
-            waste_type_enum = mapping.get(waste_type_value)
-            if not waste_type_enum:
-                print(f"[DEBUG] Warning: Invalid waste type {waste_type_value}")
-                continue
-
-            potential_collections[waste_type_enum] = min(
-                stream.volume,
-                self.collection_capacity * self.efficiency
-            )
-            enum_to_original[waste_type_enum] = waste_type_str
-
-        # Check storage capacity constraints
-        allowed_collections, overflow_amount = check_storage_capacity(
+        # Check capacity and handle overflow
+        allowed_collections, overflow = check_storage_capacity(
             self.collection_center.current_storage,
             potential_collections,
             self.collection_center.waste_storage_capacity
         )
 
-        if overflow_amount > 0:
-            _, strategy = handle_overflow_with_decision(
-                self,
-                overflow_amount,
-                self.region
-            )
-            self.waste_monitor.track_overflow(
-                "collector",
-                overflow_amount,
-                strategy,
-                self.env.now,
-                self.region
-            )
-            print(f"[DEBUG] Collector {self.name}: Overflow of {overflow_amount:.2f} m³ handled with strategy {strategy}.")
+        if overflow > 0:
+            self._handle_overflow(overflow)
 
-        # Process allowed collections
+        # Process collections
+        return self._process_collections(generator, active_streams, allowed_collections)
+
+    def _handle_overflow(self, overflow_amount):
+        """Handle overflow situation"""
+        _, strategy = handle_overflow_with_decision(self, overflow_amount, self.region)
+        self.waste_monitor.track_overflow(
+            "collector", 
+            overflow_amount, 
+            strategy, 
+            self.env.now, 
+            self.region
+        )
+
+    def _process_collections(self, generator, active_streams, allowed_collections):
+        """Process the actual waste collections"""
         total_collected = 0.0
-        for waste_type_enum, amount in allowed_collections.items():
-            if amount > 0:
-                original_type = enum_to_original[waste_type_enum]
-                # Update generator's waste stream using original string key
-                active_streams[original_type].volume -= amount
-                generator.current_storage -= amount
-
-                # Track waste removal from generator's region
-                SimulationState.get_instance().track_waste_collection(
-                    generator.region, waste_type_enum, amount
-                )
-
-                # Update collection center storage and tracking
-                self.collection_center.current_storage[waste_type_enum] += amount
-                self.collected_waste[waste_type_enum] += amount
-
-                # Track waste addition to collector's region
-                SimulationState.get_instance().track_waste_generation(
-                    self.region, waste_type_enum, amount
-                )
-
-                total_collected += amount
-                print(f"[DEBUG] Collector {self.name} collected {amount:.2f} m³ of {waste_type_enum.value} from generator {getattr(generator, 'name', str(generator))}.")
+        
+        for waste_type, amount in allowed_collections.items():
+            if amount <= 0:
+                continue
+                
+            # Find corresponding stream
+            stream = active_streams[waste_type]
+            
+            # Update volumes
+            stream.volume -= amount
+            generator.current_storage -= amount
+            self.collection_center.current_storage[waste_type] += amount
+            self.collected_waste[waste_type] += amount
+            
+            # Track state changes
+            SimulationState.get_instance().track_waste_collection(
+                generator.region, waste_type, amount
+            )
+            SimulationState.get_instance().track_waste_generation(
+                self.region, waste_type, amount
+            )
+            
+            total_collected += amount
 
         if total_collected > 0:
-            generator.mark_collected()
-            print(f"[DEBUG] Collector {self.name} finished collection from generator {getattr(generator, 'name', str(generator))}. Total collected: {total_collected:.2f} m³.")
             return self.transport_cost + (0.1 * total_collected)
-        print(f"[DEBUG] Collector {self.name}: No waste collected from generator {getattr(generator, 'name', str(generator))}.")
+        
         return 0
-
+        
     def collect_with_collaboration(self, generator, other_collectors):
         """Collaborative collection handling multiple waste types"""
         # Consider collection center capacities
@@ -297,17 +301,38 @@ class CollectorCompany(OperationalEntity):
             current_time = self.env.now
             print(f"{current_time}: Collector {self.name} starting collection process")
 
+            self.update_efficiency()
+
             # Check for failures if uncertainty set is available
             if self.uncertainty_set and hasattr(self.uncertainty_set, 'collector_failure'):
-                self.check_failure(current_time, self.uncertainty_set.collector_failure.probability)
+                is_failed = self.check_failure(current_time, self.uncertainty_set.collector_failure.probability)
+                
+                if is_failed and self.status == EntityStatus.FAILED:
+                    self.efficiency = 0.5  # Reduce efficiency on failure
+                elif not is_failed and self.status == EntityStatus.OPERATIONAL:
+                    if hasattr(self, '_was_failed') and self._was_failed:
+                        base_recovery = 0.8
+                        if self.inventory_policy == InventoryPolicy.PULL and self.stock_strategy == StockStrategy.ON_DEMAND:
+                            self.efficiency = base_recovery * 1.1
+                        elif self.inventory_policy == InventoryPolicy.PUSH and self.stock_strategy == StockStrategy.FULL_STOCK:
+                            self.efficiency = base_recovery * 0.9
+                        else:
+                            self.efficiency = base_recovery
+                
+                # Track previous failure state
+                self._was_failed = (self.status == EntityStatus.FAILED)
 
-            self.collection_capacity = max(
-                10, self.collection_capacity * self.efficiency
-            )
+            # Skip collection immediately if failed (before waiting)
+            if self.status == EntityStatus.FAILED:
+                print(f"{current_time}: Collector {self.name} is currently failed, skipping collection cycle")
+                yield self.env.timeout(self.collection_frequency)  # Still wait before next check
+                continue
+
+            # Apply efficiency to capacity and costs
+            self.collection_capacity = max(10, self.collection_capacity * self.efficiency)
             self.transport_cost = min(100, self.transport_cost * (2 - self.efficiency))
 
             base_timeout = self.collection_frequency
-
             if self.inventory_policy == InventoryPolicy.PULL and self.kanban_manager.get_signals():
                 print(f"{current_time}: Collector {self.name} has kanban signals, using base frequency")
                 timeout = base_timeout
@@ -317,19 +342,14 @@ class CollectorCompany(OperationalEntity):
             
             yield self.env.timeout(timeout)
 
-            # Skip collection if failed or unavailable
-            if self.status == EntityStatus.FAILED or not self.availability:
-                print(f"{current_time}: Collector {self.name} is currently failed or unavailable, skipping collection")
-                continue
+            # Check status again after timeout (entity might have failed/recovered during wait)
+            current_time = self.env.now
+            if self.uncertainty_set and hasattr(self.uncertainty_set, 'collector_failure'):
+                self.check_failure(current_time, self.uncertainty_set.collector_failure.probability)
 
-            # Check for recovery
-            if (self.status == EntityStatus.FAILED and 
-                current_time >= self.recovery_time):
-                print(f"{current_time}: Collector {self.name} has recovered from failure")
-                self.status = EntityStatus.OPERATIONAL
-                self.failure_time = None
-                self.recovery_time = None
-                self.availability = True
+            if self.status == EntityStatus.FAILED:
+                print(f"{current_time}: Collector {self.name} failed during timeout, skipping collection")
+                continue
 
             if not self.should_collect():
                 print(f"{current_time}: Collector {self.name} decided not to collect based on policy and strategy")
@@ -366,55 +386,40 @@ class CollectorCompany(OperationalEntity):
                 self.collect_from_generator(generator)
 
     def should_collect(self) -> bool:
-        current_utilization = sum(self.collection_center.current_storage.values()) / self.collection_center.waste_storage_capacity
-        
-        print(f"DEBUG: {self.name} - policy: {self.inventory_policy}, strategy: {self.stock_strategy}")
+        """Simplified collection decision with adaptive thresholds"""
+        utilization = calculate_utilization(
+            self.collection_center.current_storage,
+            self.collection_center.waste_storage_capacity
+        )
         
         if self.inventory_policy == InventoryPolicy.PULL:
             has_demand = bool(self.kanban_manager.get_signals())
-            below_reorder = self._is_below_reorder_point(current_utilization)
+            threshold = get_adaptive_threshold(self.stock_strategy, self.env.now)
+            below_threshold = utilization < threshold
             
-            print(f"DEBUG: {self.name} - PULL policy: has_demand={has_demand}, below_reorder={below_reorder}, utilization={current_utilization}")
-            print(f"DEBUG: {self.name} - should_collect result: {has_demand or below_reorder}")
+            # print(f"DEBUG: {self.name} - PULL: demand={has_demand}, "
+            #     f"utilization={utilization:.3f} < {threshold:.3f} = {below_threshold}")
             
-            return has_demand or below_reorder
+            return has_demand or below_threshold
         
         elif self.inventory_policy == InventoryPolicy.PUSH:
-            should_restock = self._should_restock(current_utilization)
-            print(f"DEBUG: {self.name} - PUSH policy: should_restock={should_restock}, utilization={current_utilization}")
+            threshold = get_adaptive_threshold(self.stock_strategy, self.env.now)
+            should_restock = utilization < threshold
+            
+            # print(f"DEBUG: {self.name} - PUSH: utilization={utilization:.3f} < {threshold:.3f} = {should_restock}")
             return should_restock
         
-        print(f"DEBUG: {self.name} - no policy matched, returning False")
-        return False
-    
-    def _is_below_reorder_point(self, utilization: float) -> bool:
-        """Check if we're below the reorder threshold"""
-        if self.stock_strategy == StockStrategy.REORDER_90:
-            return utilization < 0.90
-        elif self.stock_strategy == StockStrategy.REORDER_50:
-            return utilization < 0.50
-        elif self.stock_strategy == StockStrategy.ON_DEMAND:
-            return utilization < 0.10
-        elif self.stock_strategy == StockStrategy.FULL_STOCK:
-            return utilization < 0.95  
-        return False
-
-    def _should_restock(self, utilization: float) -> bool:
-        """Check if we should restock (for PUSH policy)"""
-        if self.stock_strategy == StockStrategy.FULL_STOCK:
-            return utilization < 0.95  # Keep nearly full
-        elif self.stock_strategy == StockStrategy.REORDER_90:
-            return utilization < 0.90
-        elif self.stock_strategy == StockStrategy.REORDER_50:
-            return utilization < 0.50
-        elif self.stock_strategy == StockStrategy.ON_DEMAND:
-            return False  # Never proactively restock
         return False
 
     def transfer_waste_to_region(self, waste_type: WasteType, volume: float, destination: RegionType) -> bool:
         """Updated method using point-to-point transport"""
         if volume <= 0:
             print(f"{self.env.now}: {self.name} attempted to transfer zero or negative volume of {waste_type.value}")
+            return False
+            
+        # Check if we have enough waste in storage
+        if self.collection_center.current_storage[waste_type] < volume:
+            print(f"{self.env.now}: {self.name} insufficient waste in storage for transport request")
             return False
         
         # Create transport request
@@ -429,16 +434,17 @@ class CollectorCompany(OperationalEntity):
         )
         
         # Submit request to transport manager
+        print(f"{self.env.now}: {self.name} requesting transport of {volume:.2f} m³ {waste_type.value} to {destination.value}")
         success = self.transport_manager.request_transport(request)
         
         if success:
             # Remove from our storage immediately (it's now "in transit")
-            if self.collection_center.current_storage[waste_type] >= volume:
-                self.collection_center.current_storage[waste_type] -= volume
-                print(f"{self.env.now}: {self.name} scheduled transport of {volume:.2f} m³ {waste_type.value}")
-                return True
-        
-        return False
+            self.collection_center.current_storage[waste_type] -= volume
+            print(f"{self.env.now}: {self.name} scheduled transport of {volume:.2f} m³ {waste_type.value}")
+            return True
+        else:
+            print(f"{self.env.now}: {self.name} transport request failed")
+            return False
 
     def _unified_collection_strategy(self, prioritized_generators: List) -> float:
         """Unified collection strategy that considers both efficiency and collaboration"""
@@ -493,13 +499,13 @@ class CollectorCompany(OperationalEntity):
                 provided_waste[waste_type] = provided_waste.get(waste_type, 0) + transfer_amount
                 remaining_request -= transfer_amount
                 
-                print(f"Transferred {transfer_amount:.2f} m³ of {waste_type} from storage")
+                # print(f"Transferred {transfer_amount:.2f} m³ of {waste_type} from storage")
         
         # If we can't fulfill the request, that's okay - treatment will have to wait
-        total_provided = sum(provided_waste.values())
-        if total_provided < requested_amount:
-            shortfall = requested_amount - total_provided
-            print(f"Collector {self.name} storage insufficient: requested {requested_amount:.2f} m³, "
-                f"provided {total_provided:.2f} m³, shortfall {shortfall:.2f} m³")
-        
+        # total_provided = sum(provided_waste.values())
+        # if total_provided < requested_amount:
+            # shortfall = requested_amount - total_provided
+            # print(f"Collector {self.name} storage insufficient: requested {requested_amount:.2f} m³, "
+            # #     f"provided {total_provided:.2f} m³, shortfall {shortfall:.2f} m³")
+
         return provided_waste

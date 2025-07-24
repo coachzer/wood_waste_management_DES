@@ -1,14 +1,13 @@
 import numpy as np
 from typing import Dict, Optional
-from models.enums import WasteType, RegionType, EntityStatus
+from models.enums import WasteType, RegionType, EntityStatus, StockStrategy
 from models.data_classes import WasteStream, OperationalEntity
+from monitoring.waste_monitor import WasteMonitor
+from core.kanban_manager import KanbanManager
 from core.generator_utils import (
     handle_overflow,
     generate_waste_for_period,
 )
-from core.kanban_manager import KanbanManager
-
-from models.enums import StockStrategy
 
 class WasteGenerator(OperationalEntity):
     def __init__(
@@ -22,8 +21,8 @@ class WasteGenerator(OperationalEntity):
         region: str,
         uncertainty_set = None,
         initial_stock: Optional[Dict[WasteType, float]] = None,
-        waste_monitor = None,
-        stock_strategy: StockStrategy = StockStrategy.FULL_STOCK,
+        waste_monitor: Optional[WasteMonitor] = None,
+        stock_strategy: StockStrategy = StockStrategy.REORDER_90,
         kanban_manager=None,
     ):
         super().__init__()
@@ -102,32 +101,58 @@ class WasteGenerator(OperationalEntity):
         while True:
             current_time = self.env.now
 
-            self._handle_failure_recovery(current_time)
+            # Check for failures if uncertainty set is available
+            if self.uncertainty_set and hasattr(self.uncertainty_set, 'generator_failure'):
+
+                self.check_failure(current_time, self.uncertainty_set.generator_failure.probability)
+                
+                # Handle generation rate changes based on current status
+                if self.status == EntityStatus.FAILED:
+                    if not hasattr(self, '_original_rates'):
+                        self._original_rates = self.waste_generation_rates.copy()  
+                    self.waste_generation_rates = {
+                        waste_type: rate * 0.1  
+                        for waste_type, rate in self._original_rates.items()
+                    }
+                    print(f"{current_time}: Generator {self.name} is FAILED, minimal waste generation")
+                    
+                elif self.status == EntityStatus.RECOVERING:
+                    if hasattr(self, '_original_rates'):
+                        efficiency = self.get_operational_efficiency()
+                        self.waste_generation_rates = {
+                            waste_type: rate * efficiency  # Gradual recovery based on efficiency
+                            for waste_type, rate in self._original_rates.items()
+                        }
+                    print(f"{current_time}: Generator {self.name} is RECOVERING (efficiency: {efficiency:.2f})")
+                    
+                elif self.status == EntityStatus.OPERATIONAL:
+                    if hasattr(self, '_original_rates'):
+                        self.waste_generation_rates = self._original_rates.copy()
+                        delattr(self, '_original_rates')  # Clean up
+
+            # Skip generation entirely only if completely failed
+            if self.status == EntityStatus.FAILED:
+                yield self.env.timeout(self.generation_frequency)
+                continue
 
             season_index = int(current_time % self.seasonal_periods)
             seasonal_factor = self.seasonal_factors[season_index]
 
             strategy = self.stock_strategy
 
-            if strategy == StockStrategy.FULL_STOCK:
-                self._process_full_stock(current_time, seasonal_factor)
-            elif strategy == StockStrategy.ON_DEMAND:
-                self._process_on_demand(current_time, seasonal_factor)
-            elif strategy == StockStrategy.REORDER_90:
-                self._process_reorder(current_time, seasonal_factor, 0.9, 6)
-            elif strategy == StockStrategy.REORDER_50:
-                self._process_reorder(current_time, seasonal_factor, 0.5, 4)
+            match strategy:
+                # case StockStrategy.FULL_STOCK:
+                #     self._process_full_stock(current_time, seasonal_factor)
+                case StockStrategy.ON_DEMAND:
+                    self._process_on_demand(current_time, seasonal_factor)
+                case StockStrategy.REORDER_90:
+                    self._process_reorder(current_time, seasonal_factor, 0.9, 6)
+                    self._process_reorder(current_time, seasonal_factor, 0.9, 6)
+                case StockStrategy.REORDER_50:
+                    self._process_reorder(current_time, seasonal_factor, 0.5, 4)
 
             self.history_index += 1
             yield self.env.timeout(self.generation_frequency)
-
-    def _handle_failure_recovery(self, current_time):
-        if (self.status == EntityStatus.FAILED and 
-            current_time >= self.recovery_time):
-            print(f"{current_time}: Generator {self.name} has recovered from failure")
-            self.status = EntityStatus.OPERATIONAL
-            self.failure_time = None
-            self.recovery_time = None
 
     def _process_full_stock(self, current_time, seasonal_factor):
         available_storage = self.waste_storage_capacity - self.current_storage
@@ -149,13 +174,10 @@ class WasteGenerator(OperationalEntity):
             self._kanban_signal(current_time, 10)
 
     def _process_on_demand(self, current_time, seasonal_factor):
-
         available_storage = self.waste_storage_capacity - self.current_storage
-
         demand = sum(self.waste_generation_rates.values())
         
         if available_storage < demand:
-            
             self.current_storage = handle_overflow(
                 self.env, self.current_storage, self.waste_storage_capacity,
                 self.waste_streams, self.region, self.waste_monitor,
@@ -163,31 +185,30 @@ class WasteGenerator(OperationalEntity):
             )
             self._kanban_signal(current_time, 8)
         else:
+            efficiency = self.get_operational_efficiency()  
             available_storage, self.current_storage, self.history_index = generate_waste_for_period(
                 self.name, self.status, self.uncertainty_set,
                 self.waste_generation_rates, self.region, self.waste_streams,
                 self.total_generated, self.generation_history, self.history_index,
                 self.current_storage, self.rng, seasonal_factor, available_storage,
-                current_time
+                current_time, efficiency  
             )
 
     def _process_reorder(self, current_time, seasonal_factor, threshold_ratio, priority):
-
         threshold = self.waste_storage_capacity * threshold_ratio
         
         if self.current_storage < threshold:
-
             available_storage = self.waste_storage_capacity - self.current_storage
+            efficiency = self.get_operational_efficiency()  
             
             available_storage, self.current_storage, self.history_index = generate_waste_for_period(
                 self.name, self.status, self.uncertainty_set,
                 self.waste_generation_rates, self.region, self.waste_streams,
                 self.total_generated, self.generation_history, self.history_index,
                 self.current_storage, self.rng, seasonal_factor, available_storage,
-                current_time
+                current_time, efficiency  
             )
         else:
-            
             self.current_storage = handle_overflow(
                 self.env, self.current_storage, self.waste_storage_capacity,
                 self.waste_streams, self.region, self.waste_monitor,
@@ -202,7 +223,3 @@ class WasteGenerator(OperationalEntity):
                 priority=priority,
                 timestamp=current_time
             )
-
-    def mark_collected(self):
-        """Update collection status"""
-        self.last_collected = self.env.now

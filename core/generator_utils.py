@@ -1,4 +1,3 @@
-from xml.dom.minidom import Entity
 import numpy as np
 from models.enums import EntityStatus
 from models.state import SimulationState
@@ -82,22 +81,25 @@ def handle_overflow(env, current_storage, waste_storage_capacity, waste_streams,
 def generate_waste_for_period(
     name, status, uncertainty_set, waste_generation_rates, region,
     waste_streams, total_generated, generation_history, history_index,
-    current_storage, rng, seasonal_factor, available_storage, current_time
+    current_storage, rng, seasonal_factor, available_storage, current_time,
+    efficiency=1.0  # Add efficiency parameter with default value
 ):
-    """Generate waste for all waste types in one period"""
-    # Check for failure first
+    """Generate waste for all waste types in one period with efficiency consideration"""
+    # Check for failure first - but now we handle RECOVERING status too
     if uncertainty_set:
         if status == EntityStatus.FAILED:
             print(f"{current_time}: Generator {name} is currently failed, skipping waste generation")
             return available_storage, current_storage, history_index
+        elif status == EntityStatus.RECOVERING:
+            print(f"{current_time}: Generator {name} is recovering (efficiency: {efficiency:.2f})")
 
     daily_factors = calculate_daily_factors(rng, waste_generation_rates, uncertainty_set)
 
     for (waste_type, base_rate), daily_factor in zip(
         waste_generation_rates.items(), daily_factors
     ):
-        # Calculate potential generation amount
-        potential_volume = base_rate * seasonal_factor * daily_factor
+        # Calculate potential generation amount with efficiency applied
+        potential_volume = base_rate * seasonal_factor * daily_factor * efficiency
         
         # Check capacity constraints
         result = apply_capacity_constraints(

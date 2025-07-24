@@ -15,11 +15,36 @@ class WasteMonitor:
         self.generation_history = {}
         self.collection_history = {}
         self.processing_history = {}
+        self.environmental_history = {
+            "by_entity": {
+                "generators": {},  
+                "collectors": {},
+                "treatments": {}
+            },
+            "by_impact_type": {
+                "carbon_emissions": {"values": [0.0], "timestamps": [0.0]}, # for future use
+                "water_usage": {"values": [0.0], "timestamps": [0.0]}, # for future use
+                "air_pollution": {"values": [0.0], "timestamps": [0.0]}, # for future use
+                "soil_contamination": {"values": [0.0], "timestamps": [0.0]}, # for future use
+                "impact_cost": {"values": [0.0], "timestamps": [0.0]}
+            },
+            "by_entity_type": {
+                "generators": {"values": [0.0], "timestamps": [0.0]},
+                "collectors": {"values": [0.0], "timestamps": [0.0]},
+                "treatments": {"values": [0.0], "timestamps": [0.0]}
+            }
+        }
         self.cost_history = {
-            "energy": [],
-            "processing": [],
-            "transport": [],
-            "timestamps": []
+            "by_entity": {
+                "generators": {},  
+                "collectors": {},
+                "treatments": {}
+            },
+            "by_cost_type": {
+                "energy": {"values": [0.0], "timestamps": [0.0]},
+                "processing": {"values": [0.0], "timestamps": [0.0]},
+                "transport": {"values": [0.0], "timestamps": [0.0]}
+            }
         }
         self.overflow_history = {
             "generator_overflow": {"values": [0.0], "timestamps": [0.0]},
@@ -30,6 +55,11 @@ class WasteMonitor:
             "landfill_penalties": {"values": [0.0], "timestamps": [0.0]},
             "storage_expansion": {"values": [0.0], "timestamps": [0.0]},
             "total_cost": {"values": [0.0], "timestamps": [0.0]}
+        }
+        self.entity_status_history = {
+            "generators": {},
+            "collectors": {}, 
+            "treatments": {}
         }
         
         # Create plots directory
@@ -49,12 +79,20 @@ class WasteMonitor:
         return self.processing_history
 
     @property
+    def get_environmental_history(self):
+        return self.environmental_history
+
+    @property
     def get_cost_history(self):
         return self.cost_history
 
     @property
     def get_overflow_history(self):
         return self.overflow_history
+    
+    @property
+    def get_entity_status_history(self):
+        return self.entity_status_history
 
     def track_generation(self, generator, timestamp, region=None):
         """Track waste generation events with timestamps and region info"""
@@ -64,11 +102,25 @@ class WasteMonitor:
                 "volumes": {},
                 "total_generated": {},
                 "storage_utilization": [],
-                "regions": []
+                "regions": [],
+                "status": []
             }
+
+        # Initialize entity_status_history entry if it doesn't exist
+        if generator.name not in self.entity_status_history["generators"]:
+            self.entity_status_history["generators"][generator.name] = {
+                "timestamps": [], 
+                "status": []
+            }
+
+        # Now these lines won't cause KeyError:
+        self.entity_status_history["generators"][generator.name]["timestamps"].append(timestamp)
+        self.entity_status_history["generators"][generator.name]["status"].append(generator.status.value)
+
 
         history = self.generation_history[generator.name]
         history["timestamps"].append(timestamp)
+        history["status"].append(generator.status.value) 
         history["regions"].append(region if region is not None else getattr(generator, "region", None))
 
         for waste_type, stream in generator.waste_streams.items():
@@ -94,11 +146,23 @@ class WasteMonitor:
                 "transport_costs": [],
                 "storage_utilization": [],
                 "utilization_rate": [],
-                "regions": []
+                "regions": [],
+                "status": []
             }
+
+        # Initialize entity_status_history entry if it doesn't exist
+        if collector.name not in self.entity_status_history["collectors"]:
+            self.entity_status_history["collectors"][collector.name] = {
+                "timestamps": [], 
+                "status": []
+            }
+
+        self.entity_status_history["collectors"][collector.name]["timestamps"].append(timestamp)
+        self.entity_status_history["collectors"][collector.name]["status"].append(collector.status.value)
 
         history = self.collection_history[collector.name]
         history["timestamps"].append(timestamp)
+        history["status"].append(collector.status.value)
         history["regions"].append(region if region is not None else getattr(collector, "region", None))
 
         for waste_type, amount in collector.collected_waste.items():
@@ -112,9 +176,6 @@ class WasteMonitor:
         total_storage = sum(collector.collection_center.current_storage.values())
         utilization = (total_storage / collector.collection_center.waste_storage_capacity) * 100
 
-        # print storage utilization for debugging
-        print(f"{collector.name} storage utilization at {timestamp}: {utilization:.2f}%")
-
         history["storage_utilization"].append(utilization)
 
         if len(history["storage_utilization"]) > 1:
@@ -126,14 +187,56 @@ class WasteMonitor:
         if treatment.name not in self.processing_history:
             self._initialize_treatment_history(treatment.name)
 
+        # Initialize entity_status_history entry if it doesn't exist
+        if treatment.name not in self.entity_status_history["treatments"]:
+            self.entity_status_history["treatments"][treatment.name] = {
+                "timestamps": [], 
+                "status": []
+            }
+
+        self.entity_status_history["treatments"][treatment.name]["timestamps"].append(timestamp)
+        self.entity_status_history["treatments"][treatment.name]["status"].append(treatment.status.value)
+
         history = self.processing_history[treatment.name]
         if not history["timestamps"] or timestamp > history["timestamps"][-1]:
             history["timestamps"].append(timestamp)
+            history["status"].append(treatment.status.value)
             
             self._track_storage_metrics(treatment, history)
             total_processed = self._track_processing_metrics(treatment, history)
             self._track_operational_metrics(treatment, history, total_processed)
             self._track_product_metrics(treatment, history, timestamp)
+
+    def _initialize_treatment_history(self, treatment_name):
+        """Initialize the treatment history structure"""
+        product_types = self._get_product_types()
+        self.processing_history[treatment_name] = {
+            "timestamps": [],
+            "storage": {
+                "total": [],
+                "by_type": {waste_type: [] for waste_type in WasteType},
+                "utilization": [],
+                "waste_utilization": [],
+                "product_utilization": [],
+                "product_to_sell_utilization": [],
+            },
+            "processed": {
+                "total": [],
+                "by_type": {waste_type: [] for waste_type in WasteType},
+            },
+            "products": {
+                "total": [],
+                "by_type": {ptype: [] for ptype in product_types},
+                "quality": [],
+            },
+            "operational": {
+                "energy_consumption": [],
+                "conversion_rate": [],
+                "demand": [],
+                "demand_satisfaction": [],
+            },
+            "status": []
+        }
 
     def get_overflow_statistics(self):
         """Get overflow data from DecisionTracker for visualization"""
@@ -141,27 +244,103 @@ class WasteMonitor:
             return self.decision_tracker.get_overflow_statistics()
         return {}
     
-    def track_overflow(self, facility_type: str, volume: float, strategy: str, timestamp: float, region=None):
-        """Delegate to DecisionTracker and add timestamp/region tracking"""
+    def track_overflow(self, 
+                       facility_type: str, 
+                       volume: float, 
+                       strategy: str, 
+                       timestamp: float, 
+                       region=None):
+        """Track overflow events and delegate to DecisionTracker"""
+        print(f"DEBUG: track_overflow called - {facility_type}, {volume}, {strategy}, {timestamp}")
+        
         if self.decision_tracker:
             cost, message = self.decision_tracker.track_overflow(
-                facility_type, volume, 
-                DecisionStrategy(strategy), region
+                facility_type, 
+                volume, 
+                DecisionStrategy(strategy), 
+                timestamp,
+                region
             )
-            # Store timestamp for visualization
-            self._store_timestamp_data(facility_type, volume, strategy, timestamp, region)
+            
+            # Store data for visualization in overflow_history
+            self._store_overflow_data(facility_type, volume, strategy, timestamp, cost)
+            print(f"DEBUG: Overflow tracked - Cost: {cost}, Message: {message}")
             return cost, message
-
-    def track_energy_cost(self, energy_cost: float, timestamp: float):
-        """Track energy costs incurred by treatment facilities"""
-        self.cost_history["energy"].append(energy_cost)
-        self.cost_history["timestamps"].append(timestamp)
-
-    def track_processing_cost(self, processing_cost: float, timestamp: float):
-        """Track processing costs incurred by treatment facilities"""
-        self.cost_history["processing"].append(processing_cost)
-        self.cost_history["timestamps"].append(timestamp)
         
+        raise ValueError("No decision tracker available for overflow tracking")
+        return 0.0, "No decision tracker available"
+
+    def _store_overflow_data(self, facility_type: str, volume: float, strategy: str, timestamp: float, cost: float):
+        """Store overflow data for visualization and analysis"""
+        # Map facility types to overflow history keys
+        facility_mapping = {
+            "generator": "generator_overflow",
+            "collector": "collector_overflow", 
+            "treatment": "treatment_overflow"
+        }
+        
+        # Update the appropriate overflow category
+        if facility_type in facility_mapping:
+            key = facility_mapping[facility_type]
+            if key in self.overflow_history:
+                self.overflow_history[key]["values"].append(volume)
+                self.overflow_history[key]["timestamps"].append(timestamp)
+        
+        # Update strategy-specific costs
+        if strategy == "landfill":
+            self.overflow_history["landfill_usage"]["values"].append(volume)
+            self.overflow_history["landfill_usage"]["timestamps"].append(timestamp)
+            self.overflow_history["landfill_penalties"]["values"].append(cost)
+            self.overflow_history["landfill_penalties"]["timestamps"].append(timestamp)
+        elif strategy == "expand_storage":
+            self.overflow_history["storage_expansion"]["values"].append(cost)
+            self.overflow_history["storage_expansion"]["timestamps"].append(timestamp)
+        
+        # Update total cost tracking
+        current_total = self.overflow_history["total_cost"]["values"][-1] if self.overflow_history["total_cost"]["values"] else 0.0
+        self.overflow_history["total_cost"]["values"].append(current_total + cost)
+        self.overflow_history["total_cost"]["timestamps"].append(timestamp)
+
+
+    def track_cost(self, entity_name: str, entity_type: str, cost_value: float, 
+                cost_type: str, timestamp: float):
+        """Track any type of cost for any entity type"""
+        # Initialize entity tracking if it doesn't exist
+        if entity_name not in self.cost_history["by_entity"][entity_type]:
+            self.cost_history["by_entity"][entity_type][entity_name] = {
+                "energy": {"values": [], "timestamps": []},
+                "processing": {"values": [], "timestamps": []},
+                "transport": {"values": [], "timestamps": []}
+            }
+        
+        # Track for specific entity
+        self.cost_history["by_entity"][entity_type][entity_name][cost_type]["values"].append(cost_value)
+        self.cost_history["by_entity"][entity_type][entity_name][cost_type]["timestamps"].append(timestamp)
+
+        # Track for cost type
+        self.cost_history["by_cost_type"][cost_type]["values"].append(cost_value)
+        self.cost_history["by_cost_type"][cost_type]["timestamps"].append(timestamp)
+
+    def track_environmental_impact(self, entity_name: str, entity_type: str, 
+                                environmental_impact: float, timestamp: float, 
+                                impact_category: str = "impact_cost"):
+        """Track environmental impact for any entity type"""
+        
+        # Initialize entity tracking if it doesn't exist
+        if entity_name not in self.environmental_history["by_entity"][entity_type]:
+            self.environmental_history["by_entity"][entity_type][entity_name] = {
+                "carbon_emissions": {"values": [], "timestamps": []}, 
+                "water_usage": {"values": [], "timestamps": []},
+                "air_pollution": {"values": [], "timestamps": []},
+                "soil_contamination": {"values": [], "timestamps": []},
+                "impact_cost": {"values": [], "timestamps": []}
+            }
+        
+        # Track for specific entity
+        entity_history = self.environmental_history["by_entity"][entity_type][entity_name]
+        entity_history[impact_category]["values"].append(environmental_impact)
+        entity_history[impact_category]["timestamps"].append(timestamp)
+
     def track_transport_cost(self, cost: float, timestamp: float):
         """Track transportation costs"""
         self.cost_history["transport"].append(cost)
@@ -209,40 +388,10 @@ class WasteMonitor:
             for treatment in treatment_operators:
                 self.track_processing(treatment, self.env.now)
                 
-            if self.env.now == SIMULATION_DURATION - 1:
+            if self.env.now == SIMULATION_DURATION:
                 print(self.generate_summary_report())
                 
             yield self.env.timeout(1)
-
-    def _initialize_treatment_history(self, treatment_name):
-        """Initialize the treatment history structure"""
-        product_types = self._get_product_types()
-        self.processing_history[treatment_name] = {
-            "timestamps": [],
-            "storage": {
-                "total": [],
-                "by_type": {waste_type: [] for waste_type in WasteType},
-                "utilization": [],
-                "waste_utilization": [],
-                "product_utilization": [],
-                "product_to_sell_utilization": [],
-            },
-            "processed": {
-                "total": [],
-                "by_type": {waste_type: [] for waste_type in WasteType},
-            },
-            "products": {
-                "total": [],
-                "by_type": {ptype: [] for ptype in product_types},
-                "quality": [],
-            },
-            "operational": {
-                "energy_consumption": [],
-                "conversion_rate": [],
-                "demand": [],
-                "demand_satisfaction": [],
-            },
-        }
 
     def _track_storage_metrics(self, treatment, history):
         """Track storage-related metrics"""

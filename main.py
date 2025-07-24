@@ -3,15 +3,17 @@ from core.simulation_manager import SimulationManager
 from models.enums import InventoryPolicy, StockStrategy
 from monitoring.mfa_visualization import create_material_flow_analysis
 from monitoring.scenario_comparison import ScenarioComparison
+import traceback
 
 def extract_monitor_data(monitor):
     """Extract all relevant data from the monitor"""
     return {
-        'generation_history': monitor.get_generation_history, 
+        'generation_history': monitor.get_generation_history,
         'collection_history': monitor.get_collection_history,
         'processing_history': monitor.get_processing_history,
         'cost_history': monitor.get_cost_history,
-        'overflow_history': monitor.get_overflow_history
+        'overflow_history': monitor.get_overflow_history,
+        'entity_status_history': monitor.get_entity_status_history
     }
 
 def main():
@@ -20,6 +22,13 @@ def main():
 
     scenarios = list_available_scenarios()
     print(f"Available scenarios: {scenarios}")
+
+    inventory_policies = list(InventoryPolicy)
+    print(f"Available inventory policies: {inventory_policies}")
+
+    stock_strategies = list(StockStrategy)
+    print(f"Available stock strategies: {stock_strategies}")
+
     
     for scenario_name in scenarios:
         print(f"\n{'='*60}")
@@ -65,10 +74,8 @@ def main():
                     })
 
                 except Exception as e:
-                    print(f"Error running scenario {scenario_name} with {inventory_policy.value}, {stock_strategy.value}: {e}")
-                    import traceback
                     traceback.print_exc()
-                    continue
+                    raise SystemExit(f"Simulation failed for scenario {scenario_name} with {inventory_policy.value}, {stock_strategy.value}") from e
     
     # Create comparison object AFTER all results are collected
     print(f"\n{'='*60}")

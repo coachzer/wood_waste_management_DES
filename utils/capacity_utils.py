@@ -124,8 +124,11 @@ def handle_overflow_with_decision(entity, volume, region):
             facility_type=getattr(entity, 'facility_type', 'generator'),
             volume=FIXED_EXPANSION_AMOUNT,
             strategy=DecisionStrategy.EXPAND_STORAGE,
+            timestamp=entity.env.now if hasattr(entity, 'env') else None,
             region=region
         )
+        # capacity before expanding
+        print(f"[STORAGE EXPANSION] {entity.name}, with storage capacity {entity.waste_storage_capacity} m3, expanding by {FIXED_EXPANSION_AMOUNT} m3")
         entity.waste_storage_capacity += FIXED_EXPANSION_AMOUNT
         # Note: Expansion costs are tracked both per entity (here) and globally in DecisionTracker
         entity.expansion_costs = getattr(entity, 'expansion_costs', 0) + cost
@@ -138,6 +141,7 @@ def handle_overflow_with_decision(entity, volume, region):
             facility_type=getattr(entity, 'facility_type', 'generator') if entity is not None else 'generator',
             volume=volume,
             strategy=DecisionStrategy.LANDFILL,
+            timestamp=entity.env.now if hasattr(entity, 'env') else None,
             region=region
         )
         print(f"[LANDFILL] {volume} m3 sent to landfill from {getattr(entity, 'name', 'unknown entity') if entity else 'unknown entity'}")

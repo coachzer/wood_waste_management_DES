@@ -74,9 +74,9 @@
                 "02 01 07"
             ],
             "output_types": [
-                "mdf_fibreboard",
+                "mdf",
                 "particle_board",
-                "osb_waferboard"
+                "osb"
             ],
             "processing_capacity": 5000,
             "processing_time": 24,

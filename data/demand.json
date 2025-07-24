@@ -1,7 +1,7 @@
 {
     "national_demand": {
         "particle_board": 40000,
-        "osb_waferboard": 30000,
-        "mdf_fibreboard": 20000
+        "osb": 30000,
+        "mdf": 20000
     }
 }

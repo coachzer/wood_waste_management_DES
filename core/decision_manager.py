@@ -27,13 +27,35 @@ class DecisionTracker:
         }
         self.overflow_timeline = []
 
-    def track_overflow(self, facility_type: str, volume: float, strategy: DecisionStrategy = DecisionStrategy.LANDFILL, region=None, timestamp=None) -> Tuple[float, str]:
+    def track_overflow(self, 
+                       facility_type: str, 
+                       volume: float, 
+                       strategy: DecisionStrategy = DecisionStrategy.LANDFILL, 
+                       timestamp=None, 
+                       region=None) -> Tuple[float, str]:
         """
         Tracks overflow volume and handles it according to the specified strategy, with region info.
         Returns: (cost, message) tuple with the cost incurred and status message.
         """
+        # Validate facility_type
         if facility_type not in self.landfill_history:
             raise ValueError(f"Invalid facility type: {facility_type}")
+
+        # Validate volume
+        if not isinstance(volume, (int, float)) or volume < 0:
+            raise ValueError(f"Volume must be a non-negative number, got: {volume}")
+
+        # Validate strategy
+        if not isinstance(strategy, DecisionStrategy):
+            raise ValueError(f"Strategy must be a DecisionStrategy enum, got: {strategy}")
+
+        # Validate timestamp (if provided)
+        if timestamp is not None and not isinstance(timestamp, (int, float)):
+            raise ValueError(f"Timestamp must be a number or None, got: {timestamp}")
+
+        # Validate region (if provided)
+        if region is not None and not isinstance(region, str):
+            raise ValueError(f"Region must be a string or None, got: {region}")
 
         # Track region in a new history dict
         if not hasattr(self, "overflow_region_history"):

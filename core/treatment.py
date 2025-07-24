@@ -3,6 +3,7 @@ from typing import Dict, Iterable, Optional
 from core.transport_manager import PointToPointTransport, TransportPriority, TransportRequest
 from config.base_config import get_scenario_config
 from models.data_classes import WasteTransformation, OperationalEntity, ProductStorage
+from models.distances import get_distance
 from models.enums import OutputType, RegionType, WasteType, EntityStatus
 from models.state import SimulationState
 from monitoring.waste_monitor import WasteMonitor
@@ -13,7 +14,7 @@ from core.treatment_utils import (
     calculate_output_amounts,
     update_waste_storage,
     fulfill_demand,
-    track_processing_costs,
+    track_treatment_properties,
     update_utilization_metrics,
     calculate_required_waste
 )
@@ -71,53 +72,44 @@ class TreatmentOperator(OperationalEntity):
         transport_manager: Optional[PointToPointTransport] = None
     ):
         super().__init__()
-        # Monitoring
+
+        self.waste_monitor = waste_monitor
+
         if waste_monitor is None:
             raise ValueError("waste_monitor is required for TreatmentOperator")
-        self.waste_monitor = waste_monitor
-        # Inventory policy from scenario_config if available
+        
         if scenario_config and hasattr(scenario_config, 'inventory_policy'):
             self.inventory_policy = scenario_config.inventory_policy
         else:
             self.inventory_policy = get_scenario_config().inventory_policy
+
         self.kanban_manager = kanban_manager or KanbanManager()
         self.transport_manager = transport_manager or PointToPointTransport()
-
-        # Utilization history
-        self.utilization_history = []
-        self.utilization_window = 10
         self.env = env
         self.name = name
-
-        # Facility parameters
+        self.utilization_history = []
+        self.utilization_window = 10
         self.processing_time = processing_time
         self.waste_storage_capacity = waste_storage_capacity
         self.energy_consumption = energy_consumption
         self.conversion_rate = conversion_rate
         self.operational_costs = operational_costs
         self.environmental_impact = environmental_impact
-
         self.processing_capacity = self.waste_storage_capacity * 0.8
         self.initial_processing_capacity = self.processing_capacity
-        self.initial_storage_capacity = self.waste_storage_capacity
-        self.min_capacity = self.waste_storage_capacity * 0.75
-        self.max_capacity = self.waste_storage_capacity * 2.0
-
-        # Region
         self.region = region
-        self.region_type = RegionType[region.upper().replace('-', '_')] if region else None
+        self.region_type = RegionType[region.upper().replace('-', '_')] 
         self.demand = 0
-
-        self.total_products_created = 0.0
         self.demand_history = []
+        self.minimum_required_waste = 0.1
         self.production_history = []
-
         self._waste_storage = StorageDict(self, dict.fromkeys(WasteType, 0.0))
+        self.total_products_created = 0.0
         self.processed_volumes = dict.fromkeys(WasteType, 0.0)
         self.product_volumes = {
-            "mdf_fibreboard": 0.0,
+            "mdf": 0.0,
             "particle_board": 0.0,
-            "osb_waferboard": 0.0
+            "osb": 0.0
         }
 
         # Product storage
@@ -131,11 +123,6 @@ class TreatmentOperator(OperationalEntity):
             capacity=self.product_to_sell_capacity,
             current_storage=dict.fromkeys(OutputType, 0.0)
         )
-
-        # Capacity management
-        self.last_capacity_check = env.now
-        self.capacity_check_interval = 1.0
-        self.minimum_required_waste = 0.1
 
         # Stochastic components
         self.uncertainty_set = uncertainty_set
@@ -276,22 +263,6 @@ class TreatmentOperator(OperationalEntity):
                             timestamp=self.env.now
                         )
                 yield self.env.timeout(self.processing_time)
-
-    def _check_failure_and_recovery(self, current_time):
-        """Check for failures and recovery"""
-        # Check for failures if uncertainty set is available
-        if self.uncertainty_set and hasattr(self.uncertainty_set, 'treatment_failure'):
-            self.check_failure(current_time, self.uncertainty_set.treatment_failure.probability)
-        
-        # Check for recovery
-        if (self.status == EntityStatus.FAILED and 
-            current_time >= self.recovery_time):
-            print(f"{current_time}: Treatment operator {self.name} has recovered from failure")
-            self.status = EntityStatus.OPERATIONAL
-            self.failure_time = None
-            self.recovery_time = None
-            
-        return self.status == EntityStatus.FAILED
             
     def _get_prioritized_transformations(self):
         """Get transformations sorted by priority based on current demands and system state"""
@@ -303,9 +274,9 @@ class TreatmentOperator(OperationalEntity):
         if any(demand > 0 for demand in unmet_demands.values()):
             # Still have unmet demands - prioritize based on remaining demand
             product_demands = {
-                OutputType.MDF_FIBREBOARD: unmet_demands.get('mdf_fibreboard', 0),
+                OutputType.MDF: unmet_demands.get('mdf', 0),
                 OutputType.PARTICLE_BOARD: unmet_demands.get('particle_board', 0),
-                OutputType.OSB_WAFERBOARD: unmet_demands.get('osb_waferboard', 0)
+                OutputType.OSB: unmet_demands.get('osb', 0)
             }
             
             # Sort transformations by unmet demand and efficiency
@@ -348,11 +319,24 @@ class TreatmentOperator(OperationalEntity):
         while True:
             current_time = self.env.now
             
-            # Check for failures and recovery
-            is_failed = self._check_failure_and_recovery(current_time)
+            # Check for failures if uncertainty set is available
+            if self.uncertainty_set and hasattr(self.uncertainty_set, 'treatment_failure'):
+                is_failed = self.check_failure(current_time, self.uncertainty_set.treatment_failure.probability)
+                
+                # Handle efficiency changes when failure status changes
+                if is_failed and self.status == EntityStatus.FAILED:
+                    # Just became failed - reduce processing capacity
+                    self.processing_capacity = self.initial_processing_capacity * 0.3  # Reduced capacity during failure
+                elif not is_failed and self.status == EntityStatus.OPERATIONAL:
+                    # Just recovered - restore processing capacity
+                    if hasattr(self, '_was_failed') and self._was_failed:
+                        self.processing_capacity = self.initial_processing_capacity * 0.8  # Gradual recovery
+                
+                # Track previous failure state
+                self._was_failed = (self.status == EntityStatus.FAILED)
             
             # Skip processing if failed
-            if is_failed:
+            if self.status == EntityStatus.FAILED:
                 print(f"{current_time}: Treatment operator {self.name} is currently failed, skipping processing")
                 yield self.env.timeout(self.processing_time)
                 continue
@@ -373,19 +357,19 @@ class TreatmentOperator(OperationalEntity):
         
         # Skip processing if input type is already a final product
         final_products = {
-            OutputType.MDF_FIBREBOARD,
+            OutputType.MDF,
             OutputType.PARTICLE_BOARD,
-            OutputType.OSB_WAFERBOARD
+            OutputType.OSB
         }
         if input_type in final_products:
-            print("[PROCESS DEBUG] Skipping - input is already a final product")
+            # print("[PROCESS DEBUG] Skipping - input is already a final product")
             return
 
         # Process normally since we don't handle furniture anymore
         amount_to_process = min(self.waste_storage[input_type], self.processing_capacity)
         
         if amount_to_process <= 0:
-            print("[PROCESS DEBUG] No waste to process")
+            # print("[PROCESS DEBUG] No waste to process")
             return
         
         # Get transformation efficiency with uncertainty
@@ -411,7 +395,7 @@ class TreatmentOperator(OperationalEntity):
 
             # Fulfill demand and track in simulation state
             if addable_to_sell > 0:
-                print(f"[PROCESS DEBUG] About to call fulfill_demand with {addable_to_sell:.2f} m³")
+                # print(f"[PROCESS DEBUG] About to call fulfill_demand with {addable_to_sell:.2f} m³")
                 fulfill_demand(self, output_type, addable_to_sell)
 
             # Any excess product goes to product_storage (no buyer)
@@ -424,55 +408,139 @@ class TreatmentOperator(OperationalEntity):
                 # If overflow_storage > 0, optionally log or handle further overflow
 
             # Track product volumes
-            if output_type == OutputType.MDF_FIBREBOARD:
-                self.product_volumes["mdf_fibreboard"] += output_amount
+            if output_type == OutputType.MDF:
+                self.product_volumes["mdf"] += output_amount
             elif output_type == OutputType.PARTICLE_BOARD:
                 self.product_volumes["particle_board"] += output_amount
-            elif output_type == OutputType.OSB_WAFERBOARD:
-                self.product_volumes["osb_waferboard"] += output_amount
+            elif output_type == OutputType.OSB:
+                self.product_volumes["osb"] += output_amount
         else:
-            print("[PROCESS DEBUG] Output is not final product, skipping fulfillment")
+            return  # Not a final product, no demand fulfillment needed
+            # print("[PROCESS DEBUG] Output is not final product, skipping fulfillment")
         
         # Track processing costs
-        track_processing_costs(self, amount_to_process, transformation)
+        track_treatment_properties(self, amount_to_process, transformation)
         
         # Update utilization metrics
         update_utilization_metrics(self, amount_to_process)
 
     def request_waste_directly(self, required_waste: float, input_waste_types: set) -> Dict[WasteType, float]:
-        """Request waste directly from collectors in the same region"""
+        """Request waste with realistic 80% local / 20% cross-region routing"""
         state = SimulationState.get_instance()
         collected_waste = {}
         
-        # Find collectors in same region first
+        # Split demand: 80% local priority, 20% cross-region
+        local_portion = required_waste * 0.8
+        cross_region_portion = required_waste * 0.2
+        
+        print(f"[REALISTIC ROUTING] {self.name}: {local_portion:.1f} m³ local, {cross_region_portion:.1f} m³ cross-region")
+        
+        # 1. FIRST: Collect from local region (priority)
+        remaining_local = local_portion
         local_collectors = [
             c for c in state.collectors 
             if c.region_type == self.region_type and c.availability
         ]
         
-        # If no local collectors, expand search
-        if not local_collectors:
-            local_collectors = [c for c in state.collectors if c.availability]
-        
-        remaining_needed = required_waste
-        
         for collector in local_collectors:
-            if remaining_needed <= 0:
+            if remaining_local <= 0:
                 break
                 
-            # Get what this collector can provide
-            collector_waste = collector.provide_waste_for_treatment(
-                remaining_needed, input_waste_types
-            )
+            print(f"[LOCAL COLLECTION] Requesting {remaining_local:.1f} m³ from {collector.name}")
+            local_collected = collector.provide_waste_for_treatment(remaining_local, input_waste_types)
             
-            # Add to our storage
-            for waste_type, amount in collector_waste.items():
-                if amount > 0:
-                    self.waste_storage[waste_type] += amount
-                    collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
-                    remaining_needed -= amount
+            # Add to total collected waste
+            for waste_type, amount in local_collected.items():
+                collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
+                remaining_local -= amount
+                print(f"[LOCAL SUCCESS] Collected {amount:.1f} m³ of {waste_type.value}")
         
+        # 2. SECOND: Cross-region collection via transport
+        remaining_cross_region = cross_region_portion
+        if remaining_cross_region > 0:
+            
+            remote_collectors = [
+                c for c in state.collectors 
+                if c.region_type != self.region_type and c.availability
+            ]
+            
+            # Sort by distance (nearest first) instead of random shuffle
+            remote_collectors.sort(key=lambda c: get_distance(self.region_type, c.region_type))
+            
+            for collector in remote_collectors[:3]:  # Try up to 3 nearest collectors
+                if remaining_cross_region <= 0:
+                    break
+                    
+                distance = get_distance(self.region_type, collector.region_type)
+                print(f"[CROSS-REGION] Requesting {remaining_cross_region:.1f} m³ from {collector.name} ({collector.region}) - {distance:.1f}km away")
+                
+                # Use transport system!
+                transport_collected = self._request_via_transport(
+                    collector, remaining_cross_region, input_waste_types
+                )
+                
+                # Add to total collected waste
+                for waste_type, amount in transport_collected.items():
+                    collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
+                    remaining_cross_region -= amount
+        
+        # 3. If we still need more, try any available collector (fallback)
+        total_remaining = remaining_local + remaining_cross_region
+        if total_remaining > 0:
+            print(f"[FALLBACK] Still need {total_remaining:.1f} m³, trying any available collector")
+            all_collectors = [c for c in state.collectors if c.availability]
+            
+            for collector in all_collectors:
+                if total_remaining <= 0:
+                    break
+                fallback_collected = collector.provide_waste_for_treatment(total_remaining, input_waste_types)
+                for waste_type, amount in fallback_collected.items():
+                    collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
+                    total_remaining -= amount
+
         return collected_waste
+    
+    def _request_via_transport(self, collector, amount: float, waste_types: set) -> Dict[WasteType, float]:
+        """Request waste via transport system"""
+        print(f"[TRANSPORT REQUEST] Initiating transport from {collector.region} to {self.region}")
+        
+        # Get available waste from remote collector
+        available_waste = self._get_available_waste_from_collector(collector, amount, waste_types)
+        
+        transported_waste = {}
+        for waste_type, volume in available_waste.items():
+            if volume > 0:
+                print(f"[TRANSPORT] Attempting to transport {volume:.1f} m³ of {waste_type.value}")
+                
+                # Use the transport system!
+                success = collector.transfer_waste_to_region(
+                    waste_type, volume, self.region_type
+                )
+                
+                if success:
+                    transported_waste[waste_type] = volume
+                    print(f"[TRANSPORT SUCCESS] {volume:.1f} m³ {waste_type.value} scheduled for transport")
+                else:
+                    print(f"[TRANSPORT FAILED] Could not schedule transport for {waste_type.value}")
+        
+        return transported_waste
+
+    def _get_available_waste_from_collector(self, collector, max_amount: float, waste_types: set) -> Dict[WasteType, float]:
+        """Check what waste is available from a collector"""
+        available_waste = {}
+        remaining_capacity = max_amount
+        
+        for waste_type in waste_types:
+            if remaining_capacity <= 0:
+                break
+                
+            available_in_storage = collector.collection_center.current_storage[waste_type]
+            if available_in_storage > 0:
+                can_take = min(available_in_storage, remaining_capacity)
+                available_waste[waste_type] = can_take
+                remaining_capacity -= can_take
+        
+        return available_waste
     
     def trigger_collection(self):
         """Request waste collection based on current needs"""
@@ -481,7 +549,7 @@ class TreatmentOperator(OperationalEntity):
         
         product_demands = {}
         
-        for product_type in [OutputType.MDF_FIBREBOARD, OutputType.PARTICLE_BOARD, OutputType.OSB_WAFERBOARD]:
+        for product_type in [OutputType.MDF, OutputType.PARTICLE_BOARD, OutputType.OSB]:
             key = product_type.value.lower().replace('_', '_') 
             if key in state.target_demands and key in state.total_products:
                 unmet_demand = state.target_demands[key] - state.total_products[key]
@@ -503,7 +571,7 @@ class TreatmentOperator(OperationalEntity):
 
         # Validate collection result
         if not collected_waste or sum(collected_waste.values()) == 0:
-            print(f"[VALIDATION] No waste collected at time {self.env.now} - skipping processing")
+            # print(f"[VALIDATION] No waste collected at time {self.env.now} - skipping processing")
             return 0, 0
 
         # Track this collection's demand
@@ -553,38 +621,38 @@ class TreatmentOperator(OperationalEntity):
             # Construction wood waste (17 02 01) - Primary reuse pathways
             WasteType.CONSTRUCTION_WOOD_17_02_01: [
                 OutputType.PARTICLE_BOARD,    # Downcycling pathway
-                OutputType.OSB_WAFERBOARD,    # OSB from construction wood
+                OutputType.OSB,    # OSB from construction wood
             ],
             
             # Sawdust, shavings, cuttings (03 01 05) - Primary particleboard feedstock
             WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: [
                 OutputType.PARTICLE_BOARD,    # Primary pathway - supported by research
-                OutputType.MDF_FIBREBOARD,    # Secondary pathway
-                OutputType.OSB_WAFERBOARD,    # OSB from wood cuttings
+                OutputType.MDF,    # Secondary pathway
+                OutputType.OSB,    # OSB from wood cuttings
             ],
             
             # Wooden packaging waste (15 01 03) - Cascading use
             WasteType.WOODEN_PACKAGING_15_01_03: [
                 OutputType.PARTICLE_BOARD,    # Recycling pathway
-                OutputType.OSB_WAFERBOARD,    # OSB from packaging wood
+                OutputType.OSB,    # OSB from packaging wood
             ],
             
             # Bark waste (03 01 01) - Limited applications
             WasteType.BARK_WASTE_03_01_01: [
-                OutputType.MDF_FIBREBOARD,    # Can incorporate bark content
+                OutputType.MDF,    # Can incorporate bark content
                 OutputType.PARTICLE_BOARD,    # Lower percentage incorporation
             ],
             
             # Non-hazardous wood (20 01 38) - Municipal waste stream
             WasteType.NON_HAZARDOUS_WOOD_20_01_38: [
                 OutputType.PARTICLE_BOARD,    # Primary recycling pathway
-                OutputType.MDF_FIBREBOARD,    # Secondary pathway
-                OutputType.OSB_WAFERBOARD,    # OSB from municipal wood
+                OutputType.MDF,    # Secondary pathway
+                OutputType.OSB,    # OSB from municipal wood
             ],
             
             # Paper packaging (15 01 01) - Paper cycle
             WasteType.PAPER_PACKAGING_15_01_01: [
-                OutputType.MDF_FIBREBOARD,    # Can incorporate recycled paper
+                OutputType.MDF,    # Can incorporate recycled paper
             ],
         }
 

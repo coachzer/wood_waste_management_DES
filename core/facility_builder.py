@@ -1,5 +1,6 @@
 from typing import Dict, Tuple, List
 from simpy import Environment
+from core.decision_manager import DecisionTracker
 from core.transport_manager import PointToPointTransport
 from models.facility_data import FacilityDataManager
 from models.enums import RegionType, WasteType, OutputType
@@ -81,6 +82,7 @@ class FacilityBuilder:
             efficiency=col_data.efficiency,
             availability=col_data.availability,
             region=region.value,
+            waste_monitor=self.waste_monitor,
             uncertainty_set=self.uncertainty_set,
             stock_strategy=stock_strategy,
         )
@@ -110,12 +112,12 @@ class FacilityBuilder:
     
     def _get_appropriate_mappings(self):
         return {
-            WasteType.CONSTRUCTION_WOOD_17_02_01: ['particle_board', 'osb_waferboard'],
-            WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: ['particle_board', 'mdf_fibreboard'],
-            WasteType.WOODEN_PACKAGING_15_01_03: ['particle_board', 'osb_waferboard'],
-            WasteType.BARK_WASTE_03_01_01: ['mdf_fibreboard', 'particle_board'],
-            WasteType.NON_HAZARDOUS_WOOD_20_01_38: ['particle_board', 'mdf_fibreboard', 'osb_waferboard'],
-            WasteType.PAPER_PACKAGING_15_01_01: ['mdf_fibreboard'],
+            WasteType.CONSTRUCTION_WOOD_17_02_01: ['particle_board', 'osb'],
+            WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: ['particle_board', 'mdf'],
+            WasteType.WOODEN_PACKAGING_15_01_03: ['particle_board', 'osb'],
+            WasteType.BARK_WASTE_03_01_01: ['mdf', 'particle_board'],
+            WasteType.NON_HAZARDOUS_WOOD_20_01_38: ['particle_board', 'mdf', 'osb'],
+            WasteType.PAPER_PACKAGING_15_01_01: ['mdf'],
         }
 
     def _build_transformations(self, proc_data):
@@ -207,6 +209,7 @@ class FacilityBuilder:
 def initialize_simulation_entities(
     env: Environment, 
     uncertainty_set = None,
+    decision_tracker: DecisionTracker = None,
     waste_monitor: WasteMonitor = None,
     distribution_mode: str = "balanced",
     priority_types: List[str] = None,
@@ -218,8 +221,13 @@ def initialize_simulation_entities(
     facility_manager = FacilityDataManager()
     facility_manager.load_data()
     
+    if decision_tracker is None:
+        print("Creating new DecisionTracker instance")
+        decision_tracker = DecisionTracker()
+    
     if waste_monitor is None:
-        waste_monitor = WasteMonitor()
+        print("Creating new WasteMonitor instance")
+        waste_monitor = WasteMonitor(env=env, decision_tracker=decision_tracker)
 
     if transport_manager is None:
         transport_manager = PointToPointTransport()

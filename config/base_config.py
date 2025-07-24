@@ -3,7 +3,7 @@
 
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Dict, Tuple, List, Optional
+from typing import Dict, Tuple, List
 from models.enums import WasteType, OutputType, InventoryPolicy, StockStrategy
 from models.data_classes import FailureConfig
 from utils.helpers import (
@@ -12,7 +12,7 @@ from utils.helpers import (
 
 @dataclass
 class UncertaintySet:
-    """Simplified uncertainty set - only variability parameters"""
+    """Uncertainty set - only variability parameters"""
     # Required fields first
     collection_efficiency: Tuple[float, float]
     treatment_conversion: Tuple[float, float]
@@ -84,21 +84,21 @@ class ScenarioConfig:
     collector_failure: FailureConfig
     treatment_failure: FailureConfig
     inventory_policy: InventoryPolicy = InventoryPolicy.PUSH
-    stock_strategy: StockStrategy = StockStrategy.FULL_STOCK
+    stock_strategy: StockStrategy = StockStrategy.REORDER_90
 
     def to_uncertainty_set(self) -> UncertaintySet:
         """Convert scenario config to uncertainty set"""
         # Market demand based on actual monthly demand values
         market_demand = {
-            OutputType.MDF_FIBREBOARD: (
-                MONTHLY_DEMAND[OutputType.MDF_FIBREBOARD] * self.market_dem[0], 
-                MONTHLY_DEMAND[OutputType.MDF_FIBREBOARD] * self.market_dem[1]),
+            OutputType.MDF: (
+                MONTHLY_DEMAND[OutputType.MDF] * self.market_dem[0], 
+                MONTHLY_DEMAND[OutputType.MDF] * self.market_dem[1]),
             OutputType.PARTICLE_BOARD: (
                 MONTHLY_DEMAND[OutputType.PARTICLE_BOARD] * self.market_dem[0],
                 MONTHLY_DEMAND[OutputType.PARTICLE_BOARD] * self.market_dem[1]),
-            OutputType.OSB_WAFERBOARD: (
-                MONTHLY_DEMAND[OutputType.OSB_WAFERBOARD] * self.market_dem[0],
-                MONTHLY_DEMAND[OutputType.OSB_WAFERBOARD] * self.market_dem[1])
+            OutputType.OSB: (
+                MONTHLY_DEMAND[OutputType.OSB] * self.market_dem[0],
+                MONTHLY_DEMAND[OutputType.OSB] * self.market_dem[1])
         }
 
         return UncertaintySet(
@@ -126,26 +126,33 @@ TIME_PERIODS = {
 
 # Demand configuration from data/demand.json - to check the file and UPDATE
 MONTHLY_DEMAND = {
-    OutputType.MDF_FIBREBOARD: _demand_data["national_demand"]["mdf_fibreboard"],
+    OutputType.MDF: _demand_data["national_demand"]["mdf"],
     OutputType.PARTICLE_BOARD: _demand_data["national_demand"]["particle_board"],
-    OutputType.OSB_WAFERBOARD: _demand_data["national_demand"]["osb_waferboard"]
+    OutputType.OSB: _demand_data["national_demand"]["osb"]
 }
 
 LOW_FAILURE = FailureConfig(
-    probability=0.024,  # ~2.4% chance per day
-    min_duration=0.5,   # 0.5 days (12 hours)
-    max_duration=1.0,   # 1 day (24 hours)
+    probability=0.0024,  # ~0.24% chance per day 
+    min_duration=1.0,   # 1 day minimum
+    max_duration=3.0,   # 3 days maximum
     check_interval=1.0  # Check once per day
 )
 
 MEDIUM_FAILURE = FailureConfig(
-    probability=0.12,   # ~12% chance per day
-    min_duration=0.25,  # 0.25 days (6 hours)
-    max_duration=0.5,   # 0.5 days (12 hours)
+    probability=0.06,   # ~6% chance per day 
+    min_duration=0.5,   # 0.5 days (12 hours)
+    max_duration=2.0,   # 2 days maximum
     check_interval=0.5  # Check twice per day
 )
 
 HIGH_FAILURE = FailureConfig(
+    probability=0.12,   # ~12% chance per day 
+    min_duration=0.25,  # 0.25 days (6 hours)
+    max_duration=1.5,   # 1.5 days maximum
+    check_interval=0.25 # Check four times per day
+)
+
+DISASTER_FAILURE = FailureConfig(
     probability=0.24,   # ~24% chance per day
     min_duration=0.125, # 0.125 days (3 hours)
     max_duration=0.25,  # 0.25 days (6 hours)
@@ -164,7 +171,7 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
         collector_failure=LOW_FAILURE,
         treatment_failure=LOW_FAILURE,
         inventory_policy=InventoryPolicy.PUSH,
-        stock_strategy=StockStrategy.FULL_STOCK
+        stock_strategy=StockStrategy.REORDER_90
     ),
     "Disrupted": ScenarioConfig(
         name="Disrupted",
@@ -190,7 +197,7 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
         collector_failure=MEDIUM_FAILURE,
         treatment_failure=MEDIUM_FAILURE,
         inventory_policy=InventoryPolicy.PULL,
-        stock_strategy=StockStrategy.FULL_STOCK
+        stock_strategy=StockStrategy.REORDER_90
     )
 }
 
@@ -222,15 +229,15 @@ def _create_uncertainty_set(config: ScenarioConfig) -> UncertaintySet:
     """Create uncertainty set from a scenario configuration"""
     # Market demand from demand.json
     market_demand = {
-        OutputType.MDF_FIBREBOARD: (
-            _demand_data["national_demand"]["mdf_fibreboard"] * config.market_dem[0],
-            _demand_data["national_demand"]["mdf_fibreboard"] * config.market_dem[1]),
+        OutputType.MDF: (
+            _demand_data["national_demand"]["mdf"] * config.market_dem[0],
+            _demand_data["national_demand"]["mdf"] * config.market_dem[1]),
         OutputType.PARTICLE_BOARD: (
             _demand_data["national_demand"]["particle_board"] * config.market_dem[0],
             _demand_data["national_demand"]["particle_board"] * config.market_dem[1]),
-        OutputType.OSB_WAFERBOARD: (
-            _demand_data["national_demand"]["osb_waferboard"] * config.market_dem[0],
-            _demand_data["national_demand"]["osb_waferboard"] * config.market_dem[1]),
+        OutputType.OSB: (
+            _demand_data["national_demand"]["osb"] * config.market_dem[0],
+            _demand_data["national_demand"]["osb"] * config.market_dem[1]),
     }
     
     # Add reasonable demand for waste types (lower than output products)
@@ -284,25 +291,6 @@ def get_uncertainty_set(scenario_name: str = "Baseline") -> UncertaintySet:
 def get_scenario_config(scenario_name: str = "Baseline") -> ScenarioConfig:
     """Get scenario configuration by name"""
     return SCENARIO_CONFIGS.get(scenario_name, SCENARIO_CONFIGS["Baseline"])
-
-def get_scenario_by_params(
-    inventory_policy: InventoryPolicy = InventoryPolicy.PUSH,
-    stock_strategy: StockStrategy = StockStrategy.FULL_STOCK
-) -> ScenarioConfig:
-    """Get scenario configuration by behavioral parameters"""
-    for scenario in SCENARIO_CONFIGS.values():
-        if (scenario.inventory_policy == inventory_policy and 
-            scenario.stock_strategy == stock_strategy):
-            return scenario
-
-    # If no exact match, create a Baseline variant with requested strategies
-    print(f"Creating custom scenario with inventory policy {inventory_policy}, "
-          f"stock strategy {stock_strategy}")
-    
-    baseline = deepcopy(SCENARIO_CONFIGS["Baseline"])
-    baseline.inventory_policy = inventory_policy
-    baseline.stock_strategy = stock_strategy
-    return baseline
 
 def get_scenario_with_strategies(
     base_scenario_name: str,

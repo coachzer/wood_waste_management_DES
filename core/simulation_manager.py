@@ -8,6 +8,7 @@ from models.enums import InventoryPolicy
 from models.state import SimulationState
 from monitoring.waste_monitor import WasteMonitor
 from models.facility_data import FacilityDataManager
+from core.decision_manager import DecisionTracker
 from core.facility_builder import initialize_simulation_entities
 
 class SimulationManager:
@@ -16,7 +17,8 @@ class SimulationManager:
     def __init__(self):
         SimulationState._instance = None
         self.env = simpy.Environment()
-        self.waste_monitor = WasteMonitor(self.env)
+        self.decision_tracker = DecisionTracker()
+        self.waste_monitor = WasteMonitor(self.env, self.decision_tracker)
         self.state = SimulationState.get_instance()
         self.initial_params = {}
         
@@ -37,6 +39,7 @@ class SimulationManager:
             generators, collectors, operators = initialize_simulation_entities(
                 self.env,
                 uncertainty_set,
+                self.decision_tracker,
                 self.waste_monitor,
                 dist_mode,       
                 [],           

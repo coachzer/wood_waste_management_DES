@@ -14,7 +14,7 @@ class ProductRecipe:
     
     def get_material_requirements(self) -> Dict[str, float]:
         """Get material requirements in kg per m³ based on industry data"""
-        if self.product_type == "mdf_fibreboard":
+        if self.product_type == "mdf":
             return {
                 "03 01 01": 462.0,  # wood chips (70% of 660kg wood residue)
                 "03 01 05": 198.0   # sawdust (30% of 660kg wood residue)
@@ -25,7 +25,7 @@ class ProductRecipe:
                 "03 01 05": 132.0,  # sawdust (20% of 660kg panel)
                 "03 01 99": 132.0   # shavings (20% of 660kg panel)
             }
-        elif self.product_type == "osb_waferboard":
+        elif self.product_type == "osb":
             return {
                 "02 01 07": 416.0,  # forestry chips (70% of 594kg wood strands)
                 "03 01 01": 178.0   # processing chips (30% of 594kg wood strands)
@@ -116,16 +116,16 @@ class ProductDataManager:
                 biogenic_stock_total=-585.31,
                 description="Particle board made from wood particles and resin binders"
             ),
-            "osb_waferboard": ProductSpecification(
-                product_type="osb_waferboard",
+            "osb": ProductSpecification(
+                product_type="osb",
                 density_min=600.0,
                 density_max=680.0,
                 wood_content_percent=95.0,
                 biogenic_stock_total=-1213.60,
                 description="Oriented Strand Board made from wood strands and adhesive resins"
             ),
-            "mdf_fibreboard": ProductSpecification(
-                product_type="mdf_fibreboard",
+            "mdf": ProductSpecification(
+                product_type="mdf",
                 density_min=500.0,
                 density_max=1000.0,
                 wood_content_percent=82.0,
@@ -137,8 +137,8 @@ class ProductDataManager:
     def _initialize_product_recipes(self):
         """Initialize production recipes with EWC code mappings based on industry data"""
         self.product_recipes = {
-            "mdf_fibreboard": ProductRecipe(
-                product_type="mdf_fibreboard",
+            "mdf": ProductRecipe(
+                product_type="mdf",
                 input_mappings={
                     "wood_chips": ["03 01 01"],      # 462 kg (70% of wood residue)
                     "sawdust": ["03 01 05"]          # 198 kg (30% of wood residue)
@@ -159,8 +159,8 @@ class ProductDataManager:
                 conversion_efficiency=100.0,  # Most efficient conversion
                 description="Particleboard: 396kg chips (03 01 01) + 264kg sawdust/shavings (03 01 05/99) per m³"
             ),
-            "osb_waferboard": ProductRecipe(
-                product_type="osb_waferboard",
+            "osb": ProductRecipe(
+                product_type="osb",
                 input_mappings={
                     "forestry_chips": ["02 01 07"],  # 416 kg (70% of wood strands)
                     "wood_chips": ["03 01 01"]       # 178 kg (30% of wood strands)

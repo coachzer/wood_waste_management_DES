@@ -30,7 +30,7 @@ def _get_collector_volumes(collection_history: Dict) -> Dict:
         total = 0
         for _, volumes in history.get("collected_volumes", {}).items():
             if volumes:
-                total += volumes[-1] if volumes else 0 
+                total += volumes[-1] 
         collector_volumes[collector] = total
     return collector_volumes
 
@@ -48,9 +48,9 @@ def _get_product_volumes() -> Dict:
     """Get product volumes from simulation state"""
     state = SimulationState.get_instance()
     return {
-        "MDF Fibreboard": state.total_products.get("mdf_fibreboard", 0),
+        "MDF": state.total_products.get("mdf", 0),
         "Particle Board": state.total_products.get("particle_board", 0),
-        "OSB Waferboard": state.total_products.get("osb_waferboard", 0)
+        "OSB": state.total_products.get("osb", 0)
     }
 
 
@@ -194,7 +194,7 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
         processing_history
     )
 
-    print(f"\n=== DEBUG: Raw Volumes ===")
+    print("\n=== DEBUG: Raw Volumes ===")
     print(f"Generator volumes: {generator_volumes}")
     print(f"Collector volumes: {collector_volumes}")
     print(f"Treatment volumes: {treatment_volumes}")

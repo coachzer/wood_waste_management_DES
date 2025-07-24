@@ -2,7 +2,7 @@ from enum import Enum, auto
 
 class EntityStatus(Enum):
     """Status of operational entities in the system."""
-    OPERATIONAL = auto()    # Entity is functioning normally
+    OPERATIONAL = auto()   # Entity is functioning normally
     FAILED = auto()        # Entity has experienced a failure
     RECOVERING = auto()    # Entity is in recovery phase after failure
 
@@ -45,16 +45,16 @@ class WasteType(Enum):
 
 class OutputType(Enum):
     """Types of output products produced by the system."""
-    MDF_FIBREBOARD = "mdf_fibreboard"     
+    MDF = "mdf"     
     PARTICLE_BOARD = "particle_board"
-    OSB_WAFERBOARD = "osb_waferboard"
+    OSB = "osb"
 
 class InventoryPolicy(Enum):
     PUSH = "push"
     PULL = "pull"
 
+    # FULL_STOCK = "full_stock"
 class StockStrategy(Enum):
-    FULL_STOCK = "full_stock"
     ON_DEMAND = "on_demand"
     REORDER_90 = "reorder_90"
     REORDER_50 = "reorder_50"

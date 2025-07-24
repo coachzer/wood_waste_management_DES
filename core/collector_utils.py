@@ -1,5 +1,5 @@
-from typing import List, Dict
-from models.enums import WasteType
+from typing import List, Dict, Optional
+from models.enums import InventoryPolicy, StockStrategy, WasteType
 from models.data_classes import OperationalEntity
 from models.state import SimulationState
 from utils.capacity_utils import apply_capacity_constraints, handle_overflow_with_decision
@@ -111,6 +111,122 @@ def handle_collector_capacity(
                 timestamp=collector2.env.now,
                 region=collector2.region
             )
+
+def normalize_waste_type(waste_type_input) -> Optional[WasteType]:
+    """Convert various waste type inputs to WasteType enum"""
+    if isinstance(waste_type_input, WasteType):
+        return waste_type_input
+    
+    if isinstance(waste_type_input, str):
+        # Try direct enum lookup
+        normalized = waste_type_input.replace(" ", "_").replace("-", "_").upper()
+        try:
+            return WasteType[normalized]
+        except KeyError:
+            pass
+        
+        # Fallback mapping for common cases
+        waste_type_mapping = {
+            "03_01_05": WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05,
+            "15_01_03": WasteType.WOODEN_PACKAGING_15_01_03,
+            "17_02_01": WasteType.CONSTRUCTION_WOOD_17_02_01,
+            "03_01_01": WasteType.BARK_WASTE_03_01_01,
+            "20_01_38": WasteType.NON_HAZARDOUS_WOOD_20_01_38,
+            "15_01_01": WasteType.PAPER_PACKAGING_15_01_01
+        }
+        return waste_type_mapping.get(waste_type_input)
+    
+    return None
+
+def filter_active_waste_streams(generator, collector_waste_types: set) -> Dict[WasteType, any]:
+    """Filter and convert generator waste streams to valid WasteType enums"""
+    active_streams = {}
+    
+    for waste_type_str, stream in generator.waste_streams.items():
+        if stream.volume <= 0:
+            continue
+            
+        waste_type_enum = normalize_waste_type(waste_type_str)
+        if not waste_type_enum:
+            continue
+            
+        # Check if collector handles this waste type
+        if (waste_type_enum in collector_waste_types or 
+            waste_type_enum.value in collector_waste_types):
+            active_streams[waste_type_enum] = stream
+    
+    return active_streams
+
+def get_adaptive_threshold(strategy: StockStrategy, base_time: float) -> float:
+    """Get adaptive threshold that increases over time for ON_DEMAND"""
+    if strategy == StockStrategy.ON_DEMAND:
+        # Gradually increase threshold over time to trigger more collections
+        time_factor = min(0.3, base_time * 0.001)  # Caps at 30%
+        return 0.05 + time_factor  # Start at 5%, grow to 35%
+    elif strategy == StockStrategy.REORDER_50:
+        return 0.50
+    elif strategy == StockStrategy.REORDER_90:
+        return 0.90
+    # elif strategy == StockStrategy.FULL_STOCK:
+    #     return 0.95
+    return 0.10
+
+def calculate_utilization(storage_dict: Dict, total_capacity: float) -> float:
+    """Calculate storage utilization percentage"""
+    return sum(storage_dict.values()) / total_capacity if total_capacity > 0 else 0.0
+
+def calculate_efficiency_multiplier(policy: InventoryPolicy, strategy: StockStrategy, 
+                                 utilization: float, kanban_signals: int, 
+                                 base_time: float) -> float:
+    """Calculate efficiency multiplier based on policy and strategy"""
+    base_degradation = max(0.5, 1.0 - (base_time * 0.0005))
+    
+    if policy == InventoryPolicy.PUSH:
+        return _calculate_push_efficiency(strategy, utilization, base_degradation)
+    elif policy == InventoryPolicy.PULL:
+        return _calculate_pull_efficiency(strategy, utilization, kanban_signals, base_degradation)
+    
+    return base_degradation
+
+def _calculate_push_efficiency(strategy: StockStrategy, utilization: float, base: float) -> float:
+    """Calculate efficiency for PUSH policies"""
+
+    match strategy:
+        case StockStrategy.REORDER_90:
+            print(f"Strategy: {strategy}, Utilization: {utilization}, Base: {base}  ")
+            if 0.8 <= utilization <= 0.9:
+                return base * 1.05  # Sweet spot
+            else:
+                return base * (1.0 - abs(utilization - 0.85) * 0.1)
+        case StockStrategy.REORDER_50:
+            print(f"Strategy: {strategy}, Utilization: {utilization}, Base: {base}  ")
+            penalty = 0.95 if utilization < 0.3 else 1.0
+            return base * penalty
+        # case StockStrategy.FULL_STOCK:
+        #     storage_penalty = utilization * 0.05
+        #     return base * (1.0 - storage_penalty)
+        case _: # StockStrategy.ON_DEMAND:
+            print(f"Strategy: {strategy}, Utilization: {utilization}, Base: {base}  ")
+            return base
+
+def _calculate_pull_efficiency(strategy: StockStrategy, utilization: float, 
+                              signals: int, base: float) -> float:
+    """Calculate efficiency for PULL policies"""
+    if strategy == StockStrategy.ON_DEMAND:
+        if signals > 0 and utilization < 0.2:
+            return base * 1.1  # Responsive and lean
+        elif signals > 3:
+            return base * 0.9  # Overwhelmed
+        return base
+    elif strategy == StockStrategy.REORDER_90:
+        signal_bonus = min(1.1, 1.0 + (signals * 0.02))
+        buffer_penalty = 1.0 if utilization > 0.5 else 0.95
+        return base * signal_bonus * buffer_penalty
+    elif strategy == StockStrategy.REORDER_50:
+        if signals > 0 and 0.3 <= utilization <= 0.7:
+            return base * 1.05
+        return base
+    return base
 
 def get_prioritized_generators() -> List:
     """Get generators sorted by priority and filtered by region"""
