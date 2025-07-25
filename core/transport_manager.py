@@ -102,7 +102,7 @@ class PointToPointTransport:
         
         # Calculate travel time (assuming 50 km/h average speed)
         distance = get_distance(request.origin, request.destination)
-        travel_time = distance / 50.0  # hours -> convert to days by dividing by 24 if needed
+        travel_time = distance / 50.0 / 24.0
         
         # Check if vehicle needs to travel to origin first
         pickup_time = current_time

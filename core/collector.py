@@ -5,7 +5,7 @@ from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, S
 from models.state import SimulationState
 from monitoring.waste_monitor import WasteMonitor
 from models.data_classes import Vehicle, CollectionCenter, OperationalEntity
-from models.distances import REGION_COORDINATES
+from models.distances import REGION_COORDINATES, get_distance
 from typing import Optional
 from utils.capacity_utils import handle_overflow_with_decision, check_storage_capacity
 from core.kanban_manager import KanbanManager
@@ -118,6 +118,224 @@ class CollectorCompany(OperationalEntity):
         self.process = env.process(self.collection_loop())
         self.transport_process = env.process(self.manage_transport())
 
+    def _find_available_vehicle(self):
+        """Find an available vehicle for collection"""
+        for vehicle in self.vehicles:
+            if not vehicle.in_transit:
+                return vehicle
+        return None
+
+    def _calculate_travel_time_to_generator(self, generator):
+        """Calculate travel time to generator (simplified)"""
+        from models.distances import get_distance
+        
+        if generator.region_type == self.region_type:
+            # Same region: assume 10-30km average within region
+            base_distance = 10.0  # km average within region
+            distance_variation = self.rng.uniform(0.5, 1.5)  # 10-30km range
+            distance = base_distance * distance_variation
+        else:
+            # Different region: use full inter-region distance
+            distance = get_distance(self.region_type, generator.region_type)
+        
+        travel_time_hours = distance / 40.0  
+        travel_time_days = travel_time_hours / 24.0 
+        return travel_time_days, distance
+
+    def _dispatch_vehicle_for_collection(self, vehicle, generator, target_volume):
+        """Complete vehicle collection process with proper storage and overflow handling"""
+        current_time = self.env.now
+        
+        # Calculate travel time
+        travel_time, distance = self._calculate_travel_time_to_generator(generator)
+        
+        print(f"[VEHICLE DISPATCH] {vehicle.id} dispatched to {generator.name} "
+            f"({distance:.1f}km, {travel_time:.4f} days)")
+        
+        # Mark vehicle as busy
+        vehicle.in_transit = True
+        vehicle.destination = generator.region_type
+        vehicle.estimated_arrival = current_time + travel_time
+        
+        # Travel to generator
+        yield self.env.timeout(travel_time)
+        
+        # Perform collection at site
+        collected_amount, collected_waste = self._perform_collection_at_site(generator, target_volume)
+        
+        if collected_amount > 0:
+            print(f"[COLLECTION SUCCESS] {vehicle.id} collected {collected_amount:.1f} m³ from {generator.name}")
+            
+            # Update vehicle load
+            vehicle.current_load = collected_amount
+            
+            # Travel back to collection center
+            yield self.env.timeout(travel_time)
+            
+            # Add collected waste to collection center with overflow handling
+            self._add_to_collection_center(collected_waste)
+            
+            print(f"[VEHICLE RETURN] {vehicle.id} returned and unloaded {collected_amount:.1f} m³")
+            
+            # Calculate collection cost
+            collection_cost = self.transport_cost + (distance * 0.1 * collected_amount)
+        else:
+            print(f"[COLLECTION FAILED] {vehicle.id} collected nothing from {generator.name}")
+            # Still need to travel back
+            yield self.env.timeout(travel_time)
+            collection_cost = self.transport_cost  # Base cost for attempt
+        
+        # Vehicle is now available again
+        vehicle.in_transit = False
+        vehicle.current_load = 0
+        vehicle.destination = self.region_type  # Back home
+        
+        return collection_cost
+
+    def _perform_collection_at_site(self, generator, target_volume):
+        """Perform actual waste collection at generator site with proper constraint checking"""
+        # Use existing utility to filter active waste streams
+        active_streams = filter_active_waste_streams(generator, self.waste_types)
+        
+        if not active_streams:
+            print(f"[NO COMPATIBLE WASTE] {generator.name} has no waste types we can collect")
+            return 0, {}
+
+        # Calculate potential collections for each waste type
+        potential_collections = {}
+        remaining_capacity = target_volume
+        
+        for waste_type, stream in active_streams.items():
+            if remaining_capacity <= 0:
+                break
+                
+            # Amount we could collect from this stream
+            collectible_amount = min(
+                stream.volume,                           # What's available
+                self.collection_capacity * self.efficiency,  # Our capacity
+                remaining_capacity                       # Remaining vehicle space
+            )
+            
+            if collectible_amount > 0:
+                potential_collections[waste_type] = collectible_amount
+                remaining_capacity -= collectible_amount
+
+        if not potential_collections:
+            return 0, {}
+
+        # Use existing capacity checking utility
+        allowed_collections, overflow = check_storage_capacity(
+            {},  # We're not checking existing storage, just vehicle capacity
+            potential_collections,
+            target_volume
+        )
+
+        # Handle any overflow at generator level
+        if overflow > 0:
+            print(f"[COLLECTION OVERFLOW] {overflow:.1f} m³ could not be collected due to capacity constraints")
+
+        # Process the actual collections
+        collected_waste = {}
+        total_collected = 0
+        
+        for waste_type, amount in allowed_collections.items():
+            if amount <= 0:
+                continue
+                
+            # Find corresponding stream
+            stream = active_streams[waste_type]
+            
+            # Update generator storage (remove collected waste)
+            stream.volume -= amount
+            generator.current_storage -= amount
+            
+            # Track what we collected
+            collected_waste[waste_type] = amount
+            total_collected += amount
+            
+            # Track collection in simulation state
+            SimulationState.get_instance().track_waste_collection(
+                generator.region, waste_type, amount
+            )
+            
+            # Update our collected waste tracking
+            self.collected_waste[waste_type] += amount
+            
+            print(f"[WASTE COLLECTED] {amount:.1f} m³ of {waste_type.value} from {generator.name}")
+        
+        return total_collected, collected_waste
+
+    def _add_to_collection_center(self, collected_waste):
+        """Add collected waste to collection center with overflow handling"""
+        if not collected_waste:
+            return
+        
+        # Check current available space
+        current_total = sum(self.collection_center.current_storage.values())
+        available_space = self.collection_center.waste_storage_capacity - current_total
+        total_to_add = sum(collected_waste.values())
+        
+        if total_to_add <= available_space:
+            # Everything fits - simple addition
+            for waste_type, amount in collected_waste.items():
+                self.collection_center.current_storage[waste_type] += amount
+            print(f"[STORAGE SUCCESS] Added {total_to_add:.1f} m³ to collection center")
+        else:
+            # Need to handle overflow
+            print(f"[STORAGE OVERFLOW] Trying to add {total_to_add:.1f} m³ but only {available_space:.1f} m³ available")
+            
+            # Use existing overflow handling
+            scaling_factor = available_space / total_to_add if total_to_add > 0 else 0
+            overflow_amount = total_to_add - available_space
+            
+            for waste_type, amount in collected_waste.items():
+                scaled_amount = amount * scaling_factor
+                self.collection_center.current_storage[waste_type] += scaled_amount
+                
+                # Track overflow for the portion that couldn't be stored
+                lost_amount = amount - scaled_amount
+                if lost_amount > 0:
+                    print(f"[OVERFLOW] Lost {lost_amount:.1f} m³ of {waste_type.value}")
+            
+            # Use existing overflow tracking
+            _, strategy = handle_overflow_with_decision(self, overflow_amount, self.region)
+            self.waste_monitor.track_overflow(
+                facility_type="collector",
+                volume=overflow_amount,
+                strategy=strategy,
+                timestamp=self.env.now,
+                region=self.region
+            )
+
+    def _get_distance_prioritized_generators(self, available_generators):
+        """Get generators with 80% nearest / 20% next-nearest logic"""
+        # Calculate distances
+        generator_distances = []
+        for generator in available_generators:
+            if generator.current_storage > 0:
+                # Use existing distance function
+                if generator.region_type != self.region_type:
+                    distance = get_distance(self.region_type, generator.region_type)
+                else:
+                    distance = 20.0  # Default same-region distance
+                generator_distances.append((generator, distance))
+        
+        # Sort by distance
+        generator_distances.sort(key=lambda x: x[1])
+        
+        if not generator_distances:
+            return []
+        
+        # 80% nearest, 20% second nearest
+        if len(generator_distances) == 1:
+            return [generator_distances[0][0]]
+        
+        if self.rng.random() < 0.2 and len(generator_distances) > 1:
+            print(f"[DISTANCE ROUTING] {self.name} choosing 2nd nearest generator")
+            return [generator_distances[1][0], generator_distances[0][0]]  
+        else:
+            return [g[0] for g in generator_distances]
+
     def manage_transport(self):
         """Transport management using point-to-point system"""
         while True:
@@ -125,7 +343,7 @@ class CollectorCompany(OperationalEntity):
             
             try:
                 # Process new transport requests
-                new_transports = self.transport_manager.process_requests(current_time) # Debugging line
+                new_transports = self.transport_manager.process_requests(current_time) 
                 self.active_transports.extend(new_transports)
                 
                 # Check completed transports
@@ -160,37 +378,7 @@ class CollectorCompany(OperationalEntity):
         
         print(f"{current_time}: {self.name} ({self.inventory_policy.value}/{self.stock_strategy.value}) "
             f"efficiency: {self.efficiency:.3f}, utilization: {utilization:.2f}")
-
-    def collect_from_generator(self, generator):
-        """Collection method"""
-        if not self.availability:
-            return 0
-
-        # Use utility function to filter streams
-        active_streams = filter_active_waste_streams(generator, self.waste_types)
         
-        if not active_streams:
-            return 0
-
-        # Calculate potential collections
-        potential_collections = {
-            waste_type: min(stream.volume, self.collection_capacity * self.efficiency)
-            for waste_type, stream in active_streams.items()
-        }
-
-        # Check capacity and handle overflow
-        allowed_collections, overflow = check_storage_capacity(
-            self.collection_center.current_storage,
-            potential_collections,
-            self.collection_center.waste_storage_capacity
-        )
-
-        if overflow > 0:
-            self._handle_overflow(overflow)
-
-        # Process collections
-        return self._process_collections(generator, active_streams, allowed_collections)
-
     def _handle_overflow(self, overflow_amount):
         """Handle overflow situation"""
         _, strategy = handle_overflow_with_decision(self, overflow_amount, self.region)
@@ -201,99 +389,6 @@ class CollectorCompany(OperationalEntity):
             self.env.now, 
             self.region
         )
-
-    def _process_collections(self, generator, active_streams, allowed_collections):
-        """Process the actual waste collections"""
-        total_collected = 0.0
-        
-        for waste_type, amount in allowed_collections.items():
-            if amount <= 0:
-                continue
-                
-            # Find corresponding stream
-            stream = active_streams[waste_type]
-            
-            # Update volumes
-            stream.volume -= amount
-            generator.current_storage -= amount
-            self.collection_center.current_storage[waste_type] += amount
-            self.collected_waste[waste_type] += amount
-            
-            # Track state changes
-            SimulationState.get_instance().track_waste_collection(
-                generator.region, waste_type, amount
-            )
-            SimulationState.get_instance().track_waste_generation(
-                self.region, waste_type, amount
-            )
-            
-            total_collected += amount
-
-        if total_collected > 0:
-            return self.transport_cost + (0.1 * total_collected)
-        
-        return 0
-        
-    def collect_with_collaboration(self, generator, other_collectors):
-        """Collaborative collection handling multiple waste types"""
-        # Consider collection center capacities
-        remaining_capacity = {
-            collector.name: min(
-                collector.collection_capacity * collector.efficiency,
-                collector.collection_center.waste_storage_capacity
-                - sum(collector.collection_center.current_storage.values()),
-            )
-            for collector in [self] + other_collectors
-        }
-
-        active_streams = {}
-        for waste_type_str, stream in generator.waste_streams.items():
-            if stream.volume <= 0:
-                continue
-            
-            normalized_type = waste_type_str.replace(" ", "_").replace("-", "_")
-            try:
-                waste_type_enum = WasteType[normalized_type]
-            except KeyError:
-                waste_type_mapping = {
-                    "03_01_05": WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05,
-                    "15_01_03": WasteType.WOODEN_PACKAGING_15_01_03,
-                    "17_02_01": WasteType.CONSTRUCTION_WOOD_17_02_01,
-                    "03_01_01": WasteType.BARK_WASTE_03_01_01,
-                    "20_01_38": WasteType.NON_HAZARDOUS_WOOD_20_01_38,
-                    "15_01_01": WasteType.PAPER_PACKAGING_15_01_01
-                }
-                waste_type_enum = waste_type_mapping.get(normalized_type)
-                if waste_type_enum is None:
-                    print(f"Warning: Invalid waste type {waste_type_str}")
-                    continue
-            
-            active_streams[waste_type_enum] = stream
-
-        if not active_streams:
-            return
-
-        available_collectors = [self] + [c for c in other_collectors if c.availability]
-        if not available_collectors:
-            return
-            
-        total_storage = sum(remaining_capacity.values())
-        if total_storage <= 0:
-            return
-
-        total_cost = 0
-        for waste_type, waste_stream in active_streams.items():
-            for collector in available_collectors:
-                capacity_ratio = remaining_capacity[collector.name] / total_storage
-                target_volume = waste_stream.volume * capacity_ratio
-                if target_volume > 0:
-                    handle_collector_capacity(self,
-                        collector, waste_type, target_volume, waste_stream, 
-                        remaining_capacity, generator
-                    )
-                    total_cost += collector.transport_cost * target_volume
-
-        return total_cost
 
     def collection_loop(self):
         """Periodically collect waste from generators based on strategy"""
@@ -446,41 +541,83 @@ class CollectorCompany(OperationalEntity):
             print(f"{self.env.now}: {self.name} transport request failed")
             return False
 
-    def _unified_collection_strategy(self, prioritized_generators: List) -> float:
-        """Unified collection strategy that considers both efficiency and collaboration"""
-        state = SimulationState.get_instance()
+    def collect_from_generator(self, generator):
+        """Vehicle-based collection with proper overflow handling and storage management"""
+        if not self.availability:
+            return self.env.process(self._dummy_process(0))
         
-        # Get other available collectors in the region for load balancing
-        other_collectors = [
-            c for c in state.collectors 
-            if c != self and c.availability and c.region_type == self.region_type
-        ]
+        # Check if generator has any waste
+        if generator.current_storage <= 0:
+            return self.env.process(self._dummy_process(0))
+        
+        # Find available vehicle
+        available_vehicle = self._find_available_vehicle()
+        if not available_vehicle:
+            print(f"[NO VEHICLES] {self.name} has no available vehicles for collection from {generator.name}")
+            return self.env.process(self._dummy_process(0))
+        
+        # Calculate available space in collection center
+        collection_center_available = (
+            self.collection_center.waste_storage_capacity - 
+            sum(self.collection_center.current_storage.values())
+        )
+        
+        if collection_center_available <= 0:
+            print(f"[STORAGE FULL] {self.name} collection center is full, cannot collect from {generator.name}")
+            return self.env.process(self._dummy_process(0))
+        
+        # Calculate target collection volume considering all constraints
+        target_volume = min(
+            generator.current_storage,                    # What's available at generator
+            self.collection_capacity * self.efficiency,  # Our collection capacity
+            available_vehicle.capacity,                   # Vehicle capacity
+            collection_center_available                   # Available storage space
+        )
+        
+        if target_volume <= 0:
+            return self.env.process(self._dummy_process(0))
+        
+        print(f"[COLLECTION PLANNED] {self.name} planning to collect {target_volume:.1f} m³ from {generator.name}")
+        
+        # Dispatch vehicle
+        return self.env.process(self._dispatch_vehicle_for_collection(available_vehicle, generator, target_volume))
+
+
+    def _dummy_process(self, return_value):
+        """Helper for SimPy process returns"""
+        yield self.env.timeout(0)
+        return return_value
+
+    def _unified_collection_strategy(self, prioritized_generators: List) -> float:
+        """Strategy with distance prioritization"""
+        # Use distance prioritization
+        distance_prioritized = self._get_distance_prioritized_generators(prioritized_generators)
         
         total_cost = 0
         
-        for generator in prioritized_generators:
+        for generator in distance_prioritized:
             if generator.current_storage <= 0:
                 continue
-                
-            # Check if we have capacity and other collectors are overloaded
-            our_utilization = sum(self.collection_center.current_storage.values()) / self.collection_center.waste_storage_capacity
             
-            if our_utilization < 0.8:  # We have capacity
-                # Collect directly
-                cost = self.collect_from_generator(generator)
-                total_cost += cost
-            elif other_collectors:
-                # Find least utilized collector for collaboration
-                least_utilized = min(other_collectors, 
-                    key=lambda c: sum(c.collection_center.current_storage.values()) / c.collection_center.waste_storage_capacity)
-                
-                if sum(least_utilized.collection_center.current_storage.values()) / least_utilized.collection_center.waste_storage_capacity < 0.8:
-                    # Collaborate with least utilized collector
-                    cost = self.collect_with_collaboration(generator, [least_utilized])
-                    total_cost += cost
+            # Check vehicle availability
+            if not self._find_available_vehicle():
+                print(f"[VEHICLE LIMIT] {self.name} no more vehicles available")
+                break
             
-        return total_cost
+            # Start collection (async process)
+            self.collect_from_generator(generator)
+            print(f"[COLLECTION START] {self.name} starting collection from {generator.name}")  
 
+            
+            # Estimate cost based on distance
+            _, distance = self._calculate_travel_time_to_generator(generator)
+            estimated_cost = self.transport_cost + (distance * 0.5)
+            total_cost += estimated_cost
+            
+            print(f"[COLLECTION START] {self.name} dispatching to {generator.name} (€{estimated_cost:.2f})")
+        
+        return total_cost
+    
     def provide_waste_for_treatment(self, requested_amount: float, needed_types: set) -> Dict[WasteType, float]:
     
         provided_waste = {}
