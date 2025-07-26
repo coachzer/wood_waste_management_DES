@@ -4,7 +4,7 @@ from core.transport_manager import PointToPointTransport, TransportPriority, Tra
 from config.base_config import get_scenario_config
 from models.data_classes import WasteTransformation, OperationalEntity, ProductStorage
 from models.distances import get_distance
-from models.enums import OutputType, RegionType, WasteType, EntityStatus
+from models.enums import OutputType, RegionType, StockStrategy, WasteType, EntityStatus
 from models.state import SimulationState
 from monitoring.waste_monitor import WasteMonitor
 from core.kanban_manager import KanbanManager
@@ -69,11 +69,15 @@ class TreatmentOperator(OperationalEntity):
         product_storage_capacity: float = 0.0,
         product_to_sell_capacity: float = 0.0,
         scenario_config=None,
+        stock_strategy: StockStrategy = None,
+        inventory_policy: InventoryPolicy = None,
         transport_manager: Optional[PointToPointTransport] = None
     ):
         super().__init__()
 
         self.waste_monitor = waste_monitor
+        self.stock_strategy = stock_strategy
+        self.inventory_policy = inventory_policy
 
         if waste_monitor is None:
             raise ValueError("waste_monitor is required for TreatmentOperator")
@@ -242,27 +246,123 @@ class TreatmentOperator(OperationalEntity):
                 )
 
     def schedule_collection_requests(self):
-        """Process to periodically trigger collection based on demand or Kanban"""
+        """Transport-safe PUSH vs PULL with startup protection"""
         while True:
-            if self.inventory_policy == InventoryPolicy.PUSH:
-                forecast = np.mean([d for _, d in self.demand_history[-4:]]) if self.demand_history else 0
-                safety_stock = 1.65 * np.std([d for _, d in self.demand_history[-4:]]) if self.demand_history else 0
-                order_up_to = forecast + safety_stock
-                if len(self.demand_history) == 0 and self.demand > 0:
-                    order_up_to = self.demand
-                if order_up_to > 0:
-                    self.demand = order_up_to
-                    self.trigger_collection()
-                yield self.env.timeout(7)
-            elif self.inventory_policy == InventoryPolicy.PULL:
-                for waste_type, volume in self.waste_storage.items():
-                    if volume < 1.0:
-                        self.kanban_manager.add_signal(
+            current_time = self.env.now
+            
+            match self.inventory_policy:
+                case InventoryPolicy.PUSH:
+                    yield from self._push_collection_logic()
+                case InventoryPolicy.PULL:
+                    yield from self._pull_collection_logic(current_time)
+                case _:
+                    yield self.env.timeout(7)
+
+                
+    def _push_collection_logic(self):
+        """PUSH: Forecast-based with startup protection"""
+        
+        # Calculate forecast 
+        forecasted_demand = self._calculate_demand_forecast()
+        
+        # PUSH maintains higher inventory with safety stock
+        safety_multiplier = 1.6  # 60% safety stock for PUSH
+        target_inventory = forecasted_demand
+        current_total = sum(self.waste_storage.values())
+        
+        if current_total < target_inventory:
+            collection_amount = target_inventory - current_total
+            print(f"[PUSH] Forecast: {forecasted_demand:.1f}, target: {target_inventory:.1f}, "
+                f"current: {current_total:.1f}, collecting: {collection_amount:.1f}")
+            
+            self.demand = collection_amount 
+            self.trigger_collection()
+        
+        yield self.env.timeout(7.0)  # Weekly collection cycle
+
+    def _pull_collection_logic(self, current_time):
+        """PULL: Kanban-driven with signal propagation to collectors"""
+        
+        # Check for kanban signals
+        active_signals = self.kanban_manager.get_signals()
+        
+        if active_signals:
+            total_immediate_demand = len(active_signals) * 2.0
+            print(f"[PULL] {len(active_signals)} kanban signals, demand: {total_immediate_demand:.1f}")
+            
+            self.demand = total_immediate_demand
+            self.trigger_collection()
+            self.kanban_manager.clear_signals()
+            yield self.env.timeout(self.processing_time)
+        else:
+            # Monitor for low inventory AND propagate signals to collectors
+            for waste_type, volume in self.waste_storage.items():
+                print(f"[PULL MONITOR] {waste_type.value}: {volume:.1f} m³ in storage")
+                if volume < 2.0:  # Low threshold for PULL
+                    # Add signal to our own kanban manager
+                    self.kanban_manager.add_signal(
+                        waste_type=waste_type,
+                        priority=5,
+                        timestamp=current_time
+                    )
+                    
+                    # ALSO propagate to collectors in our region
+                    state = SimulationState.get_instance()
+                    local_collectors = [
+                        c for c in state.collectors 
+                        if c.region_type == self.region_type and c.inventory_policy == InventoryPolicy.PULL
+                    ]
+                    
+                    for collector in local_collectors:
+                        collector.kanban_manager.add_signal(
                             waste_type=waste_type,
-                            priority=1,
-                            timestamp=self.env.now
+                            priority=8,  # High priority for collectors
+                            timestamp=current_time
                         )
-                yield self.env.timeout(self.processing_time)
+                        print(f"[KANBAN PROPAGATION] Signal sent to {collector.name} for {waste_type.value}")
+            
+            yield self.env.timeout(1.0)
+                
+    def _calculate_demand_forecast(self) -> float:
+        """PUSH-specific: Calculate forecasted demand with safe fallbacks"""
+        
+        # Fallback 1: No history at all
+        if not self.demand_history:
+            fallback_demand = max(self.demand, 10.0) if hasattr(self, 'demand') else 10.0
+            print(f"[FORECAST] No history, using fallback: {fallback_demand:.1f}")
+            return fallback_demand
+        
+        # Fallback 2: Very limited history (< 3 data points)
+        if len(self.demand_history) < 3:
+            simple_avg = sum(d for _, d in self.demand_history) / len(self.demand_history)
+            print(f"[FORECAST] Limited history ({len(self.demand_history)} points), using average: {simple_avg:.1f}")
+            return max(simple_avg, 1.0)
+        
+        # Normal case: Sufficient history for exponential smoothing
+        recent_demands = [d for _, d in self.demand_history[-8:]]  # Safe now
+        
+        try:
+            # Exponential smoothing with error handling
+            alpha = 0.3
+            forecast = recent_demands[0]
+            
+            for demand in recent_demands[1:]:
+                forecast = alpha * demand + (1 - alpha) * forecast
+            
+            # Add trend component if we have enough data
+            if len(recent_demands) >= 4:
+                recent_trend = (recent_demands[-1] - recent_demands[-4]) / 3
+                forecast += recent_trend
+            
+            result = max(forecast, 1.0)  # Never forecast negative
+            print(f"[FORECAST] Exponential smoothing: {result:.1f} (from {len(recent_demands)} points)")
+            return result
+            
+        except (IndexError, ZeroDivisionError, TypeError) as e:
+            # Emergency fallback
+            backup = sum(recent_demands) / len(recent_demands) if recent_demands else 10.0
+            print(f"[FORECAST] Error in calculation ({e}), using backup: {backup:.1f}")
+            return max(backup, 1.0)
             
     def _get_prioritized_transformations(self):
         """Get transformations sorted by priority based on current demands and system state"""

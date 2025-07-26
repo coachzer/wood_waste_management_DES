@@ -1,6 +1,6 @@
 from typing import Dict, Tuple
 from enum import Enum
-from config.base_config import LANDILL_EMISSIONS_PER_M3
+from config.constants import LANDFILL_EMISSIONS_PER_M3
 
 class DecisionStrategy(Enum):
     """Available strategies for handling overflow."""
@@ -18,7 +18,7 @@ class DecisionTracker:
         }
         self.total_landfilled: float = 0.0
         self.total_landfill_emissions: float = 0.0
-        self.LANDILL_EMISSIONS_PER_M3 = LANDILL_EMISSIONS_PER_M3
+        self.LANDFILL_EMISSIONS_PER_M3 = LANDFILL_EMISSIONS_PER_M3
         self.base_penalty_rate: float = 100.0  
         self.storage_expansion_cost: float = 250.0  
         self.strategy_costs: Dict[str, float] = {
@@ -89,7 +89,7 @@ class DecisionTracker:
         self.landfill_history[facility_type] += volume
         self.total_landfilled += volume
         # Track emissions
-        emissions = volume * self.LANDILL_EMISSIONS_PER_M3
+        emissions = volume * self.LANDFILL_EMISSIONS_PER_M3
         self.total_landfill_emissions += emissions
         # Calculate penalty with escalating severity based on volume
         severity = self._determine_severity(volume)

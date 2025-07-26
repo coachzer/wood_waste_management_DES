@@ -35,7 +35,7 @@ class PointToPointTransport:
     def find_available_vehicle(self, origin: RegionType) -> Optional[Dict]:
         """Find an available vehicle at or near the origin"""
         state = SimulationState.get_instance()
-        print(f"[VEHICLE DEBUG] Looking for vehicles at {origin.value}")
+        # print(f"[VEHICLE DEBUG] Looking for vehicles at {origin.value}")
     
         vehicle_count = 0
         available_count = 0
@@ -45,7 +45,7 @@ class PointToPointTransport:
                 vehicle_count += 1
                 if not vehicle.in_transit:
                     available_count += 1
-                    print(f"[VEHICLE DEBUG] Available: {vehicle.id} at {vehicle.current_region.value}")
+                    # print(f"[VEHICLE DEBUG] Available: {vehicle.id} at {vehicle.current_region.value}")
         
         print(f"[VEHICLE DEBUG] Total vehicles: {vehicle_count}, Available: {available_count}")
 
@@ -117,6 +117,26 @@ class PointToPointTransport:
         vehicle.destination = request.destination
         vehicle.estimated_arrival = arrival_time
         vehicle.current_load = request.volume
+
+        state = SimulationState.get_instance()
+        # find the TreatmentOperator whose region matches the request
+        treat_op = next(
+            (t for t in state.treatment_operators 
+            if t.region_type == request.destination),
+            None
+        )
+        target_name = treat_op.name if treat_op else request.requester_id
+
+        SimulationState.get_instance().track_transport_flow(
+            source_type="collector",
+            source_name=collector.name,
+            target_type="treatment",
+            target_name=target_name,
+            waste_type=request.waste_type,
+            volume=request.volume,
+            timestamp=current_time,
+            transport_method="inter_region_transport"
+        )
         
         transport = {
             "vehicle": vehicle,

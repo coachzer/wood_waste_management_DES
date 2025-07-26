@@ -126,113 +126,123 @@ def _add_flow_between_stages(sources: list, targets: list, values: list,
                 values.append(flow)
 
 
-def _create_flows(generators: Dict, collectors: Dict, treatments: Dict, products: Dict,
-                 gen_start: int, col_start: int, treat_start: int, prod_start: int, 
-                 min_volume: float = 1.0):
-    """Create flows between stages"""
+def _create_flows(transport_flows: list, labels: list):
+    """Create flows based on actual transport data"""
     sources, targets, values = [], [], []
     
-    # Generator -> Collector flows
-    _add_flow_between_stages(sources, targets, values, generators, collectors,
-                           gen_start, col_start, min_volume)
+    # Group flows by source-target pairs
+    flow_matrix = {}
     
-    # Collector -> Treatment flows  
-    _add_flow_between_stages(sources, targets, values, collectors, treatments,
-                           col_start, treat_start, min_volume)
+    for flow in transport_flows:
+        source_name = flow['source_name']
+        target_name = flow['target_name']
+        volume = flow['volume']
+        
+        # Find indices in labels
+        source_idx = None
+        target_idx = None
+        
+        # Find source index (search for name in label)
+        for i, label in enumerate(labels):
+            if source_name in label:
+                source_idx = i
+                break
+        
+        # Find target index  
+        for i, label in enumerate(labels):
+            if target_name in label:
+                target_idx = i
+                break
+        
+        if source_idx is not None and target_idx is not None:
+            key = (source_idx, target_idx)
+            flow_matrix[key] = flow_matrix.get(key, 0) + volume
     
-    # Treatment -> Product flows
-    _add_flow_between_stages(sources, targets, values, treatments, products,
-                           treat_start, prod_start, min_volume)
+    # Convert to lists
+    for (source_idx, target_idx), total_volume in flow_matrix.items():
+        if total_volume >= 0.1 and source_idx != target_idx:  # Minimum flow threshold
+            sources.append(source_idx)
+            targets.append(target_idx)
+            values.append(total_volume)
     
+    print(f"[MFA DEBUG] Created {len(sources)} real transport flows")
     return sources, targets, values
 
-
 def create_sankey(generator_volumes: Dict, collector_volumes: Dict, 
-                        treatment_volumes: Dict, product_volumes: Dict):
-    """Create a simple Sankey diagram with clear flow chain"""
-    
-    # Filter out entities with minimal volumes
+                  treatment_volumes: Dict, product_volumes: Dict):
     min_volume = 1.0
     generators = _filter_volumes(generator_volumes, min_volume)
     collectors = _filter_volumes(collector_volumes, min_volume)
     treatments = _filter_volumes(treatment_volumes, min_volume)
-    products = _filter_volumes(product_volumes, min_volume)
+    products   = _filter_volumes(product_volumes,   min_volume)
     
-    # Create nodes
     labels, node_colors, gen_start, col_start, treat_start, prod_start = _create_nodes(
         generators, collectors, treatments, products
     )
     
-    # Create flows
-    sources, targets, values = _create_flows(
-        generators, collectors, treatments, products,
-        gen_start, col_start, treat_start, prod_start, min_volume
-    )
+    state = SimulationState.get_instance()
+    transport_flows = state.transport_flows
+    sources, targets, values = _create_flows(transport_flows, labels)
     
-    return labels, node_colors, sources, targets, values
+    # add treatment → product links
+    for t_idx, treat_name in enumerate(treatments.keys()):
+        op = next((o for o in state.treatment_operators if o.name == treat_name), None)
+        if not op:
+            continue
+        for p_idx, prod_label in enumerate(products.keys()):
+            key = prod_label.lower().replace(" ", "_")
+            vol = op.product_volumes.get(key, 0.0)
+            if vol >= min_volume:
+                sources.append(treat_start + t_idx)
+                targets.append(prod_start + p_idx)
+                values.append(vol)
+    
+    # compute node positions: four vertical columns
+    n_gen = len(generators)
+    n_col = len(collectors)
+    n_treat = len(treatments)
+    n_prod = len(products)
+    
+    x = [0.0]*n_gen + [0.33]*n_col + [0.66]*n_treat + [1.0]*n_prod
+    y = []
+    for count in (n_gen, n_col, n_treat, n_prod):
+        y += [(i+1)/(count+1) for i in range(count)]
+    
+    return labels, node_colors, sources, targets, values, x, y
+
 
 
 def create_material_flow_analysis(generation_history: Dict, collection_history: Dict, 
-                                 processing_history: Dict, 
-                                 scenario_name: str = None,
-                                 inventory_policy: str = None,
-                                 stock_strategy: str = None,
-                                 save_path: str = None):
-    """Create material flow analysis visualization"""
+                                  processing_history: Dict, 
+                                  scenario_name: str = None,
+                                  inventory_policy: str = None,
+                                  stock_strategy: str = None,
+                                  save_path: str = None):
+    """Create material flow analysis visualization with fixed node columns"""
     
-    # Generate scenario-specific filename if not provided
     if save_path is None:
-        scenario_suffix = ""
+        suffix = ""
         if scenario_name and inventory_policy and stock_strategy:
-            scenario_suffix = f"_{scenario_name}_{inventory_policy}_{stock_strategy}"
-        
-        save_path = f"plots/material_flow_analysis{scenario_suffix}.html"
-
-    # Get volumes for each stage
-    generator_volumes, collector_volumes, treatment_volumes, product_volumes = get_volumes(
-        generation_history, collection_history, 
-        processing_history
+            suffix = f"_{scenario_name}_{inventory_policy}_{stock_strategy}"
+        save_path = f"plots/material_flow_analysis{suffix}.html"
+    
+    gen_vol, col_vol, treat_vol, prod_vol = get_volumes(
+        generation_history, collection_history, processing_history
     )
-
-    print("\n=== DEBUG: Raw Volumes ===")
-    print(f"Generator volumes: {generator_volumes}")
-    print(f"Collector volumes: {collector_volumes}")
-    print(f"Treatment volumes: {treatment_volumes}")
-    print(f"Product volumes: {product_volumes}")
     
-    # Filter volumes
-    min_volume = 1.0
-    generators = _filter_volumes(generator_volumes, min_volume)
-    collectors = _filter_volumes(collector_volumes, min_volume)
-    treatments = _filter_volumes(treatment_volumes, min_volume)
-    products = _filter_volumes(product_volumes, min_volume)
-    
-    # ADD MORE DEBUG PRINTS:
-    print(f"\n=== DEBUG: Filtered Volumes (min={min_volume}) ===")
-    print(f"Filtered generators: {generators}")
-    print(f"Filtered collectors: {collectors}")
-    print(f"Filtered treatments: {treatments}")
-    print(f"Filtered products: {products}")
-    
-    # Create Sankey diagram components
-    labels, node_colors, sources, targets, values = create_sankey(
-        generator_volumes, collector_volumes, treatment_volumes, product_volumes
+    labels, node_colors, sources, targets, values, x, y = create_sankey(
+        gen_vol, col_vol, treat_vol, prod_vol
     )
-
-    title = "Wood Waste Material Flow Analysis"
-    if scenario_name:
-        title += f" - {scenario_name}"
-    elif inventory_policy and stock_strategy:
-        title += f" - {inventory_policy} | {stock_strategy}"
     
-    # Create the visualization
     fig = go.Figure(data=[go.Sankey(
         node={
             "pad": 15,
             "thickness": 20,
             "line": {"color": "black", "width": 0.5},
             "label": labels,
-            "color": node_colors
+            "color": node_colors,
+            "x": x,
+            "y": y
         },
         link={
             "source": sources,
@@ -242,50 +252,28 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
         }
     )])
     
-    # Update layout
+    title = "Wood Waste Material Flow Analysis"
+    if scenario_name:
+        title += f" - {scenario_name}"
+    elif inventory_policy and stock_strategy:
+        title += f" - {inventory_policy} | {stock_strategy}"
+    
     fig.update_layout(
         title=title,
         font_size=12,
         height=600,
         margin={"l": 50, "r": 50, "t": 50, "b": 50}
     )
-
+    
     if inventory_policy and stock_strategy:
         fig.add_annotation(
             text=f"Scenario: {scenario_name}<br>Inventory Policy: {inventory_policy}<br>Stock Strategy: {stock_strategy}",
-            xref="paper", yref="paper",
-            x=0.98, y=0.98,
-            showarrow=False,
-            font={'size': 10},
+            xref="paper", yref="paper", x=0.98, y=0.98,
+            showarrow=False, font={'size': 10},
             bgcolor="rgba(255,255,255,0.8)",
-            bordercolor="black",
-            borderwidth=1
+            bordercolor="black", borderwidth=1
         )
     
-    # Save the plot
     fig.write_html(save_path)
     print(f"Material flow analysis saved to {save_path}")
-    
-    # Print summary
-    total_generated = sum(generator_volumes.values())
-    total_collected = sum(collector_volumes.values()) 
-    total_treated = sum(treatment_volumes.values())
-    total_products = sum(product_volumes.values())
-    
-    print("\nMaterial Flow Summary:")
-    print(f"  Generated: {format_volume(total_generated)}")
-    print(f"  Collected: {format_volume(total_collected)}")
-    print(f"  Treated: {format_volume(total_treated)}")
-    print(f"  Products: {format_volume(total_products)}")
-    
-    if total_generated > 0:
-        collection_efficiency = (total_collected / total_generated) * 100
-        treatment_efficiency = (total_treated / total_collected) * 100 if total_collected > 0 else 0
-        product_efficiency = (total_products / total_treated) * 100 if total_treated > 0 else 0
-        
-        print("\nEfficiencies:")
-        print(f"  Collection: {collection_efficiency:.1f}%")
-        print(f"  Treatment: {treatment_efficiency:.1f}%") 
-        print(f"  Production: {product_efficiency:.1f}%")
-
     return save_path

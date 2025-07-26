@@ -16,6 +16,8 @@ class SimulationState:
             cls._instance.generators = []
             cls._instance.collectors = []
             cls._instance.treatment_operators = []
+            # Initialize transport flows
+            cls._instance.transport_flows = []
             # Initialize regional waste tracker
             cls._instance.waste_tracker = regional_tracker.RegionalWasteTracker()
             # Initialize product tracking with values from demand.json
@@ -65,6 +67,25 @@ class SimulationState:
         except KeyError as e:
             print(f"Warning: Could not track waste collection - {str(e)}")
             return 0
+        
+    def track_transport_flow(self, source_type: str, source_name: str, 
+                           target_type: str, target_name: str, 
+                           waste_type, volume: float, timestamp: float,
+                           transport_method: str = "vehicle"):
+        """Track transport flows between entities"""
+        self.transport_flows.append({
+            'source_type': source_type,
+            'source_name': source_name,
+            'target_type': target_type,
+            'target_name': target_name,
+            'waste_type': waste_type.value if hasattr(waste_type, 'value') else str(waste_type),
+            'volume': volume,
+            'timestamp': timestamp,
+            'transport_method': transport_method
+        })
+        
+        print(f"[FLOW TRACKED] {source_type}:{source_name} → {target_type}:{target_name} "
+              f"({volume:.1f} m³ {waste_type})")
 
     def get_regional_waste_stats(self, region):
         """Get waste statistics for a specific region"""
@@ -116,6 +137,8 @@ class SimulationState:
         self.generators = []
         self.collectors = []
         self.treatment_operators = []
+        # Reset transport flows
+        self.transport_flows = []
         # Reset regional waste tracker
         self.waste_tracker = regional_tracker.RegionalWasteTracker()
         # Reset product tracking with values from demand.json
@@ -136,3 +159,32 @@ class SimulationState:
             'particle_board': None,
             'osb': None
         }
+
+    def get_transport_flow_summary(self):
+        """Get summary of transport flows for debugging"""
+        if not self.transport_flows:
+            return "No transport flows recorded"
+        
+        summary = []
+        summary.append(f"Total transport flows: {len(self.transport_flows)}")
+        
+        # Group by flow type
+        flow_types = {}
+        for flow in self.transport_flows:
+            key = f"{flow['source_type']} → {flow['target_type']}"
+            if key not in flow_types:
+                flow_types[key] = {"count": 0, "volume": 0}
+            flow_types[key]["count"] += 1
+            flow_types[key]["volume"] += flow['volume']
+        
+        summary.append("\nFlow types:")
+        for flow_type, stats in flow_types.items():
+            summary.append(f"  {flow_type}: {stats['count']} flows, {stats['volume']:.1f} m³ total")
+        
+        # Show recent flows
+        summary.append(f"\nRecent flows (last 50):")
+        for flow in self.transport_flows[-50:]:
+            summary.append(f"  {flow['source_name']} → {flow['target_name']}: "
+                        f"{flow['volume']:.1f} m³ {flow['waste_type']}")
+        
+        return "\n".join(summary)

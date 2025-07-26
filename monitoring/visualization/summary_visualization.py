@@ -1,3 +1,4 @@
+import os
 import plotly.graph_objects as go
 import plotly.subplots as sp
 import pandas as pd
@@ -8,10 +9,8 @@ from ..utils.visualization_utils import find_pareto_front
 def create_cost_impact_comparison(results: List[Dict], output_dir: str):
     """Create bar charts comparing cost and environmental impact breakdowns"""
     cost_components = ['energy', 'processing', 'transport', 'overflow']
-    impact_components = ['emissions', 'resource_use']  
     scenario_labels = []
     cost_data = {comp: [] for comp in cost_components}
-    impact_data = {comp: [] for comp in impact_components}
 
     for result in results:
         monitor_data = result['monitor_data']
@@ -42,42 +41,161 @@ def create_cost_impact_comparison(results: List[Dict], output_dir: str):
     fig_cost.write_html(f"{output_dir}/cost_breakdown_comparison.html")
 
 def create_pareto_front_plot(results: List[Dict], output_dir: str):
-    """Create a 2D scatter plot of cost vs. environmental impact"""
+    """Create a 2D scatter plot of cost vs. environmental impact with improved labeling and tooltips"""
     scenario_labels = []
     total_costs = []
     total_impacts = []
+    hover_texts = []
 
     for result in results:
-        monitor_data = result['monitor_data']
-        scenario_labels.append(f"{result['inventory_policy']} | {result['stock_strategy']}")
-        cost_history = monitor_data['cost_history']
-        overflow_history = monitor_data['overflow_history']
-        total_cost = np.sum(cost_history.get('energy', [])) + np.sum(cost_history.get('processing', [])) + np.sum(cost_history.get('transport', []))
-        total_cost += overflow_history.get('total_cost', {}).get('values', [0])[-1] if overflow_history.get('total_cost', {}).get('values') else 0
-        total_impact = getattr(monitor_data['waste_monitor'], 'total_emissions', 0)
+        # Get the WasteMonitor instance from results
+        waste_monitor = result.get('waste_monitor') or result.get('monitor_data', {}).get('waste_monitor')
+        
+        if not waste_monitor:
+            continue
+            
+        scenario_label = f"{result['inventory_policy']} | {result['stock_strategy']}"
+        scenario_labels.append(scenario_label)
+        
+        # Calculate total cost using WasteMonitor's cost_history structure
+        cost_history = waste_monitor.cost_history
+        total_cost = 0.0
+        
+        # Sum costs by type
+        for cost_type, data in cost_history["by_cost_type"].items():
+            if data["values"]:
+                total_cost += sum(data["values"])
+        
+        # Add overflow costs
+        overflow_history = waste_monitor.overflow_history
+        if overflow_history["total_cost"]["values"]:
+            total_cost += overflow_history["total_cost"]["values"][-1]
+        
+        # Calculate total environmental impact using WasteMonitor's environmental_history
+        env_history = waste_monitor.environmental_history
+        total_impact = 0.0
+        
+        # Sum environmental impacts by type
+        for impact_type, data in env_history["by_impact_type"].items():
+            if data["values"]:
+                total_impact += sum(data["values"])
+        
         total_costs.append(total_cost)
         total_impacts.append(total_impact)
+        
+        # Create detailed hover text with breakdown
+        cost_breakdown = []
+        for cost_type, data in cost_history["by_cost_type"].items():
+            if data["values"]:
+                cost_sum = sum(data["values"])
+                if cost_sum > 0:
+                    cost_breakdown.append(f"{cost_type.title()}: {cost_sum:.2f}")
+        
+        impact_breakdown = []
+        for impact_type, data in env_history["by_impact_type"].items():
+            if data["values"]:
+                impact_sum = sum(data["values"])
+                if impact_sum > 0:
+                    impact_breakdown.append(f"{impact_type.replace('_', ' ').title()}: {impact_sum:.2f}")
+        
+        hover_text = f"Scenario: {scenario_label}<br>"
+        hover_text += f"Total Cost: {total_cost:.2f}<br>"
+        if cost_breakdown:
+            hover_text += f"Cost Breakdown: {', '.join(cost_breakdown)}<br>"
+        hover_text += f"Total Environmental Impact: {total_impact:.2f}<br>"
+        if impact_breakdown:
+            hover_text += f"Impact Breakdown: {', '.join(impact_breakdown)}<br>"
+        
+        # Add efficiency metrics if available
+        efficiency_metrics = waste_monitor.calculate_efficiency_metrics()
+        hover_text += f"Collection Rate: {efficiency_metrics['collection_rate']:.1f}%<br>"
+        hover_text += f"Processing Rate: {efficiency_metrics['processing_rate']:.1f}%<br>"
+        hover_text += f"Overall Efficiency: {efficiency_metrics['overall_efficiency']:.1f}%"
+        
+        hover_texts.append(hover_text)
+
+    if not total_costs or not total_impacts:
+        print("Warning: No valid data found for Pareto front plot")
+        return
 
     # Pareto front calculation
     points = np.array(list(zip(total_costs, total_impacts)))
     pareto_mask = find_pareto_front(points)
 
+    # Create the plot
     fig = go.Figure()
+    
+    # Add all points
     fig.add_trace(go.Scatter(
         x=total_costs,
         y=total_impacts,
         mode='markers+text',
         text=scenario_labels,
         textposition='top center',
-        marker={"size": 12, "color": ['red' if is_pareto else 'gray' for is_pareto in pareto_mask]},
+        marker={
+            "size": 14,
+            "color": ['red' if is_pareto else 'gray' for is_pareto in pareto_mask],
+            "symbol": ['diamond' if is_pareto else 'circle' for is_pareto in pareto_mask],
+            "line": {"width": 2, "color": "black"}
+        },
+        hovertext=hover_texts,
+        hoverinfo="text",
         name='Scenarios'
     ))
+    
+    # Add Pareto front line if there are multiple Pareto optimal points
+    pareto_points = points[pareto_mask]
+    if len(pareto_points) > 1:
+        # Sort Pareto points by cost for connecting line
+        sorted_indices = np.argsort(pareto_points[:, 0])
+        sorted_pareto = pareto_points[sorted_indices]
+        
+        fig.add_trace(go.Scatter(
+            x=sorted_pareto[:, 0],
+            y=sorted_pareto[:, 1],
+            mode='lines',
+            line={'color': 'red', 'width': 2, 'dash': 'dash'},
+            name='Pareto Front',
+            hoverinfo='skip'
+        ))
+    
     fig.update_layout(
-        title="Scenario Pareto Front: Cost vs. Environmental Impact", 
-        xaxis_title="Total Cost", 
-        yaxis_title="Total Environmental Impact"
+        title="Scenario Pareto Front: Cost vs. Environmental Impact",
+        xaxis_title="Total Cost (Currency Units)",
+        yaxis_title="Total Environmental Impact (Impact Units)",
+        legend_title="Legend",
+        template="plotly_white",
+        hovermode='closest',
+        width=900,
+        height=600
     )
+    
+    # Save the plot
+    os.makedirs(output_dir, exist_ok=True)
     fig.write_html(f"{output_dir}/pareto_front.html")
+    print(f"Pareto front plot saved to {output_dir}/pareto_front.html")
+
+def find_pareto_front(points):
+    """
+    Find the Pareto front for a set of 2D points (minimization problem)
+    Returns a boolean mask indicating which points are on the Pareto front
+    """
+    n_points = len(points)
+    is_pareto = np.ones(n_points, dtype=bool)
+    
+    for i in range(n_points):
+        if is_pareto[i]:
+            # Check if any other point dominates this point
+            for j in range(n_points):
+                if i != j and is_pareto[j]:
+                    # Point j dominates point i if j is better or equal in all objectives
+                    # and strictly better in at least one objective
+                    if (points[j][0] <= points[i][0] and points[j][1] <= points[i][1] and 
+                        (points[j][0] < points[i][0] or points[j][1] < points[i][1])):
+                        is_pareto[i] = False
+                        break
+    
+    return is_pareto
 
 def create_summary_dashboard(results: List[Dict], output_dir: str):
     """Create a comprehensive dashboard with key metrics"""

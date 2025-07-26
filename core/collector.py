@@ -16,7 +16,6 @@ from core.collector_utils import (
     get_adaptive_threshold,
     handle_completed_transport,
     check_completed_transports,
-    handle_collector_capacity,
     get_prioritized_generators
 )
 
@@ -59,8 +58,8 @@ class CollectorCompany(OperationalEntity):
         uncertainty_set = None,
         waste_monitor: Optional[WasteMonitor] = None,
         kanban_manager: KanbanManager = None,
-        inventory_policy: InventoryPolicy = InventoryPolicy.PUSH,
-        stock_strategy: StockStrategy = StockStrategy.REORDER_90,
+        inventory_policy: InventoryPolicy = None,
+        stock_strategy: StockStrategy = None,
         transport_manager: PointToPointTransport = None
     ):
         super().__init__()
@@ -257,8 +256,18 @@ class CollectorCompany(OperationalEntity):
             SimulationState.get_instance().track_waste_collection(
                 generator.region, waste_type, amount
             )
+
+            SimulationState.get_instance().track_transport_flow(
+                source_type="generator",
+                source_name=generator.name,
+                target_type="collector", 
+                target_name=self.name,
+                waste_type=waste_type,
+                volume=amount,
+                timestamp=self.env.now,
+                transport_method="collection_vehicle"
+            )
             
-            # Update our collected waste tracking
             self.collected_waste[waste_type] += amount
             
             print(f"[WASTE COLLECTED] {amount:.1f} m³ of {waste_type.value} from {generator.name}")
@@ -458,7 +467,7 @@ class CollectorCompany(OperationalEntity):
             else:
                 # Regular collection based on policy
                 print(f"{current_time}: Collector {self.name} performing unified collection strategy")
-                prioritized_generators = get_prioritized_generators()
+                prioritized_generators = get_prioritized_generators(self)
                 collection_cost = self._unified_collection_strategy(prioritized_generators)
                 
                 if collection_cost > 0:
@@ -473,7 +482,7 @@ class CollectorCompany(OperationalEntity):
                 continue
                 
             prioritized_generators = [
-                g for g in get_prioritized_generators()
+                g for g in get_prioritized_generators(self)
                 if waste_type_enum in g.waste_streams and g.region == self.region
             ]
             
@@ -481,28 +490,34 @@ class CollectorCompany(OperationalEntity):
                 self.collect_from_generator(generator)
 
     def should_collect(self) -> bool:
-        """Simplified collection decision with adaptive thresholds"""
         utilization = calculate_utilization(
             self.collection_center.current_storage,
             self.collection_center.waste_storage_capacity
         )
         
-        if self.inventory_policy == InventoryPolicy.PULL:
-            has_demand = bool(self.kanban_manager.get_signals())
-            threshold = get_adaptive_threshold(self.stock_strategy, self.env.now)
-            below_threshold = utilization < threshold
+        if self.inventory_policy == InventoryPolicy.PUSH:
+            # PUSH: Higher inventory targets 
+            base_threshold = get_adaptive_threshold(self.stock_strategy, self.env.now)
+            push_threshold = min(0.80, base_threshold + 0.10)  # +10% buffer for PUSH
+            should = utilization < push_threshold
+            if should:
+                print(f"[PUSH COLLECT] {self.name}: {utilization:.2f} < {push_threshold:.2f}")
+            return should
             
-            # print(f"DEBUG: {self.name} - PULL: demand={has_demand}, "
-            #     f"utilization={utilization:.3f} < {threshold:.3f} = {below_threshold}")
-            
-            return has_demand or below_threshold
-        
-        elif self.inventory_policy == InventoryPolicy.PUSH:
-            threshold = get_adaptive_threshold(self.stock_strategy, self.env.now)
-            should_restock = utilization < threshold
-            
-            # print(f"DEBUG: {self.name} - PUSH: utilization={utilization:.3f} < {threshold:.3f} = {should_restock}")
-            return should_restock
+        elif self.inventory_policy == InventoryPolicy.PULL:
+            # PULL: Kanban-first, then lean thresholds (20-40% full)
+            signals = self.kanban_manager.get_signals()
+            if signals:
+                print(f"[PULL COLLECT] {self.name}: {len(signals)} kanban signals")
+                return True
+                
+            # PULL uses much lower thresholds
+            base_threshold = get_adaptive_threshold(self.stock_strategy, self.env.now)
+            pull_threshold = max(0.15, base_threshold - 0.15)  # -15% for lean operation
+            should = utilization < pull_threshold
+            if should:
+                print(f"[PULL COLLECT] {self.name}: {utilization:.2f} < {pull_threshold:.2f}")
+            return should
         
         return False
 
@@ -589,13 +604,15 @@ class CollectorCompany(OperationalEntity):
         return return_value
 
     def _unified_collection_strategy(self, prioritized_generators: List) -> float:
-        """Strategy with distance prioritization"""
-        # Use distance prioritization
-        distance_prioritized = self._get_distance_prioritized_generators(prioritized_generators)
+        """Strategy with 80/20 volume allocation between same/cross regions"""
+        # Use volume-based regional prioritization
+        volume_prioritized = get_prioritized_generators(self)
         
         total_cost = 0
+        collected_same_region = 0
+        collected_cross_region = 0
         
-        for generator in distance_prioritized:
+        for generator in volume_prioritized:
             if generator.current_storage <= 0:
                 continue
             
@@ -606,15 +623,33 @@ class CollectorCompany(OperationalEntity):
             
             # Start collection (async process)
             self.collect_from_generator(generator)
-            print(f"[COLLECTION START] {self.name} starting collection from {generator.name}")  
-
+            
+            # Track volume allocation for reporting
+            estimated_collection = min(
+                generator.current_storage,
+                self.collection_capacity * self.efficiency
+            )
+            
+            if generator.region_type == self.region_type:
+                collected_same_region += estimated_collection
+            else:
+                collected_cross_region += estimated_collection
             
             # Estimate cost based on distance
             _, distance = self._calculate_travel_time_to_generator(generator)
             estimated_cost = self.transport_cost + (distance * 0.5)
             total_cost += estimated_cost
             
-            print(f"[COLLECTION START] {self.name} dispatching to {generator.name} (€{estimated_cost:.2f})")
+            print(f"[VOLUME COLLECTION] {self.name} dispatching to {generator.name} "
+                f"({generator.region_type.value}, {estimated_collection:.1f}m³, €{estimated_cost:.2f})")
+        
+        # Report final volume allocation
+        total_collected = collected_same_region + collected_cross_region
+        if total_collected > 0:
+            same_pct = (collected_same_region / total_collected) * 100
+            cross_pct = (collected_cross_region / total_collected) * 100
+            print(f"[VOLUME SUMMARY] {self.name}: {same_pct:.1f}% same region ({collected_same_region:.1f}m³), "
+                f"{cross_pct:.1f}% cross region ({collected_cross_region:.1f}m³)")
         
         return total_cost
     

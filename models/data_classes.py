@@ -1,6 +1,7 @@
 import numpy as np
 from dataclasses import dataclass
 from typing import Dict, Tuple, Optional
+from monitoring.waste_monitor import WasteMonitor
 from .enums import WasteType, RegionType, EntityStatus, OutputType
 
 @dataclass
@@ -14,9 +15,13 @@ class FailureConfig:
 @dataclass(init=False)
 class OperationalEntity:
     """Base class for entities that can experience failures"""
+
+    _entity_registry = {}
+    _failure_counts = {}
     status: EntityStatus
     failure_time: Optional[float]
     recovery_time: Optional[float]
+    waste_monitor: WasteMonitor
     downtime_duration: float
     last_failure_check: float
     failure_check_interval: float
@@ -27,17 +32,41 @@ class OperationalEntity:
         self.status = EntityStatus.OPERATIONAL
         self.failure_time = None
         self.recovery_time = None
+        self.waste_monitor = WasteMonitor()
         self.downtime_duration = 24.0  
         self.last_failure_check = 0.0
         self.failure_check_interval = 1.0  
-        self.rng = np.random.default_rng(42)  
+        self.rng = np.random.default_rng(42) 
+
+    @classmethod
+    def get_entity_counts(cls):
+        """Get count of each entity type"""
+        return {entity_type: len(entities) 
+                for entity_type, entities in cls._entity_registry.items()}
+    
+    @classmethod
+    def get_failure_stats(cls):
+        """Get failure statistics"""
+        return cls._failure_counts.copy()
     
     def check_failure(self, current_time, failure_probability):
         """Enhanced failure checking with recovery state management"""
+
         if self.status == EntityStatus.OPERATIONAL:
             if self.rng.random() < failure_probability:
+                # Track
+                entity_type = self.__class__.__name__
+                if entity_type not in self._failure_counts:
+                    self._failure_counts[entity_type] = 0
+                self._failure_counts[entity_type] += 1
+                
                 self.status = EntityStatus.FAILED
                 self.failure_start_time = current_time
+
+                if hasattr(self, 'waste_monitor') and self.waste_monitor:
+                    self.waste_monitor.record_entity_status(self, current_time)
+
+                print(f"FAILURE: {entity_type} {getattr(self, 'name', 'unknown')} failed at time {current_time}")
                 return True
                 
         elif self.status == EntityStatus.FAILED:
@@ -47,6 +76,9 @@ class OperationalEntity:
                 self.recovery_start_time = current_time
                 self.recovery_duration = self._get_recovery_duration()
                 self.recovery_progress = 0.0
+
+                if hasattr(self, 'waste_monitor') and self.waste_monitor:
+                    self.waste_monitor.record_entity_status(self, current_time)
                 
         elif self.status == EntityStatus.RECOVERING:
             # Calculate recovery progress
@@ -56,6 +88,8 @@ class OperationalEntity:
             if self.recovery_progress >= 1.0:
                 # Recovery complete
                 self.status = EntityStatus.OPERATIONAL
+                if hasattr(self, 'waste_monitor') and self.waste_monitor:
+                    self.waste_monitor.record_entity_status(self, current_time)
                 self.recovery_start_time = None
                 self.recovery_duration = None
                 self.recovery_progress = 0.0

@@ -1,8 +1,11 @@
+from collections import defaultdict
 from typing import List, Dict, Any
 
 class KanbanManager:
     def __init__(self):
         self.signals: List[Dict[str, Any]] = []
+        self.max_signal_age = 24.0
+        self.signal_history = defaultdict(list)
 
     def add_signal(self, waste_type, priority, timestamp):
         self.signals.append({

@@ -7,8 +7,6 @@ from .base_config import (
     # Core data structures
     UncertaintySet,
     ScenarioConfig,
-    CostParams,
-    FacilityParams,
     
     # Scenario access functions
     get_uncertainty_set,
@@ -31,8 +29,6 @@ __all__ = [
     # Core data structures
     'UncertaintySet',
     'ScenarioConfig', 
-    'CostParams',
-    'FacilityParams',
     
     # Access functions
     'get_uncertainty_set',

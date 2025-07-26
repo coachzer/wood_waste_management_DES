@@ -4,6 +4,7 @@
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Dict, Tuple, List
+from config.constants import SIMULATION_DURATION
 from models.enums import WasteType, OutputType, InventoryPolicy, StockStrategy
 from models.data_classes import FailureConfig
 from utils.helpers import (
@@ -17,7 +18,6 @@ class UncertaintySet:
     collection_efficiency: Tuple[float, float]
     treatment_conversion: Tuple[float, float]
     transportation_time: Tuple[float, float]
-    market_demand: Dict
     generator_failure: FailureConfig
     collector_failure: FailureConfig
     treatment_failure: FailureConfig
@@ -37,8 +37,6 @@ class CostParams:
     expansion_cost_per_m3: float = 100.0  # Cost to expand storage by 1m³
     landfill_rate: float = 75.0        # Cost per unit landfilled
 
-# Add emissions factor
-LANDILL_EMISSIONS_PER_M3 = 0.24  # t CO2e per m³
 DEFAULT_COSTS = CostParams()
 
 @dataclass
@@ -79,7 +77,6 @@ class ScenarioConfig:
     coll_eff: Tuple[float, float]
     treat_conv: Tuple[float, float]
     trans_time: Tuple[float, float]
-    market_dem: Tuple[float, float]
     generator_failure: FailureConfig
     collector_failure: FailureConfig
     treatment_failure: FailureConfig
@@ -88,25 +85,12 @@ class ScenarioConfig:
 
     def to_uncertainty_set(self) -> UncertaintySet:
         """Convert scenario config to uncertainty set"""
-        # Market demand based on actual monthly demand values
-        market_demand = {
-            OutputType.MDF: (
-                MONTHLY_DEMAND[OutputType.MDF] * self.market_dem[0], 
-                MONTHLY_DEMAND[OutputType.MDF] * self.market_dem[1]),
-            OutputType.PARTICLE_BOARD: (
-                MONTHLY_DEMAND[OutputType.PARTICLE_BOARD] * self.market_dem[0],
-                MONTHLY_DEMAND[OutputType.PARTICLE_BOARD] * self.market_dem[1]),
-            OutputType.OSB: (
-                MONTHLY_DEMAND[OutputType.OSB] * self.market_dem[0],
-                MONTHLY_DEMAND[OutputType.OSB] * self.market_dem[1])
-        }
 
         return UncertaintySet(
             # Required fields
             collection_efficiency=self.coll_eff,
             treatment_conversion=self.treat_conv,
             transportation_time=self.trans_time,
-            market_demand=market_demand,
             generator_failure=self.generator_failure,
             collector_failure=self.collector_failure,
             treatment_failure=self.treatment_failure,
@@ -114,8 +98,7 @@ class ScenarioConfig:
             waste_generation_variability=self.waste_gen[1]  # Use std as variability factor
         )
 
-# Time configuration
-SIMULATION_DURATION = 365  # days in simulation (one full year)
+
 
 TIME_PERIODS = {
     "quarter_1": (0, 90),     # Q1: Jan-Mar (91 days)
@@ -166,10 +149,9 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
         coll_eff=(0.85, 0.05),   # Good, stable collection efficiency
         treat_conv=(0.9, 0.03),  # High, stable conversion efficiency
         trans_time=(2.0, 0.2),   # Fast, predictable transport
-        market_dem=(1.0, 0.1),   # Standard, stable demand
         generator_failure=LOW_FAILURE,
-        collector_failure=LOW_FAILURE,
-        treatment_failure=LOW_FAILURE,
+        collector_failure=MEDIUM_FAILURE,
+        treatment_failure=HIGH_FAILURE,
         inventory_policy=InventoryPolicy.PUSH,
         stock_strategy=StockStrategy.REORDER_90
     ),
@@ -179,9 +161,8 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
         coll_eff=(0.5, 0.3),     # Poor, highly variable collection
         treat_conv=(0.6, 0.2),   # Poor, highly variable conversion
         trans_time=(5.0, 2.0),   # Slow, unpredictable transport
-        market_dem=(0.6, 0.4),   # Low, volatile demand
         generator_failure=HIGH_FAILURE,
-        collector_failure=HIGH_FAILURE,
+        collector_failure=MEDIUM_FAILURE,
         treatment_failure=HIGH_FAILURE,
         inventory_policy=InventoryPolicy.PUSH,
         stock_strategy=StockStrategy.ON_DEMAND
@@ -192,10 +173,9 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
         coll_eff=(0.98, 0.02),   # Excellent, stable collection
         treat_conv=(0.98, 0.01), # Excellent, stable conversion
         trans_time=(1.0, 0.1),   # Very fast, predictable transport
-        market_dem=(2.0, 0.2),   # Double, stable demand
         generator_failure=MEDIUM_FAILURE,
         collector_failure=MEDIUM_FAILURE,
-        treatment_failure=MEDIUM_FAILURE,
+        treatment_failure=HIGH_FAILURE,
         inventory_policy=InventoryPolicy.PULL,
         stock_strategy=StockStrategy.REORDER_90
     )
@@ -220,38 +200,18 @@ def validate_scenario_config(config: ScenarioConfig) -> None:
     validate_tuple(config.coll_eff, "Collection efficiency")
     validate_tuple(config.treat_conv, "Treatment conversion")
     validate_tuple(config.trans_time, "Transportation time")
-    validate_tuple(config.market_dem, "Market demand")
 
 # Collection of generated uncertainty sets
 uncertainty_sets = {}
 
 def _create_uncertainty_set(config: ScenarioConfig) -> UncertaintySet:
     """Create uncertainty set from a scenario configuration"""
-    # Market demand from demand.json
-    market_demand = {
-        OutputType.MDF: (
-            _demand_data["national_demand"]["mdf"] * config.market_dem[0],
-            _demand_data["national_demand"]["mdf"] * config.market_dem[1]),
-        OutputType.PARTICLE_BOARD: (
-            _demand_data["national_demand"]["particle_board"] * config.market_dem[0],
-            _demand_data["national_demand"]["particle_board"] * config.market_dem[1]),
-        OutputType.OSB: (
-            _demand_data["national_demand"]["osb"] * config.market_dem[0],
-            _demand_data["national_demand"]["osb"] * config.market_dem[1]),
-    }
-    
-    # Add reasonable demand for waste types (lower than output products)
-    for waste_type in WasteType:
-        if waste_type not in market_demand:
-            market_demand[waste_type] = (600 * config.market_dem[0], 240 * config.market_dem[1])
-
     # Create uncertainty set with variability factors
     return UncertaintySet(
         # Required fields
         collection_efficiency=config.coll_eff,
         treatment_conversion=config.treat_conv,
         transportation_time=config.trans_time,
-        market_demand=market_demand,
         generator_failure=config.generator_failure,
         collector_failure=config.collector_failure,
         treatment_failure=config.treatment_failure,

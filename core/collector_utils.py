@@ -1,8 +1,7 @@
 from typing import List, Dict, Optional
+from models.distances import get_closest_regions
 from models.enums import InventoryPolicy, StockStrategy, WasteType
-from models.data_classes import OperationalEntity
 from models.state import SimulationState
-from utils.capacity_utils import apply_capacity_constraints, handle_overflow_with_decision
 
 def handle_completed_transport(transport: Dict, current_time: float) -> None:
     """Process a completed transport"""
@@ -48,69 +47,6 @@ def check_completed_transports(active_transports: List[Dict], current_time: floa
                 f"arrived at {vehicle.current_region.value}"
             )
     return completed
-
-def handle_collector_capacity(
-    collector1: OperationalEntity,
-    collector2: OperationalEntity,
-    waste_type: WasteType,
-    target_volume: float,
-    waste_stream,
-    remaining_capacity: Dict[str, float],
-    generator,
-) -> None:
-    """Handle waste collection for a specific collector"""
-    if target_volume <= 0:
-        return
-
-    if collector2.region_type != collector1.region_type:
-        # If different region, schedule transport
-        success = collector1.transfer_waste_to_region(
-            waste_type, target_volume, collector2.region_type
-        )
-        if success:
-            # Track waste removal from current region
-            SimulationState.get_instance().track_waste_collection(
-                collector1.region, waste_type, target_volume
-            )
-    else:
-        # Same region, check storage capacity
-        result = apply_capacity_constraints(
-            current_total=sum(collector2.collection_center.current_storage.values()),
-            additional_amount=target_volume,
-            capacity=collector2.collection_center.waste_storage_capacity
-        )
-        
-        if result.allowed_amount > 0:
-            # Update generator
-            waste_stream.volume -= result.allowed_amount
-            generator.current_storage -= result.allowed_amount
-
-            # Update collector's storage
-            collector2.collection_center.current_storage[waste_type] += result.allowed_amount
-            collector2.collected_waste[waste_type] += result.allowed_amount
-            remaining_capacity[collector2.name] -= result.allowed_amount
-
-            # Track waste movement
-            SimulationState.get_instance().track_waste_collection(
-                generator.region, waste_type, result.allowed_amount
-            )
-            SimulationState.get_instance().track_waste_generation(
-                collector2.region, waste_type, result.allowed_amount
-            )
-
-        if result.overflow_amount > 0:
-            _, strategy = handle_overflow_with_decision(
-                collector2,
-                result.overflow_amount,
-                collector2.region
-            )
-            collector2.waste_monitor.track_overflow(
-                facility_type="collector",
-                volume=result.overflow_amount,
-                strategy=strategy,
-                timestamp=collector2.env.now,
-                region=collector2.region
-            )
 
 def normalize_waste_type(waste_type_input) -> Optional[WasteType]:
     """Convert various waste type inputs to WasteType enum"""
@@ -167,8 +103,6 @@ def get_adaptive_threshold(strategy: StockStrategy, base_time: float) -> float:
         return 0.50
     elif strategy == StockStrategy.REORDER_90:
         return 0.90
-    # elif strategy == StockStrategy.FULL_STOCK:
-    #     return 0.95
     return 0.10
 
 def calculate_utilization(storage_dict: Dict, total_capacity: float) -> float:
@@ -228,13 +162,212 @@ def _calculate_pull_efficiency(strategy: StockStrategy, utilization: float,
         return base
     return base
 
-def get_prioritized_generators() -> List:
-    """Get generators sorted by priority and filtered by region"""
+def get_prioritized_generators(collector) -> List:
+    """
+    Get generators with 80% volume allocation to same region, 20% to next closest region
+    
+    Args:
+        collector: The collector instance with region and capacity information
+        
+    Returns:
+        List of generators prioritized by volume allocation strategy
+    """
+    
     state = SimulationState.get_instance()
-    regional_generators = [
-        g
-        for g in state.generators
+    
+    # Filter generators with available storage
+    generators_with_waste = [
+        g for g in state.generators
         if g.current_storage > 0
     ]
-    return regional_generators
+    
+    if not generators_with_waste:
+        return []
+    
+    # Calculate collector's total collection capacity for this cycle
+    total_collection_capacity = collector.collection_capacity * collector.efficiency
+    
+    # Separate generators by region
+    same_region_generators = [
+        g for g in generators_with_waste 
+        if g.region_type == collector.region_type
+    ]
+    
+    other_region_generators = [
+        g for g in generators_with_waste 
+        if g.region_type != collector.region_type
+    ]
+    
+    # Calculate volume allocations
+    same_region_target = total_collection_capacity * 0.8  # 80% for same region
+    cross_region_target = total_collection_capacity * 0.2  # 20% for cross region
+    
+    prioritized_generators = []
+    
+    # Phase 1: Select same-region generators for 80% of capacity
+    if same_region_generators and same_region_target > 0:
+        # Sort by storage volume (highest first) for efficiency
+        same_region_sorted = sorted(
+            same_region_generators, 
+            key=lambda g: g.current_storage, 
+            reverse=True
+        )
+        
+        # Select generators until we reach 80% capacity target
+        selected_same_region = []
+        accumulated_volume = 0
+        
+        for generator in same_region_sorted:
+            if accumulated_volume >= same_region_target:
+                break
+                
+            # Calculate how much we can collect from this generator
+            collectible = min(
+                generator.current_storage,
+                same_region_target - accumulated_volume
+            )
+            
+            if collectible > 0:
+                selected_same_region.append(generator)
+                accumulated_volume += collectible
+        
+        prioritized_generators.extend(selected_same_region)
+        
+        print(f"[VOLUME ALLOCATION] {collector.name}: Same region target {same_region_target:.1f}m³, "
+              f"selected {len(selected_same_region)} generators "
+              f"({accumulated_volume:.1f}m³ potential)")
+    
+    # Phase 2: Select cross-region generators for 20% of capacity
+    if other_region_generators and cross_region_target > 0:
+        # Find the closest region with available generators
+        closest_regions = get_closest_regions(collector.region_type, n=3)  # Get top 3 closest
+        
+        for region_type, distance in closest_regions:
+            region_generators = [
+                g for g in other_region_generators 
+                if g.region_type == region_type
+            ]
+            
+            if region_generators:
+                # Sort by storage volume (highest first)
+                region_sorted = sorted(
+                    region_generators,
+                    key=lambda g: g.current_storage,
+                    reverse=True
+                )
+                
+                # Select generators until we reach 20% capacity target
+                selected_cross_region = []
+                accumulated_volume = 0
+                
+                for generator in region_sorted:
+                    if accumulated_volume >= cross_region_target:
+                        break
+                        
+                    collectible = min(
+                        generator.current_storage,
+                        cross_region_target - accumulated_volume
+                    )
+                    
+                    if collectible > 0:
+                        selected_cross_region.append(generator)
+                        accumulated_volume += collectible
+                
+                if selected_cross_region:
+                    prioritized_generators.extend(selected_cross_region)
+                    
+                    print(f"[VOLUME ALLOCATION] {collector.name}: Cross region target {cross_region_target:.1f}m³, "
+                          f"selected {len(selected_cross_region)} generators from {region_type.value} "
+                          f"({accumulated_volume:.1f}m³ potential, {distance:.1f}km)")
+                    break  # Only use the closest region
+    
+    return prioritized_generators
+
+
+def get_volume_weighted_generators(collector, target_same_region_ratio: float = 0.8) -> List:
+    """
+    Alternative implementation with configurable volume ratios
+    
+    Args:
+        collector: The collector instance
+        target_same_region_ratio: Ratio of capacity for same region (default 0.8 = 80%)
+        
+    Returns:
+        List of generators selected based on volume allocation strategy
+    """
+    
+    state = SimulationState.get_instance()
+    
+    generators_with_waste = [
+        g for g in state.generators
+        if g.current_storage > 0
+    ]
+    
+    if not generators_with_waste:
+        return []
+    
+    # Calculate capacity allocations
+    total_capacity = collector.collection_capacity * collector.efficiency
+    same_region_capacity = total_capacity * target_same_region_ratio
+    cross_region_capacity = total_capacity * (1 - target_same_region_ratio)
+    
+    result = []
+    
+    # Group generators by region
+    generators_by_region = {}
+    for gen in generators_with_waste:
+        if gen.region_type not in generators_by_region:
+            generators_by_region[gen.region_type] = []
+        generators_by_region[gen.region_type].append(gen)
+    
+    # Sort each region's generators by storage volume (descending)
+    for region_type in generators_by_region:
+        generators_by_region[region_type].sort(
+            key=lambda g: g.current_storage, reverse=True
+        )
+    
+    # Phase 1: Allocate same-region capacity
+    same_region_gens = generators_by_region.get(collector.region_type, [])
+    if same_region_gens and same_region_capacity > 0:
+        allocated_volume = 0
+        
+        for gen in same_region_gens:
+            if allocated_volume >= same_region_capacity:
+                break
+                
+            # Add generator if it contributes to our capacity target
+            potential_collection = min(gen.current_storage, same_region_capacity - allocated_volume)
+            if potential_collection > 0:
+                result.append(gen)
+                allocated_volume += potential_collection
+        
+        print(f"[VOLUME SPLIT] {collector.name}: Same region allocation {allocated_volume:.1f}m³ "
+              f"from {len([g for g in result if g.region_type == collector.region_type])} generators")
+    
+    # Phase 2: Allocate cross-region capacity to closest region
+    if cross_region_capacity > 0:
+        closest_regions = get_closest_regions(collector.region_type, n=5)
+        
+        for region_type, distance in closest_regions:
+            if region_type in generators_by_region:
+                cross_region_gens = generators_by_region[region_type]
+                allocated_volume = 0
+                cross_region_count = 0
+                
+                for gen in cross_region_gens:
+                    if allocated_volume >= cross_region_capacity:
+                        break
+                        
+                    potential_collection = min(gen.current_storage, cross_region_capacity - allocated_volume)
+                    if potential_collection > 0:
+                        result.append(gen)
+                        allocated_volume += potential_collection
+                        cross_region_count += 1
+                
+                if cross_region_count > 0:
+                    print(f"[VOLUME SPLIT] {collector.name}: Cross region allocation {allocated_volume:.1f}m³ "
+                          f"from {cross_region_count} generators in {region_type.value} ({distance:.1f}km)")
+                    break  # Only use closest available region
+    
+    return result
 

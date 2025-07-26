@@ -3,7 +3,7 @@ import json
 from typing import Dict, Any
 from core.decision_manager import DecisionStrategy
 from models.enums import WasteType
-from config.base_config import SIMULATION_DURATION
+from config.constants import SIMULATION_DURATION
 
 class WasteMonitor:
     """Unified monitoring system for waste management operations"""
@@ -340,12 +340,7 @@ class WasteMonitor:
         entity_history = self.environmental_history["by_entity"][entity_type][entity_name]
         entity_history[impact_category]["values"].append(environmental_impact)
         entity_history[impact_category]["timestamps"].append(timestamp)
-
-    def track_transport_cost(self, cost: float, timestamp: float):
-        """Track transportation costs"""
-        self.cost_history["transport"].append(cost)
-        self.cost_history["timestamps"].append(timestamp)
-
+        
     def calculate_efficiency_metrics(self) -> Dict[str, float]:
         """Calculate system-wide efficiency metrics"""
         total_generated = self._sum_totals(self.generation_history, "total_generated")
@@ -361,6 +356,46 @@ class WasteMonitor:
             "processing_rate": (total_processed / total_collected * 100) if total_collected > 0 else 0,
             "overall_efficiency": (total_processed / total_generated * 100) if total_generated > 0 else 0,
         }
+
+    def record_entity_status(self, entity, timestamp: float):
+        """Record entity status at specific moments (like transitions)"""
+        
+        # Determine entity type and get the appropriate history dict
+        entity_type_name = type(entity).__name__
+        
+        # Map entity class names to history categories
+        type_mapping = {
+            'WasteGenerator': 'generators',
+            'CollectorCompany': 'collectors', 
+            'TreatmentOperator': 'treatments'
+        }
+        
+        history_category = type_mapping.get(entity_type_name)
+        if not history_category:
+            print(f"Warning: Unknown entity type {entity_type_name}")
+            return
+        
+        entity_name = getattr(entity, 'name', str(entity))
+        
+        # Initialize if this is the first time we're tracking this entity
+        if entity_name not in self.entity_status_history[history_category]:
+            self.entity_status_history[history_category][entity_name] = {
+                "timestamps": [],
+                "status": []
+            }
+        
+        # Get the history for this specific entity
+        entity_history = self.entity_status_history[history_category][entity_name]
+        
+        # Only record if this is a new timestamp or status change
+        if (not entity_history["timestamps"] or 
+            timestamp > entity_history["timestamps"][-1] or
+            entity.status.value != entity_history["status"][-1]):
+            
+            entity_history["timestamps"].append(timestamp)
+            entity_history["status"].append(entity.status.value)
+            
+            print(f"DEBUG: Status recorded for {entity_name} at {timestamp}: {entity.status.name}")
 
     def generate_summary_report(self) -> str:
         """Generate a comprehensive summary report"""

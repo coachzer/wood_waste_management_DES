@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Dict, Optional
-from models.enums import WasteType, RegionType, EntityStatus, StockStrategy
+from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
 from models.data_classes import WasteStream, OperationalEntity
 from monitoring.waste_monitor import WasteMonitor
 from core.kanban_manager import KanbanManager
@@ -22,13 +22,15 @@ class WasteGenerator(OperationalEntity):
         uncertainty_set = None,
         initial_stock: Optional[Dict[WasteType, float]] = None,
         waste_monitor: Optional[WasteMonitor] = None,
-        stock_strategy: StockStrategy = StockStrategy.REORDER_90,
+        stock_strategy: StockStrategy = None,
+        inventory_policy: InventoryPolicy = None,
         kanban_manager=None,
     ):
         super().__init__()
         self.env = env
         self.name = name
         self.stock_strategy = stock_strategy
+        self.inventory_policy = inventory_policy
         # Validate initial stock against storage capacity
         if initial_stock:
             total_initial = sum(initial_stock.values())
@@ -89,6 +91,7 @@ class WasteGenerator(OperationalEntity):
                 for t in range(self.seasonal_periods)
             ]
         )
+        print(f"DEBUG: Seasonal factors initialized: {self.seasonal_factors}")      
 
         # Initialize RNG with seed for reproducibility
         self.rng = np.random.default_rng(42)
@@ -147,7 +150,6 @@ class WasteGenerator(OperationalEntity):
                     self._process_on_demand(current_time, seasonal_factor)
                 case StockStrategy.REORDER_90:
                     self._process_reorder(current_time, seasonal_factor, 0.9, 6)
-                    self._process_reorder(current_time, seasonal_factor, 0.9, 6)
                 case StockStrategy.REORDER_50:
                     self._process_reorder(current_time, seasonal_factor, 0.5, 4)
 
@@ -197,24 +199,30 @@ class WasteGenerator(OperationalEntity):
     def _process_reorder(self, current_time, seasonal_factor, threshold_ratio, priority):
         threshold = self.waste_storage_capacity * threshold_ratio
         
-        if self.current_storage < threshold:
-            available_storage = self.waste_storage_capacity - self.current_storage
-            efficiency = self.get_operational_efficiency()  
-            
-            available_storage, self.current_storage, self.history_index = generate_waste_for_period(
-                self.name, self.status, self.uncertainty_set,
-                self.waste_generation_rates, self.region, self.waste_streams,
-                self.total_generated, self.generation_history, self.history_index,
-                self.current_storage, self.rng, seasonal_factor, available_storage,
-                current_time, efficiency  
-            )
-        else:
+        if self.current_storage >= threshold:
+            # TRIGGER COLLECTION when storage is HIGH (above threshold)
+            # This prevents overflow and maintains operational efficiency
             self.current_storage = handle_overflow(
                 self.env, self.current_storage, self.waste_storage_capacity,
-                self.waste_streams, self.region, self.waste_monitor,
-                self
+                self.waste_streams, self.region, self.waste_monitor, self
             )
             self._kanban_signal(current_time, priority)
+            
+            # Reduce generation rate temporarily while collection is pending
+            efficiency = 0.7  # Reduced generation during high storage periods
+        else:
+            # NORMAL GENERATION when storage is below threshold
+            efficiency = self.get_operational_efficiency()
+        
+        # Continue normal waste generation (waste doesn't stop being produced)
+        available_storage = self.waste_storage_capacity - self.current_storage
+        available_storage, self.current_storage, self.history_index = generate_waste_for_period(
+            self.name, self.status, self.uncertainty_set,
+            self.waste_generation_rates, self.region, self.waste_streams,
+            self.total_generated, self.generation_history, self.history_index,
+            self.current_storage, self.rng, seasonal_factor, available_storage,
+            current_time, efficiency
+        )
 
     def _kanban_signal(self, current_time, priority):
         for waste_type in self.waste_streams.keys():
