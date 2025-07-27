@@ -76,16 +76,19 @@ class TreatmentOperator(OperationalEntity):
         super().__init__()
 
         self.waste_monitor = waste_monitor
+        self.scenario_config = scenario_config 
         self.stock_strategy = stock_strategy
         self.inventory_policy = inventory_policy
 
         if waste_monitor is None:
             raise ValueError("waste_monitor is required for TreatmentOperator")
-        
-        if scenario_config and hasattr(scenario_config, 'inventory_policy'):
-            self.inventory_policy = scenario_config.inventory_policy
-        else:
-            self.inventory_policy = get_scenario_config().inventory_policy
+        if self.inventory_policy is None:
+            raise ValueError("inventory_policy must be provided")
+        if self.stock_strategy is None:
+            raise ValueError("stock_strategy must be provided")
+            
+        print(f"[TREATMENT OPERATOR] Using inventory policy: {self.inventory_policy}")
+        print(f"[TREATMENT OPERATOR] Using stock strategy: {self.stock_strategy}")
 
         self.kanban_manager = kanban_manager or KanbanManager()
         self.transport_manager = transport_manager or PointToPointTransport()
@@ -263,11 +266,11 @@ class TreatmentOperator(OperationalEntity):
         """PUSH: Forecast-based with startup protection"""
         
         # Calculate forecast 
-        forecasted_demand = self._calculate_demand_forecast()
+        forecasted_demand = self.calculate_realistic_demand()
         
         # PUSH maintains higher inventory with safety stock
-        safety_multiplier = 1.6  # 60% safety stock for PUSH
-        target_inventory = forecasted_demand
+        safety_multiplier = 1.2  # 20% safety stock for PUSH
+        target_inventory = forecasted_demand * safety_multiplier
         current_total = sum(self.waste_storage.values())
         
         if current_total < target_inventory:
@@ -284,7 +287,7 @@ class TreatmentOperator(OperationalEntity):
         """PULL: Kanban-driven with signal propagation to collectors"""
         
         # Check for kanban signals
-        active_signals = self.kanban_manager.get_signals()
+        active_signals = self.kanban_manager.get_signals(current_time)
         
         if active_signals:
             total_immediate_demand = len(active_signals) * 2.0
@@ -303,7 +306,10 @@ class TreatmentOperator(OperationalEntity):
                     self.kanban_manager.add_signal(
                         waste_type=waste_type,
                         priority=5,
-                        timestamp=current_time
+                        timestamp=current_time,
+                        volume=volume,
+                        source_id=self.name,
+                        source_type="treatment"
                     )
                     
                     # ALSO propagate to collectors in our region
@@ -316,19 +322,65 @@ class TreatmentOperator(OperationalEntity):
                     for collector in local_collectors:
                         collector.kanban_manager.add_signal(
                             waste_type=waste_type,
-                            priority=8,  # High priority for collectors
-                            timestamp=current_time
+                            priority=8,
+                            timestamp=current_time,
+                            volume=volume,
+                            source_id=self.name,
+                            source_type="treatment" 
                         )
                         print(f"[KANBAN PROPAGATION] Signal sent to {collector.name} for {waste_type.value}")
             
             yield self.env.timeout(1.0)
+
+    def calculate_realistic_demand(self) -> float:
+        """Calculate realistic demand based on processing capacity and storage constraints"""
+        
+        current_total = sum(self.waste_storage.values())
+        storage_utilization = current_total / self.waste_storage_capacity
+        
+        available_capacity = (self.waste_storage_capacity - current_total) * 0.8  # 80% fill max
+        
+        max_processable = self.processing_capacity * 3.0  # Max 3 processing cycles worth
+        
+        state = SimulationState.get_instance()
+        unmet_demands = state.get_unmet_demands()
+        total_unmet = sum(unmet_demands.values())
+        
+        if storage_utilization > 0.8:  
+            urgency_factor = 0.3
+        elif storage_utilization > 0.5:  
+            urgency_factor = 0.7
+        else:  
+            urgency_factor = 1.0
+
+        demand_cap = min(
+            self.waste_storage_capacity * 0.1,
+            self.processing_capacity * 0.5
+        )
+
+        print(f"[DEMAND COMPONENTS] available_capacity={available_capacity:.2f}, max_processable={max_processable:.2f}, total_unmet*0.3={total_unmet * 0.3:.2f}, cap={demand_cap:.2f}")
+
+        # Conservative demand calculation with utilization factor
+        base_demand = min(
+            available_capacity,          
+            max_processable,            
+            total_unmet * 0.3,          
+            demand_cap                   
+        )
+        realistic_demand = base_demand * urgency_factor
+        
+        print(f"[REALISTIC DEMAND] Storage: {current_total:.1f}/{self.waste_storage_capacity:.1f} ({storage_utilization:.1%}), "
+            f"Available: {available_capacity:.1f}, Urgency: {urgency_factor:.1f}, Final: {realistic_demand:.1f}")
+        
+        return max(realistic_demand, 0.0)
                 
     def _calculate_demand_forecast(self) -> float:
         """PUSH-specific: Calculate forecasted demand with safe fallbacks"""
         
         # Fallback 1: No history at all
         if not self.demand_history:
-            fallback_demand = max(self.demand, 10.0) if hasattr(self, 'demand') else 10.0
+            # Use processing capacity as realistic baseline
+            fallback_demand = min(self.processing_capacity * 0.5, 50.0)  # 50% capacity max
             print(f"[FORECAST] No history, using fallback: {fallback_demand:.1f}")
             return fallback_demand
         
@@ -659,7 +711,7 @@ class TreatmentOperator(OperationalEntity):
         # Update self.demand to include all unmet product demands
         self.demand = sum(product_demands.values())
         
-        required_waste = calculate_required_waste(self)
+        required_waste = self.calculate_realistic_demand()
         if required_waste <= 0:
             return 0, 0
 

@@ -84,8 +84,8 @@ class SimulationState:
             'transport_method': transport_method
         })
         
-        print(f"[FLOW TRACKED] {source_type}:{source_name} → {target_type}:{target_name} "
-              f"({volume:.1f} m³ {waste_type})")
+        # print(f"[FLOW TRACKED] {source_type}:{source_name} → {target_type}:{target_name} "
+        #       f"({volume:.1f} m³ {waste_type})")
 
     def get_regional_waste_stats(self, region):
         """Get waste statistics for a specific region"""

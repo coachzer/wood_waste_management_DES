@@ -29,6 +29,7 @@ class FacilityBuilder:
         self.facility_manager = facility_manager
         self.waste_monitor = waste_monitor
         self.uncertainty_set = uncertainty_set
+
     def create_generator(self, gen_data, region: RegionType, stock_strategy=None, inventory_policy=None) -> WasteGenerator:
         """Create a single waste generator"""
         if gen_data.waste_storage_capacity <= 0:
@@ -108,7 +109,7 @@ class FacilityBuilder:
             availability=col_data.availability,
             region=region.value,
             waste_monitor=self.waste_monitor,
-            uncertainty_set=self.uncertainty_set,
+            uncertainty_set=self.uncertainty_set.name,
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
         )
@@ -149,6 +150,7 @@ class FacilityBuilder:
             waste_monitor=self.waste_monitor,
             product_storage_capacity=product_storage_capacity,
             product_to_sell_capacity=product_to_sell_capacity,
+            scenario_config=self.uncertainty_set,
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
         )

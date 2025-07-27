@@ -7,6 +7,7 @@ from monitoring.mfa_visualization import create_material_flow_analysis
 from monitoring.scenario_comparison import ScenarioComparison
 import traceback
 import time
+
 def run_single_simulation(scenario_name: str, inventory_policy: InventoryPolicy, stock_strategy: StockStrategy) -> dict:
     """Run a single simulation configuration and return results"""
     print(f"\n=== Running: {scenario_name} | {inventory_policy.value} | {stock_strategy.value} ===")

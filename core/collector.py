@@ -375,7 +375,7 @@ class CollectorCompany(OperationalEntity):
             self.collection_center.waste_storage_capacity
         )
         
-        kanban_signals = len(self.kanban_manager.get_signals())
+        kanban_signals = len(self.kanban_manager.get_signals(self.env.now))
         
         self.efficiency = calculate_efficiency_multiplier(
             self.inventory_policy, self.stock_strategy, 
@@ -407,12 +407,11 @@ class CollectorCompany(OperationalEntity):
 
             self.update_efficiency()
 
-            # Check for failures if uncertainty set is available
             if self.uncertainty_set and hasattr(self.uncertainty_set, 'collector_failure'):
                 is_failed = self.check_failure(current_time, self.uncertainty_set.collector_failure.probability)
                 
                 if is_failed and self.status == EntityStatus.FAILED:
-                    self.efficiency = 0.5  # Reduce efficiency on failure
+                    self.efficiency = 0.5
                 elif not is_failed and self.status == EntityStatus.OPERATIONAL:
                     if hasattr(self, '_was_failed') and self._was_failed:
                         base_recovery = 0.8
@@ -426,18 +425,16 @@ class CollectorCompany(OperationalEntity):
                 # Track previous failure state
                 self._was_failed = (self.status == EntityStatus.FAILED)
 
-            # Skip collection immediately if failed (before waiting)
             if self.status == EntityStatus.FAILED:
                 print(f"{current_time}: Collector {self.name} is currently failed, skipping collection cycle")
-                yield self.env.timeout(self.collection_frequency)  # Still wait before next check
+                yield self.env.timeout(self.collection_frequency)  
                 continue
 
-            # Apply efficiency to capacity and costs
             self.collection_capacity = max(10, self.collection_capacity * self.efficiency)
             self.transport_cost = min(100, self.transport_cost * (2 - self.efficiency))
 
             base_timeout = self.collection_frequency
-            if self.inventory_policy == InventoryPolicy.PULL and self.kanban_manager.get_signals():
+            if self.inventory_policy == InventoryPolicy.PULL and self.kanban_manager.get_signals(self.env.now):
                 print(f"{current_time}: Collector {self.name} has kanban signals, using base frequency")
                 timeout = base_timeout
             else:
@@ -446,7 +443,6 @@ class CollectorCompany(OperationalEntity):
             
             yield self.env.timeout(timeout)
 
-            # Check status again after timeout (entity might have failed/recovered during wait)
             current_time = self.env.now
             if self.uncertainty_set and hasattr(self.uncertainty_set, 'collector_failure'):
                 self.check_failure(current_time, self.uncertainty_set.collector_failure.probability)
@@ -459,35 +455,76 @@ class CollectorCompany(OperationalEntity):
                 print(f"{current_time}: Collector {self.name} decided not to collect based on policy and strategy")
                 continue
 
-            kanban_signals = self.kanban_manager.get_signals()
+            kanban_signals = self.kanban_manager.get_signals(self.env.now)
             if kanban_signals and self.inventory_policy == InventoryPolicy.PULL:
                 print(f"{current_time}: Collector {self.name} processing kanban signals")
                 self._process_kanban_signals(kanban_signals)
-                self.kanban_manager.clear_signals()
             else:
                 # Regular collection based on policy
                 print(f"{current_time}: Collector {self.name} performing unified collection strategy")
-                prioritized_generators = get_prioritized_generators(self)
-                collection_cost = self._unified_collection_strategy(prioritized_generators)
-                
+                collection_cost = self._unified_collection_strategy()
                 if collection_cost > 0:
                     print(f"{self.env.now}: {self.name} collection cost: {collection_cost:.8f}")
 
     def _process_kanban_signals(self, signals):
-        """Handle kanban signals for PULL policy"""
+        """Process signals with acknowledgment and cross-region support"""
         for signal in signals:
             try:
                 waste_type_enum = WasteType[signal['waste_type']]
             except KeyError:
                 continue
-                
-            prioritized_generators = [
-                g for g in get_prioritized_generators(self)
-                if waste_type_enum in g.waste_streams and g.region == self.region
-            ]
             
-            for generator in prioritized_generators:
-                self.collect_from_generator(generator)
+            source_type = signal.get('source_type', 'generator')  
+            source_id = signal.get('source_id', signal.get('generator_id')) 
+            
+            print(f"[SIGNAL PROCESSING] {self.name} processing {source_type} signal from {source_id} for {waste_type_enum.value}")
+            
+            matching_generators = []
+            
+            if source_type == "generator":
+                # Specific generator signal - look for that exact generator
+                matching_generators = [
+                    g for g in get_prioritized_generators(self)
+                    if (g.name == source_id and 
+                        waste_type_enum in g.waste_streams and 
+                        g.waste_streams[waste_type_enum].volume > 0)
+                ]
+                
+            elif source_type == "treatment":
+                # Treatment facility needs waste - find any generators with this waste type
+                # Prioritize based on volume and distance, not specific source
+                matching_generators = [
+                    g for g in get_prioritized_generators(self)
+                    if (waste_type_enum in g.waste_streams and 
+                        g.waste_streams[waste_type_enum].volume > 0)
+                ]
+                
+            else:
+                # Unknown source type - treat as general request
+                print(f"[SIGNAL WARNING] Unknown source type: {source_type}, treating as general request")
+                matching_generators = [
+                    g for g in get_prioritized_generators(self)
+                    if (waste_type_enum in g.waste_streams and 
+                        g.waste_streams[waste_type_enum].volume > 0)
+                ]
+            
+            # Process the matching generators
+            if matching_generators:
+                for generator in matching_generators:
+                    if self._find_available_vehicle():
+                        print(f"[SIGNAL COLLECTION] {self.name} dispatching vehicle to {generator.name} for {waste_type_enum.value}")
+                        self.collect_from_generator(generator)
+                        
+                        # Acknowledge the signal after successful dispatch
+                        self.kanban_manager.acknowledge_signal(signal['id'])
+                        break  # Only collect from one generator per signal
+                    else:
+                        print(f"[NO VEHICLES] {self.name} cannot process signal - no available vehicles")
+                        break  # No point checking more generators if no vehicles available
+            else:
+                print(f"[NO MATCH] {self.name} found no matching generators for {waste_type_enum.value} from {source_type}:{source_id}")
+                # Still acknowledge the signal to prevent it from staying active forever
+                self.kanban_manager.acknowledge_signal(signal['id'])
 
     def should_collect(self) -> bool:
         utilization = calculate_utilization(
@@ -506,7 +543,7 @@ class CollectorCompany(OperationalEntity):
             
         elif self.inventory_policy == InventoryPolicy.PULL:
             # PULL: Kanban-first, then lean thresholds (20-40% full)
-            signals = self.kanban_manager.get_signals()
+            signals = self.kanban_manager.get_signals(self.env.now)
             if signals:
                 print(f"[PULL COLLECT] {self.name}: {len(signals)} kanban signals")
                 return True
@@ -597,13 +634,12 @@ class CollectorCompany(OperationalEntity):
         # Dispatch vehicle
         return self.env.process(self._dispatch_vehicle_for_collection(available_vehicle, generator, target_volume))
 
-
     def _dummy_process(self, return_value):
         """Helper for SimPy process returns"""
         yield self.env.timeout(0)
         return return_value
 
-    def _unified_collection_strategy(self, prioritized_generators: List) -> float:
+    def _unified_collection_strategy(self) -> float:
         """Strategy with 80/20 volume allocation between same/cross regions"""
         # Use volume-based regional prioritization
         volume_prioritized = get_prioritized_generators(self)
@@ -658,7 +694,6 @@ class CollectorCompany(OperationalEntity):
         provided_waste = {}
         remaining_request = requested_amount
 
-        # ONLY provide from storage - no direct collection
         for waste_type in needed_types:
             if remaining_request <= 0:
                 break
@@ -670,14 +705,5 @@ class CollectorCompany(OperationalEntity):
                 self.collection_center.current_storage[waste_type] -= transfer_amount
                 provided_waste[waste_type] = provided_waste.get(waste_type, 0) + transfer_amount
                 remaining_request -= transfer_amount
-                
-                # print(f"Transferred {transfer_amount:.2f} m³ of {waste_type} from storage")
-        
-        # If we can't fulfill the request, that's okay - treatment will have to wait
-        # total_provided = sum(provided_waste.values())
-        # if total_provided < requested_amount:
-            # shortfall = requested_amount - total_provided
-            # print(f"Collector {self.name} storage insufficient: requested {requested_amount:.2f} m³, "
-            # #     f"provided {total_provided:.2f} m³, shortfall {shortfall:.2f} m³")
 
         return provided_waste

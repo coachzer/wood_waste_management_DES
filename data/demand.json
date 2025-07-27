@@ -1,7 +1,7 @@
 {
     "national_demand": {
-        "particle_board": 120000,
-        "osb": 130000,
-        "mdf": 80000
+        "particle_board": 40000,
+        "osb": 30000,
+        "mdf": 30000
     }
 }

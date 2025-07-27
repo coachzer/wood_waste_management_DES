@@ -98,7 +98,7 @@ def get_adaptive_threshold(strategy: StockStrategy, base_time: float) -> float:
     if strategy == StockStrategy.ON_DEMAND:
         # Gradually increase threshold over time to trigger more collections
         time_factor = min(0.3, base_time * 0.001)  # Caps at 30%
-        return 0.05 + time_factor  # Start at 5%, grow to 35%
+        return 0.10 + time_factor  # Start at 10%, grow to 40%
     elif strategy == StockStrategy.REORDER_50:
         return 0.50
     elif strategy == StockStrategy.REORDER_90:
@@ -123,55 +123,98 @@ def calculate_efficiency_multiplier(policy: InventoryPolicy, strategy: StockStra
     return base_degradation
 
 def _calculate_push_efficiency(strategy: StockStrategy, utilization: float, base: float) -> float:
-    """Calculate efficiency for PUSH policies"""
-
+    """Calculate efficiency for PUSH policies with smooth curves"""
+    
+    # Clamp utilization to valid range [0, 1]
+    utilization = max(0.0, min(1.0, utilization))
+    
     match strategy:
         case StockStrategy.REORDER_90:
-            print(f"Strategy: {strategy}, Utilization: {utilization}, Base: {base}  ")
+            # Sweet spot around 85% utilization (80-90% range)
             if 0.8 <= utilization <= 0.9:
-                return base * 1.05  # Sweet spot
+                return base * 1.05  # Optimal efficiency
             else:
-                return base * (1.0 - abs(utilization - 0.85) * 0.1)
+                # Smooth degradation away from sweet spot
+                distance_from_optimal = abs(utilization - 0.85)
+                penalty = min(0.3, distance_from_optimal * 0.5)  # Max 30% penalty
+                return base * (1.0 - penalty)
+                
         case StockStrategy.REORDER_50:
-            print(f"Strategy: {strategy}, Utilization: {utilization}, Base: {base}  ")
-            penalty = 0.95 if utilization < 0.3 else 1.0
-            return base * penalty
-        # case StockStrategy.FULL_STOCK:
-        #     storage_penalty = utilization * 0.05
-        #     return base * (1.0 - storage_penalty)
-        case _: # StockStrategy.ON_DEMAND:
-            print(f"Strategy: {strategy}, Utilization: {utilization}, Base: {base}  ")
+            # 50% strategy prefers moderate utilization (30-70% range)
+            if 0.3 <= utilization <= 0.7:
+                return base * 1.0  # Normal efficiency
+            elif utilization < 0.3:
+                # Penalty for underutilization
+                underutilization_penalty = (0.3 - utilization) * 0.2  # Up to 6% penalty
+                return base * (1.0 - underutilization_penalty)
+            else:
+                # Penalty for overutilization
+                overutilization_penalty = (utilization - 0.7) * 0.15  # Up to 4.5% penalty
+                return base * (1.0 - overutilization_penalty)
+                
+        case StockStrategy.ON_DEMAND:
+            # ON_DEMAND efficiency depends more on responsiveness than utilization
+            if utilization < 0.1:
+                return base * 1.05  # Slight bonus for staying lean
+            elif utilization > 0.8:
+                return base * 0.95  # Penalty for accumulating too much
+            else:
+                return base
+                
+        case _:
             return base
 
 def _calculate_pull_efficiency(strategy: StockStrategy, utilization: float, 
                               signals: int, base: float) -> float:
-    """Calculate efficiency for PULL policies"""
-    if strategy == StockStrategy.ON_DEMAND:
-        if signals > 0 and utilization < 0.2:
-            return base * 1.1  # Responsive and lean
-        elif signals > 3:
-            return base * 0.9  # Overwhelmed
-        return base
-    elif strategy == StockStrategy.REORDER_90:
-        signal_bonus = min(1.1, 1.0 + (signals * 0.02))
-        buffer_penalty = 1.0 if utilization > 0.5 else 0.95
-        return base * signal_bonus * buffer_penalty
-    elif strategy == StockStrategy.REORDER_50:
-        if signals > 0 and 0.3 <= utilization <= 0.7:
-            return base * 1.05
-        return base
-    return base
+    """Calculate efficiency for PULL policies with signal responsiveness"""
+    
+    # Clamp utilization and signals to reasonable ranges
+    utilization = max(0.0, min(1.0, utilization))
+    signals = max(0, signals)
+    
+    match strategy:
+        case StockStrategy.ON_DEMAND:
+            if signals == 0:
+                # No demand - minor efficiency loss (idle resources)
+                return base * 0.98
+            else:
+                # Has demand - ON_DEMAND's strength!
+                # More signals = better utilization of ON_DEMAND capabilities
+                signal_boost = min(0.15, signals * 0.02)  # Up to 15% efficiency gain
+                
+                # Only physical constraints should limit efficiency
+                if utilization > 0.95:  # Very close to physical limits
+                    strain = (utilization - 0.95) * 2.0  # Max 10% penalty at 100%
+                    return base * (1.0 + signal_boost) * (1.0 - strain)
+                else:
+                    return base * (1.0 + signal_boost)
+                
+        case StockStrategy.REORDER_90:
+            # 90% reorder with PULL - benefits from signals but maintains buffer
+            signal_bonus = min(0.1, signals * 0.02)  # Up to 10% bonus
+            
+            if utilization > 0.5:
+                buffer_bonus = 1.0  # Good buffer maintained
+            else:
+                buffer_penalty = (0.5 - utilization) * 0.1  # Penalty for low buffer
+                buffer_bonus = 1.0 - buffer_penalty
+                
+            return base * (1.0 + signal_bonus) * buffer_bonus
+            
+        case StockStrategy.REORDER_50:
+            # 50% reorder with PULL - balanced approach
+            if signals > 0 and 0.3 <= utilization <= 0.7:
+                return base * 1.05  # Sweet spot
+            elif signals == 0:
+                return base * 0.97  # Slight penalty for no demand signals
+            else:
+                return base
+                
+        case _:
+            return base
 
 def get_prioritized_generators(collector) -> List:
-    """
-    Get generators with 80% volume allocation to same region, 20% to next closest region
-    
-    Args:
-        collector: The collector instance with region and capacity information
-        
-    Returns:
-        List of generators prioritized by volume allocation strategy
-    """
+    """Get generators with 80% volume allocation to same region, 20% to next closest region"""
     
     state = SimulationState.get_instance()
     
@@ -282,92 +325,3 @@ def get_prioritized_generators(collector) -> List:
                     break  # Only use the closest region
     
     return prioritized_generators
-
-
-def get_volume_weighted_generators(collector, target_same_region_ratio: float = 0.8) -> List:
-    """
-    Alternative implementation with configurable volume ratios
-    
-    Args:
-        collector: The collector instance
-        target_same_region_ratio: Ratio of capacity for same region (default 0.8 = 80%)
-        
-    Returns:
-        List of generators selected based on volume allocation strategy
-    """
-    
-    state = SimulationState.get_instance()
-    
-    generators_with_waste = [
-        g for g in state.generators
-        if g.current_storage > 0
-    ]
-    
-    if not generators_with_waste:
-        return []
-    
-    # Calculate capacity allocations
-    total_capacity = collector.collection_capacity * collector.efficiency
-    same_region_capacity = total_capacity * target_same_region_ratio
-    cross_region_capacity = total_capacity * (1 - target_same_region_ratio)
-    
-    result = []
-    
-    # Group generators by region
-    generators_by_region = {}
-    for gen in generators_with_waste:
-        if gen.region_type not in generators_by_region:
-            generators_by_region[gen.region_type] = []
-        generators_by_region[gen.region_type].append(gen)
-    
-    # Sort each region's generators by storage volume (descending)
-    for region_type in generators_by_region:
-        generators_by_region[region_type].sort(
-            key=lambda g: g.current_storage, reverse=True
-        )
-    
-    # Phase 1: Allocate same-region capacity
-    same_region_gens = generators_by_region.get(collector.region_type, [])
-    if same_region_gens and same_region_capacity > 0:
-        allocated_volume = 0
-        
-        for gen in same_region_gens:
-            if allocated_volume >= same_region_capacity:
-                break
-                
-            # Add generator if it contributes to our capacity target
-            potential_collection = min(gen.current_storage, same_region_capacity - allocated_volume)
-            if potential_collection > 0:
-                result.append(gen)
-                allocated_volume += potential_collection
-        
-        print(f"[VOLUME SPLIT] {collector.name}: Same region allocation {allocated_volume:.1f}m³ "
-              f"from {len([g for g in result if g.region_type == collector.region_type])} generators")
-    
-    # Phase 2: Allocate cross-region capacity to closest region
-    if cross_region_capacity > 0:
-        closest_regions = get_closest_regions(collector.region_type, n=5)
-        
-        for region_type, distance in closest_regions:
-            if region_type in generators_by_region:
-                cross_region_gens = generators_by_region[region_type]
-                allocated_volume = 0
-                cross_region_count = 0
-                
-                for gen in cross_region_gens:
-                    if allocated_volume >= cross_region_capacity:
-                        break
-                        
-                    potential_collection = min(gen.current_storage, cross_region_capacity - allocated_volume)
-                    if potential_collection > 0:
-                        result.append(gen)
-                        allocated_volume += potential_collection
-                        cross_region_count += 1
-                
-                if cross_region_count > 0:
-                    print(f"[VOLUME SPLIT] {collector.name}: Cross region allocation {allocated_volume:.1f}m³ "
-                          f"from {cross_region_count} generators in {region_type.value} ({distance:.1f}km)")
-                    break  # Only use closest available region
-    
-    return result
-

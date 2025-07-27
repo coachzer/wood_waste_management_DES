@@ -176,25 +176,38 @@ class WasteGenerator(OperationalEntity):
             self._kanban_signal(current_time, 10)
 
     def _process_on_demand(self, current_time, seasonal_factor):
-        available_storage = self.waste_storage_capacity - self.current_storage
-        demand = sum(self.waste_generation_rates.values())
+        """ON_DEMAND: Generate normally, discard excess immediately if no demand"""
+        kanban_signals = self.kanban_manager.get_signals(self.env.now)
         
-        if available_storage < demand:
-            self.current_storage = handle_overflow(
-                self.env, self.current_storage, self.waste_storage_capacity,
-                self.waste_streams, self.region, self.waste_monitor,
-                self
-            )
-            self._kanban_signal(current_time, 8)
-        else:
-            efficiency = self.get_operational_efficiency()  
-            available_storage, self.current_storage, self.history_index = generate_waste_for_period(
-                self.name, self.status, self.uncertainty_set,
-                self.waste_generation_rates, self.region, self.waste_streams,
-                self.total_generated, self.generation_history, self.history_index,
-                self.current_storage, self.rng, seasonal_factor, available_storage,
-                current_time, efficiency  
-            )
+        # Always generate at normal efficiency (waste production doesn't stop)
+        efficiency = self.get_operational_efficiency()
+        available_storage = self.waste_storage_capacity - self.current_storage
+        
+        # Generate waste normally
+        available_storage, self.current_storage, self.history_index = generate_waste_for_period(
+            self.name, self.status, self.uncertainty_set,
+            self.waste_generation_rates, self.region, self.waste_streams,
+            self.total_generated, self.generation_history, self.history_index,
+            self.current_storage, self.rng, seasonal_factor, available_storage,
+            current_time, efficiency
+        )
+        
+        # ON_DEMAND behavior: If no signals, discard everything above minimal threshold
+        if not kanban_signals:
+            minimal_threshold = self.waste_storage_capacity * 0.05  # Keep only 5%
+            if self.current_storage > minimal_threshold:
+                excess = self.current_storage - minimal_threshold
+                print(f"{current_time}: {self.name} ON_DEMAND: No demand, discarding {excess:.1f}m³ excess")
+                
+                # Track discarded waste
+                self.waste_monitor.track_overflow(
+                    facility_type="generator",
+                    volume=excess,
+                    strategy="landfill",
+                    timestamp=current_time,
+                    region=self.region
+                )
+                self.current_storage = minimal_threshold
 
     def _process_reorder(self, current_time, seasonal_factor, threshold_ratio, priority):
         threshold = self.waste_storage_capacity * threshold_ratio
@@ -225,9 +238,20 @@ class WasteGenerator(OperationalEntity):
         )
 
     def _kanban_signal(self, current_time, priority):
-        for waste_type in self.waste_streams.keys():
-            self.kanban_manager.add_signal(
-                waste_type=waste_type,
-                priority=priority,
-                timestamp=current_time
-            )
+        active_waste_types = [
+            waste_type for waste_type, stream in self.waste_streams.items()
+            if stream.volume > 0
+        ]
+        
+        if active_waste_types:
+            print(f"{current_time}: {self.name} sending kanban signals for {len(active_waste_types)} waste types")
+            
+            for waste_type in active_waste_types:
+                self.kanban_manager.add_signal(
+                    waste_type=waste_type,
+                    priority=priority,
+                    timestamp=current_time,
+                    volume=self.waste_streams[waste_type].volume,
+                    source_id=self.name,
+                    source_type="generator"
+                )

@@ -10,7 +10,6 @@ def format_volume(volume: float) -> str:
     else:
         return f"{volume:.1f} m³"
 
-
 def _get_generator_volumes(generation_history: Dict) -> Dict:
     """Calculate generator volumes"""
     generator_volumes = {}
@@ -21,7 +20,6 @@ def _get_generator_volumes(generation_history: Dict) -> Dict:
                 total += volumes[-1]  # Latest cumulative value
         generator_volumes[generator] = total
     return generator_volumes
-
 
 def _get_collector_volumes(collection_history: Dict) -> Dict:
     """Calculate collector volumes"""
@@ -34,7 +32,6 @@ def _get_collector_volumes(collection_history: Dict) -> Dict:
         collector_volumes[collector] = total
     return collector_volumes
 
-
 def _get_treatment_volumes(processing_history: Dict) -> Dict:
     """Calculate treatment volumes"""
     treatment_volumes = {}
@@ -42,7 +39,6 @@ def _get_treatment_volumes(processing_history: Dict) -> Dict:
         processed = history.get("processed", {}).get("total", [])
         treatment_volumes[treatment] = processed[-1] if processed else 0
     return treatment_volumes
-
 
 def _get_product_volumes() -> Dict:
     """Get product volumes from simulation state"""
@@ -53,7 +49,6 @@ def _get_product_volumes() -> Dict:
         "OSB": state.total_products.get("osb", 0)
     }
 
-
 def get_volumes(generation_history: Dict, collection_history: Dict, processing_history: Dict):
     """Calculate volumes for each stage - simplified approach"""
     return (
@@ -63,11 +58,9 @@ def get_volumes(generation_history: Dict, collection_history: Dict, processing_h
         _get_product_volumes()
     )
 
-
 def _filter_volumes(volumes: Dict, min_volume: float = 1.0) -> Dict:
     """Filter out entities with minimal volumes"""
     return {k: v for k, v in volumes.items() if v >= min_volume}
-
 
 def _create_nodes(generators: Dict, collectors: Dict, treatments: Dict, products: Dict):
     """Create node labels and colors"""
@@ -104,27 +97,6 @@ def _create_nodes(generators: Dict, collectors: Dict, treatments: Dict, products
         node_colors.append(COLORS['product'])
     
     return labels, node_colors, gen_start, col_start, treat_start, prod_start
-
-
-def _add_flow_between_stages(sources: list, targets: list, values: list,
-                           stage1_items: Dict, stage2_items: Dict,
-                           stage1_start: int, stage2_start: int, min_volume: float):
-    """Add flows between two stages"""
-    if not stage1_items or not stage2_items:
-        return
-        
-    total_stage2 = sum(stage2_items.values())
-    if total_stage2 <= 0:
-        return
-        
-    for i, (name1, vol1) in enumerate(stage1_items.items()):
-        for j, (name2, vol2) in enumerate(stage2_items.items()):
-            flow = vol1 * (vol2 / total_stage2)
-            if flow >= min_volume:
-                sources.append(stage1_start + i)
-                targets.append(stage2_start + j)
-                values.append(flow)
-
 
 def _create_flows(transport_flows: list, labels: list):
     """Create flows based on actual transport data"""
@@ -276,4 +248,9 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
     
     fig.write_html(save_path)
     print(f"Material flow analysis saved to {save_path}")
+    
+    png_path = save_path.replace('.html', '.png')
+    fig.write_image(png_path, height=600, width=1600)
+    print(f"PNG version saved to {png_path}")
+    
     return save_path

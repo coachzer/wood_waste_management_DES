@@ -15,6 +15,7 @@ from utils.helpers import (
 class UncertaintySet:
     """Uncertainty set - only variability parameters"""
     # Required fields first
+    name: str
     collection_efficiency: Tuple[float, float]
     treatment_conversion: Tuple[float, float]
     transportation_time: Tuple[float, float]
@@ -88,6 +89,7 @@ class ScenarioConfig:
 
         return UncertaintySet(
             # Required fields
+            name = self.name,
             collection_efficiency=self.coll_eff,
             treatment_conversion=self.treat_conv,
             transportation_time=self.trans_time,
@@ -161,8 +163,8 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
         coll_eff=(0.5, 0.3),     # Poor, highly variable collection
         treat_conv=(0.6, 0.2),   # Poor, highly variable conversion
         trans_time=(5.0, 2.0),   # Slow, unpredictable transport
-        generator_failure=HIGH_FAILURE,
-        collector_failure=MEDIUM_FAILURE,
+        generator_failure=LOW_FAILURE,
+        collector_failure=HIGH_FAILURE,
         treatment_failure=HIGH_FAILURE,
         inventory_policy=InventoryPolicy.PUSH,
         stock_strategy=StockStrategy.ON_DEMAND
@@ -173,9 +175,9 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
         coll_eff=(0.98, 0.02),   # Excellent, stable collection
         treat_conv=(0.98, 0.01), # Excellent, stable conversion
         trans_time=(1.0, 0.1),   # Very fast, predictable transport
-        generator_failure=MEDIUM_FAILURE,
+        generator_failure=LOW_FAILURE,
         collector_failure=MEDIUM_FAILURE,
-        treatment_failure=HIGH_FAILURE,
+        treatment_failure=MEDIUM_FAILURE,
         inventory_policy=InventoryPolicy.PULL,
         stock_strategy=StockStrategy.REORDER_90
     )
@@ -209,6 +211,7 @@ def _create_uncertainty_set(config: ScenarioConfig) -> UncertaintySet:
     # Create uncertainty set with variability factors
     return UncertaintySet(
         # Required fields
+        name=config.name,
         collection_efficiency=config.coll_eff,
         treatment_conversion=config.treat_conv,
         transportation_time=config.trans_time,
@@ -246,11 +249,16 @@ default_uncertainty_set = uncertainty_sets["Baseline"]
 
 def get_uncertainty_set(scenario_name: str = "Baseline") -> UncertaintySet:
     """Get uncertainty set for a specific scenario"""
-    return uncertainty_sets.get(scenario_name, default_uncertainty_set)
+    try:
+        return uncertainty_sets[scenario_name]
+    except KeyError:
+        raise KeyError(f"Uncertainty set '{scenario_name}' not found")
 
-def get_scenario_config(scenario_name: str = "Baseline") -> ScenarioConfig:
+def get_scenario_config(scenario_name: str) -> ScenarioConfig:
     """Get scenario configuration by name"""
-    return SCENARIO_CONFIGS.get(scenario_name, SCENARIO_CONFIGS["Baseline"])
+    if scenario_name not in SCENARIO_CONFIGS:
+        raise KeyError(f"Scenario '{scenario_name}' not found")
+    return SCENARIO_CONFIGS[scenario_name]
 
 def get_scenario_with_strategies(
     base_scenario_name: str,

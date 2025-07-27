@@ -1,0 +1,84 @@
+---
+config:
+  theme: redux
+  look: neo
+  layout: elk
+---
+classDiagram
+direction TB
+    class FacilityBuilder {
+	    +create_generator()
+	    +create_collector()
+	    +create_processor()
+    }
+    class WasteGenerator {
+	    +waste_streams: Dict[WasteType, float]
+	    +current_storage: float
+	    +generate_waste()
+    }
+    class CollectorCompany {
+	    +collection_capacity: float
+	    +collection_frequency: float
+	    +collect_from_generator()
+	    +transfer_waste_to_region()
+    }
+    class TreatmentOperator {
+	    +processing_time: float
+	    +waste_storage_capacity: float
+	    +process_waste()
+    }
+    class WasteType {
+	    SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05
+	    BARK_WASTE_03_01_01
+	    etc.
+    }
+    class RegionType {
+	    POMURSKA
+	    PODRAVSKA
+	    etc.
+    }
+    class OutputType {
+	    OSB
+	    MDF
+	    PARTICLE_BOARD
+    }
+    class SimulationState {
+	    +track_waste_generation()
+	    +track_waste_collection()
+        +track_waste_treatment()
+        +track_production()
+	    +track_transport_flow()
+    }
+    class WasteMonitor {
+        +track_costs()
+	    +track_overflow()
+        +track_environmental_impact()
+	    +track_entities()
+    }
+    class ScenarioConfig {
+	    Baseline
+	    Boom
+	    Disruptive
+    }
+
+	<<enumeration>> WasteType
+	<<enumeration>> RegionType
+
+    FacilityBuilder --> WasteGenerator : creates
+    FacilityBuilder --> CollectorCompany : creates
+    FacilityBuilder --> TreatmentOperator : creates
+    WasteGenerator --> WasteType : generates
+    WasteGenerator --> RegionType : located_in
+    CollectorCompany --> WasteGenerator : collects_from
+    CollectorCompany --> TreatmentOperator : delivers_to
+    CollectorCompany --> RegionType : operates_in
+    TreatmentOperator --> WasteType : processes
+    TreatmentOperator --> OutputType : produces
+    TreatmentOperator --> RegionType : located_in
+    SimulationState --> WasteGenerator : tracks
+    SimulationState --> CollectorCompany : tracks
+    SimulationState --> TreatmentOperator : tracks
+    SimulationState --> ScenarioConfig : operates_under
+    WasteMonitor --> WasteGenerator : monitors
+    WasteMonitor --> CollectorCompany : monitors
+    WasteMonitor --> TreatmentOperator : monitors
