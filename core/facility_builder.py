@@ -47,9 +47,6 @@ class FacilityBuilder:
             initial_stock_ewc = convert_generation_rates_to_volume(gen_data.initial_stock)
             initial_stock = initial_stock_ewc
 
-        # provide an input to proceed
-        input("Press Enter to continue...")
-
         if stock_strategy is None and hasattr(self.uncertainty_set, 'stock_strategy'):
             stock_strategy = self.uncertainty_set.stock_strategy
 

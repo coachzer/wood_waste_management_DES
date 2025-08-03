@@ -29,15 +29,15 @@ class WasteType(Enum):
     OTHER_WOOD_WASTE_03_01_99 = "03 01 99"
     BARK_WOOD_WASTE_03_03_01 = "03 03 01"
     PAPER_CARDBOARD_SORTING_WASTE_03_03_08 = "03 03 08"
-    # 15 - Waste packaging; absorbents, wipes, filter materials, protective clothing
+    # 15 - Waste packaging
     PAPER_PACKAGING_15_01_01 = "15 01 01"
     WOODEN_PACKAGING_15_01_03 = "15 01 03"
-    # 17 - Construction & demolition waste (including excavated soil from contaminated sites)
+    # 17 - Construction & demolition waste 
     CONSTRUCTION_WOOD_17_02_01 = "17 02 01"
     # 19 - Waste from waste treatment, water treatment, and water preparation
     PAPER_CARDBOARD_19_12_01 = "19 12 01"
     WOOD_19_12_07 = "19 12 07"
-    # 20 - Municipal waste (household & similar commercial/industrial/institutional waste)
+    # 20 - Municipal waste 
     PAPER_CARDBOARD_20_01_01 = "20 01 01"
     NON_HAZARDOUS_WOOD_20_01_38 = "20 01 38"
     BULKY_WASTE_20_03_07 = "20 03 07"

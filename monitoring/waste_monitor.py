@@ -9,7 +9,6 @@ class WasteMonitor:
 
     def __init__(self, env=None):
         self.env = env
-        # Data collection structures
         self.generation_history = {}
         self.collection_history = {}
         self.processing_history = {}
@@ -281,17 +280,28 @@ class WasteMonitor:
     def track_cost(self, entity_name: str, entity_type: str, cost_value: float, 
                 cost_type: str, timestamp: float):
         """Track any type of cost for any entity type"""
-        # Initialize entity tracking if it doesn't exist
-        if entity_name not in self.cost_history["by_entity"][entity_type]:
-            self.cost_history["by_entity"][entity_type][entity_name] = {
+        
+        entity_type_mapping = {
+            "generator": "generators",
+            "collector": "collectors", 
+            "treatment": "treatments"
+        }
+        
+        mapped_entity_type = entity_type_mapping.get(entity_type, entity_type)
+        
+        if mapped_entity_type not in self.cost_history["by_entity"]:
+            self.cost_history["by_entity"][mapped_entity_type] = {}
+        
+        if entity_name not in self.cost_history["by_entity"][mapped_entity_type]:
+            self.cost_history["by_entity"][mapped_entity_type][entity_name] = {
                 "energy": {"values": [], "timestamps": []},
                 "processing": {"values": [], "timestamps": []},
                 "transport": {"values": [], "timestamps": []}
             }
         
         # Track for specific entity
-        self.cost_history["by_entity"][entity_type][entity_name][cost_type]["values"].append(cost_value)
-        self.cost_history["by_entity"][entity_type][entity_name][cost_type]["timestamps"].append(timestamp)
+        self.cost_history["by_entity"][mapped_entity_type][entity_name][cost_type]["values"].append(cost_value)
+        self.cost_history["by_entity"][mapped_entity_type][entity_name][cost_type]["timestamps"].append(timestamp)
 
         # Track for cost type
         self.cost_history["by_cost_type"][cost_type]["values"].append(cost_value)
@@ -300,17 +310,38 @@ class WasteMonitor:
     def track_environmental_impact(self, entity_name: str, entity_type: str, 
                                 environmental_impact: float, timestamp: float, 
                                 impact_category: str = "impact_cost"):
-        """Track environmental impact for any entity type"""
+        """Track environmental impact for any entity type with proper aggregation"""
         
-        if entity_name not in self.environmental_history["by_entity"][entity_type]:
-            self.environmental_history["by_entity"][entity_type][entity_name] = {
+        entity_type_mapping = {
+            "generator": "generators",
+            "collector": "collectors", 
+            "treatment": "treatments"
+        }
+        
+        mapped_entity_type = entity_type_mapping.get(entity_type, entity_type)
+        
+        if mapped_entity_type not in self.environmental_history["by_entity"]:
+            self.environmental_history["by_entity"][mapped_entity_type] = {}
+        
+        if entity_name not in self.environmental_history["by_entity"][mapped_entity_type]:
+            self.environmental_history["by_entity"][mapped_entity_type][entity_name] = {
                 "carbon_emissions": {"values": [], "timestamps": []}, 
                 "impact_cost": {"values": [], "timestamps": []}
             }
         
-        entity_history = self.environmental_history["by_entity"][entity_type][entity_name]
+        entity_history = self.environmental_history["by_entity"][mapped_entity_type][entity_name]
         entity_history[impact_category]["values"].append(environmental_impact)
         entity_history[impact_category]["timestamps"].append(timestamp)
+
+        if impact_category in self.environmental_history["by_impact_type"]:
+            self.environmental_history["by_impact_type"][impact_category]["values"].append(environmental_impact)
+            self.environmental_history["by_impact_type"][impact_category]["timestamps"].append(timestamp)
+         
+        if mapped_entity_type in self.environmental_history["by_entity_type"]:
+            self.environmental_history["by_entity_type"][mapped_entity_type]["values"].append(environmental_impact)
+            self.environmental_history["by_entity_type"][mapped_entity_type]["timestamps"].append(timestamp)
+        
+        print(f"[ENV IMPACT] {entity_name} ({entity_type}): {environmental_impact:.2f} kg CO₂e ({impact_category}) at {timestamp:.1f}")
         
     def calculate_efficiency_metrics(self) -> Dict[str, float]:
         """Calculate system-wide efficiency metrics"""

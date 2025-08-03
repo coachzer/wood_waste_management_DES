@@ -100,39 +100,31 @@ class WasteGenerator(OperationalEntity):
         # Start waste generation process
         self.action = env.process(self.generate_waste())
 
+    def _handle_entity_status(self, current_time):
+        """Checks for failures and updates generation rates based on entity status."""
+        if self.uncertainty_set and hasattr(self.uncertainty_set, 'generator_failure'):
+            self.check_failure(current_time, self.uncertainty_set.generator_failure.probability)
+
+        if self.status == EntityStatus.FAILED:
+            if not hasattr(self, '_original_rates'):
+                self._original_rates = self.waste_generation_rates.copy()
+            self.waste_generation_rates = {wt: r * 0.1 for wt, r in self._original_rates.items()}
+            print(f"{current_time}: Generator {self.name} is FAILED, minimal waste generation")
+        elif self.status == EntityStatus.RECOVERING:
+            if hasattr(self, '_original_rates'):
+                efficiency = self.get_operational_efficiency()
+                self.waste_generation_rates = {wt: r * efficiency for wt, r in self._original_rates.items()}
+                print(f"{current_time}: Generator {self.name} is RECOVERING (efficiency: {efficiency:.2f})")
+        elif self.status == EntityStatus.OPERATIONAL:
+            if hasattr(self, '_original_rates'):
+                self.waste_generation_rates = self._original_rates.copy()
+                delattr(self, '_original_rates')
+
     def generate_waste(self):
         """Generate waste with optimized calculations and failure handling, including Kanban pull logic"""
         while True:
             current_time = self.env.now
-
-            # Check for failures if uncertainty set is available
-            if self.uncertainty_set and hasattr(self.uncertainty_set, 'generator_failure'):
-
-                self.check_failure(current_time, self.uncertainty_set.generator_failure.probability)
-                
-                # Handle generation rate changes based on current status
-                if self.status == EntityStatus.FAILED:
-                    if not hasattr(self, '_original_rates'):
-                        self._original_rates = self.waste_generation_rates.copy()  
-                    self.waste_generation_rates = {
-                        waste_type: rate * 0.1  
-                        for waste_type, rate in self._original_rates.items()
-                    }
-                    print(f"{current_time}: Generator {self.name} is FAILED, minimal waste generation")
-                    
-                elif self.status == EntityStatus.RECOVERING:
-                    if hasattr(self, '_original_rates'):
-                        efficiency = self.get_operational_efficiency()
-                        self.waste_generation_rates = {
-                            waste_type: rate * efficiency  # Gradual recovery based on efficiency
-                            for waste_type, rate in self._original_rates.items()
-                        }
-                    print(f"{current_time}: Generator {self.name} is RECOVERING (efficiency: {efficiency:.2f})")
-                    
-                elif self.status == EntityStatus.OPERATIONAL:
-                    if hasattr(self, '_original_rates'):
-                        self.waste_generation_rates = self._original_rates.copy()
-                        delattr(self, '_original_rates')  
+            self._handle_entity_status(current_time)
 
             if self.status == EntityStatus.FAILED:
                 yield self.env.timeout(self.generation_frequency)
@@ -141,18 +133,21 @@ class WasteGenerator(OperationalEntity):
             season_index = int(current_time % self.seasonal_periods)
             seasonal_factor = self.seasonal_factors[season_index]
 
-            strategy = self.stock_strategy
-
-            match strategy:
-                case StockStrategy.ON_DEMAND:
-                    self._process_on_demand(current_time, seasonal_factor)
-                case StockStrategy.REORDER_90:
-                    self._process_reorder(current_time, seasonal_factor, 0.9, 6)
-                case StockStrategy.REORDER_50:
-                    self._process_reorder(current_time, seasonal_factor, 0.5, 4)
+            self._process_stock_strategy(current_time, seasonal_factor)
 
             self.history_index += 1
             yield self.env.timeout(self.generation_frequency)
+
+    def _process_stock_strategy(self, current_time, seasonal_factor):
+        """Processes waste generation based on the current stock strategy."""
+        strategy = self.stock_strategy
+        match strategy:
+            case StockStrategy.ON_DEMAND:
+                self._process_on_demand(current_time, seasonal_factor)
+            case StockStrategy.REORDER_90:
+                self._process_reorder(current_time, seasonal_factor, 0.9, 6)
+            case StockStrategy.REORDER_50:
+                self._process_reorder(current_time, seasonal_factor, 0.5, 4)
 
     def _process_full_stock(self, current_time, seasonal_factor):
         available_storage = self.waste_storage_capacity - self.current_storage

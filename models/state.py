@@ -93,14 +93,6 @@ class SimulationState:
         except KeyError as e:
             print(f"Warning: Could not get regional stats - {str(e)}")
             return {}
-
-    def get_waste_type_distribution(self, waste_type):
-        """Get distribution of a specific waste type across regions"""
-        try:
-            return self.waste_tracker.get_waste_type_stats(waste_type)
-        except Exception as e:
-            print(f"Warning: Could not get waste type distribution - {str(e)}")
-            return {}
             
     def track_product_production(self, product_type: str, amount: float, current_time: float = None) -> None:
         """Track production of final products"""

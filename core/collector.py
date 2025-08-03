@@ -1,5 +1,6 @@
 import numpy as np
 from typing import Dict
+from config.constants import TRANSPORT_EMISSIONS_PER_TON_KM, WASTE_DENSITY
 from core.transport_manager import PointToPointTransport, TransportPriority, TransportRequest
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
 from models.state import SimulationState
@@ -115,10 +116,7 @@ class CollectorCompany(OperationalEntity):
 
     def _find_available_vehicle(self):
         """Find an available vehicle for collection"""
-        for vehicle in self.vehicles:
-            if not vehicle.in_transit:
-                return vehicle
-        return None
+        return next((v for v in self.vehicles if not v.in_transit), None)
 
     def _calculate_travel_time_to_generator(self, generator):
         """Calculate travel time to generator (simplified)"""
@@ -165,9 +163,20 @@ class CollectorCompany(OperationalEntity):
             print(f"[VEHICLE RETURN] {vehicle.id} returned and unloaded {collected_amount:.1f} m³")
             
             collection_cost = self.transport_cost + (distance * 0.1 * collected_amount)
+            
+            # Calculate transport emissions (convert m³ to tonnes using density, then multiply by distance and emissions factor)
+            emissions = collected_amount * WASTE_DENSITY * distance * TRANSPORT_EMISSIONS_PER_TON_KM
+            
+            if hasattr(self, 'waste_monitor') and self.waste_monitor:
+                self.waste_monitor.track_environmental_impact(
+                    entity_name=self.name,
+                    entity_type=self.facility_type,
+                    environmental_impact=emissions,
+                    timestamp=self.env.now,
+                    impact_category="carbon_emissions"
+                )
         else:
             print(f"[COLLECTION FAILED] {vehicle.id} collected nothing from {generator.name}")
-            # Still need to travel back
             yield self.env.timeout(travel_time)
             collection_cost = self.transport_cost  
         
@@ -521,7 +530,7 @@ class CollectorCompany(OperationalEntity):
 
     def collect_from_generator(self, generator):
         """Vehicle-based collection with proper overflow handling and storage management"""
-        if not self.availability:
+        if self.status == EntityStatus.FAILED:
             return self.env.process(self._dummy_process(0))
         
         # Check if generator has any waste

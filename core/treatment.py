@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Dict, Iterable, Optional
+from typing import Dict, Optional
 from core.transport_manager import PointToPointTransport, TransportPriority, TransportRequest
 from models.data_classes import WasteTransformation, OperationalEntity, ProductStorage
 from models.distances import get_distance
@@ -328,7 +328,6 @@ class TreatmentOperator(OperationalEntity):
             
     def _get_prioritized_transformations(self):
         """Get transformations sorted by priority based on current demands and system state"""
-        # Get current demands and state
         state = SimulationState.get_instance()
         unmet_demands = state.get_unmet_demands()
         
@@ -376,44 +375,42 @@ class TreatmentOperator(OperationalEntity):
         )
         return self.transport_manager.request_transport(request)
 
+    def _handle_failures(self, current_time: float):
+        """Checks for and handles facility failures, updating processing capacity."""
+        if not (self.uncertainty_set and hasattr(self.uncertainty_set, 'treatment_failure')):
+            return
+
+        is_failed = self.check_failure(current_time, self.uncertainty_set.treatment_failure.probability)
+        was_failed = getattr(self, '_was_failed', False)
+
+        if is_failed and self.status == EntityStatus.FAILED:
+            self.processing_capacity = self.initial_processing_capacity * 0.3
+        elif not is_failed and self.status == EntityStatus.OPERATIONAL and was_failed:
+            self.processing_capacity = self.initial_processing_capacity * 0.8
+
+        self._was_failed = (self.status == EntityStatus.FAILED)
+
+    def _process_available_waste(self):
+        """Processes waste based on prioritized transformations."""
+        sorted_transformations = self._get_prioritized_transformations()
+        for (input_type, output_type), transformation in sorted_transformations:
+            if self.waste_storage.get(input_type, 0) > 0:
+                self._process_waste_transformation(input_type, output_type, transformation)
+
     def run_facility(self):
-        """Main process loop for the treatment facility"""
+        """Main process loop for the treatment facility."""
         while True:
             current_time = self.env.now
-            
-            # Check for failures if uncertainty set is available
-            if self.uncertainty_set and hasattr(self.uncertainty_set, 'treatment_failure'):
-                is_failed = self.check_failure(current_time, self.uncertainty_set.treatment_failure.probability)
-                
-                # Handle efficiency changes when failure status changes
-                if is_failed and self.status == EntityStatus.FAILED:
-                    # Just became failed - reduce processing capacity
-                    self.processing_capacity = self.initial_processing_capacity * 0.3  # Reduced capacity during failure
-                elif not is_failed and self.status == EntityStatus.OPERATIONAL:
-                    # Just recovered - restore processing capacity
-                    if hasattr(self, '_was_failed') and self._was_failed:
-                        self.processing_capacity = self.initial_processing_capacity * 0.8  # Gradual recovery
-                
-                # Track previous failure state
-                self._was_failed = (self.status == EntityStatus.FAILED)
-            
-            # Skip processing if failed
+            self._handle_failures(current_time)
+
             if self.status == EntityStatus.FAILED:
                 print(f"{current_time}: Treatment operator {self.name} is currently failed, skipping processing")
                 yield self.env.timeout(self.processing_time)
                 continue
 
-            # Get sorted transformations by priority
-            sorted_transformations = self._get_prioritized_transformations()
-
-            # Process transformations in priority order
-            for (input_type, output_type), transformation in sorted_transformations:
-                if self.waste_storage[input_type] > 0:
-                    self._process_waste_transformation(input_type, output_type, transformation)
-
-            # Wait for processing time before next cycle
+            self._process_available_waste()
             yield self.env.timeout(self.processing_time)
-            
+
     def _process_waste_transformation(self, input_type, output_type, transformation):
         """Process a single waste transformation"""
         
@@ -479,82 +476,79 @@ class TreatmentOperator(OperationalEntity):
 
     def request_waste_directly(self, required_waste: float, input_waste_types: set) -> Dict[WasteType, float]:
         """Request waste with realistic 80% local / 20% cross-region routing"""
-        state = SimulationState.get_instance()
         collected_waste = {}
-        
-        # Split demand: 80% local priority, 20% cross-region
         local_portion = required_waste * 0.8
         cross_region_portion = required_waste * 0.2
-        
+
         print(f"[REALISTIC ROUTING] {self.name}: {local_portion:.1f} m³ local, {cross_region_portion:.1f} m³ cross-region")
-        
-        # 1. FIRST: Collect from local region (priority)
-        remaining_local = local_portion
-        local_collectors = [
-            c for c in state.collectors 
-            if c.region_type == self.region_type and c.availability
-        ]
-        
-        for collector in local_collectors:
-            if remaining_local <= 0:
-                break
-                
-            print(f"[LOCAL COLLECTION] Requesting {remaining_local:.1f} m³ from {collector.name}")
-            local_collected = collector.provide_waste_for_treatment(remaining_local, input_waste_types)
-            
-            # Add to total collected waste
-            for waste_type, amount in local_collected.items():
-                collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
-                remaining_local -= amount
-                print(f"[LOCAL SUCCESS] Collected {amount:.1f} m³ of {waste_type.value}")
-        
-        # 2. SECOND: Cross-region collection via transport
-        remaining_cross_region = cross_region_portion
-        if remaining_cross_region > 0:
-            
-            remote_collectors = [
-                c for c in state.collectors 
-                if c.region_type != self.region_type and c.availability
-            ]
-            
-            remote_collectors.sort(key=lambda c: get_distance(self.region_type, c.region_type))
-            
-            for collector in remote_collectors[:3]: 
-                if remaining_cross_region <= 0:
-                    break
-                    
-                distance = get_distance(self.region_type, collector.region_type)
-                print(f"[CROSS-REGION] Requesting {remaining_cross_region:.1f} m³ from {collector.name} ({collector.region}) - {distance:.1f}km away")
-                
-                transport_collected = self._request_via_transport(
-                    collector, remaining_cross_region, input_waste_types
-                )
-                
-                for waste_type, amount in transport_collected.items():
-                    collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
-                    remaining_cross_region -= amount
-        
-        # 3. If we still need more, try any available collector (fallback)
+
+        # 1. Local collection
+        remaining_local = self._collect_from_local(local_portion, input_waste_types, collected_waste)
+
+        # 2. Cross-region collection
+        remaining_cross_region = self._collect_from_cross_region(cross_region_portion, input_waste_types, collected_waste)
+
+        # 3. Fallback collection
         total_remaining = remaining_local + remaining_cross_region
         if total_remaining > 0:
-            print(f"[FALLBACK] Still need {total_remaining:.1f} m³, trying any available collector")
-            all_collectors = [c for c in state.collectors if c.availability]
-            
-            for collector in all_collectors:
-                if total_remaining <= 0:
-                    break
-                fallback_collected = collector.provide_waste_for_treatment(total_remaining, input_waste_types)
-                for waste_type, amount in fallback_collected.items():
-                    collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
-                    total_remaining -= amount
+            self._collect_with_fallback(total_remaining, input_waste_types, collected_waste)
 
         return collected_waste
-    
+
+    def _collect_from_local(self, amount_to_collect: float, waste_types: set, collected_waste: dict) -> float:
+        """Collect waste from local collectors."""
+        state = SimulationState.get_instance()
+        local_collectors = [c for c in state.collectors if c.region_type == self.region_type and c.availability]
+        
+        remaining = amount_to_collect
+        for collector in local_collectors:
+            if remaining <= 0: break
+            print(f"[LOCAL COLLECTION] Requesting {remaining:.1f} m³ from {collector.name}")
+            local_collected = collector.provide_waste_for_treatment(remaining, waste_types)
+            for waste_type, amount in local_collected.items():
+                collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
+                remaining -= amount
+                print(f"[LOCAL SUCCESS] Collected {amount:.1f} m³ of {waste_type.value}")
+        return remaining
+
+    def _collect_from_cross_region(self, amount_to_collect: float, waste_types: set, collected_waste: dict) -> float:
+        """Collect waste from cross-region collectors via transport."""
+        if amount_to_collect <= 0: return 0.0
+        
+        state = SimulationState.get_instance()
+        remote_collectors = [c for c in state.collectors if c.region_type != self.region_type and c.availability]
+        remote_collectors.sort(key=lambda c: get_distance(self.region_type, c.region_type))
+        
+        remaining = amount_to_collect
+        for collector in remote_collectors[:3]:
+            if remaining <= 0: break
+            distance = get_distance(self.region_type, collector.region_type)
+            print(f"[CROSS-REGION] Requesting {remaining:.1f} m³ from {collector.name} ({collector.region}) - {distance:.1f}km away")
+            transport_collected = self._request_via_transport(collector, remaining, waste_types)
+            for waste_type, amount in transport_collected.items():
+                collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
+                remaining -= amount
+        return remaining
+
+    def _collect_with_fallback(self, amount_to_collect: float, waste_types: set, collected_waste: dict) -> float:
+        """Collect waste from any available collector as a fallback."""
+        print(f"[FALLBACK] Still need {amount_to_collect:.1f} m³, trying any available collector")
+        state = SimulationState.get_instance()
+        all_collectors = [c for c in state.collectors if c.availability]
+        
+        remaining = amount_to_collect
+        for collector in all_collectors:
+            if remaining <= 0: break
+            fallback_collected = collector.provide_waste_for_treatment(remaining, waste_types)
+            for waste_type, amount in fallback_collected.items():
+                collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
+                remaining -= amount
+        return remaining
+
     def _request_via_transport(self, collector, amount: float, waste_types: set) -> Dict[WasteType, float]:
         """Request waste via transport system"""
         print(f"[TRANSPORT REQUEST] Initiating transport from {collector.region} to {self.region}")
         
-        # Get available waste from remote collector
         available_waste = self._get_available_waste_from_collector(collector, amount, waste_types)
         
         transported_waste = {}
@@ -562,7 +556,7 @@ class TreatmentOperator(OperationalEntity):
             if volume > 0:
                 print(f"[TRANSPORT] Attempting to transport {volume:.1f} m³ of {waste_type.value}")
                 
-                # Use the transport system!
+                # Call transport system
                 success = collector.transfer_waste_to_region(
                     waste_type, volume, self.region_type
                 )

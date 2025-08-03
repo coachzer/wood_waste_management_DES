@@ -1,6 +1,7 @@
 from config.base_config import get_cost_params
 from typing import Dict, Tuple, Optional, TypeVar
 from dataclasses import dataclass
+from config.constants import LANDFILL_EMISSIONS_PER_M3, WASTE_DENSITY
 from models.enums import WasteType
 
 @dataclass
@@ -85,7 +86,7 @@ def handle_storage_event(entity, volume, region):
     expansion_count = getattr(entity, 'expansion_count', 0)
 
     base_expansion_cost_per_m3 = config.expansion_cost_per_m3
-    expansion_cost_per_m3 = base_expansion_cost_per_m3 * (1 + expansion_count * 0.5)  # 50% escalation
+    expansion_cost_per_m3 = base_expansion_cost_per_m3 * (1 + expansion_count * 0.5)  
 
     needed_expansion = volume * 1.2
     expansion_cost = needed_expansion * expansion_cost_per_m3
@@ -95,8 +96,6 @@ def handle_storage_event(entity, volume, region):
         entity.waste_storage_capacity += needed_expansion
         entity.expansion_count = expansion_count + 1
         entity.expansion_costs = getattr(entity, 'expansion_costs', 0) + expansion_cost
-
-        print(f"[STORAGE EXPANSION] {entity.name} expanded by {needed_expansion:.1f} m³. New capacity: {entity.waste_storage_capacity:.1f} m³")
 
         if hasattr(entity, 'waste_monitor') and entity.waste_monitor:
             entity.waste_monitor.track_event(
@@ -109,8 +108,9 @@ def handle_storage_event(entity, volume, region):
 
         return expansion_cost, "expand_storage"
     else:
-        print(f"[LANDFILL] {volume:.1f} m³ sent to landfill from {entity.name}")
 
+        emissions = volume * WASTE_DENSITY * (LANDFILL_EMISSIONS_PER_M3 * 1000)  
+        
         if hasattr(entity, 'waste_monitor') and entity.waste_monitor:
             entity.waste_monitor.track_event(
                 facility_type=entity.facility_type,
@@ -118,6 +118,14 @@ def handle_storage_event(entity, volume, region):
                 strategy="landfill",
                 cost_incurred=landfill_cost,
                 timestamp=entity.env.now,
+            )
+            # Track the environmental impact
+            entity.waste_monitor.track_environmental_impact(
+                entity_name=entity.name,
+                entity_type=entity.facility_type,
+                environmental_impact=emissions,
+                timestamp=entity.env.now,
+                impact_category="carbon_emissions"
             )
 
         return landfill_cost, "landfill"

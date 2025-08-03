@@ -218,25 +218,16 @@ def calculate_storage_levels(history: Dict) -> Dict:
     time_storage = {}
     for _, data in history.items():
         timestamps = data.get('timestamps', [])
-        storage_total = data.get('storage', {}).get('total', [])  # Changed from 'processed'
+        storage_total = data.get('storage', {}).get('total', [])
         for t, s in zip(timestamps, storage_total):
             if t not in time_storage:
                 time_storage[t] = 0
             time_storage[t] += s
     
     sorted_times = sorted(time_storage.keys())
-    storage_levels = [time_storage[t] for t in sorted_times]  # No cumulative calculation!
+    storage_levels = [time_storage[t] for t in sorted_times]  # No cumulative calculation
     
     return {
         'timestamps': sorted_times,
-        'storage': storage_levels  # Changed from 'processed'
+        'storage': storage_levels  
     }
-
-def find_pareto_front(points):
-    """Return a boolean mask for Pareto front points (minimize both objectives)"""
-    is_pareto = np.ones(points.shape[0], dtype=bool)
-    for i, point in enumerate(points):
-        if is_pareto[i]:
-            is_pareto[is_pareto] = np.any(points[is_pareto] < point, axis=1)
-            is_pareto[i] = True  
-    return is_pareto
