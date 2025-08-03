@@ -42,8 +42,6 @@ class SimulationManager:
             
             # Create facility builder with scenario configuration
             uncertainty_set = scenario_config.to_uncertainty_set()
-            print(f"DEBUG: Uncertainty set inventory_policy: {getattr(uncertainty_set, 'inventory_policy', 'NOT FOUND')}")
-            print(f"DEBUG: Uncertainty set stock_strategy: {getattr(uncertainty_set, 'stock_strategy', 'NOT FOUND')}")
 
             self.facility_builder = FacilityBuilder(
                 env=self.env,

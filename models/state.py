@@ -49,7 +49,7 @@ class SimulationState:
         self.collectors = collectors
         self.treatment_operators = treatment_operators
 
-    def track_waste_generation(self, region, waste_type, amount):
+    def track_add_waste(self, region, waste_type, amount):
         """Track waste generation in a specific region"""
         if not region:
             return
@@ -58,14 +58,14 @@ class SimulationState:
         except KeyError as e:
             print(f"Warning: Could not track waste generation - {str(e)}")
 
-    def track_waste_collection(self, region, waste_type, amount):
-        """Track waste collection from a specific region"""
+    def track_remove_waste(self, region, waste_type, amount):
+        """Track waste removal from a specific region"""
         if not region:
             return 0
         try:
             return self.waste_tracker.remove_waste(region, waste_type, amount)
         except KeyError as e:
-            print(f"Warning: Could not track waste collection - {str(e)}")
+            print(f"Warning: Could not track waste removal - {str(e)}")
             return 0
         
     def track_transport_flow(self, source_type: str, source_name: str, 

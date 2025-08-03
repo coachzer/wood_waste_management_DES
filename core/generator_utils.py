@@ -23,7 +23,7 @@ def update_waste_stream(waste_streams, total_generated, current_storage, region,
     current_storage += generated_volume
     total_generated[waste_type] += generated_volume
 
-    SimulationState.get_instance().track_waste_generation(
+    SimulationState.get_instance().track_add_waste(
         region, waste_type, generated_volume
     )
 
@@ -63,7 +63,7 @@ def handle_overflow(current_storage, waste_storage_capacity, waste_streams, regi
             new_volume = result.scaled_values[waste_type]
             reduced_volume = stream.volume - new_volume
             if reduced_volume > 0:
-                state.track_waste_collection(region, waste_type, reduced_volume)
+                state.track_remove_waste(region, waste_type, reduced_volume)
                 stream.volume = new_volume
                 total_reduced += reduced_volume
         current_storage -= total_reduced

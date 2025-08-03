@@ -5,31 +5,38 @@ This module handles conversions between tonnes and cubic meters (m³)
 for different waste types based on their density characteristics.
 """
 
-from typing import Dict
+from typing import Dict, Optional
 from models.enums import WasteType
 
 # Standard waste densities in kg/m³ based on EWC codes and industry data
 WASTE_DENSITIES = {
-    # Wood and forestry waste
-    WasteType.BARK_CORK_WASTE_03_01_01: 400.0,  # Bark waste - lower density
-    WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: 200.0,  # Sawdust - very low density
-    WasteType.WOOD_WASTE_03_01_99: 450.0,  # Other wood waste
-    WasteType.WOOD_WASTE_03_03_01: 450.0,  # Bark and wood waste
-    WasteType.FORESTRY_WASTE_02_01_07: 350.0,  # Forestry waste
-    
-    # Construction and packaging wood
-    WasteType.CONSTRUCTION_WOOD_17_02_01: 500.0,  # Construction wood - denser
-    WasteType.WOODEN_PACKAGING_15_01_03: 400.0,  # Wooden packaging
-    WasteType.NON_HAZARDOUS_WOOD_20_01_38: 450.0,  # Municipal wood waste
-    WasteType.BULKY_WASTE_20_03_07: 300.0,  # Bulky waste - mixed, lower density
-    
-    # Paper and cardboard waste
-    WasteType.PAPER_PACKAGING_15_01_01: 600.0,  # Paper packaging - compressed
-    WasteType.PAPER_WASTE_03_03_08: 500.0,  # Paper/cardboard sorting waste
-    WasteType.PAPER_CARDBOARD_19_12_01: 550.0,  # Paper and cardboard
-    WasteType.MUNICIPAL_PAPER_20_01_01: 500.0,  # Municipal paper
-    WasteType.WOOD_19_12_07: 400.0,  # Wood from sorting
+    WasteType.FORESTRY_WASTE_02_01_07: 350.0,
+    WasteType.BARK_CORK_WASTE_03_01_01: 400.0,
+    WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: 200.0,
+    WasteType.OTHER_WOOD_WASTE_03_01_99: 450.0,
+    WasteType.BARK_WOOD_WASTE_03_03_01: 450.0,
+    WasteType.PAPER_CARDBOARD_SORTING_WASTE_03_03_08: 600.0,
+    WasteType.PAPER_PACKAGING_15_01_01: 600.0,
+    WasteType.WOODEN_PACKAGING_15_01_03: 400.0,
+    WasteType.CONSTRUCTION_WOOD_17_02_01: 500.0,
+    WasteType.PAPER_CARDBOARD_19_12_01: 600.0,
+    WasteType.WOOD_19_12_07: 400.0,
+    WasteType.PAPER_CARDBOARD_20_01_01: 600.0,
+    WasteType.NON_HAZARDOUS_WOOD_20_01_38: 450.0,
+    WasteType.BULKY_WASTE_20_03_07: 300.0
 }
+
+def convert_ewc_dict_to_waste_type_dict(ewc_dict: Dict[str, str]) -> Dict[str, WasteType]:
+    """
+    Convert a dictionary of EWC codes to WasteType enums
+
+    Args:
+        ewc_dict: Dictionary mapping EWC codes to their descriptions
+
+    Returns:
+        Dictionary mapping EWC codes to WasteType enums
+    """
+    return {ewc_code: WasteType[ewc_code] for ewc_code in ewc_dict if ewc_code in WasteType.__members__}
 
 def tonnes_to_cubic_meters(tonnes: float, waste_type: WasteType) -> float:
     """
@@ -43,9 +50,7 @@ def tonnes_to_cubic_meters(tonnes: float, waste_type: WasteType) -> float:
         Volume in cubic meters (m³)
     """
     if waste_type not in WASTE_DENSITIES:
-        # Default density for unknown waste types (average wood waste)
-        density_kg_m3 = 400.0
-        print(f"Warning: Unknown waste type {waste_type}, using default density {density_kg_m3} kg/m³")
+        raise ValueError(f"Unknown waste type {waste_type}, cannot determine density for conversion.")
     else:
         density_kg_m3 = WASTE_DENSITIES[waste_type]
     
@@ -93,18 +98,31 @@ def get_waste_density(waste_type: WasteType) -> float:
 
 def convert_generation_rates_to_volume(
     generation_rates_tonnes: Dict[str, float], 
-    waste_type_mapping: Dict[str, WasteType]
+    waste_type_mapping: Optional[Dict[str, WasteType]] = None
 ) -> Dict[WasteType, float]:
     """
     Convert waste generation rates from tonnes/day to m³/day
     
     Args:
         generation_rates_tonnes: Dict mapping EWC codes to tonnes/day
-        waste_type_mapping: Dict mapping EWC codes to WasteType enums
+        waste_type_mapping: Optional dict mapping EWC codes to WasteType enums.
+                          If not provided, will auto-generate from EWC codes.
     
     Returns:
         Dict mapping WasteType to m³/day
     """
+    if waste_type_mapping is None:
+        waste_type_mapping = {}
+        for ewc_code in generation_rates_tonnes.keys():
+            try:
+                normalized_code = ewc_code.replace(" ", "_").upper()
+                for waste_type in WasteType:
+                    if waste_type.name.endswith(normalized_code):
+                        waste_type_mapping[ewc_code] = waste_type
+                        break
+            except Exception as e:
+                raise ValueError(f"Could not map EWC code {ewc_code}: {e}")
+    
     volume_rates = {}
     
     for ewc_code, tonnes_per_day in generation_rates_tonnes.items():

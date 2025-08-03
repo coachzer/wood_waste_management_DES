@@ -235,7 +235,7 @@ class CollectorCompany(OperationalEntity):
             collected_waste[waste_type] = amount
             total_collected += amount
             
-            SimulationState.get_instance().track_waste_collection(
+            SimulationState.get_instance().track_remove_waste(
                 generator.region, waste_type, amount
             )
 

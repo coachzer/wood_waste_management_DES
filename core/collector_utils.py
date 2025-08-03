@@ -14,7 +14,7 @@ def handle_completed_transport(transport: Dict, current_time: float) -> None:
         None,
     )
     if target_collector:
-        SimulationState.get_instance().track_waste_generation(
+        SimulationState.get_instance().track_add_waste(
             target_collector.region,
             transport["waste_type"],
             transport["volume"],

@@ -43,13 +43,16 @@ direction TB
 	    PARTICLE_BOARD
     }
     class SimulationState {
-	    +track_waste_generation()
-	    +track_waste_collection()
+	    +track_add_waste()
+	    +track_remove_waste()
       +track_waste_treatment()
       +track_production()
-	    +track_transport_flow()
     }
     class WasteMonitor {
+      +track_add_waste()
+      +track_remove_waste()
+      +track_waste_processing()
+	    +track_transport_flow()
       +track_costs()
 	    +track_event()
       +track_environmental_impact()
