@@ -16,13 +16,13 @@ def create_cost_impact_comparison(results: List[Dict], output_dir: str):
         monitor_data = result['monitor_data']
         scenario_labels.append(f"{result['inventory_policy']} | {result['stock_strategy']}")
         cost_history = monitor_data['cost_history']
-        overflow_history = monitor_data['overflow_history']
+        event_history = monitor_data['event_history']
 
         # Extract final values for each cost component
         cost_data['energy'].append(np.sum(cost_history.get('energy', [])))
         cost_data['processing'].append(np.sum(cost_history.get('processing', [])))
         cost_data['transport'].append(np.sum(cost_history.get('transport', [])))
-        cost_data['overflow'].append(overflow_history.get('total_cost', {}).get('values', [0])[-1] if overflow_history.get('total_cost', {}).get('values') else 0)
+        cost_data['overflow'].append(event_history.get('total_cost', {}).get('values', [0])[-1] if event_history.get('total_cost', {}).get('values') else 0)
 
     # Bar chart for cost breakdown
     fig_cost = go.Figure()
@@ -65,12 +65,12 @@ def create_pareto_front_plot(results: List[Dict], output_dir: str):
         for cost_type, data in cost_history["by_cost_type"].items():
             if data["values"]:
                 total_cost += sum(data["values"])
-        
-        # Add overflow costs
-        overflow_history = waste_monitor.overflow_history
-        if overflow_history["total_cost"]["values"]:
-            total_cost += overflow_history["total_cost"]["values"][-1]
-        
+
+        # Add event costs
+        event_history = waste_monitor.event_history
+        if event_history["total_cost"]["values"]:
+            total_cost += event_history["total_cost"]["values"][-1]
+
         # Calculate total environmental impact using WasteMonitor's environmental_history
         env_history = waste_monitor.environmental_history
         total_impact = 0.0
@@ -206,7 +206,7 @@ def create_summary_dashboard(results: List[Dict], output_dir: str):
         generation_history = monitor_data['generation_history']
         collection_history = monitor_data['collection_history']
         processing_history = monitor_data['processing_history']
-        overflow_history = monitor_data['overflow_history']
+        event_history = monitor_data['event_history']
 
         # Calculate totals
         total_generated = _get_total_generated(generation_history)
@@ -215,8 +215,8 @@ def create_summary_dashboard(results: List[Dict], output_dir: str):
 
         # Calculate overflow cost
         total_overflow_cost = 0
-        if 'total_cost' in overflow_history and 'values' in overflow_history['total_cost']:
-            cost_values = overflow_history['total_cost']['values']
+        if 'total_cost' in event_history and 'values' in event_history['total_cost']:
+            cost_values = event_history['total_cost']['values']
             if cost_values:
                 total_overflow_cost = cost_values[-1]
 
@@ -231,7 +231,7 @@ def create_summary_dashboard(results: List[Dict], output_dir: str):
             'Total Processed': total_processed,
             'Collection Efficiency': collection_eff,
             'Processing Efficiency': processing_eff,
-            'Overflow Cost': total_overflow_cost
+            'Event Cost': total_overflow_cost
         })
 
     # Create the dashboard visualization

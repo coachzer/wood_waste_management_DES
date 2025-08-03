@@ -1,16 +1,14 @@
 import os
 import json
 from typing import Dict, Any
-from core.decision_manager import DecisionStrategy
 from models.enums import WasteType
 from config.constants import SIMULATION_DURATION
 
 class WasteMonitor:
     """Unified monitoring system for waste management operations"""
-    
-    def __init__(self, env=None, decision_tracker=None):
+
+    def __init__(self, env=None):
         self.env = env
-        self.decision_tracker = decision_tracker  
         # Data collection structures
         self.generation_history = {}
         self.collection_history = {}
@@ -22,10 +20,7 @@ class WasteMonitor:
                 "treatments": {}
             },
             "by_impact_type": {
-                "carbon_emissions": {"values": [0.0], "timestamps": [0.0]}, # for future use
-                "water_usage": {"values": [0.0], "timestamps": [0.0]}, # for future use
-                "air_pollution": {"values": [0.0], "timestamps": [0.0]}, # for future use
-                "soil_contamination": {"values": [0.0], "timestamps": [0.0]}, # for future use
+                "carbon_emissions": {"values": [0.0], "timestamps": [0.0]}, 
                 "impact_cost": {"values": [0.0], "timestamps": [0.0]}
             },
             "by_entity_type": {
@@ -46,7 +41,7 @@ class WasteMonitor:
                 "transport": {"values": [0.0], "timestamps": [0.0]}
             }
         }
-        self.overflow_history = {
+        self.event_history = {
             "generator_overflow": {"values": [0.0], "timestamps": [0.0]},
             "collector_overflow": {"values": [0.0], "timestamps": [0.0]},
             "treatment_overflow": {"values": [0.0], "timestamps": [0.0]},
@@ -87,8 +82,8 @@ class WasteMonitor:
         return self.cost_history
 
     @property
-    def get_overflow_history(self):
-        return self.overflow_history
+    def get_event_history(self):
+        return self.event_history
     
     @property
     def get_entity_status_history(self):
@@ -113,7 +108,6 @@ class WasteMonitor:
                 "status": []
             }
 
-        # Now these lines won't cause KeyError:
         self.entity_status_history["generators"][generator.name]["timestamps"].append(timestamp)
         self.entity_status_history["generators"][generator.name]["status"].append(generator.status.value)
 
@@ -172,6 +166,8 @@ class WasteMonitor:
 
         history["efficiency"].append(collector.efficiency)
         history["transport_costs"].append(collector.transport_cost)
+
+        # 0,087 - The average carbon footprint of transporting one ton of semi-finished product for one kilometer [kg eCO2]
 
         total_storage = sum(collector.collection_center.current_storage.values())
         utilization = (total_storage / collector.collection_center.waste_storage_capacity) * 100
@@ -237,70 +233,50 @@ class WasteMonitor:
             },
             "status": []
         }
-
-    def get_overflow_statistics(self):
-        """Get overflow data from DecisionTracker for visualization"""
-        if self.decision_tracker:
-            return self.decision_tracker.get_overflow_statistics()
-        return {}
     
-    def track_overflow(self, 
-                       facility_type: str, 
-                       volume: float, 
-                       strategy: str, 
-                       timestamp: float, 
-                       region=None):
-        """Track overflow events and delegate to DecisionTracker"""
-        print(f"DEBUG: track_overflow called - {facility_type}, {volume}, {strategy}, {timestamp}")
-        
-        if self.decision_tracker:
-            cost, message = self.decision_tracker.track_overflow(
-                facility_type, 
-                volume, 
-                DecisionStrategy(strategy), 
-                timestamp,
-                region
-            )
-            
-            # Store data for visualization in overflow_history
-            self._store_overflow_data(facility_type, volume, strategy, timestamp, cost)
-            print(f"DEBUG: Overflow tracked - Cost: {cost}, Message: {message}")
-            return cost, message
-        
-        raise ValueError("No decision tracker available for overflow tracking")
-        return 0.0, "No decision tracker available"
+    def track_event(self, 
+                        facility_type: str, 
+                        volume: float, 
+                        strategy: str, 
+                        cost_incurred: float,
+                        timestamp: float):
+        """Pure tracking method - only records what happened"""
 
-    def _store_overflow_data(self, facility_type: str, volume: float, strategy: str, timestamp: float, cost: float):
-        """Store overflow data for visualization and analysis"""
-        # Map facility types to overflow history keys
+        print(f"[EVENT TRACKED] {facility_type} at {timestamp}: {volume:.2f}m³ via {strategy}, cost: €{cost_incurred:.2f}")
+        
+        # Store data for visualization
+        self._store_event_data(facility_type, volume, strategy, timestamp, cost_incurred)
+
+    def _store_event_data(self, facility_type: str, volume: float, strategy: str, timestamp: float, cost: float):
+        """Store event data for visualization and analysis"""
         facility_mapping = {
-            "generator": "generator_overflow",
-            "collector": "collector_overflow", 
-            "treatment": "treatment_overflow"
+            "generator": "generator_event",
+            "collector": "collector_event", 
+            "treatment": "treatment_event"
         }
         
-        # Update the appropriate overflow category
         if facility_type in facility_mapping:
             key = facility_mapping[facility_type]
-            if key in self.overflow_history:
-                self.overflow_history[key]["values"].append(volume)
-                self.overflow_history[key]["timestamps"].append(timestamp)
-        
-        # Update strategy-specific costs
-        if strategy == "landfill":
-            self.overflow_history["landfill_usage"]["values"].append(volume)
-            self.overflow_history["landfill_usage"]["timestamps"].append(timestamp)
-            self.overflow_history["landfill_penalties"]["values"].append(cost)
-            self.overflow_history["landfill_penalties"]["timestamps"].append(timestamp)
-        elif strategy == "expand_storage":
-            self.overflow_history["storage_expansion"]["values"].append(cost)
-            self.overflow_history["storage_expansion"]["timestamps"].append(timestamp)
+            if key in self.event_history:
+                self.event_history[key]["values"].append(volume)
+                self.event_history[key]["timestamps"].append(timestamp)
+
+        match strategy:
+            case "landfill":
+                self.event_history["landfill_usage"]["values"].append(volume)
+                self.event_history["landfill_usage"]["timestamps"].append(timestamp)
+                self.event_history["landfill_penalties"]["values"].append(cost)
+                self.event_history["landfill_penalties"]["timestamps"].append(timestamp)
+            case "expand_storage":
+                self.event_history["storage_expansion"]["values"].append(cost)
+                self.event_history["storage_expansion"]["timestamps"].append(timestamp)
+            case _:
+                raise ValueError(f"Unknown overflow strategy: {strategy}")
         
         # Update total cost tracking
-        current_total = self.overflow_history["total_cost"]["values"][-1] if self.overflow_history["total_cost"]["values"] else 0.0
-        self.overflow_history["total_cost"]["values"].append(current_total + cost)
-        self.overflow_history["total_cost"]["timestamps"].append(timestamp)
-
+        current_total = self.event_history["total_cost"]["values"][-1] if self.event_history["total_cost"]["values"] else 0.0
+        self.event_history["total_cost"]["values"].append(current_total + cost)
+        self.event_history["total_cost"]["timestamps"].append(timestamp)
 
     def track_cost(self, entity_name: str, entity_type: str, cost_value: float, 
                 cost_type: str, timestamp: float):
@@ -326,17 +302,12 @@ class WasteMonitor:
                                 impact_category: str = "impact_cost"):
         """Track environmental impact for any entity type"""
         
-        # Initialize entity tracking if it doesn't exist
         if entity_name not in self.environmental_history["by_entity"][entity_type]:
             self.environmental_history["by_entity"][entity_type][entity_name] = {
                 "carbon_emissions": {"values": [], "timestamps": []}, 
-                "water_usage": {"values": [], "timestamps": []},
-                "air_pollution": {"values": [], "timestamps": []},
-                "soil_contamination": {"values": [], "timestamps": []},
                 "impact_cost": {"values": [], "timestamps": []}
             }
         
-        # Track for specific entity
         entity_history = self.environmental_history["by_entity"][entity_type][entity_name]
         entity_history[impact_category]["values"].append(environmental_impact)
         entity_history[impact_category]["timestamps"].append(timestamp)
@@ -360,10 +331,8 @@ class WasteMonitor:
     def record_entity_status(self, entity, timestamp: float):
         """Record entity status at specific moments (like transitions)"""
         
-        # Determine entity type and get the appropriate history dict
         entity_type_name = type(entity).__name__
         
-        # Map entity class names to history categories
         type_mapping = {
             'WasteGenerator': 'generators',
             'CollectorCompany': 'collectors', 
@@ -377,17 +346,14 @@ class WasteMonitor:
         
         entity_name = getattr(entity, 'name', str(entity))
         
-        # Initialize if this is the first time we're tracking this entity
         if entity_name not in self.entity_status_history[history_category]:
             self.entity_status_history[history_category][entity_name] = {
                 "timestamps": [],
                 "status": []
             }
         
-        # Get the history for this specific entity
         entity_history = self.entity_status_history[history_category][entity_name]
         
-        # Only record if this is a new timestamp or status change
         if (not entity_history["timestamps"] or 
             timestamp > entity_history["timestamps"][-1] or
             entity.status.value != entity_history["status"][-1]):

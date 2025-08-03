@@ -24,8 +24,7 @@ class WasteType(Enum):
     # 02 - Agricultural, horticultural, aqua cultural, forestry, hunting, and fishing waste
     FORESTRY_WASTE_02_01_07 = "02 01 07"
     # 03 - Wood processing, panel & furniture production, paper & cardboard waste
-    BARK_WASTE_03_01_01 = "03 01 01"
-    CORK_WASTE_03_01_01 = "03 01 01"
+    BARK_CORK_WASTE_03_01_01 = "03 01 01"
     SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05 = "03 01 05"
     OTHER_WOOD_WASTE_03_01_99 = "03 01 99"
     BARK_WOOD_WASTE_03_03_01 = "03 03 01"
@@ -53,7 +52,6 @@ class InventoryPolicy(Enum):
     PUSH = "push"
     PULL = "pull"
 
-    # FULL_STOCK = "full_stock"
 class StockStrategy(Enum):
     ON_DEMAND = "on_demand"
     REORDER_90 = "reorder_90"

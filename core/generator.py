@@ -29,6 +29,7 @@ class WasteGenerator(OperationalEntity):
         super().__init__()
         self.env = env
         self.name = name
+        self.facility_type = "generator"
         self.stock_strategy = stock_strategy
         self.inventory_policy = inventory_policy
         # Validate initial stock against storage capacity
@@ -131,9 +132,8 @@ class WasteGenerator(OperationalEntity):
                 elif self.status == EntityStatus.OPERATIONAL:
                     if hasattr(self, '_original_rates'):
                         self.waste_generation_rates = self._original_rates.copy()
-                        delattr(self, '_original_rates')  # Clean up
+                        delattr(self, '_original_rates')  
 
-            # Skip generation entirely only if completely failed
             if self.status == EntityStatus.FAILED:
                 yield self.env.timeout(self.generation_frequency)
                 continue
@@ -144,8 +144,6 @@ class WasteGenerator(OperationalEntity):
             strategy = self.stock_strategy
 
             match strategy:
-                # case StockStrategy.FULL_STOCK:
-                #     self._process_full_stock(current_time, seasonal_factor)
                 case StockStrategy.ON_DEMAND:
                     self._process_on_demand(current_time, seasonal_factor)
                 case StockStrategy.REORDER_90:
@@ -169,8 +167,9 @@ class WasteGenerator(OperationalEntity):
 
         if self.current_storage > self.waste_storage_capacity:
             self.current_storage = handle_overflow(
-                self.env, self.current_storage, self.waste_storage_capacity,
-                self.waste_streams, self.region, self.waste_monitor,
+                self.current_storage, self.waste_storage_capacity,
+                self.waste_streams, 
+                self.region, 
                 self
             )
             self._kanban_signal(current_time, 10)
@@ -179,11 +178,9 @@ class WasteGenerator(OperationalEntity):
         """ON_DEMAND: Generate normally, discard excess immediately if no demand"""
         kanban_signals = self.kanban_manager.get_signals(self.env.now)
         
-        # Always generate at normal efficiency (waste production doesn't stop)
         efficiency = self.get_operational_efficiency()
         available_storage = self.waste_storage_capacity - self.current_storage
         
-        # Generate waste normally
         available_storage, self.current_storage, self.history_index = generate_waste_for_period(
             self.name, self.status, self.uncertainty_set,
             self.waste_generation_rates, self.region, self.waste_streams,
@@ -191,51 +188,52 @@ class WasteGenerator(OperationalEntity):
             self.current_storage, self.rng, seasonal_factor, available_storage,
             current_time, efficiency
         )
-        
-        # ON_DEMAND behavior: If no signals, discard everything above minimal threshold
-        if not kanban_signals:
+
+        if not kanban_signals: # ON_DEMAND
             minimal_threshold = self.waste_storage_capacity * 0.05  # Keep only 5%
             if self.current_storage > minimal_threshold:
                 excess = self.current_storage - minimal_threshold
-                print(f"{current_time}: {self.name} ON_DEMAND: No demand, discarding {excess:.1f}m³ excess")
                 
-                # Track discarded waste
-                self.waste_monitor.track_overflow(
-                    facility_type="generator",
+                self.waste_monitor.track_event(
+                    facility_type=self.facility_type,
                     volume=excess,
                     strategy="landfill",
-                    timestamp=current_time,
-                    region=self.region
+                    cost_incurred=excess * self.environmental_impact,  # TO BE CHANGED
+                    timestamp=current_time
                 )
                 self.current_storage = minimal_threshold
 
     def _process_reorder(self, current_time, seasonal_factor, threshold_ratio, priority):
         threshold = self.waste_storage_capacity * threshold_ratio
         
-        if self.current_storage >= threshold:
-            # TRIGGER COLLECTION when storage is HIGH (above threshold)
-            # This prevents overflow and maintains operational efficiency
-            self.current_storage = handle_overflow(
-                self.env, self.current_storage, self.waste_storage_capacity,
-                self.waste_streams, self.region, self.waste_monitor, self
-            )
-            self._kanban_signal(current_time, priority)
-            
-            # Reduce generation rate temporarily while collection is pending
-            efficiency = 0.7  # Reduced generation during high storage periods
-        else:
-            # NORMAL GENERATION when storage is below threshold
-            efficiency = self.get_operational_efficiency()
-        
-        # Continue normal waste generation (waste doesn't stop being produced)
+        efficiency = self.get_operational_efficiency()
         available_storage = self.waste_storage_capacity - self.current_storage
+        
         available_storage, self.current_storage, self.history_index = generate_waste_for_period(
-            self.name, self.status, self.uncertainty_set,
-            self.waste_generation_rates, self.region, self.waste_streams,
-            self.total_generated, self.generation_history, self.history_index,
-            self.current_storage, self.rng, seasonal_factor, available_storage,
-            current_time, efficiency
+            self.name, 
+            self.status, 
+            self.uncertainty_set,
+            self.waste_generation_rates, 
+            self.region, 
+            self.waste_streams,
+            self.total_generated, 
+            self.generation_history, 
+            self.history_index,
+            self.current_storage, 
+            self.rng, 
+            seasonal_factor, available_storage,
+            current_time, 
+            efficiency
         )
+
+        if self.current_storage >= threshold:
+            self._kanban_signal(current_time, priority)
+        
+        if self.current_storage > self.waste_storage_capacity:
+            self.current_storage = handle_overflow(
+                self.current_storage, self.waste_storage_capacity,
+                self.waste_streams, self.region, self
+            )
 
     def _kanban_signal(self, current_time, priority):
         active_waste_types = [

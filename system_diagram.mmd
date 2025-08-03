@@ -29,7 +29,7 @@ direction TB
     }
     class WasteType {
 	    SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05
-	    BARK_WASTE_03_01_01
+	    BARK_CORK_WASTE_03_01_01
 	    etc.
     }
     class RegionType {
@@ -45,14 +45,14 @@ direction TB
     class SimulationState {
 	    +track_waste_generation()
 	    +track_waste_collection()
-        +track_waste_treatment()
-        +track_production()
+      +track_waste_treatment()
+      +track_production()
 	    +track_transport_flow()
     }
     class WasteMonitor {
-        +track_costs()
-	    +track_overflow()
-        +track_environmental_impact()
+      +track_costs()
+	    +track_event()
+      +track_environmental_impact()
 	    +track_entities()
     }
     class ScenarioConfig {

@@ -96,11 +96,9 @@ def _create_processing_storage_heatmaps_grouped(grouped_results: Dict, storage_t
         
         print(f"    DEBUG: Creating plot for {base_scenario} + {inventory_policy} with {len(results_group)} stock strategies")
         
-        # Generate filename-safe identifier
         file_id = f"{base_scenario}_{inventory_policy}"
         file_id = file_id.replace(' ', '_').replace('|', '_').replace(',', '_')
         
-        # Create subplots - one for each stock strategy
         num_strategies = len(results_group)
         if num_strategies == 0:
             raise ValueError(f"No strategies found for {base_scenario} + {inventory_policy}")
@@ -188,7 +186,6 @@ def _create_processing_storage_heatmaps_grouped(grouped_results: Dict, storage_t
             print(f"      DEBUG: PNG version saved to {png_path}")
         except Exception as e:
             raise RuntimeError(f"Failed writing HTML file {filename}: {str(e)}") from e
-
 
 def _create_entity_storage_heatmaps_grouped(grouped_results: Dict, entity_type: str, output_dir: str):
     """Create grouped storage heatmaps for each scenario/policy combination for specific entity type"""

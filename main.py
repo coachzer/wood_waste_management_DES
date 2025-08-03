@@ -13,23 +13,19 @@ def run_single_simulation(scenario_name: str, inventory_policy: InventoryPolicy,
     print(f"\n=== Running: {scenario_name} | {inventory_policy.value} | {stock_strategy.value} ===")
     
     try:
-        # Get scenario configuration
         scenario_config = get_scenario_with_strategies(
             base_scenario_name=scenario_name,
             inventory_policy=inventory_policy,
             stock_strategy=stock_strategy
         )
         
-        # Create and run simulation
         manager = SimulationManager()
         manager.initialize_entities(scenario_config)
         manager.setup_processes()
         manager.run_simulation()
 
-        # Extract results
         monitor_data = manager.get_monitor_data()
 
-        # Create material flow analysis
         mfa_path = create_material_flow_analysis(
             generation_history=monitor_data['generation_history'],
             collection_history=monitor_data['collection_history'],

@@ -10,7 +10,6 @@ from models.enums import RegionType
 from models.state import SimulationState
 from monitoring.waste_monitor import WasteMonitor
 from models.facility_data import FacilityDataManager
-from core.decision_manager import DecisionTracker
 from core.facility_builder import FacilityBuilder
 from core.generator import WasteGenerator
 from core.collector import CollectorCompany
@@ -25,8 +24,7 @@ class SimulationManager:
         
         # Core simulation components
         self.env = simpy.Environment()
-        self.decision_tracker = DecisionTracker()
-        self.waste_monitor = WasteMonitor(self.env, self.decision_tracker)
+        self.waste_monitor = WasteMonitor(self.env)
         self.transport_manager = PointToPointTransport()
         
         # Data and building components
@@ -167,7 +165,7 @@ class SimulationManager:
             'collection_history': self.waste_monitor.get_collection_history,
             'processing_history': self.waste_monitor.get_processing_history,
             'cost_history': self.waste_monitor.get_cost_history,
-            'overflow_history': self.waste_monitor.get_overflow_history,
+            'event_history': self.waste_monitor.get_event_history,
             'entity_status_history': self.waste_monitor.get_entity_status_history
         }
 

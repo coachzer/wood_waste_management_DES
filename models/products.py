@@ -13,22 +13,22 @@ class ProductRecipe:
     description: str
     
     def get_material_requirements(self) -> Dict[str, float]:
-        """Get material requirements in kg per m³ based on industry data"""
+        """Get material requirements in tonnes per m³ based on industry data"""
         if self.product_type == "mdf":
             return {
-                "03 01 01": 462.0,  # wood chips (70% of 660kg wood residue)
-                "03 01 05": 198.0   # sawdust (30% of 660kg wood residue)
+                "03 01 01": 0.462,  # wood chips (70% of 660kg wood residue) → 0.462 tonnes
+                "03 01 05": 0.198   # sawdust (30% of 660kg wood residue) → 0.198 tonnes
             }
         elif self.product_type == "particle_board":
             return {
-                "03 01 01": 396.0,  # wood chips (60% of 660kg panel)
-                "03 01 05": 132.0,  # sawdust (20% of 660kg panel)
-                "03 01 99": 132.0   # shavings (20% of 660kg panel)
+                "03 01 01": 0.396,  # wood chips (60% of 660kg panel) → 0.396 tonnes
+                "03 01 05": 0.132,  # sawdust (20% of 660kg panel) → 0.132 tonnes
+                "03 01 99": 0.132   # shavings (20% of 660kg panel) → 0.132 tonnes
             }
         elif self.product_type == "osb":
             return {
-                "02 01 07": 416.0,  # forestry chips (70% of 594kg wood strands)
-                "03 01 01": 178.0   # processing chips (30% of 594kg wood strands)
+                "02 01 07": 0.416,  # forestry chips (70% of 594kg wood strands) → 0.416 tonnes
+                "03 01 01": 0.178   # processing chips (30% of 594kg wood strands) → 0.178 tonnes
             }
         else:
             return {}
@@ -41,7 +41,7 @@ class ProductSpecification:
     density_min: float  # kg/m³
     density_max: float  # kg/m³
     wood_content_percent: float  # percentage of wood content
-    biogenic_stock_total: float  # total biogenic stock for 1 m³ of product
+    biogenic_carbon_stock: float  # total biogenic stock for 1 m³ of product
     description: str
     
     @property
@@ -62,7 +62,7 @@ class ProductSpecification:
     @property
     def biogenic_stock_per_kg_wood(self) -> float:
         """Calculate biogenic stock per kg of wood waste invested"""
-        return self.biogenic_stock_total / self.wood_density_avg
+        return self.biogenic_carbon_stock / self.wood_density_avg
 
 
 @dataclass
@@ -113,7 +113,7 @@ class ProductDataManager:
                 density_min=600.0,
                 density_max=800.0,
                 wood_content_percent=92.5,
-                biogenic_stock_total=-585.31,
+                biogenic_carbon_stock=-585.31,
                 description="Particle board made from wood particles and resin binders"
             ),
             "osb": ProductSpecification(
@@ -121,7 +121,7 @@ class ProductDataManager:
                 density_min=600.0,
                 density_max=680.0,
                 wood_content_percent=95.0,
-                biogenic_stock_total=-1213.60,
+                biogenic_carbon_stock=-1213.60,
                 description="Oriented Strand Board made from wood strands and adhesive resins"
             ),
             "mdf": ProductSpecification(
@@ -129,7 +129,7 @@ class ProductDataManager:
                 density_min=500.0,
                 density_max=1000.0,
                 wood_content_percent=82.0,
-                biogenic_stock_total=-516.0,
+                biogenic_carbon_stock=-516.0,
                 description="Medium Density Fiberboard made from wood fibers and resin glue"
             )
         }
@@ -140,35 +140,35 @@ class ProductDataManager:
             "mdf": ProductRecipe(
                 product_type="mdf",
                 input_mappings={
-                    "wood_chips": ["03 01 01"],      # 462 kg (70% of wood residue)
-                    "sawdust": ["03 01 05"]          # 198 kg (30% of wood residue)
+                    "wood_chips": ["03 01 01"],      # 0.462 tonnes (70% of wood residue)
+                    "sawdust": ["03 01 05"]          # 0.198 tonnes (30% of wood residue)
                 },
                 processing_time=3.0,
                 energy_consumption=120.0,
                 conversion_efficiency=89.0,  # 660kg wood / 741kg total = 89%
-                description="MDF: 462kg chips (03 01 01) + 198kg sawdust (03 01 05) per m³"
+                description="MDF: 0.462t chips (03 01 01) + 0.198t sawdust (03 01 05) per m³"
             ),
             "particle_board": ProductRecipe(
                 product_type="particle_board",
                 input_mappings={
-                    "wood_chips": ["03 01 01"],      # 396 kg (60% of panel)
-                    "sawdust": ["03 01 05", "03 01 99"]  # 264 kg (40% - sawdust + shavings)
+                    "wood_chips": ["03 01 01"],      # 0.396 tonnes (60% of panel)
+                    "sawdust": ["03 01 05", "03 01 99"]  # 0.264 tonnes (40% - sawdust + shavings)
                 },
                 processing_time=2.0,
                 energy_consumption=80.0,
                 conversion_efficiency=100.0,  # Most efficient conversion
-                description="Particleboard: 396kg chips (03 01 01) + 264kg sawdust/shavings (03 01 05/99) per m³"
+                description="Particleboard: 0.396t chips (03 01 01) + 0.264t sawdust/shavings (03 01 05/99) per m³"
             ),
             "osb": ProductRecipe(
                 product_type="osb",
                 input_mappings={
-                    "forestry_chips": ["02 01 07"],  # 416 kg (70% of wood strands)
-                    "wood_chips": ["03 01 01"]       # 178 kg (30% of wood strands)
+                    "forestry_chips": ["02 01 07"],  # 0.416 tonnes (70% of wood strands)
+                    "wood_chips": ["03 01 01"]       # 0.178 tonnes (30% of wood strands)
                 },
                 processing_time=2.5,
                 energy_consumption=90.0,
                 conversion_efficiency=95.8,  # 594kg wood / 620kg total = 95.8%
-                description="OSB: 416kg forestry chips (02 01 07) + 178kg processing chips (03 01 01) per m³"
+                description="OSB: 0.416t forestry chips (02 01 07) + 0.178t processing chips (03 01 01) per m³"
             )
         }
     
@@ -203,7 +203,7 @@ class ProductDataManager:
         return sorted(products_with_efficiency, key=lambda x: x[1])
     
     def get_material_requirements(self, product_type: str, volume_m3: float) -> Optional[Dict[str, float]]:
-        """Calculate exact material requirements in kg for producing given volume"""
+        """Calculate exact material requirements in tonnes for producing given volume"""
         recipe = self.get_product_recipe(product_type)
         if not recipe:
             return None

@@ -83,9 +83,6 @@ class SimulationState:
             'timestamp': timestamp,
             'transport_method': transport_method
         })
-        
-        # print(f"[FLOW TRACKED] {source_type}:{source_name} → {target_type}:{target_name} "
-        #       f"({volume:.1f} m³ {waste_type})")
 
     def get_regional_waste_stats(self, region):
         """Get waste statistics for a specific region"""
@@ -133,15 +130,11 @@ class SimulationState:
         
     def reset(self):
         """Reset simulation state to initial values"""
-        # Reset component lists
         self.generators = []
         self.collectors = []
         self.treatment_operators = []
-        # Reset transport flows
         self.transport_flows = []
-        # Reset regional waste tracker
         self.waste_tracker = regional_tracker.RegionalWasteTracker()
-        # Reset product tracking with values from demand.json
         demand = _demand_data["national_demand"]
         self.total_products = {
             'mdf': 0,
@@ -168,7 +161,6 @@ class SimulationState:
         summary = []
         summary.append(f"Total transport flows: {len(self.transport_flows)}")
         
-        # Group by flow type
         flow_types = {}
         for flow in self.transport_flows:
             key = f"{flow['source_type']} → {flow['target_type']}"
@@ -181,8 +173,7 @@ class SimulationState:
         for flow_type, stats in flow_types.items():
             summary.append(f"  {flow_type}: {stats['count']} flows, {stats['volume']:.1f} m³ total")
         
-        # Show recent flows
-        summary.append(f"\nRecent flows (last 50):")
+        summary.append("\nRecent flows (last 50):")
         for flow in self.transport_flows[-50:]:
             summary.append(f"  {flow['source_name']} → {flow['target_name']}: "
                         f"{flow['volume']:.1f} m³ {flow['waste_type']}")

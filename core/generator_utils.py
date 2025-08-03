@@ -1,7 +1,7 @@
 import numpy as np
 from models.enums import EntityStatus
 from models.state import SimulationState
-from utils.capacity_utils import apply_capacity_constraints, apply_partial_update_with_constraints, handle_overflow_with_decision
+from utils.capacity_utils import apply_capacity_constraints, apply_partial_update_with_constraints, handle_storage_event
 
 def calculate_daily_factors(rng, waste_generation_rates, uncertainty_set=None):
     """Calculate daily generation factors based on uncertainty"""
@@ -9,11 +9,10 @@ def calculate_daily_factors(rng, waste_generation_rates, uncertainty_set=None):
         return [1.0] * len(waste_generation_rates)
 
     daily_factors = []
-    # Use the simplified uncertainty set structure
+
     variability = getattr(uncertainty_set, 'waste_generation_variability', 0.2)
     
     for _ in waste_generation_rates.keys():
-        # Apply variability factor to all waste types uniformly
         factor = rng.normal(1.0, variability)
         daily_factors.append(np.clip(factor, 0.1, 2.0))
     return daily_factors
@@ -24,7 +23,6 @@ def update_waste_stream(waste_streams, total_generated, current_storage, region,
     current_storage += generated_volume
     total_generated[waste_type] += generated_volume
 
-    # Track waste generation in the region using original region string
     SimulationState.get_instance().track_waste_generation(
         region, waste_type, generated_volume
     )
@@ -39,33 +37,26 @@ def update_waste_stream(waste_streams, total_generated, current_storage, region,
 
     return current_storage
 
-def handle_overflow(env, current_storage, waste_storage_capacity, waste_streams, region, waste_monitor, generator_entity):
+def handle_overflow(current_storage, waste_storage_capacity, waste_streams, region, generator_entity):
     """Handle storage overflow situation"""
-    # Create dictionary of current volumes
+    
     current_volumes = {
         waste_type: stream.volume
         for waste_type, stream in waste_streams.items()
     }
-    # Use the partial update function to calculate scaled values
+
     result = apply_partial_update_with_constraints(
-        current_values={},  # Empty since we're scaling everything
+        current_values={},  
         updates=current_volumes,
         capacity=waste_storage_capacity
     )
     if result.overflow_amount > 0:
-        _, strategy = handle_overflow_with_decision(
+        handle_storage_event(
             generator_entity,
             result.overflow_amount,
             region
         )
-        waste_monitor.track_overflow(
-            facility_type="generator",
-            volume=result.overflow_amount,
-            strategy=strategy,
-            timestamp=env.now,
-            region=region
-        )
-        # Track waste removal and update waste streams
+        
         state = SimulationState.get_instance()
         total_reduced = 0.0
         for waste_type, stream in waste_streams.items():
@@ -82,13 +73,11 @@ def generate_waste_for_period(
     name, status, uncertainty_set, waste_generation_rates, region,
     waste_streams, total_generated, generation_history, history_index,
     current_storage, rng, seasonal_factor, available_storage, current_time,
-    efficiency=1.0  # Add efficiency parameter with default value
+    efficiency=1.0  
 ):
     """Generate waste for all waste types in one period with efficiency consideration"""
-    # Check for failure first - but now we handle RECOVERING status too
     if uncertainty_set:
         if status == EntityStatus.FAILED:
-            print(f"{current_time}: Generator {name} is currently failed, skipping waste generation")
             return available_storage, current_storage, history_index
         elif status == EntityStatus.RECOVERING:
             print(f"{current_time}: Generator {name} is recovering (efficiency: {efficiency:.2f})")
@@ -98,10 +87,9 @@ def generate_waste_for_period(
     for (waste_type, base_rate), daily_factor in zip(
         waste_generation_rates.items(), daily_factors
     ):
-        # Calculate potential generation amount with efficiency applied
+        
         potential_volume = base_rate * seasonal_factor * daily_factor * efficiency
         
-        # Check capacity constraints
         result = apply_capacity_constraints(
             current_total=current_storage,
             additional_amount=potential_volume,

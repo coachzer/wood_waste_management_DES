@@ -44,11 +44,9 @@ class RegionalWasteTracker:
         if isinstance(region, RegionType):
             return region
         try:
-            # First try to match by value (e.g., "pomurska")
             for region_type in RegionType:
                 if region_type.value == region.lower():
                     return region_type
-            # If no match found by value, try by enum name (e.g., "POMURSKA")
             return RegionType[region.upper()]
         except (KeyError, AttributeError):
             raise KeyError(

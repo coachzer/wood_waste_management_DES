@@ -49,7 +49,6 @@ class FacilityDataManager:
         """Get national demand for a specific product type"""
         return self.demand.get(product_type, 0)
     
-    # Delegate product-related methods to ProductDataManager
     def get_product_specification(self, product_type: str):
         return self.product_manager.get_product_specification(product_type)
     

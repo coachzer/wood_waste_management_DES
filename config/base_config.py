@@ -34,41 +34,11 @@ class CostParams:
     transport_rate: float = 2.0        # Cost per unit per km
     storage_rate: float = 1.0          # Cost per unit per time period
     energy_rate: float = 0.15          # Cost per kWh
-    landfill_per_m3: float = 50.0  # Cost per m³ landfilled
+    landfill_per_m3: float = 50.0       # Cost per m³ landfilled
     expansion_cost_per_m3: float = 100.0  # Cost to expand storage by 1m³
     landfill_rate: float = 75.0        # Cost per unit landfilled
 
 DEFAULT_COSTS = CostParams()
-
-@dataclass
-class FacilityParams:
-    """Simplified facility parameters"""
-    base_storage_capacity: float = 5000.0     # Base storage capacity
-    base_processing_efficiency: float = 0.85   # Base processing efficiency
-    base_processing_time: float = 1.2         # Base processing time
-    energy_consumption: float = 1.0           # Base energy consumption
-
-DEFAULT_FACILITY = FacilityParams()
-
-# Key waste types for the system (simplified list)
-PRIMARY_WASTE_TYPES = [
-    WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05,
-    WasteType.BARK_WASTE_03_01_01,
-    WasteType.CONSTRUCTION_WOOD_17_02_01,
-    WasteType.NON_HAZARDOUS_WOOD_20_01_38,
-    WasteType.WOODEN_PACKAGING_15_01_03,
-    WasteType.PAPER_PACKAGING_15_01_01
-]
-
-# Base transformation efficiencies (waste_type -> efficiency)
-BASE_TRANSFORMATIONS = {
-    WasteType.CONSTRUCTION_WOOD_17_02_01: 0.98,
-    WasteType.WOODEN_PACKAGING_15_01_03: 0.88,
-    WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: 0.95,
-    WasteType.BARK_WASTE_03_01_01: 0.85,
-    WasteType.NON_HAZARDOUS_WOOD_20_01_38: 0.88,
-    WasteType.PAPER_PACKAGING_15_01_01: 0.82,
-}
 
 @dataclass
 class ScenarioConfig:
@@ -96,11 +66,8 @@ class ScenarioConfig:
             generator_failure=self.generator_failure,
             collector_failure=self.collector_failure,
             treatment_failure=self.treatment_failure,
-            # Optional field
-            waste_generation_variability=self.waste_gen[1]  # Use std as variability factor
+            waste_generation_variability=self.waste_gen[1]
         )
-
-
 
 TIME_PERIODS = {
     "quarter_1": (0, 90),     # Q1: Jan-Mar (91 days)
@@ -109,7 +76,6 @@ TIME_PERIODS = {
     "quarter_4": (273, 364),  # Q4: Oct-Dec (92 days)
 }
 
-# Demand configuration from data/demand.json - to check the file and UPDATE
 MONTHLY_DEMAND = {
     OutputType.MDF: _demand_data["national_demand"]["mdf"],
     OutputType.PARTICLE_BOARD: _demand_data["national_demand"]["particle_board"],
@@ -156,43 +122,42 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
         treatment_failure=HIGH_FAILURE,
         inventory_policy=InventoryPolicy.PUSH,
         stock_strategy=StockStrategy.REORDER_90
-    ),
-    "Disrupted": ScenarioConfig(
-        name="Disrupted",
-        waste_gen=(0.7, 0.5),    # Much lower, highly variable generation
-        coll_eff=(0.5, 0.3),     # Poor, highly variable collection
-        treat_conv=(0.6, 0.2),   # Poor, highly variable conversion
-        trans_time=(5.0, 2.0),   # Slow, unpredictable transport
-        generator_failure=LOW_FAILURE,
-        collector_failure=HIGH_FAILURE,
-        treatment_failure=HIGH_FAILURE,
-        inventory_policy=InventoryPolicy.PUSH,
-        stock_strategy=StockStrategy.ON_DEMAND
-    ),
-    "Boom": ScenarioConfig(
-        name="Boom",
-        waste_gen=(2.0, 0.2),    # Double generation, moderate variability
-        coll_eff=(0.98, 0.02),   # Excellent, stable collection
-        treat_conv=(0.98, 0.01), # Excellent, stable conversion
-        trans_time=(1.0, 0.1),   # Very fast, predictable transport
-        generator_failure=LOW_FAILURE,
-        collector_failure=MEDIUM_FAILURE,
-        treatment_failure=MEDIUM_FAILURE,
-        inventory_policy=InventoryPolicy.PULL,
-        stock_strategy=StockStrategy.REORDER_90
-    )
+    )# ,
+    # "Disrupted": ScenarioConfig(
+    #     name="Disrupted",
+    #     waste_gen=(0.7, 0.5),    # Much lower, highly variable generation
+    #     coll_eff=(0.5, 0.3),     # Poor, highly variable collection
+    #     treat_conv=(0.6, 0.2),   # Poor, highly variable conversion
+    #     trans_time=(5.0, 2.0),   # Slow, unpredictable transport
+    #     generator_failure=LOW_FAILURE,
+    #     collector_failure=HIGH_FAILURE,
+    #     treatment_failure=HIGH_FAILURE,
+    #     inventory_policy=InventoryPolicy.PUSH,
+    #     stock_strategy=StockStrategy.ON_DEMAND
+    # ),
+    # "Boom": ScenarioConfig(
+    #     name="Boom",
+    #     waste_gen=(2.0, 0.2),    # Double generation, moderate variability
+    #     coll_eff=(0.98, 0.02),   # Excellent, stable collection
+    #     treat_conv=(0.98, 0.01), # Excellent, stable conversion
+    #     trans_time=(1.0, 0.1),   # Very fast, predictable transport
+    #     generator_failure=LOW_FAILURE,
+    #     collector_failure=MEDIUM_FAILURE,
+    #     treatment_failure=MEDIUM_FAILURE,
+    #     inventory_policy=InventoryPolicy.PULL,
+    #     stock_strategy=StockStrategy.REORDER_90
+    # )
 }
 
 def validate_tuple(tup: Tuple[float, float], name: str) -> None:
     """Validate a mean/std tuple"""
-    # Create a dictionary for the numeric validation
     config_dict = {
         f"{name}_mean": tup[0],
         f"{name}_std": tup[1]
     }
-    # Validate mean is positive and std is non-negative
+
     validate_all_numeric_positive(config_dict, allow_zero=True, exceptions=[f"{name}_std"])
-    # Additional validation for std
+
     if tup[1] < 0:
         raise ValueError(f"{name} standard deviation must be non-negative")
 
@@ -203,14 +168,11 @@ def validate_scenario_config(config: ScenarioConfig) -> None:
     validate_tuple(config.treat_conv, "Treatment conversion")
     validate_tuple(config.trans_time, "Transportation time")
 
-# Collection of generated uncertainty sets
 uncertainty_sets = {}
 
 def _create_uncertainty_set(config: ScenarioConfig) -> UncertaintySet:
     """Create uncertainty set from a scenario configuration"""
-    # Create uncertainty set with variability factors
     return UncertaintySet(
-        # Required fields
         name=config.name,
         collection_efficiency=config.coll_eff,
         treatment_conversion=config.treat_conv,
@@ -218,8 +180,7 @@ def _create_uncertainty_set(config: ScenarioConfig) -> UncertaintySet:
         generator_failure=config.generator_failure,
         collector_failure=config.collector_failure,
         treatment_failure=config.treatment_failure,
-        # Optional field
-        waste_generation_variability=config.waste_gen[1]  # Use std as variability factor
+        waste_generation_variability=config.waste_gen[1] 
     )
 
 def validate_time_periods() -> None:
@@ -232,19 +193,16 @@ def _validate_time_periods_internal(periods: Dict[str, Tuple[int, int]]) -> None
     if total_units != SIMULATION_DURATION:
         raise ValueError("Time periods don't match simulation duration")
     
-    # Check for gaps and overlaps
     sorted_periods = sorted((start, end) for start, end in periods.values())
     for i in range(len(sorted_periods) - 1):
         if sorted_periods[i][1] + 1 != sorted_periods[i + 1][0]:
             raise ValueError("Time periods must be consecutive without gaps or overlaps")
 
-# Generate uncertainty sets and validate configurations on import
 validate_time_periods()
 for scenario_name, config in SCENARIO_CONFIGS.items():
     validate_scenario_config(config)
     uncertainty_sets[scenario_name] = _create_uncertainty_set(config)
 
-# Set default uncertainty set
 default_uncertainty_set = uncertainty_sets["Baseline"]
 
 def get_uncertainty_set(scenario_name: str = "Baseline") -> UncertaintySet:
@@ -268,7 +226,6 @@ def get_scenario_with_strategies(
     """Create a scenario config by combining a base scenario with specific strategies"""
     base_scenario = SCENARIO_CONFIGS.get(base_scenario_name, SCENARIO_CONFIGS["Baseline"])
     
-    # Create a copy and modify the strategies
     modified_scenario = deepcopy(base_scenario)
     modified_scenario.name = f"{base_scenario_name}_{inventory_policy.value}_{stock_strategy.value}"
     modified_scenario.inventory_policy = inventory_policy
@@ -280,11 +237,6 @@ def list_available_scenarios() -> List[str]:
     """List all available scenario names"""
     return list(SCENARIO_CONFIGS.keys())
 
-# Convenience functions for costs and facility parameters
 def get_cost_params() -> CostParams:
     """Get default cost parameters"""
     return DEFAULT_COSTS
-
-def get_facility_params() -> FacilityParams:
-    """Get default facility parameters"""
-    return DEFAULT_FACILITY

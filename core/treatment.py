@@ -1,7 +1,6 @@
 import numpy as np
 from typing import Dict, Iterable, Optional
 from core.transport_manager import PointToPointTransport, TransportPriority, TransportRequest
-from config.base_config import get_scenario_config
 from models.data_classes import WasteTransformation, OperationalEntity, ProductStorage
 from models.distances import get_distance
 from models.enums import OutputType, RegionType, StockStrategy, WasteType, EntityStatus
@@ -15,11 +14,11 @@ from core.treatment_utils import (
     update_waste_storage,
     fulfill_demand,
     track_treatment_properties,
-    update_utilization_metrics,
-    calculate_required_waste
+    update_utilization_metrics
 )
+from models.products import ProductDataManager
 
-from utils.capacity_utils import apply_capacity_constraints, apply_partial_update_with_constraints, handle_overflow_with_decision, check_storage_capacity
+from utils.capacity_utils import apply_capacity_constraints, apply_partial_update_with_constraints, handle_storage_event, check_storage_capacity
 
 class StorageDict(dict):
     def __init__(self, owner, *args, **kwargs):
@@ -34,17 +33,10 @@ class StorageDict(dict):
             self.owner.waste_storage_capacity
         )
         if result.overflow_amount > 0:
-            _, strategy = handle_overflow_with_decision(
+            handle_storage_event(
                 self.owner,
                 result.overflow_amount,
                 self.owner.region
-            )
-            self.owner.waste_monitor.track_overflow(
-                facility_type="treatment",
-                volume=result.overflow_amount,
-                strategy=strategy,
-                timestamp=self.owner.env.now,
-                region=self.owner.region
             )
         super().__setitem__(key, result.allowed_amount)
 
@@ -94,6 +86,7 @@ class TreatmentOperator(OperationalEntity):
         self.transport_manager = transport_manager or PointToPointTransport()
         self.env = env
         self.name = name
+        self.facility_type = "treatment"
         self.utilization_history = []
         self.utilization_window = 10
         self.processing_time = processing_time
@@ -118,6 +111,9 @@ class TreatmentOperator(OperationalEntity):
             "particle_board": 0.0,
             "osb": 0.0
         }
+
+        # Initialize product data manager for accessing product specifications
+        self.product_manager = ProductDataManager()
 
         # Product storage
         self.product_storage_capacity = product_storage_capacity
@@ -183,17 +179,10 @@ class TreatmentOperator(OperationalEntity):
             capacity=self.waste_storage_capacity
         )
         if result.overflow_amount > 0:
-            _, strategy = handle_overflow_with_decision(
+            handle_storage_event(
                 self,
                 result.overflow_amount,
                 self.region
-            )
-            self.waste_monitor.track_overflow(
-                facility_type="treatment",
-                volume=result.overflow_amount,
-                strategy=strategy,
-                timestamp=self.env.now,
-                region=self.region
             )
         self._waste_storage = StorageDict(self, result.scaled_values)
 
@@ -206,47 +195,13 @@ class TreatmentOperator(OperationalEntity):
             excluded_keys=set(partial_update.keys())
         )
         if result.overflow_amount > 0:
-            _, strategy = handle_overflow_with_decision(
+            handle_storage_event(
                 self,
                 result.overflow_amount,
                 self.region
             )
-            self.waste_monitor.track_overflow(
-                facility_type="treatment",
-                volume=result.overflow_amount,
-                strategy=strategy,
-                timestamp=self.env.now,
-                region=self.region
-            )
         for waste_type, amount in result.scaled_values.items():
             self._waste_storage[waste_type] = amount
-
-    def _calculate_current_total_excluding(self, waste_types_to_exclude: Iterable[WasteType]) -> float:
-        """Calculate current storage total excluding specified waste types"""
-        return sum(
-            amount for wtype, amount in self._waste_storage.items() 
-            if wtype not in waste_types_to_exclude
-        )
-
-    def _apply_partial_update_without_overflow(self, partial_update: Dict[WasteType, float]) -> None:
-        """Apply partial update when there's no capacity overflow"""
-        for waste_type, amount in partial_update.items():
-            self._waste_storage[waste_type] = amount
-
-    def _apply_partial_update_with_scaling(self, partial_update: Dict[WasteType, float], scaling_factor: float) -> None:
-        """Apply partial update with scaling to avoid overflow"""
-        for waste_type, amount in partial_update.items():
-            scaled_amount = amount * scaling_factor
-            self._waste_storage[waste_type] = scaled_amount
-            overflow_amount = amount - scaled_amount
-            if overflow_amount > 0:
-                self.waste_monitor.track_overflow(
-                    facility_type="treatment",
-                    volume=overflow_amount,
-                    strategy="landfill",
-                    timestamp=self.env.now,
-                    region=self.region
-                )
 
     def schedule_collection_requests(self):
         """Transport-safe PUSH vs PULL with startup protection"""
@@ -260,16 +215,14 @@ class TreatmentOperator(OperationalEntity):
                     yield from self._pull_collection_logic(current_time)
                 case _:
                     yield self.env.timeout(7)
-
-                
+   
     def _push_collection_logic(self):
         """PUSH: Forecast-based with startup protection"""
         
-        # Calculate forecast 
         forecasted_demand = self.calculate_realistic_demand()
         
         # PUSH maintains higher inventory with safety stock
-        safety_multiplier = 1.2  # 20% safety stock for PUSH
+        safety_multiplier = 1.2  # 20% safety stock 
         target_inventory = forecasted_demand * safety_multiplier
         current_total = sum(self.waste_storage.values())
         
@@ -360,7 +313,6 @@ class TreatmentOperator(OperationalEntity):
 
         print(f"[DEMAND COMPONENTS] available_capacity={available_capacity:.2f}, max_processable={max_processable:.2f}, total_unmet*0.3={total_unmet * 0.3:.2f}, cap={demand_cap:.2f}")
 
-        # Conservative demand calculation with utilization factor
         base_demand = min(
             available_capacity,          
             max_processable,            
@@ -373,48 +325,6 @@ class TreatmentOperator(OperationalEntity):
             f"Available: {available_capacity:.1f}, Urgency: {urgency_factor:.1f}, Final: {realistic_demand:.1f}")
         
         return max(realistic_demand, 0.0)
-                
-    def _calculate_demand_forecast(self) -> float:
-        """PUSH-specific: Calculate forecasted demand with safe fallbacks"""
-        
-        # Fallback 1: No history at all
-        if not self.demand_history:
-            # Use processing capacity as realistic baseline
-            fallback_demand = min(self.processing_capacity * 0.5, 50.0)  # 50% capacity max
-            print(f"[FORECAST] No history, using fallback: {fallback_demand:.1f}")
-            return fallback_demand
-        
-        # Fallback 2: Very limited history (< 3 data points)
-        if len(self.demand_history) < 3:
-            simple_avg = sum(d for _, d in self.demand_history) / len(self.demand_history)
-            print(f"[FORECAST] Limited history ({len(self.demand_history)} points), using average: {simple_avg:.1f}")
-            return max(simple_avg, 1.0)
-        
-        # Normal case: Sufficient history for exponential smoothing
-        recent_demands = [d for _, d in self.demand_history[-8:]]  # Safe now
-        
-        try:
-            # Exponential smoothing with error handling
-            alpha = 0.3
-            forecast = recent_demands[0]
-            
-            for demand in recent_demands[1:]:
-                forecast = alpha * demand + (1 - alpha) * forecast
-            
-            # Add trend component if we have enough data
-            if len(recent_demands) >= 4:
-                recent_trend = (recent_demands[-1] - recent_demands[-4]) / 3
-                forecast += recent_trend
-            
-            result = max(forecast, 1.0)  # Never forecast negative
-            print(f"[FORECAST] Exponential smoothing: {result:.1f} (from {len(recent_demands)} points)")
-            return result
-            
-        except (IndexError, ZeroDivisionError, TypeError) as e:
-            # Emergency fallback
-            backup = sum(recent_demands) / len(recent_demands) if recent_demands else 10.0
-            print(f"[FORECAST] Error in calculation ({e}), using backup: {backup:.1f}")
-            return max(backup, 1.0)
             
     def _get_prioritized_transformations(self):
         """Get transformations sorted by priority based on current demands and system state"""
@@ -507,36 +417,28 @@ class TreatmentOperator(OperationalEntity):
     def _process_waste_transformation(self, input_type, output_type, transformation):
         """Process a single waste transformation"""
         
-        # Skip processing if input type is already a final product
         final_products = {
             OutputType.MDF,
             OutputType.PARTICLE_BOARD,
             OutputType.OSB
         }
         if input_type in final_products:
-            # print("[PROCESS DEBUG] Skipping - input is already a final product")
             return
 
-        # Process normally since we don't handle furniture anymore
         amount_to_process = min(self.waste_storage[input_type], self.processing_capacity)
         
         if amount_to_process <= 0:
-            # print("[PROCESS DEBUG] No waste to process")
             return
         
-        # Get transformation efficiency with uncertainty
         efficiency = min(get_transformation_efficiency(self, transformation), 1.0)
         
-        # Calculate output and handle capacity constraints
         amount_to_process, output_amount = calculate_output_amounts(
             amount_to_process, 
             efficiency
         )
         
-        # Update waste storage and tracking
         update_waste_storage(self, input_type, output_type, amount_to_process, output_amount)
         
-        # Handle demand fulfillment for final products
         if output_type in final_products:
             # First, fulfill demand using product_to_sell storage
             total_to_sell_stored = sum(self.product_to_sell.current_storage.values())
@@ -547,7 +449,6 @@ class TreatmentOperator(OperationalEntity):
 
             # Fulfill demand and track in simulation state
             if addable_to_sell > 0:
-                # print(f"[PROCESS DEBUG] About to call fulfill_demand with {addable_to_sell:.2f} m³")
                 fulfill_demand(self, output_type, addable_to_sell)
 
             # Any excess product goes to product_storage (no buyer)
@@ -616,22 +517,19 @@ class TreatmentOperator(OperationalEntity):
                 if c.region_type != self.region_type and c.availability
             ]
             
-            # Sort by distance (nearest first) instead of random shuffle
             remote_collectors.sort(key=lambda c: get_distance(self.region_type, c.region_type))
             
-            for collector in remote_collectors[:3]:  # Try up to 3 nearest collectors
+            for collector in remote_collectors[:3]: 
                 if remaining_cross_region <= 0:
                     break
                     
                 distance = get_distance(self.region_type, collector.region_type)
                 print(f"[CROSS-REGION] Requesting {remaining_cross_region:.1f} m³ from {collector.name} ({collector.region}) - {distance:.1f}km away")
                 
-                # Use transport system!
                 transport_collected = self._request_via_transport(
                     collector, remaining_cross_region, input_waste_types
                 )
                 
-                # Add to total collected waste
                 for waste_type, amount in transport_collected.items():
                     collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
                     remaining_cross_region -= amount
@@ -696,7 +594,6 @@ class TreatmentOperator(OperationalEntity):
     
     def trigger_collection(self):
         """Request waste collection based on current needs"""
-        # Get current demands from simulation state
         state = SimulationState.get_instance()
         
         product_demands = {}
@@ -708,103 +605,73 @@ class TreatmentOperator(OperationalEntity):
                 if unmet_demand > 0:
                     product_demands[product_type] = unmet_demand
         
-        # Update self.demand to include all unmet product demands
         self.demand = sum(product_demands.values())
         
         required_waste = self.calculate_realistic_demand()
         if required_waste <= 0:
             return 0, 0
 
-        # Get all input types from transformations
         input_waste_types = {key[0] for key in self.transformations.keys()}
         
-        # Request collection through coordinator
         collected_waste = self.request_waste_directly(required_waste, input_waste_types)
 
-        # Validate collection result
         if not collected_waste or sum(collected_waste.values()) == 0:
-            # print(f"[VALIDATION] No waste collected at time {self.env.now} - skipping processing")
             return 0, 0
 
-        # Track this collection's demand
         self.demand_history.append((self.env.now, required_waste))
         self.waste_monitor.track_processing(self, self.env.now)
 
-        # Add to storage with validation
         actually_stored = self._add_to_storage(collected_waste)
-        if actually_stored == 0:
-            print(f"[VALIDATION] Failed to store any collected waste at time {self.env.now}")
         if actually_stored < sum(collected_waste.values()):
-            print(
-                f"Could only store {actually_stored:.12f} m³ due to capacity constraints"
-            )
-            # Track overflow through data collector
             overflow_amount = sum(collected_waste.values()) - actually_stored
-            self.waste_monitor.track_overflow(
+            self.waste_monitor.track_event(
                 "treatment",
                 overflow_amount,
-                "landfill",  
+                "landfill", 
+                overflow_amount * self.operational_costs,  # TO BE CHANGED 
                 self.env.now,
-                self.region
             )
 
         return actually_stored, sum(collected_waste.values())
 
     def _default_transformations(self) -> Dict[WasteType, WasteTransformation]:
         """Define default transformation pathways for all waste types"""
-        # Transformation efficiencies from behavior model
         base_transformations = {
-            # Construction and wood materials
-            WasteType.CONSTRUCTION_WOOD_17_02_01: (0.98, 0.90),   # High quality wood
-            WasteType.WOODEN_PACKAGING_15_01_03: (0.88, 0.95),     # Good for recycling
-            WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: (0.95, 0.50),  # Great for compression molding
-            
-            # Processing materials
-            WasteType.BARK_WASTE_03_01_01: (0.85, 0.70),          # Good for boards
-            WasteType.NON_HAZARDOUS_WOOD_20_01_38: (0.88, 0.60),  # General recycling
-            WasteType.PAPER_PACKAGING_15_01_01: (0.82, 0.65),      # Paper recycling
+            WasteType.CONSTRUCTION_WOOD_17_02_01: (0.98, 0.90),   
+            WasteType.WOODEN_PACKAGING_15_01_03: (0.88, 0.95),     
+            WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: (0.95, 0.50),  
+            WasteType.BARK_CORK_WASTE_03_01_01: (0.85, 0.70),       
+            WasteType.NON_HAZARDOUS_WOOD_20_01_38: (0.88, 0.60), 
+            WasteType.PAPER_PACKAGING_15_01_01: (0.82, 0.65),   
         }
 
-        # Initialize empty transformations dictionary
         transformations = {}
 
-        # Define transformation paths (raw materials to final products only)
         default_output_mapping = {
-            # Construction wood waste (17 02 01) - Primary reuse pathways
             WasteType.CONSTRUCTION_WOOD_17_02_01: [
-                OutputType.PARTICLE_BOARD,    # Downcycling pathway
-                OutputType.OSB,    # OSB from construction wood
+                OutputType.PARTICLE_BOARD,    
+                OutputType.OSB,    
             ],
-            
-            # Sawdust, shavings, cuttings (03 01 05) - Primary particleboard feedstock
             WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: [
-                OutputType.PARTICLE_BOARD,    # Primary pathway - supported by research
-                OutputType.MDF,    # Secondary pathway
-                OutputType.OSB,    # OSB from wood cuttings
+                OutputType.PARTICLE_BOARD,  
+                OutputType.MDF,    
+                OutputType.OSB,   
             ],
-            
-            # Wooden packaging waste (15 01 03) - Cascading use
             WasteType.WOODEN_PACKAGING_15_01_03: [
-                OutputType.PARTICLE_BOARD,    # Recycling pathway
-                OutputType.OSB,    # OSB from packaging wood
+                OutputType.PARTICLE_BOARD,  
+                OutputType.OSB,    
             ],
-            
-            # Bark waste (03 01 01) - Limited applications
-            WasteType.BARK_WASTE_03_01_01: [
-                OutputType.MDF,    # Can incorporate bark content
-                OutputType.PARTICLE_BOARD,    # Lower percentage incorporation
+            WasteType.BARK_CORK_WASTE_03_01_01: [
+                OutputType.MDF,    
+                OutputType.PARTICLE_BOARD,  
             ],
-            
-            # Non-hazardous wood (20 01 38) - Municipal waste stream
             WasteType.NON_HAZARDOUS_WOOD_20_01_38: [
-                OutputType.PARTICLE_BOARD,    # Primary recycling pathway
-                OutputType.MDF,    # Secondary pathway
-                OutputType.OSB,    # OSB from municipal wood
+                OutputType.PARTICLE_BOARD, 
+                OutputType.MDF,   
+                OutputType.OSB,    
             ],
-            
-            # Paper packaging (15 01 01) - Paper cycle
             WasteType.PAPER_PACKAGING_15_01_01: [
-                OutputType.MDF,    # Can incorporate recycled paper
+                OutputType.MDF,  
             ],
         }
 
@@ -831,17 +698,10 @@ class TreatmentOperator(OperationalEntity):
         )
 
         if overflow_amount > 0:
-            _, strategy = handle_overflow_with_decision(
+            handle_storage_event(
                 self,
                 overflow_amount,
                 self.region
-            )
-            self.waste_monitor.track_overflow(
-                facility_type="treatment",
-                volume=overflow_amount,
-                strategy=strategy,
-                timestamp=self.env.now,
-                region=self.region
             )
 
         total_added = 0.0
@@ -850,3 +710,43 @@ class TreatmentOperator(OperationalEntity):
             total_added += amount
 
         return total_added
+
+    def get_product_properties(self, product_type: str) -> dict:
+        """Get product properties including wood density and biogenic carbon stock"""
+        product_spec = self.product_manager.get_product_specification(product_type)
+        if not product_spec:
+            return {}
+        
+        return {
+            "wood_density_min": product_spec.wood_density_min,
+            "wood_density_max": product_spec.wood_density_max,
+            "wood_density_avg": product_spec.wood_density_avg,
+            "biogenic_carbon_stock": product_spec.biogenic_carbon_stock,
+            "biogenic_stock_per_kg_wood": product_spec.biogenic_stock_per_kg_wood
+        }
+
+    def calculate_total_biogenic_carbon_stored(self) -> dict:
+        """Calculate total biogenic carbon stored in all produced products"""
+        total_biogenic_storage = {}
+        
+        for product_type, volume in self.product_volumes.items():
+            if volume > 0:
+                product_spec = self.product_manager.get_product_specification(product_type)
+                if product_spec:
+                    total_biogenic_storage[product_type] = {
+                        "volume_m3": volume,
+                        "biogenic_carbon_total": volume * product_spec.biogenic_carbon_stock,
+                        "wood_content_kg": volume * product_spec.wood_density_avg
+                    }
+        
+        return total_biogenic_storage
+
+    def get_wood_density_for_product(self, product_type: str) -> float:
+        """Get average wood density for a specific product type"""
+        product_spec = self.product_manager.get_product_specification(product_type)
+        return product_spec.wood_density_avg if product_spec else 0.0
+
+    def get_biogenic_carbon_stock_for_product(self, product_type: str) -> float:
+        """Get biogenic carbon stock for a specific product type"""
+        product_spec = self.product_manager.get_product_specification(product_type)
+        return product_spec.biogenic_carbon_stock if product_spec else 0.0

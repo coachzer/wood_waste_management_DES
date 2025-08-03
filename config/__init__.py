@@ -15,14 +15,10 @@ from .base_config import (
     
     # Parameter access functions
     get_cost_params,
-    get_facility_params,
     
     # Constants
     SIMULATION_DURATION,
-    PRIMARY_WASTE_TYPES,
-    BASE_TRANSFORMATIONS,
-    DEFAULT_COSTS,
-    DEFAULT_FACILITY
+    DEFAULT_COSTS
 )
 
 __all__ = [
@@ -35,12 +31,8 @@ __all__ = [
     'get_scenario_config',
     'list_available_scenarios',
     'get_cost_params',
-    'get_facility_params',
     
     # Constants
     'SIMULATION_DURATION',
-    'PRIMARY_WASTE_TYPES',
-    'BASE_TRANSFORMATIONS',
-    'DEFAULT_COSTS',
-    'DEFAULT_FACILITY'
+    'DEFAULT_COSTS'
 ]

@@ -6,6 +6,7 @@ from core.generator import WasteGenerator
 from core.collector import CollectorCompany
 from core.treatment import TreatmentOperator
 from monitoring.waste_monitor import WasteMonitor
+from utils.unit_conversion import convert_generation_rates_to_volume, convert_ewc_dict_to_waste_type_dict
 
 
 facilities = {
@@ -35,17 +36,16 @@ class FacilityBuilder:
         if gen_data.waste_storage_capacity <= 0:
             raise ValueError(f"Storage capacity must be positive, got {gen_data.waste_storage_capacity}")
 
-        waste_streams = {
-            WasteType(wtype): rate 
-            for wtype, rate in gen_data.waste_generation_rates.items()
-        }
+        # Convert waste generation rates from tonnes/day to m³/day
+        print(f"[GENERATOR CREATION] Converting waste generation rates for {gen_data.id}")
+        waste_streams = convert_generation_rates_to_volume(gen_data.waste_generation_rates)
 
+        # Convert initial stock from tonnes to m³ 
         initial_stock = None
         if gen_data.initial_stock:
-            initial_stock = {
-                WasteType(wtype): volume
-                for wtype, volume in gen_data.initial_stock.items()
-            }
+            print(f"[GENERATOR CREATION] Converting initial stock for {gen_data.id}")
+            initial_stock_ewc = convert_generation_rates_to_volume(gen_data.initial_stock)
+            initial_stock = initial_stock_ewc
 
         if stock_strategy is None and hasattr(self.uncertainty_set, 'stock_strategy'):
             stock_strategy = self.uncertainty_set.stock_strategy
@@ -162,7 +162,7 @@ class FacilityBuilder:
             WasteType.CONSTRUCTION_WOOD_17_02_01: (0.98, 0.90),   
             WasteType.WOODEN_PACKAGING_15_01_03: (0.88, 0.95), 
             WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: (0.95, 0.50),
-            WasteType.BARK_WASTE_03_01_01: (0.85, 0.70),
+            WasteType.BARK_CORK_WASTE_03_01_01: (0.85, 0.70),
             WasteType.NON_HAZARDOUS_WOOD_20_01_38: (0.88, 0.60),
             WasteType.PAPER_PACKAGING_15_01_01: (0.82, 0.65),
         }
@@ -173,7 +173,7 @@ class FacilityBuilder:
             "03_01_05": WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05,
             "15_01_03": WasteType.WOODEN_PACKAGING_15_01_03,
             "17_02_01": WasteType.CONSTRUCTION_WOOD_17_02_01,
-            "03_01_01": WasteType.BARK_WASTE_03_01_01,
+            "03_01_01": WasteType.BARK_CORK_WASTE_03_01_01,
             "20_01_38": WasteType.NON_HAZARDOUS_WOOD_20_01_38,
             "15_01_01": WasteType.PAPER_PACKAGING_15_01_01
         }
@@ -187,7 +187,7 @@ class FacilityBuilder:
             WasteType.CONSTRUCTION_WOOD_17_02_01: ['particle_board', 'osb'],
             WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: ['particle_board', 'mdf'],
             WasteType.WOODEN_PACKAGING_15_01_03: ['particle_board', 'osb'],
-            WasteType.BARK_WASTE_03_01_01: ['mdf', 'particle_board'],
+            WasteType.BARK_CORK_WASTE_03_01_01: ['mdf', 'particle_board'],
             WasteType.NON_HAZARDOUS_WOOD_20_01_38: ['particle_board', 'mdf', 'osb'],
             WasteType.PAPER_PACKAGING_15_01_01: ['mdf'],
         }

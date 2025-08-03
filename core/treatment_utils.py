@@ -18,11 +18,8 @@ def calculate_output_amounts(amount_to_process, efficiency):
 
 def update_waste_storage(treatment_operator, input_type, output_type, amount_to_process, output_amount):
     """Update waste storage and track raw production"""
-    # Update input storage and processed volumes
     treatment_operator.waste_storage[input_type] -= amount_to_process
     treatment_operator.processed_volumes[input_type] += amount_to_process
-    
-    # Store transformed output and update tracking
     treatment_operator.waste_storage[output_type] = (
         treatment_operator.waste_storage.get(output_type, 0.0) + output_amount
     )
@@ -85,16 +82,3 @@ def update_utilization_metrics(treatment_operator, amount_to_process):
     treatment_operator.utilization_history.append(current_utilization)
     if len(treatment_operator.utilization_history) > treatment_operator.utilization_window:
         treatment_operator.utilization_history.pop(0)
-
-def calculate_required_waste(treatment_operator):
-    """Calculate how much waste needs to be collected based on unmet demand"""
-    if treatment_operator.demand < treatment_operator.minimum_required_waste:
-        return 0.0
-        
-    available_storage = treatment_operator.waste_storage_capacity - treatment_operator.current_storage
-    if available_storage <= 0:
-        return 0.0
-        
-    required_waste = treatment_operator.demand / treatment_operator.conversion_rate
-    
-    return min(required_waste, available_storage * 0.8)
