@@ -162,7 +162,7 @@ class SimulationManager:
             'generation_history': self.waste_monitor.get_generation_history,
             'collection_history': self.waste_monitor.get_collection_history,
             'processing_history': self.waste_monitor.get_processing_history,
-            'cost_history': self.waste_monitor.get_cost_history,
+            'environmental_history': self.waste_monitor.get_environmental_history,
             'event_history': self.waste_monitor.get_event_history,
             'entity_status_history': self.waste_monitor.get_entity_status_history
         }

@@ -55,20 +55,20 @@ def handle_storage_event(entity, volume, region, force_landfill=False):
         
         if hasattr(entity, 'waste_monitor') and entity.waste_monitor:
             entity.waste_monitor.track_event(
-                facility_type=entity.facility_type,
-                volume=volume,
-                strategy="landfill",
-                cost_incurred=landfill_cost,
-                timestamp=entity.env.now,
-            )
-            # Track the environmental impact
-            entity.waste_monitor.track_environmental_impact(
-                entity_name=entity.name,
-                entity_type=entity.facility_type,
-                environmental_impact=emissions,
-                timestamp=entity.env.now,
-                impact_category="landfill_emissions"
-            )
+            facility_type=entity.facility_type,
+            volume=volume,
+            strategy="landfill",
+            cost_incurred=landfill_cost,
+            timestamp=entity.env.now,
+        )
+
+        entity.waste_monitor.track_environmental_impact(
+            entity_name=entity.name,
+            entity_type=entity.facility_type,
+            environmental_impact=emissions,
+            timestamp=entity.env.now,
+            impact_category="landfill_emissions"
+        )
 
         return landfill_cost, "landfill"
     else:

@@ -12,53 +12,14 @@ class WasteMonitor:
         self.generation_history = {}
         self.collection_history = {}
         self.processing_history = {}
-        self.environmental_history = {
-            "by_entity": {
-                "generators": {},  
-                "collectors": {},
-                "treatments": {}
-            },
-            "by_impact_type": {
-            "carbon_emissions": {"values": [0.0], "timestamps": [0.0]}, 
-            "transport_emissions": {"values": [0.0], "timestamps": [0.0]}, 
-            "landfill_emissions": {"values": [0.0], "timestamps": [0.0]}, 
-            "impact_cost": {"values": [0.0], "timestamps": [0.0]}
-            },
-            "by_entity_type": {
-                "generators": {"values": [0.0], "timestamps": [0.0]},
-                "collectors": {"values": [0.0], "timestamps": [0.0]},
-                "treatments": {"values": [0.0], "timestamps": [0.0]}
-            }
-        }
-        self.cost_history = {
-            "by_entity": {
-                "generators": {},  
-                "collectors": {},
-                "treatments": {}
-            },
-            "by_cost_type": {
-                "energy": {"values": [0.0], "timestamps": [0.0]},
-                "processing": {"values": [0.0], "timestamps": [0.0]},
-                "transport": {"values": [0.0], "timestamps": [0.0]}
-            }
-        }
-        self.event_history = {
-            "generator_overflow": {"values": [0.0], "timestamps": [0.0]},
-            "collector_overflow": {"values": [0.0], "timestamps": [0.0]},
-            "treatment_overflow": {"values": [0.0], "timestamps": [0.0]},
-            "landfill_usage": {"values": [0.0], "timestamps": [0.0]},
-            "expand_storage_usage": {"values": [0.0], "timestamps": [0.0]},
-            "landfill_penalties": {"values": [0.0], "timestamps": [0.0]},
-            "storage_expansion": {"values": [0.0], "timestamps": [0.0]},
-            "total_cost": {"values": [0.0], "timestamps": [0.0]}
-        }
+        self.environmental_history = {}
+        self.event_history = {}
         self.entity_status_history = {
             "generators": {},
             "collectors": {}, 
             "treatments": {}
         }
         
-        # Create plots directory
         if not os.path.exists("plots"):
             os.makedirs("plots")
 
@@ -79,10 +40,6 @@ class WasteMonitor:
         return self.environmental_history
 
     @property
-    def get_cost_history(self):
-        return self.cost_history
-
-    @property
     def get_event_history(self):
         return self.event_history
     
@@ -91,7 +48,7 @@ class WasteMonitor:
         return self.entity_status_history
 
     def track_generation(self, generator, timestamp, region=None):
-        """Track waste generation events with timestamps and region info"""
+        """Track waste generation events with timestamps, region info, and costs"""
         if generator.name not in self.generation_history:
             self.generation_history[generator.name] = {
                 "timestamps": [],
@@ -99,7 +56,10 @@ class WasteMonitor:
                 "total_generated": {},
                 "storage_utilization": [],
                 "regions": [],
-                "status": []
+                "status": [],
+                "energy_costs": [],
+                "operational_costs": [],
+                "total_costs": []
             }
 
         # Initialize entity_status_history entry if it doesn't exist
@@ -111,7 +71,6 @@ class WasteMonitor:
 
         self.entity_status_history["generators"][generator.name]["timestamps"].append(timestamp)
         self.entity_status_history["generators"][generator.name]["status"].append(generator.status.value)
-
 
         history = self.generation_history[generator.name]
         history["timestamps"].append(timestamp)
@@ -130,9 +89,12 @@ class WasteMonitor:
 
         utilization = (generator.current_storage / generator.waste_storage_capacity) * 100
         history["storage_utilization"].append(utilization)
+        history["energy_costs"].append(0.0)
+        history["operational_costs"].append(0.0)
+        history["total_costs"].append(0.0)
 
     def track_collection(self, collector, timestamp: float, region=None):
-        """Track waste collection events with region info"""
+        """Track waste collection events with region info and costs"""
         if collector.name not in self.collection_history:
             self.collection_history[collector.name] = {
                 "timestamps": [],
@@ -142,7 +104,10 @@ class WasteMonitor:
                 "storage_utilization": [],
                 "utilization_rate": [],
                 "regions": [],
-                "status": []
+                "status": [],
+                "energy_costs": [],
+                "operational_costs": [],
+                "total_costs": []
             }
 
         # Initialize entity_status_history entry if it doesn't exist
@@ -176,9 +141,14 @@ class WasteMonitor:
         if len(history["storage_utilization"]) > 1:
             rate_of_change = utilization - history["storage_utilization"][-2]
             history.setdefault("utilization_rate", []).append(rate_of_change)
+        
+        # Add cost tracking (initialize with 0)
+        history["energy_costs"].append(0.0)
+        history["operational_costs"].append(0.0)
+        history["total_costs"].append(0.0)
 
     def track_processing(self, treatment, timestamp: float):
-        """Track treatment facility metrics"""
+        """Track treatment facility metrics with embedded costs"""
         if treatment.name not in self.processing_history:
             self._initialize_treatment_history(treatment.name)
 
@@ -201,6 +171,11 @@ class WasteMonitor:
             total_processed = self._track_processing_metrics(treatment, history)
             self._track_operational_metrics(treatment, history, total_processed)
             self._track_product_metrics(treatment, history, timestamp)
+            
+            # Add cost tracking (initialize with 0)
+            history["operational"]["energy_costs"].append(0.0)
+            history["operational"]["processing_costs"].append(0.0)
+            history["operational"]["total_costs"].append(0.0)
 
     def _initialize_treatment_history(self, treatment_name):
         """Initialize the treatment history structure"""
@@ -229,9 +204,39 @@ class WasteMonitor:
                 "conversion_rate": [],
                 "demand": [],
                 "demand_satisfaction": [],
+                "energy_costs": [],
+                "processing_costs": [],
+                "total_costs": []
             },
             "status": []
         }
+
+    def update_entity_costs(self, entity_name: str, entity_type: str, 
+                       energy_cost: float = 0.0, processing_cost: float = 0.0, 
+                       transport_cost: float = 0.0):
+        """Update costs in the most recent tracking entry for an entity"""
+        
+        if entity_type == "generator" and entity_name in self.generation_history:
+            history = self.generation_history[entity_name]
+            if history["timestamps"]:
+                history["energy_costs"][-1] += energy_cost
+                history["operational_costs"][-1] += processing_cost
+                history["total_costs"][-1] += energy_cost + processing_cost
+                
+        elif entity_type == "collector" and entity_name in self.collection_history:
+            history = self.collection_history[entity_name]
+            if history["timestamps"]:
+                history["energy_costs"][-1] += energy_cost
+                history["operational_costs"][-1] += processing_cost
+                history["transport_costs"][-1] += transport_cost
+                history["total_costs"][-1] += energy_cost + processing_cost + transport_cost
+                
+        elif entity_type == "treatment" and entity_name in self.processing_history:
+            history = self.processing_history[entity_name]
+            if history["timestamps"]:
+                history["operational"]["energy_costs"][-1] += energy_cost
+                history["operational"]["processing_costs"][-1] += processing_cost
+                history["operational"]["total_costs"][-1] += energy_cost + processing_cost
 
     def _get_entity_category(self, entity_type: str) -> str:
         """Standardize entity type mapping"""
@@ -242,109 +247,75 @@ class WasteMonitor:
         }
         return mapping.get(entity_type, entity_type)
     
-    def track_event(self, 
-                        facility_type: str, 
-                        volume: float, 
-                        strategy: str, 
-                        cost_incurred: float,
-                        timestamp: float):
-        """Pure tracking method - only records what happened"""
-
-        print(f"[EVENT TRACKED] {facility_type} at {timestamp}: {volume:.2f}m³ via {strategy}, cost: €{cost_incurred:.2f}")
+    def track_event(self, facility_type: str, volume: float, strategy: str, 
+                    cost_incurred: float, timestamp: float):
+        """Event tracking"""
         
-        # Store data for visualization
-        self._store_event_data(facility_type, volume, strategy, timestamp, cost_incurred)
-
-    def _store_event_data(self, facility_type: str, volume: float, strategy: str, timestamp: float, cost: float):
-        """Store event data for visualization and analysis"""
-        facility_mapping = {
-            "generator": "generator_event",
-            "collector": "collector_event", 
-            "treatment": "treatment_event"
-        }
+        event_key = "system_events"
         
-        if facility_type in facility_mapping:
-            key = facility_mapping[facility_type]
-            if key in self.event_history:
-                self.event_history[key]["values"].append(volume)
-                self.event_history[key]["timestamps"].append(timestamp)
-
-        match strategy:
-            case "landfill":
-                self.event_history["landfill_usage"]["values"].append(volume)
-                self.event_history["landfill_usage"]["timestamps"].append(timestamp)
-                self.event_history["landfill_penalties"]["values"].append(cost)
-                self.event_history["landfill_penalties"]["timestamps"].append(timestamp)
-            case "expand_storage":
-                self.event_history["storage_expansion"]["values"].append(cost)
-                self.event_history["storage_expansion"]["timestamps"].append(timestamp)
-            case _:
-                raise ValueError(f"Unknown overflow strategy: {strategy}")
-        
-        # Update total cost tracking
-        current_total = self.event_history["total_cost"]["values"][-1] if self.event_history["total_cost"]["values"] else 0.0
-        self.event_history["total_cost"]["values"].append(current_total + cost)
-        self.event_history["total_cost"]["timestamps"].append(timestamp)
-
-    def track_cost(self, entity_name: str, entity_type: str, cost_value: float, 
-                cost_type: str, timestamp: float):
-        """Track any type of cost for any entity type"""
-
-        mapped_entity_type = self._get_entity_category(entity_type)
-
-        if mapped_entity_type not in self.cost_history["by_entity"]:
-            self.cost_history["by_entity"][mapped_entity_type] = {}
-        
-        if entity_name not in self.cost_history["by_entity"][mapped_entity_type]:
-            self.cost_history["by_entity"][mapped_entity_type][entity_name] = {
-                "energy": {"values": [], "timestamps": []},
-                "processing": {"values": [], "timestamps": []},
-                "transport": {"values": [], "timestamps": []}
+        if event_key not in self.event_history:
+            self.event_history[event_key] = {
+                "timestamps": [],
+                "overflow_events": [],
+                "landfill_usage": [],
+                "storage_expansions": [],
+                "landfill_costs": [],
+                "expansion_costs": [],
+                "total_costs": []
             }
         
-        self.cost_history["by_entity"][mapped_entity_type][entity_name][cost_type]["values"].append(cost_value)
-        self.cost_history["by_entity"][mapped_entity_type][entity_name][cost_type]["timestamps"].append(timestamp)
-
-        self.cost_history["by_cost_type"][cost_type]["values"].append(cost_value)
-        self.cost_history["by_cost_type"][cost_type]["timestamps"].append(timestamp)
+        history = self.event_history[event_key]
+        history["timestamps"].append(timestamp)
+        history["overflow_events"].append(0.0)
+        history["landfill_usage"].append(0.0)
+        history["storage_expansions"].append(0.0)
+        history["landfill_costs"].append(0.0)
+        history["expansion_costs"].append(0.0)
+        history["total_costs"].append(0.0)
+        
+        # Update based on strategy
+        if strategy == "landfill":
+            history["landfill_usage"][-1] = volume
+            history["landfill_costs"][-1] = cost_incurred
+            history["overflow_events"][-1] = volume
+        elif strategy == "expand_storage":
+            history["storage_expansions"][-1] = volume
+            history["expansion_costs"][-1] = cost_incurred
+            history["overflow_events"][-1] = volume
+        
+        history["total_costs"][-1] = cost_incurred
+        
+        print(f"[EVENT TRACKED] {facility_type} at {timestamp}: {volume:.2f}m³ via {strategy}, cost: €{cost_incurred:.2f}")
 
     def track_environmental_impact(self, entity_name: str, entity_type: str, 
                                 environmental_impact: float, timestamp: float, 
                                 impact_category: str = "carbon_emissions"):
-        """Enhanced environmental impact tracking with detailed categorization"""
-
-        mapped_entity_type = self._get_entity_category(entity_type)
-
-        # Initialize entity tracking if needed
-        if mapped_entity_type not in self.environmental_history["by_entity"]:
-            self.environmental_history["by_entity"][mapped_entity_type] = {}
+        """Environmental impact tracking - emissions only (kg CO₂e)"""
         
-        if entity_name not in self.environmental_history["by_entity"][mapped_entity_type]:
-            self.environmental_history["by_entity"][mapped_entity_type][entity_name] = {
-                "carbon_emissions": {"values": [], "timestamps": []}, 
-                "transport_emissions": {"values": [], "timestamps": []},
-                "landfill_emissions": {"values": [], "timestamps": []},
-                "impact_cost": {"values": [], "timestamps": []}
+        if entity_name not in self.environmental_history:
+            self.environmental_history[entity_name] = {
+                "timestamps": [],
+                "carbon_emissions": [],
+                "transport_emissions": [],
+                "landfill_emissions": [],
+                "total_impact": [],
+                "entity_type": entity_type
             }
         
-        # Track by entity
-        entity_history = self.environmental_history["by_entity"][mapped_entity_type][entity_name]
-        entity_history[impact_category]["values"].append(environmental_impact)
-        entity_history[impact_category]["timestamps"].append(timestamp)
-
-        # Track by impact type
-        if impact_category in self.environmental_history["by_impact_type"]:
-            self.environmental_history["by_impact_type"][impact_category]["values"].append(environmental_impact)
-            self.environmental_history["by_impact_type"][impact_category]["timestamps"].append(timestamp)
+        history = self.environmental_history[entity_name]
+        
+        if not history["timestamps"] or timestamp > history["timestamps"][-1]:
+            history["timestamps"].append(timestamp)
+            history["carbon_emissions"].append(0.0)
+            history["transport_emissions"].append(0.0)
+            history["landfill_emissions"].append(0.0)
+            history["total_impact"].append(0.0)
+        
+        if impact_category in ["carbon_emissions", "transport_emissions", "landfill_emissions"]:
+            history[impact_category][-1] += environmental_impact
+            history["total_impact"][-1] += environmental_impact
         else:
-            raise ValueError(f"impact_category '{impact_category}' not found in by_impact_type keys: {list(self.environmental_history['by_impact_type'].keys())}")
-        
-        # Track by entity type
-        if mapped_entity_type in self.environmental_history["by_entity_type"]:
-            self.environmental_history["by_entity_type"][mapped_entity_type]["values"].append(environmental_impact)
-            self.environmental_history["by_entity_type"][mapped_entity_type]["timestamps"].append(timestamp)
-        
-        print(f"{timestamp:.1f}: [ENV IMPACT] -> {entity_name} ({entity_type}): {environmental_impact:.2f} kg CO₂e ({impact_category})")
+            print(f"Warning: Unrecognized environmental impact category: {impact_category}")
 
     def calculate_efficiency_metrics(self) -> Dict[str, float]:
         """Calculate system-wide efficiency metrics"""

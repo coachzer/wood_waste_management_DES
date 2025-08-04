@@ -155,12 +155,18 @@ class CollectorCompany(OperationalEntity):
             
             self._add_to_collection_center(collected_waste)
             collection_cost = self.transport_cost + (distance * 0.1 * collected_amount)
-            
+                
             # Calculate transport emissions (convert m³ to tonnes using density, then multiply by distance and emissions factor)
             emissions = collected_amount * distance * TRANSPORT_EMISSIONS_PER_TON_KM
 
-            print(f"{current_time:.1f}: [COLLECTOR] {self.name} collected {collected_amount:.2f} m³ from {generator.name} ({vehicle.id})")
             if hasattr(self, 'waste_monitor') and self.waste_monitor:
+                self.waste_monitor.update_entity_costs(
+                    entity_name=self.name,
+                    entity_type=self.facility_type,
+                    energy_cost=0.0,
+                    processing_cost=0.0,
+                    transport_cost=collection_cost
+                )
                 self.waste_monitor.track_environmental_impact(
                     entity_name=self.name,
                     entity_type=self.facility_type,

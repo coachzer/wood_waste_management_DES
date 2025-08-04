@@ -193,50 +193,73 @@ class TreatmentOperator(OperationalEntity):
         yield self.env.timeout(7.0)  # Weekly collection cycle
 
     def _pull_collection_logic(self, current_time):
-        """PULL: Kanban-driven with signal propagation to collectors"""
+        """PULL: Enhanced Kanban-driven with signal prioritization"""
         
-        # Check for kanban signals
         active_signals = self.kanban_manager.get_signals(current_time)
         
         if active_signals:
-            total_immediate_demand = len(active_signals) * 2.0
+            sorted_signals = sorted(active_signals, 
+                                key=lambda s: (s['priority'], current_time - s['timestamp']), 
+                                reverse=True)
+            
+            total_immediate_demand = sum(signal['volume'] for signal in sorted_signals)
             
             self.demand = total_immediate_demand
             self.trigger_collection()
-            self.kanban_manager.clear_signals()
-            yield self.env.timeout(self.processing_time)
-        else:
-            # Monitor for low inventory AND propagate signals to collectors
-            for waste_type, volume in self.waste_storage.items():
-                if volume < 2.0:  # Low threshold for PULL
-                    # Add signal to our own kanban manager
-                    self.kanban_manager.add_signal(
-                        waste_type=waste_type,
-                        priority=5,
-                        timestamp=current_time,
-                        volume=volume,
-                        source_id=self.name,
-                        source_type="treatment"
-                    )
-                    
-                    # ALSO propagate to collectors in our region
-                    state = SimulationState.get_instance()
-                    local_collectors = [
-                        c for c in state.collectors 
-                        if c.region_type == self.region_type and c.inventory_policy == InventoryPolicy.PULL
-                    ]
-                    
-                    for collector in local_collectors:
-                        collector.kanban_manager.add_signal(
-                            waste_type=waste_type,
-                            priority=8,
-                            timestamp=current_time,
-                            volume=volume,
-                            source_id=self.name,
-                            source_type="treatment" 
-                        )
             
-            yield self.env.timeout(1.0)
+            for signal in active_signals:
+                self.kanban_manager.acknowledge_signal(signal['id'])
+            
+            yield self.env.timeout(self.processing_time)
+            return 
+        
+        signals_created = False
+        low_stock_threshold = max(2.0, self.processing_capacity * 0.1)
+        
+        for waste_type, volume in self.waste_storage.items():
+            if volume < low_stock_threshold:
+                needed_volume = low_stock_threshold - volume
+                
+                self.kanban_manager.add_signal(
+                    waste_type=waste_type,
+                    priority=5,
+                    timestamp=current_time,
+                    volume=needed_volume,  
+                    source_id=self.name,
+                    source_type="treatment"
+                )
+                
+                self._propagate_signal_to_collectors(waste_type, needed_volume, current_time)
+                signals_created = True
+        
+        timeout_duration = 1.0 if signals_created else self.processing_time
+        yield self.env.timeout(timeout_duration)
+
+    def _propagate_signal_to_collectors(self, waste_type, needed_volume, current_time):
+        """Propagate signals to collectors with availability checking"""
+        state = SimulationState.get_instance()
+        
+        local_collectors = [
+            c for c in state.collectors 
+            if (c.region_type == self.region_type and 
+                c.inventory_policy == InventoryPolicy.PULL and
+                c.availability and 
+                c.collection_center.current_storage.get(waste_type, 0) > 0) 
+        ]
+        
+        for collector in local_collectors:
+            available_volume = collector.collection_center.current_storage.get(waste_type, 0)
+            signal_volume = min(needed_volume, available_volume)
+            
+            if signal_volume > 0:
+                collector.kanban_manager.add_signal(
+                    waste_type=waste_type,
+                    priority=8,  
+                    timestamp=current_time,
+                    volume=signal_volume,
+                    source_id=self.name,
+                    source_type="treatment"
+                )
 
     def calculate_realistic_demand(self) -> float:
         """Calculate realistic demand based on processing capacity and storage constraints"""

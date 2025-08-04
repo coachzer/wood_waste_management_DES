@@ -1,4 +1,3 @@
-import os
 import plotly.graph_objects as go
 import plotly.subplots as sp
 import pandas as pd
@@ -7,23 +6,52 @@ from typing import Dict, List
 
 def create_cost_impact_comparison(results: List[Dict], output_dir: str):
     """Create bar charts comparing cost and environmental impact breakdowns"""
-    cost_components = ['energy', 'processing', 'transport', 'overflow']
+    cost_components = ['energy_costs', 'operational_costs', 'transport_costs', 'overflow']
     scenario_labels = []
     cost_data = {comp: [] for comp in cost_components}
 
     for result in results:
         monitor_data = result['monitor_data']
         scenario_labels.append(f"{result['inventory_policy']} | {result['stock_strategy']}")
-        cost_history = monitor_data['cost_history']
-        event_history = monitor_data['event_history']
+        
+        # Extract costs from embedded operational tracking
+        total_energy = 0
+        total_operational = 0
+        total_transport = 0
+        
+        for entity_data in monitor_data.get('generation_history', {}).values():
+            if entity_data.get('energy_costs'):
+                total_energy += sum(entity_data['energy_costs'])
+            if entity_data.get('operational_costs'):
+                total_operational += sum(entity_data['operational_costs'])
+        
+        for entity_data in monitor_data.get('collection_history', {}).values():
+            if entity_data.get('energy_costs'):
+                total_energy += sum(entity_data['energy_costs'])
+            if entity_data.get('operational_costs'):
+                total_operational += sum(entity_data['operational_costs'])
+            if entity_data.get('transport_costs'):
+                total_transport += sum(entity_data['transport_costs'])
 
-        # Extract final values for each cost component
-        cost_data['energy'].append(np.sum(cost_history.get('energy', [])))
-        cost_data['processing'].append(np.sum(cost_history.get('processing', [])))
-        cost_data['transport'].append(np.sum(cost_history.get('transport', [])))
-        cost_data['overflow'].append(event_history.get('total_cost', {}).get('values', [0])[-1] if event_history.get('total_cost', {}).get('values') else 0)
+        for entity_data in monitor_data.get('processing_history', {}).values():
+            operational = entity_data.get('operational', {})
+            if operational.get('energy_costs'):
+                total_energy += sum(operational['energy_costs'])
+            if operational.get('processing_costs'):
+                total_operational += sum(operational['processing_costs'])
+        
+        cost_data['energy_costs'].append(total_energy)
+        cost_data['operational_costs'].append(total_operational)
+        cost_data['transport_costs'].append(total_transport)
+        
+        event_history = monitor_data.get('event_history', {})
+        overflow_cost = 0
+        if 'system_events' in event_history:
+            total_costs = event_history['system_events'].get('total_costs', [])
+            if total_costs:
+                overflow_cost = sum(total_costs)
+        cost_data['overflow'].append(overflow_cost)
 
-    # Bar chart for cost breakdown
     fig_cost = go.Figure()
     for comp in cost_components:
         fig_cost.add_trace(go.Bar(

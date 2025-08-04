@@ -63,24 +63,31 @@ def track_treatment_properties(treatment_operator, amount_to_process, transforma
         amount_to_process 
         * treatment_operator.operational_costs
     )
-    environmental_impact = (
+    environmental_impact_emissions = (
         amount_to_process 
         * treatment_operator.environmental_impact
     )
+
+    environmental_cost = environmental_impact_emissions * 0.05  # €0.05 per kg CO₂e (example)
 
     monitor = treatment_operator.waste_monitor
     name = treatment_operator.name
     timestamp = treatment_operator.env.now
     
-    monitor.track_cost(name, "treatments", energy_cost, "energy", timestamp)
-    monitor.track_cost(name, "treatments", operational_cost, "processing", timestamp)
+    monitor.update_entity_costs(
+        entity_name=name, 
+        entity_type="treatment", 
+        energy_cost=energy_cost, 
+        processing_cost=operational_cost + environmental_cost,  
+        transport_cost=0.0
+    )
 
     monitor.track_environmental_impact(
-        entity_name=treatment_operator.name,
-        entity_type=treatment_operator.facility_type,
-        environmental_impact=environmental_impact,
+        entity_name=name,
+        entity_type="treatment",
+        environmental_impact=environmental_impact_emissions,  # kg CO₂e
         timestamp=timestamp,
-        impact_category="impact_cost"
+        impact_category="carbon_emissions"  
     )
 
 def update_utilization_metrics(treatment_operator, amount_to_process):
