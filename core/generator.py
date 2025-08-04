@@ -32,15 +32,12 @@ class WasteGenerator(OperationalEntity):
         self.facility_type = "generator"
         self.stock_strategy = stock_strategy
         self.inventory_policy = inventory_policy
-        # Validate initial stock against storage capacity
         if initial_stock:
             total_initial = sum(initial_stock.values())
             if total_initial > waste_storage_capacity:
                 raise ValueError(
                     f"Initial stock ({total_initial}) exceeds storage capacity ({waste_storage_capacity})"
                 )
-
-        # Initialize waste streams with initial stock if provided
         self.waste_streams = {
             waste_type: WasteStream(
                 waste_type=waste_type,
@@ -91,8 +88,7 @@ class WasteGenerator(OperationalEntity):
                 1 + 0.2 * np.sin(2 * np.pi * t / self.seasonal_periods)
                 for t in range(self.seasonal_periods)
             ]
-        )
-        print(f"DEBUG: Seasonal factors initialized: {self.seasonal_factors}")      
+        )  
 
         # Initialize RNG with seed for reproducibility
         self.rng = np.random.default_rng(42)
@@ -109,12 +105,10 @@ class WasteGenerator(OperationalEntity):
             if not hasattr(self, '_original_rates'):
                 self._original_rates = self.waste_generation_rates.copy()
             self.waste_generation_rates = {wt: r * 0.1 for wt, r in self._original_rates.items()}
-            print(f"{current_time}: Generator {self.name} is FAILED, minimal waste generation")
         elif self.status == EntityStatus.RECOVERING:
             if hasattr(self, '_original_rates'):
                 efficiency = self.get_operational_efficiency()
                 self.waste_generation_rates = {wt: r * efficiency for wt, r in self._original_rates.items()}
-                print(f"{current_time}: Generator {self.name} is RECOVERING (efficiency: {efficiency:.2f})")
         elif self.status == EntityStatus.OPERATIONAL:
             if hasattr(self, '_original_rates'):
                 self.waste_generation_rates = self._original_rates.copy()
@@ -149,26 +143,6 @@ class WasteGenerator(OperationalEntity):
             case StockStrategy.REORDER_50:
                 self._process_reorder(current_time, seasonal_factor, 0.5, 4)
 
-    def _process_full_stock(self, current_time, seasonal_factor):
-        available_storage = self.waste_storage_capacity - self.current_storage
-
-        available_storage, self.current_storage, self.history_index = generate_waste_for_period(
-            self.name, self.status, self.uncertainty_set,
-            self.waste_generation_rates, self.region, self.waste_streams,
-            self.total_generated, self.generation_history, self.history_index,
-            self.current_storage, self.rng, seasonal_factor, available_storage,
-            current_time
-        )
-
-        if self.current_storage > self.waste_storage_capacity:
-            self.current_storage = handle_overflow(
-                self.current_storage, self.waste_storage_capacity,
-                self.waste_streams, 
-                self.region, 
-                self
-            )
-            self._kanban_signal(current_time, 10)
-
     def _process_on_demand(self, current_time, seasonal_factor):
         """ON_DEMAND: Generate normally, discard excess immediately if no demand"""
         kanban_signals = self.kanban_manager.get_signals(self.env.now)
@@ -185,18 +159,16 @@ class WasteGenerator(OperationalEntity):
         )
 
         if not kanban_signals: # ON_DEMAND
-            minimal_threshold = self.waste_storage_capacity * 0.05  # Keep only 5%
-            if self.current_storage > minimal_threshold:
-                excess = self.current_storage - minimal_threshold
-                
-                self.waste_monitor.track_event(
-                    facility_type=self.facility_type,
-                    volume=excess,
-                    strategy="landfill",
-                    cost_incurred=excess * self.environmental_impact,  # TO BE CHANGED
-                    timestamp=current_time
+            if self.current_storage > self.waste_storage_capacity:
+                print(f"_process_on_demand - [{self.name}] Storage before handle_overflow: {self.current_storage:.2f}")
+                self.current_storage = handle_overflow(
+                    self.current_storage, self.waste_storage_capacity,
+                    self.waste_streams, 
+                    self.region, 
+                    self
                 )
-                self.current_storage = minimal_threshold
+                print(f"_process_on_demand - [{self.name}] Storage after handle_overflow: {self.current_storage:.2f}")
+            
 
     def _process_reorder(self, current_time, seasonal_factor, threshold_ratio, priority):
         threshold = self.waste_storage_capacity * threshold_ratio
@@ -225,10 +197,14 @@ class WasteGenerator(OperationalEntity):
             self._kanban_signal(current_time, priority)
         
         if self.current_storage > self.waste_storage_capacity:
+            print(f"_process_reorder - [{self.name}] Storage before handle_overflow: {self.current_storage:.2f}")
             self.current_storage = handle_overflow(
                 self.current_storage, self.waste_storage_capacity,
-                self.waste_streams, self.region, self
+                self.waste_streams, 
+                self.region, 
+                self
             )
+            print(f"_process_reorder - [{self.name}] Storage after handle_overflow: {self.current_storage:.2f}")
 
     def _kanban_signal(self, current_time, priority):
         active_waste_types = [
@@ -237,8 +213,6 @@ class WasteGenerator(OperationalEntity):
         ]
         
         if active_waste_types:
-            print(f"{current_time}: {self.name} sending kanban signals for {len(active_waste_types)} waste types")
-            
             for waste_type in active_waste_types:
                 self.kanban_manager.add_signal(
                     waste_type=waste_type,

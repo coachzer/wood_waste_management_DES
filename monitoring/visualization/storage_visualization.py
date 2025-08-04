@@ -22,11 +22,6 @@ def create_storage_heatmaps(results: List[Dict], output_dir: str):
     if not results:
         raise ValueError("No results provided to create_storage_heatmaps")
     
-    # Debug: Print all results first
-    print("DEBUG: All results structure:")
-    for i, result in enumerate(results):
-        print(f"  Result {i}: scenario='{result['scenario_name']}', inventory='{result['inventory_policy']}', stock='{result['stock_strategy']}'")
-    
     grouped_results = {}
     for result in results:
         scenario_name = result['scenario_name']
@@ -46,20 +41,13 @@ def create_storage_heatmaps(results: List[Dict], output_dir: str):
     if not grouped_results:
         raise ValueError("No grouped results created - grouping logic failed")
     
-    # Debug: Print grouped structure
-    print("\nDEBUG: Grouped results:")
     for key, group in grouped_results.items():
         if not group:
             raise ValueError(f"Empty group found for key {key}")
-        print(f"  Key {key}: {len(group)} results")
-        for result in group:
-            print(f"    - stock_strategy: '{result['stock_strategy']}' (full scenario: '{result['scenario_name']}')")
     
     # Sort each group by stock_strategy for consistent ordering
     for key in grouped_results:
         grouped_results[key].sort(key=lambda x: x['stock_strategy'])
-    
-    print(f"\nDEBUG: Will create {len(grouped_results)} grouped plots instead of {len(results)} individual plots")
     
     if len(grouped_results) >= len(results):
         raise ValueError(f"Grouping failed: Expected fewer groups ({len(grouped_results)}) than individual results ({len(results)})")
@@ -67,7 +55,6 @@ def create_storage_heatmaps(results: List[Dict], output_dir: str):
     for entity_type in ['generation', 'collection']:
         entity_subdir = os.path.join(entity_dir, entity_type)
         os.makedirs(entity_subdir, exist_ok=True)  # Ensure subdirectory exists
-        print(f"\nDEBUG: Creating {entity_type} plots...")
         try:
             _create_entity_storage_heatmaps_grouped(grouped_results, entity_type, entity_subdir)
         except Exception as e:
@@ -77,7 +64,6 @@ def create_storage_heatmaps(results: List[Dict], output_dir: str):
     for storage_type in ['waste', 'product', 'product_to_sell']:
         processing_subdir = os.path.join(processing_dir, storage_type)
         os.makedirs(processing_subdir, exist_ok=True)  # Ensure subdirectory exists
-        print(f"\nDEBUG: Creating processing {storage_type} plots...")
         try:
             _create_processing_storage_heatmaps_grouped(grouped_results, storage_type, processing_subdir)
         except Exception as e:
@@ -88,13 +74,9 @@ def _create_processing_storage_heatmaps_grouped(grouped_results: Dict, storage_t
     if not grouped_results:
         raise ValueError("Empty grouped_results provided to _create_processing_storage_heatmaps_grouped")
     
-    print(f"  DEBUG: Processing {storage_type} - processing {len(grouped_results)} groups")
-    
     for (base_scenario, inventory_policy), results_group in grouped_results.items():
         if not results_group:
             raise ValueError(f"Empty results_group for key ({base_scenario}, {inventory_policy})")
-        
-        print(f"    DEBUG: Creating plot for {base_scenario} + {inventory_policy} with {len(results_group)} stock strategies")
         
         file_id = f"{base_scenario}_{inventory_policy}"
         file_id = file_id.replace(' ', '_').replace('|', '_').replace(',', '_')
@@ -114,8 +96,6 @@ def _create_processing_storage_heatmaps_grouped(grouped_results: Dict, storage_t
             raise RuntimeError(f"Failed creating subplots for {base_scenario} + {inventory_policy}: {str(e)}") from e
         
         for i, result in enumerate(results_group, 1):
-            print(f"      DEBUG: Adding subplot {i} for stock strategy: {result['stock_strategy']}")
-            
             if 'monitor_data' not in result:
                 raise KeyError(f"Result missing 'monitor_data' key for {base_scenario} + {inventory_policy} + {result['stock_strategy']}")
             
@@ -176,14 +156,12 @@ def _create_processing_storage_heatmaps_grouped(grouped_results: Dict, storage_t
             raise RuntimeError(f"Failed updating layout: {str(e)}") from e
         
         filename = f"processing_{storage_type}_storage_heatmap_{file_id}.html"
-        print(f"      DEBUG: Saving file: {filename}")
-        
+
         try:
             fig.write_html(f"{output_dir}/{filename}")
 
             png_path = filename.replace('.html', '.png')
             fig.write_image(f"{output_dir}/{png_path}", height=300 * num_strategies + 100, width=1600)
-            print(f"      DEBUG: PNG version saved to {png_path}")
         except Exception as e:
             raise RuntimeError(f"Failed writing HTML file {filename}: {str(e)}") from e
 
@@ -193,14 +171,10 @@ def _create_entity_storage_heatmaps_grouped(grouped_results: Dict, entity_type: 
     if not grouped_results:
         raise ValueError("Empty grouped_results provided to _create_entity_storage_heatmaps_grouped")
     
-    print(f"  DEBUG: Entity {entity_type} - processing {len(grouped_results)} groups")
-    
     for (base_scenario, inventory_policy), results_group in grouped_results.items():
         if not results_group:
             raise ValueError(f"Empty results_group for key ({base_scenario}, {inventory_policy})")
-        
-        print(f"    DEBUG: Creating plot for {base_scenario} + {inventory_policy} with {len(results_group)} stock strategies")
-        
+    
         # Generate filename-safe identifier
         file_id = f"{base_scenario}_{inventory_policy}"
         file_id = file_id.replace(' ', '_').replace('|', '_').replace(',', '_')
@@ -221,7 +195,6 @@ def _create_entity_storage_heatmaps_grouped(grouped_results: Dict, entity_type: 
             raise RuntimeError(f"Failed creating subplots for {base_scenario} + {inventory_policy}: {str(e)}") from e
         
         for i, result in enumerate(results_group, 1):
-            print(f"      DEBUG: Adding subplot {i} for stock strategy: {result['stock_strategy']}")
             
             if 'monitor_data' not in result:
                 raise KeyError(f"Result missing 'monitor_data' key for {base_scenario} + {inventory_policy} + {result['stock_strategy']}")
@@ -281,13 +254,11 @@ def _create_entity_storage_heatmaps_grouped(grouped_results: Dict, entity_type: 
             raise RuntimeError(f"Failed updating layout: {str(e)}") from e
         
         filename = f"{entity_type}_storage_heatmap_{file_id}.html"
-        print(f"      DEBUG: Saving file: {filename}")
         
         try:
             fig.write_html(f"{output_dir}/{filename}")
             
             png_path = filename.replace('.html', '.png')
             fig.write_image(f"{output_dir}/{png_path}", height=300 * num_strategies + 100, width=1600)  
-            print(f"      DEBUG: PNG version saved to {png_path}")
         except Exception as e:
             raise RuntimeError(f"Failed writing files {filename}: {str(e)}") from e

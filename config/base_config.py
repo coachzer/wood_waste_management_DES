@@ -29,14 +29,9 @@ _demand_data = load_json("data/demand.json")
 
 @dataclass
 class CostParams:
-    """Simplified cost parameters"""
-    processing_rate: float = 50.0      # Cost per unit processed
-    transport_rate: float = 2.0        # Cost per unit per km
-    storage_rate: float = 1.0          # Cost per unit per time period
-    energy_rate: float = 0.15          # Cost per kWh
+    """Cost parameters"""
     landfill_per_m3: float = 50.0       # Cost per m³ landfilled
     expansion_cost_per_m3: float = 100.0  # Cost to expand storage by 1m³
-    landfill_rate: float = 75.0        # Cost per unit landfilled
 
 DEFAULT_COSTS = CostParams()
 

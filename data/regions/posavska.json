@@ -3,25 +3,21 @@
         {
             "id": "gen_posavska",
             "waste_generation_rates": {
-                "03 01 01": 8.493,
-                "03 01 05": 66.166,
-                "03 03 01": 289.013,
-                "03 03 08": 100.339,
-                "15 01 01": 29.129,
-                "15 01 03": 9.779,
-                "17 02 01": 0.213,
-                "19 12 01": 0.617,
-                "20 01 01": 22.153,
-                "20 01 38": 8.976,
-                "20 03 07": 3.958,
-                "03 01 99": 14.0,
-                "02 01 07": 10.0
+                "03 01 01": 0.762,
+                "03 01 05": 86.826,
+                "03 03 01": 59.307,
+                "03 03 08": 15.536,
+                "15 01 03": 6.178,
+                "17 02 01": 0.158,
+                "19 12 01": 0.463,
+                "20 01 01": 8.929,
+                "20 01 38": 6.705,
+                "20 03 07": 1.679
             },
             "generation_frequency": 1,
             "waste_storage_capacity": 80000,
-            "environmental_impact": 1.0,
+            "environmental_impact": 2.5,
             "initial_stock": {
-                "03 01 01": 0.0,
                 "03 01 05": 0.0,
                 "03 03 01": 0.0,
                 "03 03 08": 0.0,
@@ -31,9 +27,7 @@
                 "19 12 01": 0.0,
                 "20 01 01": 0.0,
                 "20 01 38": 0.0,
-                "20 03 07": 0.0,
-                "03 01 99": 0.0,
-                "02 01 07": 0.0
+                "20 03 07": 0.0
             }
         }
     ],
@@ -59,7 +53,7 @@
             "collection_capacity": 30000,
             "collection_frequency": 12,
             "transport_cost": 50.0,
-            "environmental_impact": 1.0,
+            "environmental_impact": 3.2,
             "efficiency": 1.0,
             "availability": true
         }
@@ -84,7 +78,7 @@
             "processing_time": 24,
             "waste_storage_capacity": 20000,
             "energy_consumption": 100.0,
-            "environmental_impact": 1.0,
+            "environmental_impact": 1.8,
             "conversion_rate": 1.0,
             "operational_costs": 330.0
         }

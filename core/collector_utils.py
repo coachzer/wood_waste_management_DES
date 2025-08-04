@@ -257,10 +257,6 @@ def get_prioritized_generators(collector) -> List:
                 accumulated_volume += collectible
         
         prioritized_generators.extend(selected_same_region)
-        
-        print(f"[VOLUME ALLOCATION] {collector.name}: Same region target {same_region_target:.1f}m³, "
-              f"selected {len(selected_same_region)} generators "
-              f"({accumulated_volume:.1f}m³ potential)")
     
     if other_region_generators and cross_region_target > 0:
         closest_regions = get_closest_regions(collector.region_type, n=3)  # Get top 3 closest
@@ -296,10 +292,6 @@ def get_prioritized_generators(collector) -> List:
                 
                 if selected_cross_region:
                     prioritized_generators.extend(selected_cross_region)
-                    
-                    print(f"[VOLUME ALLOCATION] {collector.name}: Cross region target {cross_region_target:.1f}m³, "
-                          f"selected {len(selected_cross_region)} generators from {region_type.value} "
-                          f"({accumulated_volume:.1f}m³ potential, {distance:.1f}km)")
                     break  
     
     return prioritized_generators

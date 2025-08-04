@@ -5,7 +5,7 @@ from models.enums import WasteType
 from config.constants import SIMULATION_DURATION
 
 class WasteMonitor:
-    """Unified monitoring system for waste management operations"""
+    """Monitoring system for waste management operations"""
 
     def __init__(self, env=None):
         self.env = env
@@ -19,8 +19,10 @@ class WasteMonitor:
                 "treatments": {}
             },
             "by_impact_type": {
-                "carbon_emissions": {"values": [0.0], "timestamps": [0.0]}, 
-                "impact_cost": {"values": [0.0], "timestamps": [0.0]}
+            "carbon_emissions": {"values": [0.0], "timestamps": [0.0]}, 
+            "transport_emissions": {"values": [0.0], "timestamps": [0.0]}, 
+            "landfill_emissions": {"values": [0.0], "timestamps": [0.0]}, 
+            "impact_cost": {"values": [0.0], "timestamps": [0.0]}
             },
             "by_entity_type": {
                 "generators": {"values": [0.0], "timestamps": [0.0]},
@@ -166,8 +168,6 @@ class WasteMonitor:
         history["efficiency"].append(collector.efficiency)
         history["transport_costs"].append(collector.transport_cost)
 
-        # 0,087 - The average carbon footprint of transporting one ton of semi-finished product for one kilometer [kg eCO2]
-
         total_storage = sum(collector.collection_center.current_storage.values())
         utilization = (total_storage / collector.collection_center.waste_storage_capacity) * 100
 
@@ -232,6 +232,15 @@ class WasteMonitor:
             },
             "status": []
         }
+
+    def _get_entity_category(self, entity_type: str) -> str:
+        """Standardize entity type mapping"""
+        mapping = {
+            "generator": "generators",
+            "collector": "collectors", 
+            "treatment": "treatments"
+        }
+        return mapping.get(entity_type, entity_type)
     
     def track_event(self, 
                         facility_type: str, 
@@ -280,15 +289,9 @@ class WasteMonitor:
     def track_cost(self, entity_name: str, entity_type: str, cost_value: float, 
                 cost_type: str, timestamp: float):
         """Track any type of cost for any entity type"""
-        
-        entity_type_mapping = {
-            "generator": "generators",
-            "collector": "collectors", 
-            "treatment": "treatments"
-        }
-        
-        mapped_entity_type = entity_type_mapping.get(entity_type, entity_type)
-        
+
+        mapped_entity_type = self._get_entity_category(entity_type)
+
         if mapped_entity_type not in self.cost_history["by_entity"]:
             self.cost_history["by_entity"][mapped_entity_type] = {}
         
@@ -299,50 +302,50 @@ class WasteMonitor:
                 "transport": {"values": [], "timestamps": []}
             }
         
-        # Track for specific entity
         self.cost_history["by_entity"][mapped_entity_type][entity_name][cost_type]["values"].append(cost_value)
         self.cost_history["by_entity"][mapped_entity_type][entity_name][cost_type]["timestamps"].append(timestamp)
 
-        # Track for cost type
         self.cost_history["by_cost_type"][cost_type]["values"].append(cost_value)
         self.cost_history["by_cost_type"][cost_type]["timestamps"].append(timestamp)
 
     def track_environmental_impact(self, entity_name: str, entity_type: str, 
                                 environmental_impact: float, timestamp: float, 
-                                impact_category: str = "impact_cost"):
-        """Track environmental impact for any entity type with proper aggregation"""
-        
-        entity_type_mapping = {
-            "generator": "generators",
-            "collector": "collectors", 
-            "treatment": "treatments"
-        }
-        
-        mapped_entity_type = entity_type_mapping.get(entity_type, entity_type)
-        
+                                impact_category: str = "carbon_emissions"):
+        """Enhanced environmental impact tracking with detailed categorization"""
+
+        mapped_entity_type = self._get_entity_category(entity_type)
+
+        # Initialize entity tracking if needed
         if mapped_entity_type not in self.environmental_history["by_entity"]:
             self.environmental_history["by_entity"][mapped_entity_type] = {}
         
         if entity_name not in self.environmental_history["by_entity"][mapped_entity_type]:
             self.environmental_history["by_entity"][mapped_entity_type][entity_name] = {
                 "carbon_emissions": {"values": [], "timestamps": []}, 
+                "transport_emissions": {"values": [], "timestamps": []},
+                "landfill_emissions": {"values": [], "timestamps": []},
                 "impact_cost": {"values": [], "timestamps": []}
             }
         
+        # Track by entity
         entity_history = self.environmental_history["by_entity"][mapped_entity_type][entity_name]
         entity_history[impact_category]["values"].append(environmental_impact)
         entity_history[impact_category]["timestamps"].append(timestamp)
 
+        # Track by impact type
         if impact_category in self.environmental_history["by_impact_type"]:
             self.environmental_history["by_impact_type"][impact_category]["values"].append(environmental_impact)
             self.environmental_history["by_impact_type"][impact_category]["timestamps"].append(timestamp)
-         
+        else:
+            raise ValueError(f"impact_category '{impact_category}' not found in by_impact_type keys: {list(self.environmental_history['by_impact_type'].keys())}")
+        
+        # Track by entity type
         if mapped_entity_type in self.environmental_history["by_entity_type"]:
             self.environmental_history["by_entity_type"][mapped_entity_type]["values"].append(environmental_impact)
             self.environmental_history["by_entity_type"][mapped_entity_type]["timestamps"].append(timestamp)
         
-        print(f"[ENV IMPACT] {entity_name} ({entity_type}): {environmental_impact:.2f} kg CO₂e ({impact_category}) at {timestamp:.1f}")
-        
+        print(f"{timestamp:.1f}: [ENV IMPACT] -> {entity_name} ({entity_type}): {environmental_impact:.2f} kg CO₂e ({impact_category})")
+
     def calculate_efficiency_metrics(self) -> Dict[str, float]:
         """Calculate system-wide efficiency metrics"""
         total_generated = self._sum_totals(self.generation_history, "total_generated")
@@ -391,8 +394,6 @@ class WasteMonitor:
             
             entity_history["timestamps"].append(timestamp)
             entity_history["status"].append(entity.status.value)
-            
-            print(f"DEBUG: Status recorded for {entity_name} at {timestamp}: {entity.status.name}")
 
     def generate_summary_report(self) -> str:
         """Generate a comprehensive summary report"""
@@ -418,11 +419,10 @@ class WasteMonitor:
             for collector in collectors:
                 self.track_collection(collector, self.env.now)
             for treatment in treatment_operators:
-                self.track_processing(treatment, self.env.now)
+                self.track_processing(treatment, self.env.now)  
                 
             if self.env.now == SIMULATION_DURATION:
                 print(self.generate_summary_report())
-                
             yield self.env.timeout(1)
 
     def _track_storage_metrics(self, treatment, history):

@@ -1,7 +1,7 @@
 import numpy as np
 from models.enums import EntityStatus
 from models.state import SimulationState
-from utils.capacity_utils import apply_capacity_constraints, apply_partial_update_with_constraints, handle_storage_event
+from utils.capacity_utils import handle_storage_event
 
 def calculate_daily_factors(rng, waste_generation_rates, uncertainty_set=None):
     """Calculate daily generation factors based on uncertainty"""
@@ -9,7 +9,6 @@ def calculate_daily_factors(rng, waste_generation_rates, uncertainty_set=None):
         return [1.0] * len(waste_generation_rates)
 
     daily_factors = []
-
     variability = getattr(uncertainty_set, 'waste_generation_variability', 0.2)
     
     for _ in waste_generation_rates.keys():
@@ -37,7 +36,7 @@ def update_waste_stream(waste_streams, total_generated, current_storage, region,
 
     return current_storage
 
-def handle_overflow(current_storage, waste_storage_capacity, waste_streams, region, generator_entity):
+def handle_overflow(current_storage, waste_storage_capacity, waste_streams, region, generator_entity, force_landfill=False):
     """Handle storage overflow situation"""
     
     current_volumes = {
@@ -45,28 +44,33 @@ def handle_overflow(current_storage, waste_storage_capacity, waste_streams, regi
         for waste_type, stream in waste_streams.items()
     }
 
-    result = apply_partial_update_with_constraints(
-        current_values={},  
-        updates=current_volumes,
-        capacity=waste_storage_capacity
-    )
-    if result.overflow_amount > 0:
+    # Check if there's overflow
+    total_current = sum(current_volumes.values())
+    if total_current > waste_storage_capacity:
+        overflow_amount = total_current - waste_storage_capacity
+        
+        # Handle overflow through expansion/landfill
         handle_storage_event(
-            generator_entity,
-            result.overflow_amount,
-            region
+            generator_entity, 
+            overflow_amount, 
+            region,
+            force_landfill=force_landfill
         )
         
+        # Remove overflow proportionally from waste streams
+        scaling_factor = waste_storage_capacity / total_current
+        
         state = SimulationState.get_instance()
-        total_reduced = 0.0
+        
         for waste_type, stream in waste_streams.items():
-            new_volume = result.scaled_values[waste_type]
+            new_volume = stream.volume * scaling_factor
             reduced_volume = stream.volume - new_volume
             if reduced_volume > 0:
                 state.track_remove_waste(region, waste_type, reduced_volume)
                 stream.volume = new_volume
-                total_reduced += reduced_volume
-        current_storage -= total_reduced
+        
+        current_storage = waste_storage_capacity
+    
     return current_storage
 
 def generate_waste_for_period(
@@ -87,21 +91,16 @@ def generate_waste_for_period(
     for (waste_type, base_rate), daily_factor in zip(
         waste_generation_rates.items(), daily_factors
     ):
-        
         potential_volume = base_rate * seasonal_factor * daily_factor * efficiency
         
-        result = apply_capacity_constraints(
-            current_total=current_storage,
-            additional_amount=potential_volume,
-            capacity=current_storage + available_storage
-        )
-
-        if result.allowed_amount > 0:
+        # Capacity check: can we fit this amount?
+        if current_storage + potential_volume <= current_storage + available_storage:
+            # Yes, add it
             current_storage = update_waste_stream(
                 waste_streams, total_generated, current_storage,
-                region, waste_type, result.allowed_amount, current_time,
+                region, waste_type, potential_volume, current_time,
                 history_index, generation_history[waste_type]
             )
-            available_storage -= result.allowed_amount
+            available_storage -= potential_volume
 
     return available_storage, current_storage, history_index

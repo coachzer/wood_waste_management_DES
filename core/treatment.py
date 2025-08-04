@@ -8,6 +8,8 @@ from models.state import SimulationState
 from monitoring.waste_monitor import WasteMonitor
 from core.kanban_manager import KanbanManager
 from models.enums import InventoryPolicy
+from models.products import ProductDataManager
+from utils.capacity_utils import handle_storage_event, check_storage_capacity
 from core.treatment_utils import (
     get_transformation_efficiency,
     calculate_output_amounts,
@@ -16,29 +18,6 @@ from core.treatment_utils import (
     track_treatment_properties,
     update_utilization_metrics
 )
-from models.products import ProductDataManager
-
-from utils.capacity_utils import apply_capacity_constraints, apply_partial_update_with_constraints, handle_storage_event, check_storage_capacity
-
-class StorageDict(dict):
-    def __init__(self, owner, *args, **kwargs):
-        self.owner = owner
-        super().__init__(*args, **kwargs)
-
-    def __setitem__(self, key, value):
-        excluded_keys = {key}
-        result = apply_capacity_constraints(
-            sum(v for k, v in self.items() if k not in excluded_keys),
-            value,
-            self.owner.waste_storage_capacity
-        )
-        if result.overflow_amount > 0:
-            handle_storage_event(
-                self.owner,
-                result.overflow_amount,
-                self.owner.region
-            )
-        super().__setitem__(key, result.allowed_amount)
 
 class TreatmentOperator(OperationalEntity):
     """Treatment operator that processes waste into products"""
@@ -78,9 +57,6 @@ class TreatmentOperator(OperationalEntity):
             raise ValueError("inventory_policy must be provided")
         if self.stock_strategy is None:
             raise ValueError("stock_strategy must be provided")
-            
-        print(f"[TREATMENT OPERATOR] Using inventory policy: {self.inventory_policy}")
-        print(f"[TREATMENT OPERATOR] Using stock strategy: {self.stock_strategy}")
 
         self.kanban_manager = kanban_manager or KanbanManager()
         self.transport_manager = transport_manager or PointToPointTransport()
@@ -103,7 +79,7 @@ class TreatmentOperator(OperationalEntity):
         self.demand_history = []
         self.minimum_required_waste = 0.1
         self.production_history = []
-        self._waste_storage = StorageDict(self, dict.fromkeys(WasteType, 0.0))
+        self._waste_storage = dict.fromkeys(WasteType, 0.0)
         self.total_products_created = 0.0
         self.processed_volumes = dict.fromkeys(WasteType, 0.0)
         self.product_volumes = {
@@ -162,46 +138,28 @@ class TreatmentOperator(OperationalEntity):
 
     @waste_storage.setter
     def waste_storage(self, new_storage: Dict[WasteType, float]):
-        """Set waste storage with capacity constraints"""
+        """Set waste storage with overflow detection"""
         if not isinstance(new_storage, dict):
             return
         
-        if len(new_storage) == len(self._waste_storage):
-            self._handle_full_storage_update(new_storage)
+        # Check for overflow
+        total_new = sum(new_storage.values())
+        if total_new > self.waste_storage_capacity:
+            overflow_amount = total_new - self.waste_storage_capacity
+            handle_storage_event(
+                self, 
+                overflow_amount, 
+                self.region
+            )
+            
+            # Scale down proportionally
+            scaling_factor = self.waste_storage_capacity / total_new
+            self._waste_storage = {
+                waste_type: amount * scaling_factor
+                for waste_type, amount in new_storage.items()
+            }
         else:
-            self._handle_partial_storage_update(new_storage)
-
-    def _handle_full_storage_update(self, new_storage: Dict[WasteType, float]) -> None:
-        """Update all storage values while respecting capacity constraints"""
-        result = apply_partial_update_with_constraints(
-            current_values=self._waste_storage,
-            updates=new_storage,
-            capacity=self.waste_storage_capacity
-        )
-        if result.overflow_amount > 0:
-            handle_storage_event(
-                self,
-                result.overflow_amount,
-                self.region
-            )
-        self._waste_storage = StorageDict(self, result.scaled_values)
-
-    def _handle_partial_storage_update(self, partial_update: Dict[WasteType, float]) -> None:
-        """Update specific storage values while respecting capacity constraints"""
-        result = apply_partial_update_with_constraints(
-            current_values=self._waste_storage,
-            updates=partial_update,
-            capacity=self.waste_storage_capacity,
-            excluded_keys=set(partial_update.keys())
-        )
-        if result.overflow_amount > 0:
-            handle_storage_event(
-                self,
-                result.overflow_amount,
-                self.region
-            )
-        for waste_type, amount in result.scaled_values.items():
-            self._waste_storage[waste_type] = amount
+            self._waste_storage = dict(new_storage)
 
     def schedule_collection_requests(self):
         """Transport-safe PUSH vs PULL with startup protection"""
@@ -228,8 +186,6 @@ class TreatmentOperator(OperationalEntity):
         
         if current_total < target_inventory:
             collection_amount = target_inventory - current_total
-            print(f"[PUSH] Forecast: {forecasted_demand:.1f}, target: {target_inventory:.1f}, "
-                f"current: {current_total:.1f}, collecting: {collection_amount:.1f}")
             
             self.demand = collection_amount 
             self.trigger_collection()
@@ -244,7 +200,6 @@ class TreatmentOperator(OperationalEntity):
         
         if active_signals:
             total_immediate_demand = len(active_signals) * 2.0
-            print(f"[PULL] {len(active_signals)} kanban signals, demand: {total_immediate_demand:.1f}")
             
             self.demand = total_immediate_demand
             self.trigger_collection()
@@ -253,7 +208,6 @@ class TreatmentOperator(OperationalEntity):
         else:
             # Monitor for low inventory AND propagate signals to collectors
             for waste_type, volume in self.waste_storage.items():
-                print(f"[PULL MONITOR] {waste_type.value}: {volume:.1f} m³ in storage")
                 if volume < 2.0:  # Low threshold for PULL
                     # Add signal to our own kanban manager
                     self.kanban_manager.add_signal(
@@ -281,7 +235,6 @@ class TreatmentOperator(OperationalEntity):
                             source_id=self.name,
                             source_type="treatment" 
                         )
-                        print(f"[KANBAN PROPAGATION] Signal sent to {collector.name} for {waste_type.value}")
             
             yield self.env.timeout(1.0)
 
@@ -311,8 +264,6 @@ class TreatmentOperator(OperationalEntity):
             self.processing_capacity * 0.5
         )
 
-        print(f"[DEMAND COMPONENTS] available_capacity={available_capacity:.2f}, max_processable={max_processable:.2f}, total_unmet*0.3={total_unmet * 0.3:.2f}, cap={demand_cap:.2f}")
-
         base_demand = min(
             available_capacity,          
             max_processable,            
@@ -320,9 +271,6 @@ class TreatmentOperator(OperationalEntity):
             demand_cap                   
         )
         realistic_demand = base_demand * urgency_factor
-        
-        print(f"[REALISTIC DEMAND] Storage: {current_total:.1f}/{self.waste_storage_capacity:.1f} ({storage_utilization:.1%}), "
-            f"Available: {available_capacity:.1f}, Urgency: {urgency_factor:.1f}, Final: {realistic_demand:.1f}")
         
         return max(realistic_demand, 0.0)
             
@@ -404,7 +352,6 @@ class TreatmentOperator(OperationalEntity):
             self._handle_failures(current_time)
 
             if self.status == EntityStatus.FAILED:
-                print(f"{current_time}: Treatment operator {self.name} is currently failed, skipping processing")
                 yield self.env.timeout(self.processing_time)
                 continue
 
@@ -465,8 +412,7 @@ class TreatmentOperator(OperationalEntity):
             elif output_type == OutputType.OSB:
                 self.product_volumes["osb"] += output_amount
         else:
-            return  # Not a final product, no demand fulfillment needed
-            # print("[PROCESS DEBUG] Output is not final product, skipping fulfillment")
+            return  
         
         # Track processing costs
         track_treatment_properties(self, amount_to_process, transformation)
@@ -479,8 +425,6 @@ class TreatmentOperator(OperationalEntity):
         collected_waste = {}
         local_portion = required_waste * 0.8
         cross_region_portion = required_waste * 0.2
-
-        print(f"[REALISTIC ROUTING] {self.name}: {local_portion:.1f} m³ local, {cross_region_portion:.1f} m³ cross-region")
 
         # 1. Local collection
         remaining_local = self._collect_from_local(local_portion, input_waste_types, collected_waste)
@@ -503,12 +447,12 @@ class TreatmentOperator(OperationalEntity):
         remaining = amount_to_collect
         for collector in local_collectors:
             if remaining <= 0: break
-            print(f"[LOCAL COLLECTION] Requesting {remaining:.1f} m³ from {collector.name}")
+
             local_collected = collector.provide_waste_for_treatment(remaining, waste_types)
+
             for waste_type, amount in local_collected.items():
                 collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
                 remaining -= amount
-                print(f"[LOCAL SUCCESS] Collected {amount:.1f} m³ of {waste_type.value}")
         return remaining
 
     def _collect_from_cross_region(self, amount_to_collect: float, waste_types: set, collected_waste: dict) -> float:
@@ -522,8 +466,7 @@ class TreatmentOperator(OperationalEntity):
         remaining = amount_to_collect
         for collector in remote_collectors[:3]:
             if remaining <= 0: break
-            distance = get_distance(self.region_type, collector.region_type)
-            print(f"[CROSS-REGION] Requesting {remaining:.1f} m³ from {collector.name} ({collector.region}) - {distance:.1f}km away")
+            
             transport_collected = self._request_via_transport(collector, remaining, waste_types)
             for waste_type, amount in transport_collected.items():
                 collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
@@ -532,7 +475,6 @@ class TreatmentOperator(OperationalEntity):
 
     def _collect_with_fallback(self, amount_to_collect: float, waste_types: set, collected_waste: dict) -> float:
         """Collect waste from any available collector as a fallback."""
-        print(f"[FALLBACK] Still need {amount_to_collect:.1f} m³, trying any available collector")
         state = SimulationState.get_instance()
         all_collectors = [c for c in state.collectors if c.availability]
         
@@ -547,14 +489,12 @@ class TreatmentOperator(OperationalEntity):
 
     def _request_via_transport(self, collector, amount: float, waste_types: set) -> Dict[WasteType, float]:
         """Request waste via transport system"""
-        print(f"[TRANSPORT REQUEST] Initiating transport from {collector.region} to {self.region}")
         
         available_waste = self._get_available_waste_from_collector(collector, amount, waste_types)
         
         transported_waste = {}
         for waste_type, volume in available_waste.items():
             if volume > 0:
-                print(f"[TRANSPORT] Attempting to transport {volume:.1f} m³ of {waste_type.value}")
                 
                 # Call transport system
                 success = collector.transfer_waste_to_region(
@@ -563,7 +503,6 @@ class TreatmentOperator(OperationalEntity):
                 
                 if success:
                     transported_waste[waste_type] = volume
-                    print(f"[TRANSPORT SUCCESS] {volume:.1f} m³ {waste_type.value} scheduled for transport")
                 else:
                     print(f"[TRANSPORT FAILED] Could not schedule transport for {waste_type.value}")
         
@@ -618,12 +557,10 @@ class TreatmentOperator(OperationalEntity):
         actually_stored = self._add_to_storage(collected_waste)
         if actually_stored < sum(collected_waste.values()):
             overflow_amount = sum(collected_waste.values()) - actually_stored
-            self.waste_monitor.track_event(
-                "treatment",
-                overflow_amount,
-                "landfill", 
-                overflow_amount * self.operational_costs,  # TO BE CHANGED 
-                self.env.now,
+            handle_storage_event(
+                self, 
+                overflow_amount, 
+                self.region
             )
 
         return actually_stored, sum(collected_waste.values())
@@ -693,14 +630,14 @@ class TreatmentOperator(OperationalEntity):
 
         if overflow_amount > 0:
             handle_storage_event(
-                self,
-                overflow_amount,
+                self, 
+                overflow_amount, 
                 self.region
             )
 
         total_added = 0.0
         for waste_type, amount in allowed_additions.items():
-            self.waste_storage[waste_type] += amount
+            self._waste_storage[waste_type] += amount
             total_added += amount
 
         return total_added

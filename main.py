@@ -57,7 +57,6 @@ def main():
     results = []
     mfa_files = []
 
-    # Get available configurations
     scenarios = list_available_scenarios()
     inventory_policies = list(InventoryPolicy)
     stock_strategies = list(StockStrategy)
@@ -86,11 +85,9 @@ def main():
     print(f"\n{'='*60}")
     print("Creating scenario comparison visualizations")
     print(f"{'='*60}")
-    
     comparison = ScenarioComparison(results)
     comparison.create_storage_heatmaps()
     comparison.create_temporal_comparison()
-    comparison.create_pareto_front_plot()
     comparison.create_cost_impact_comparison()
     comparison.create_summary_dashboard()
     print("Scenario comparison visualizations saved to plots/scenario_comparison/")
@@ -102,11 +99,17 @@ def main():
     print(f"Total simulations run: {len(results)}")
     print(f"Base scenarios: {len(scenarios)}")
     print(f"Strategy combinations per base scenario: {len(inventory_policies) * len(stock_strategies)}")
-    
+
+    # Print MFA files
     print("\nMFA Visualizations Created:")
     for mfa_path in mfa_files:
         print(f"  {mfa_path}")
-
+        
+    # Print total execution time
+    print(f"\n{'='*60}")
+    print("All simulations completed successfully!")
+    print(f"Results saved to: {len(results)} simulation results")
+    print(f"Material Flow Analysis files saved to: {len(mfa_files)} MFA files")
     print(f"\nTotal execution time: {time.time() - start_time:.2f} seconds")    
 
     return results

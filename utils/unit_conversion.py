@@ -1,10 +1,3 @@
-"""
-Unit conversion utilities for waste management simulation
-
-This module handles conversions between tonnes and cubic meters (m³) 
-for different waste types based on their density characteristics.
-"""
-
 from typing import Dict, Optional
 from models.enums import WasteType
 
@@ -29,25 +22,12 @@ WASTE_DENSITIES = {
 def convert_ewc_dict_to_waste_type_dict(ewc_dict: Dict[str, str]) -> Dict[str, WasteType]:
     """
     Convert a dictionary of EWC codes to WasteType enums
-
-    Args:
-        ewc_dict: Dictionary mapping EWC codes to their descriptions
-
-    Returns:
-        Dictionary mapping EWC codes to WasteType enums
     """
     return {ewc_code: WasteType[ewc_code] for ewc_code in ewc_dict if ewc_code in WasteType.__members__}
 
 def tonnes_to_cubic_meters(tonnes: float, waste_type: WasteType) -> float:
     """
     Convert tonnes to cubic meters for a specific waste type
-    
-    Args:
-        tonnes: Amount in tonnes
-        waste_type: Type of waste (determines density)
-    
-    Returns:
-        Volume in cubic meters (m³)
     """
     if waste_type not in WASTE_DENSITIES:
         raise ValueError(f"Unknown waste type {waste_type}, cannot determine density for conversion.")
@@ -63,13 +43,6 @@ def tonnes_to_cubic_meters(tonnes: float, waste_type: WasteType) -> float:
 def cubic_meters_to_tonnes(cubic_meters: float, waste_type: WasteType) -> float:
     """
     Convert cubic meters to tonnes for a specific waste type
-    
-    Args:
-        cubic_meters: Volume in cubic meters
-        waste_type: Type of waste (determines density)
-    
-    Returns:
-        Mass in tonnes
     """
     if waste_type not in WASTE_DENSITIES:
         # Default density for unknown waste types
@@ -87,14 +60,25 @@ def cubic_meters_to_tonnes(cubic_meters: float, waste_type: WasteType) -> float:
 def get_waste_density(waste_type: WasteType) -> float:
     """
     Get density for a waste type in kg/m³
-    
-    Args:
-        waste_type: Type of waste
-    
-    Returns:
-        Density in kg/m³
     """
     return WASTE_DENSITIES.get(waste_type, 400.0)
+
+def _create_waste_type_mapping(generation_rates_tonnes: Dict[str, float]) -> Dict[str, WasteType]:
+    """Helper to create waste type mapping from EWC codes."""
+    waste_type_mapping = {}
+    for ewc_code in generation_rates_tonnes.keys():
+        try:
+            normalized_code = ewc_code.replace(" ", "_").upper()
+            # Find the corresponding WasteType enum
+            matching_waste_type = next(
+                (wt for wt in WasteType if wt.name.endswith(normalized_code)),
+                None
+            )
+            if matching_waste_type:
+                waste_type_mapping[ewc_code] = matching_waste_type
+        except Exception as e:
+            raise ValueError(f"Could not map EWC code {ewc_code}: {e}")
+    return waste_type_mapping
 
 def convert_generation_rates_to_volume(
     generation_rates_tonnes: Dict[str, float], 
@@ -102,26 +86,9 @@ def convert_generation_rates_to_volume(
 ) -> Dict[WasteType, float]:
     """
     Convert waste generation rates from tonnes/day to m³/day
-    
-    Args:
-        generation_rates_tonnes: Dict mapping EWC codes to tonnes/day
-        waste_type_mapping: Optional dict mapping EWC codes to WasteType enums.
-                          If not provided, will auto-generate from EWC codes.
-    
-    Returns:
-        Dict mapping WasteType to m³/day
     """
     if waste_type_mapping is None:
-        waste_type_mapping = {}
-        for ewc_code in generation_rates_tonnes.keys():
-            try:
-                normalized_code = ewc_code.replace(" ", "_").upper()
-                for waste_type in WasteType:
-                    if waste_type.name.endswith(normalized_code):
-                        waste_type_mapping[ewc_code] = waste_type
-                        break
-            except Exception as e:
-                raise ValueError(f"Could not map EWC code {ewc_code}: {e}")
+        waste_type_mapping = _create_waste_type_mapping(generation_rates_tonnes)
     
     volume_rates = {}
     

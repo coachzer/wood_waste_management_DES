@@ -25,11 +25,9 @@ class FacilityDataManager:
         regions_dir = self.data_dir / "regions"
         for region in RegionType:
             file_path = regions_dir / f"{region.value}.json"
-            print(f"DEBUG: Loading region {region.value} from {file_path}")
             if file_path.exists():
                 with open(file_path, "r") as f:
                     data = json.load(f)
-                    print(f"DEBUG: Loaded data keys for {region.value}: {list(data.keys()) if data else 'None'}")
                     if data:
                         self.regions[region] = RegionalFacilities.from_dict(data)
 

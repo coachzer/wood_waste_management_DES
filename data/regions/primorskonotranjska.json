@@ -3,37 +3,29 @@
         {
             "id": "gen_primorskonotranjska",
             "waste_generation_rates": {
-                "03 01 05": 80.049,
-                "03 03 01": 0.126,
-                "03 03 08": 91.672,
-                "15 01 01": 27.84,
-                "15 01 03": 13.202,
-                "17 02 01": 2.835,
-                "19 12 01": 0.596,
-                "20 01 01": 24.36,
-                "20 01 38": 2.631,
-                "20 03 07": 4.636,
-                "03 01 01": 16.0,
-                "03 01 99": 9.0,
-                "02 01 07": 6.0
+                "03 01 05": 0.247,
+                "03 03 01": 0.101,
+                "03 03 08": 62.431,
+                "15 01 01": 17.253,
+                "15 01 03": 6.659,
+                "17 02 01": 1.448,
+                "20 01 01": 9.344,
+                "20 01 38": 0.354,
+                "20 03 07": 0.676
             },
             "generation_frequency": 1,
             "waste_storage_capacity": 90000,
-            "environmental_impact": 1.0,
+            "environmental_impact": 2.5,
             "initial_stock": {
                 "03 01 05": 0.0,
                 "03 03 01": 0.0,
                 "03 03 08": 0.0,
-                "15 01 01": 1.217,
+                "15 01 01": 0.0,
                 "15 01 03": 0.0,
                 "17 02 01": 0.0,
-                "19 12 01": 0.0,
-                "20 01 01": 0.23,
+                "20 01 01": 0.0,
                 "20 01 38": 0.0,
-                "20 03 07": 0.0,
-                "03 01 01": 0.0,
-                "03 01 99": 0.0,
-                "02 01 07": 0.0
+                "20 03 07": 0.0
             }
         }
     ],
@@ -59,7 +51,7 @@
             "collection_capacity": 30000,
             "collection_frequency": 12,
             "transport_cost": 50.0,
-            "environmental_impact": 1.0,
+            "environmental_impact": 3.2,
             "efficiency": 1.0,
             "availability": true
         }
@@ -84,7 +76,7 @@
             "processing_time": 24,
             "waste_storage_capacity": 20000,
             "energy_consumption": 90.0,
-            "environmental_impact": 1.0,
+            "environmental_impact": 1.8,
             "conversion_rate": 1.0,
             "operational_costs": 180.0
         }

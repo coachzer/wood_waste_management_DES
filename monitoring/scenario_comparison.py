@@ -4,7 +4,6 @@ from .visualization.storage_visualization import create_storage_heatmaps
 from .visualization.temporal_comparison import create_temporal_comparisons
 from .visualization.summary_visualization import (
     create_cost_impact_comparison,
-    create_pareto_front_plot,
     create_summary_dashboard
 )
 
@@ -25,10 +24,6 @@ class ScenarioComparison:
     def create_cost_impact_comparison(self):
         """Create bar charts comparing cost and environmental impact breakdowns"""
         create_cost_impact_comparison(self.results, self.output_dir)
-
-    def create_pareto_front_plot(self):
-        """Create a 2D scatter plot of cost vs. environmental impact"""
-        create_pareto_front_plot(self.results, self.output_dir)
 
     def create_summary_dashboard(self):
         """Create a comprehensive dashboard with key metrics"""

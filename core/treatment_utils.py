@@ -74,7 +74,14 @@ def track_treatment_properties(treatment_operator, amount_to_process, transforma
     
     monitor.track_cost(name, "treatments", energy_cost, "energy", timestamp)
     monitor.track_cost(name, "treatments", operational_cost, "processing", timestamp)
-    monitor.track_environmental_impact(name, "treatments", environmental_impact, timestamp, "impact_cost")
+
+    monitor.track_environmental_impact(
+        entity_name=treatment_operator.name,
+        entity_type=treatment_operator.facility_type,
+        environmental_impact=environmental_impact,
+        timestamp=timestamp,
+        impact_category="impact_cost"
+    )
 
 def update_utilization_metrics(treatment_operator, amount_to_process):
     """Update utilization history for capacity management"""

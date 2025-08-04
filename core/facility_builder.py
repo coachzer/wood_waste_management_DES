@@ -8,13 +8,11 @@ from core.treatment import TreatmentOperator
 from monitoring.waste_monitor import WasteMonitor
 from utils.unit_conversion import convert_generation_rates_to_volume
 
-
 facilities = {
     'WasteGenerator': 0,
     'CollectorCompany': 0, 
     'TreatmentOperator': 0
 }
-
 
 class FacilityBuilder:
     """Focused on building individual facilities - no orchestration logic"""
@@ -35,15 +33,12 @@ class FacilityBuilder:
         """Create a single waste generator"""
         if gen_data.waste_storage_capacity <= 0:
             raise ValueError(f"Storage capacity must be positive, got {gen_data.waste_storage_capacity}")
-
-        # Convert waste generation rates from tonnes/day to m³/day
-        print(f"[GENERATOR CREATION] Converting waste generation rates for {gen_data.id}")
+        
         waste_streams = convert_generation_rates_to_volume(gen_data.waste_generation_rates)
 
         # Convert initial stock from tonnes to m³ 
         initial_stock = None
         if gen_data.initial_stock:
-            print(f"[GENERATOR CREATION] Converting initial stock for {gen_data.id}")
             initial_stock_ewc = convert_generation_rates_to_volume(gen_data.initial_stock)
             initial_stock = initial_stock_ewc
 
@@ -60,7 +55,6 @@ class FacilityBuilder:
         if inventory_policy is None:
             raise SystemExit(f"Error: No inventory policy specified for generator {gen_data.id}")
         
-        # count this generator
         facilities['WasteGenerator'] += 1
 
         return WasteGenerator(
@@ -109,7 +103,7 @@ class FacilityBuilder:
             availability=col_data.availability,
             region=region.value,
             waste_monitor=self.waste_monitor,
-            uncertainty_set=self.uncertainty_set.name,
+            uncertainty_set=self.uncertainty_set,
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
         )

@@ -27,29 +27,12 @@ class PointToPointTransport:
         self.active_transports: List[Dict] = []
         
     def request_transport(self, request: TransportRequest) -> bool:
-        print(f"[TRANSPORT DEBUG] Request received: {request.volume:.2f} m³ {request.waste_type.value}")
         self.pending_requests.append(request)
-        print(f"[TRANSPORT DEBUG] Total pending requests: {len(self.pending_requests)}")
         return True
     
     def find_available_vehicle(self, origin: RegionType) -> Optional[Dict]:
         """Find an available vehicle at or near the origin"""
         state = SimulationState.get_instance()
-        # print(f"[VEHICLE DEBUG] Looking for vehicles at {origin.value}")
-    
-        vehicle_count = 0
-        available_count = 0
-        
-        for collector in state.collectors:
-            for vehicle in collector.vehicles:
-                vehicle_count += 1
-                if not vehicle.in_transit:
-                    available_count += 1
-                    # print(f"[VEHICLE DEBUG] Available: {vehicle.id} at {vehicle.current_region.value}")
-        
-        print(f"[VEHICLE DEBUG] Total vehicles: {vehicle_count}, Available: {available_count}")
-
-        
         # Look for vehicles in the origin region first
         for collector in state.collectors:
             for vehicle in collector.vehicles:
@@ -150,8 +133,4 @@ class PointToPointTransport:
             "priority": request.priority,
             "requester_id": request.requester_id
         }
-        
-        print(f"{current_time}: Scheduled transport of {request.volume:.2f} m³ {request.waste_type.value} "
-              f"from {request.origin.value} to {request.destination.value}, ETA: {arrival_time:.2f}")
-        
         return transport
