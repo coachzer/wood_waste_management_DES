@@ -161,6 +161,85 @@ class TreatmentOperator(OperationalEntity):
         else:
             self._waste_storage = dict(new_storage)
 
+    def _apply_stock_strategy_to_demand_calculation(self, base_demand: float) -> float:
+        """Apply stock strategy considerations to demand calculation"""
+        current_total = sum(self.waste_storage.values())
+        state = SimulationState.get_instance()
+        unmet_demands = state.get_unmet_demands()
+        
+        match self.stock_strategy:
+            case StockStrategy.ON_DEMAND:
+                if any(demand > 0 for demand in unmet_demands.values()):
+                    total_active_demand = sum(unmet_demands.values())
+                    return min(base_demand, total_active_demand * 1.1) 
+                else:
+                    return 0.0
+                
+            case StockStrategy.REORDER_50:
+                reorder_point = self.waste_storage_capacity * 0.5
+                if current_total < reorder_point:
+                    shortage = reorder_point - current_total
+                    return max(base_demand, shortage)
+                else:
+                    return 0.0
+                    
+            case StockStrategy.REORDER_90:
+                reorder_point = self.waste_storage_capacity * 0.9
+                if current_total < reorder_point:
+                    shortage = reorder_point - current_total
+                    return max(base_demand, shortage)
+                else:
+                    return 0.0
+                    
+        return base_demand
+
+    def _should_trigger_collection_based_on_strategy(self) -> bool:
+        """Determine if collection should be triggered based on stock strategy"""
+        current_total = sum(self.waste_storage.values())
+        state = SimulationState.get_instance()
+        unmet_demands = state.get_unmet_demands()
+        
+        match self.stock_strategy:
+            case StockStrategy.ON_DEMAND:
+                has_active_demand = any(demand > 0 for demand in unmet_demands.values())
+                can_process_existing = current_total > self.minimum_required_waste
+                has_processing_capacity = self.current_storage < self.waste_storage_capacity * 0.3  # Keep lean
+                
+                # Collect if: (has demand) OR (can process AND staying lean)
+                return has_active_demand or (can_process_existing and has_processing_capacity)
+            
+                
+            case StockStrategy.REORDER_50:
+                reorder_point = self.waste_storage_capacity * 0.5
+                return current_total < reorder_point
+                
+            case StockStrategy.REORDER_90:
+                reorder_point = self.waste_storage_capacity * 0.9
+                return current_total < reorder_point
+                
+        return True  
+
+    def _get_reorder_quantity(self) -> float:
+        """Calculate how much to reorder based on strategy"""
+        current_total = sum(self.waste_storage.values())
+        
+        match self.stock_strategy:
+            case StockStrategy.ON_DEMAND:
+                state = SimulationState.get_instance()
+                unmet_demands = state.get_unmet_demands()
+                total_current_demand = sum(unmet_demands.values())
+                return total_current_demand * 1.2
+                
+            case StockStrategy.REORDER_50:
+                target_level = self.waste_storage_capacity * 0.5
+                return max(0, target_level - current_total)
+                
+            case StockStrategy.REORDER_90:
+                target_level = self.waste_storage_capacity * 0.9
+                return max(0, target_level - current_total)
+                
+        return self.processing_capacity 
+
     def schedule_collection_requests(self):
         """Transport-safe PUSH vs PULL with startup protection"""
         while True:
@@ -173,67 +252,158 @@ class TreatmentOperator(OperationalEntity):
                     yield from self._pull_collection_logic(current_time)
                 case _:
                     yield self.env.timeout(7)
-   
+    
     def _push_collection_logic(self):
-        """PUSH: Forecast-based with startup protection"""
+        """PUSH: Strategy-based with proper reorder point logic"""
         
-        forecasted_demand = self.calculate_realistic_demand()
+        # Check if we should collect based on strategy
+        if not self._should_trigger_collection_based_on_strategy():
+            yield self.env.timeout(self.processing_time)
+            return
         
-        # PUSH maintains higher inventory with safety stock
-        safety_multiplier = 1.2  # 20% safety stock 
-        target_inventory = forecasted_demand * safety_multiplier
-        current_total = sum(self.waste_storage.values())
+        # Calculate reorder quantity based on strategy
+        reorder_quantity = self._get_reorder_quantity()
         
-        if current_total < target_inventory:
-            collection_amount = target_inventory - current_total
-            
-            self.demand = collection_amount 
+        if reorder_quantity > 0:
+            self.demand = reorder_quantity
             self.trigger_collection()
         
-        yield self.env.timeout(7.0)  # Weekly collection cycle
+        yield self.env.timeout(self.processing_time)
 
     def _pull_collection_logic(self, current_time):
-        """PULL: Enhanced Kanban-driven with signal prioritization"""
-        
+        """PULL: Kanban-driven with strategy-appropriate signal handling"""
         active_signals = self.kanban_manager.get_signals(current_time)
         
         if active_signals:
-            sorted_signals = sorted(active_signals, 
-                                key=lambda s: (s['priority'], current_time - s['timestamp']), 
-                                reverse=True)
+            # Filter signals based on stock strategy
+            relevant_signals = self._filter_signals_by_strategy(active_signals)
             
-            total_immediate_demand = sum(signal['volume'] for signal in sorted_signals)
-            
-            self.demand = total_immediate_demand
-            self.trigger_collection()
-            
-            for signal in active_signals:
-                self.kanban_manager.acknowledge_signal(signal['id'])
-            
-            yield self.env.timeout(self.processing_time)
-            return 
-        
-        signals_created = False
-        low_stock_threshold = max(2.0, self.processing_capacity * 0.1)
-        
-        for waste_type, volume in self.waste_storage.items():
-            if volume < low_stock_threshold:
-                needed_volume = low_stock_threshold - volume
+            if relevant_signals:
+                sorted_signals = sorted(relevant_signals, 
+                                    key=lambda s: (s['priority'], current_time - s['timestamp']), 
+                                    reverse=True)
                 
-                self.kanban_manager.add_signal(
-                    waste_type=waste_type,
-                    priority=5,
-                    timestamp=current_time,
-                    volume=needed_volume,  
-                    source_id=self.name,
-                    source_type="treatment"
-                )
+                total_demand = sum(signal['volume'] for signal in sorted_signals)
+                self.demand = total_demand
+                self.trigger_collection()
                 
-                self._propagate_signal_to_collectors(waste_type, needed_volume, current_time)
-                signals_created = True
+                for signal in sorted_signals:
+                    self.kanban_manager.acknowledge_signal(signal['id'])
+                
+                yield self.env.timeout(self.processing_time)
+                return
         
-        timeout_duration = 1.0 if signals_created else self.processing_time
-        yield self.env.timeout(timeout_duration)
+        # Generate signals based on strategy
+        if self._should_trigger_collection_based_on_strategy():
+            self._generate_strategy_based_signals(current_time)
+        
+        yield self.env.timeout(self.processing_time)
+
+    def _filter_signals_by_strategy(self, signals: list) -> list:
+        """Filter incoming signals based on stock strategy"""
+        match self.stock_strategy:
+            case StockStrategy.ON_DEMAND:
+                return signals
+                
+            case StockStrategy.REORDER_50:
+                current_total = sum(self.waste_storage.values())
+                reorder_point = self.waste_storage_capacity * 0.5
+                if current_total < reorder_point:
+                    return signals
+                else:
+                    return []
+                    
+            case StockStrategy.REORDER_90:
+                current_total = sum(self.waste_storage.values())
+                reorder_point = self.waste_storage_capacity * 0.9
+                if current_total < reorder_point:
+                    return signals
+                else:
+                    return []  
+                    
+        return signals
+
+    def _generate_strategy_based_signals(self, current_time: float):
+        """Generate signals based on stock strategy requirements"""
+        match self.stock_strategy:
+            case StockStrategy.ON_DEMAND:
+                state = SimulationState.get_instance()
+                unmet_demands = state.get_unmet_demands()
+                
+                if any(demand > 0 for demand in unmet_demands.values()):
+                    for waste_type, stream_volume in self.waste_storage.items():
+                        if stream_volume < self.minimum_required_waste:
+                            needed = self._calculate_waste_needed_for_demand(waste_type)
+                            if needed > 0:
+                                self._create_collection_signal(waste_type, needed, current_time, priority=9)
+                
+            case StockStrategy.REORDER_50:
+                reorder_point = self.waste_storage_capacity * 0.5
+                current_total = sum(self.waste_storage.values())
+                
+                if current_total < reorder_point:
+                    shortage = reorder_point - current_total
+                    self._create_reorder_signals(shortage, current_time, priority=5)
+                    
+            case StockStrategy.REORDER_90:
+                reorder_point = self.waste_storage_capacity * 0.9
+                current_total = sum(self.waste_storage.values())
+                
+                if current_total < reorder_point:
+                    shortage = reorder_point - current_total
+                    self._create_reorder_signals(shortage, current_time, priority=3)
+
+    def _calculate_waste_needed_for_demand(self, waste_type: WasteType) -> float:
+        """Calculate how much of a specific waste type is needed to fulfill current demand"""
+        state = SimulationState.get_instance()
+        unmet_demands = state.get_unmet_demands()
+        
+        # Find transformations that use this waste type
+        relevant_transformations = [
+            (key, transform) for key, transform in self.transformations.items()
+            if key[0] == waste_type
+        ]
+        
+        if not relevant_transformations:
+            return 0.0
+        
+        total_needed = 0.0
+        for (input_type, output_type), transformation in relevant_transformations:
+            output_key = output_type.value.lower().replace('_', '_')
+            if output_key in unmet_demands and unmet_demands[output_key] > 0:
+                # Calculate waste needed to produce this demand
+                efficiency = transformation.conversion_efficiency
+                waste_needed = unmet_demands[output_key] / efficiency
+                total_needed += waste_needed
+        
+        return total_needed
+
+    def _create_collection_signal(self, waste_type: WasteType, volume: float, timestamp: float, priority: int):
+        """Create a collection signal for specific waste type and volume"""
+        self.kanban_manager.add_signal(
+            waste_type=waste_type,
+            priority=priority,
+            timestamp=timestamp,
+            volume=volume,
+            source_id=self.name,
+            source_type="treatment"
+        )
+        
+        self._propagate_signal_to_collectors(waste_type, volume, timestamp)
+
+    def _create_reorder_signals(self, total_shortage: float, timestamp: float, priority: int):
+        """Create reorder signals distributed across waste types"""
+        input_waste_types = {key[0] for key in self.transformations.keys()}
+        
+        if not input_waste_types:
+            return
+        
+        shortage_per_type = total_shortage / len(input_waste_types)
+        
+        for waste_type in input_waste_types:
+            if shortage_per_type > 0:
+                self._create_collection_signal(waste_type, shortage_per_type, timestamp, priority)
+    
 
     def _propagate_signal_to_collectors(self, waste_type, needed_volume, current_time):
         """Propagate signals to collectors with availability checking"""
@@ -262,40 +432,30 @@ class TreatmentOperator(OperationalEntity):
                 )
 
     def calculate_realistic_demand(self) -> float:
-        """Calculate realistic demand based on processing capacity and storage constraints"""
-        
+        """Calculate realistic demand based on stock strategy"""
+        # Base calculation remains the same
         current_total = sum(self.waste_storage.values())
-        storage_utilization = current_total / self.waste_storage_capacity
         
-        available_capacity = (self.waste_storage_capacity - current_total) * 0.8  # 80% fill max
-        
-        max_processable = self.processing_capacity * 3.0  # Max 3 processing cycles worth
+        available_capacity = (self.waste_storage_capacity - current_total) * 0.8
+        max_processable = self.processing_capacity * 3.0
         
         state = SimulationState.get_instance()
         unmet_demands = state.get_unmet_demands()
         total_unmet = sum(unmet_demands.values())
         
-        if storage_utilization > 0.8:  
-            urgency_factor = 0.3
-        elif storage_utilization > 0.5:  
-            urgency_factor = 0.7
-        else:  
-            urgency_factor = 1.0
-
-        demand_cap = min(
-            self.waste_storage_capacity * 0.1,
-            self.processing_capacity * 0.5
-        )
-
-        base_demand = min(
-            available_capacity,          
-            max_processable,            
-            total_unmet * 0.3,          
-            demand_cap                   
-        )
-        realistic_demand = base_demand * urgency_factor
+        if not self._should_trigger_collection_based_on_strategy():
+            return 0.0  # Strategy says don't collect
         
-        return max(realistic_demand, 0.0)
+        # Calculate base demand
+        base_demand = min(
+            available_capacity,
+            max_processable,
+            total_unmet * 0.3,
+            self.waste_storage_capacity * 0.1
+        )
+        strategy_demand = self._apply_stock_strategy_to_demand_calculation(base_demand)
+        
+        return max(strategy_demand, 0.0)
             
     def _get_prioritized_transformations(self):
         """Get transformations sorted by priority based on current demands and system state"""
