@@ -30,7 +30,7 @@ _demand_data = load_json("data/demand.json")
 @dataclass
 class CostParams:
     """Cost parameters"""
-    landfill_per_m3: float = 50.0       # Cost per m³ landfilled
+    landfill_per_m3: float = 20.4       # Cost per m³ landfilled ($46/tonne) (lebanon paper)
     expansion_cost_per_m3: float = 100.0  # Cost to expand storage by 1m³
 
 DEFAULT_COSTS = CostParams()
