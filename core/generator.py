@@ -18,6 +18,7 @@ class WasteGenerator(OperationalEntity):
         generation_frequency,
         waste_storage_capacity,
         environmental_impact,
+        efficiency,
         region: str,
         uncertainty_set = None,
         initial_stock: Optional[Dict[WasteType, float]] = None,
@@ -50,6 +51,7 @@ class WasteGenerator(OperationalEntity):
         self.waste_storage_capacity = waste_storage_capacity
         self.uncertainty_set = uncertainty_set
         self.environmental_impact = environmental_impact
+        self.efficiency = efficiency
         self.current_storage = sum(initial_stock.values() if initial_stock else [0])
         self.last_collected = env.now
         self.region = region
@@ -107,8 +109,8 @@ class WasteGenerator(OperationalEntity):
             self.waste_generation_rates = {wt: r * 0.1 for wt, r in self._original_rates.items()}
         elif self.status == EntityStatus.RECOVERING:
             if hasattr(self, '_original_rates'):
-                efficiency = self.get_operational_efficiency()
-                self.waste_generation_rates = {wt: r * efficiency for wt, r in self._original_rates.items()}
+                self.efficiency = self.get_operational_efficiency()
+                self.waste_generation_rates = {wt: r * self.efficiency for wt, r in self._original_rates.items()}
         elif self.status == EntityStatus.OPERATIONAL:
             if hasattr(self, '_original_rates'):
                 self.waste_generation_rates = self._original_rates.copy()
@@ -146,8 +148,7 @@ class WasteGenerator(OperationalEntity):
     def _process_on_demand(self, current_time, seasonal_factor):
         """ON_DEMAND: Generate normally, discard excess immediately if no demand"""
         kanban_signals = self.kanban_manager.get_signals(self.env.now)
-        
-        efficiency = self.get_operational_efficiency()
+
         available_storage = self.waste_storage_capacity - self.current_storage
         
         available_storage, self.current_storage, self.history_index = generate_waste_for_period(
@@ -155,25 +156,21 @@ class WasteGenerator(OperationalEntity):
             self.waste_generation_rates, self.region, self.waste_streams,
             self.total_generated, self.generation_history, self.history_index,
             self.current_storage, self.rng, seasonal_factor, available_storage,
-            current_time, efficiency
+            current_time, self.efficiency
         )
 
         if not kanban_signals: # ON_DEMAND
             if self.current_storage > self.waste_storage_capacity:
-                print(f"_process_on_demand - [{self.name}] Storage before handle_overflow: {self.current_storage:.2f}")
                 self.current_storage = handle_overflow(
                     self.current_storage, self.waste_storage_capacity,
                     self.waste_streams, 
                     self.region, 
                     self
                 )
-                print(f"_process_on_demand - [{self.name}] Storage after handle_overflow: {self.current_storage:.2f}")
             
-
     def _process_reorder(self, current_time, seasonal_factor, threshold_ratio, priority):
         threshold = self.waste_storage_capacity * threshold_ratio
         
-        efficiency = self.get_operational_efficiency()
         available_storage = self.waste_storage_capacity - self.current_storage
         
         available_storage, self.current_storage, self.history_index = generate_waste_for_period(
@@ -190,21 +187,19 @@ class WasteGenerator(OperationalEntity):
             self.rng, 
             seasonal_factor, available_storage,
             current_time, 
-            efficiency
+            self.efficiency
         )
 
         if self.current_storage >= threshold:
             self._kanban_signal(current_time, priority)
         
         if self.current_storage > self.waste_storage_capacity:
-            print(f"_process_reorder - [{self.name}] Storage before handle_overflow: {self.current_storage:.2f}")
             self.current_storage = handle_overflow(
                 self.current_storage, self.waste_storage_capacity,
                 self.waste_streams, 
                 self.region, 
                 self
             )
-            print(f"_process_reorder - [{self.name}] Storage after handle_overflow: {self.current_storage:.2f}")
 
     def _kanban_signal(self, current_time, priority):
         active_waste_types = [

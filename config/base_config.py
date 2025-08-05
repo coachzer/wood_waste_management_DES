@@ -1,20 +1,16 @@
-# Note: Actual waste generation rates come from regional JSON files
-# This only provides the uncertainty/variability factors
-
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Dict, Tuple, List
 from config.constants import SIMULATION_DURATION
-from models.enums import WasteType, OutputType, InventoryPolicy, StockStrategy
+from models.enums import InventoryPolicy, StockStrategy
 from models.data_classes import FailureConfig
 from utils.helpers import (
-    load_json, validate_config, validate_all_numeric_positive
+    validate_config, validate_all_numeric_positive
 )
 
 @dataclass
 class UncertaintySet:
     """Uncertainty set - only variability parameters"""
-    # Required fields first
     name: str
     collection_efficiency: Tuple[float, float]
     treatment_conversion: Tuple[float, float]
@@ -23,9 +19,6 @@ class UncertaintySet:
     collector_failure: FailureConfig
     treatment_failure: FailureConfig
     waste_generation_variability: float = 0.2      # ±20% variation on regional rates
-    
-# Load demand data from JSON
-_demand_data = load_json("data/demand.json")
 
 @dataclass
 class CostParams:
@@ -69,12 +62,6 @@ TIME_PERIODS = {
     "quarter_2": (91, 181),   # Q2: Apr-Jun (91 days) 
     "quarter_3": (182, 272),  # Q3: Jul-Sep (91 days)
     "quarter_4": (273, 364),  # Q4: Oct-Dec (92 days)
-}
-
-MONTHLY_DEMAND = {
-    OutputType.MDF: _demand_data["national_demand"]["mdf"],
-    OutputType.PARTICLE_BOARD: _demand_data["national_demand"]["particle_board"],
-    OutputType.OSB: _demand_data["national_demand"]["osb"]
 }
 
 LOW_FAILURE = FailureConfig(

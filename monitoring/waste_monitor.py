@@ -53,6 +53,7 @@ class WasteMonitor:
             self.generation_history[generator.name] = {
                 "timestamps": [],
                 "volumes": {},
+                "efficiency": [],
                 "total_generated": {},
                 "storage_utilization": [],
                 "regions": [],
@@ -86,6 +87,8 @@ class WasteMonitor:
             history["total_generated"][waste_type].append(
                 generator.total_generated[waste_type]
             )
+            
+        history["efficiency"].append(generator.efficiency)
 
         utilization = (generator.current_storage / generator.waste_storage_capacity) * 100
         history["storage_utilization"].append(utilization)

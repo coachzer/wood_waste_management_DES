@@ -21,6 +21,7 @@
             "generation_frequency": 1,
             "waste_storage_capacity": 120000,
             "environmental_impact": 2.5,
+            "efficiency": 1.0,
             "initial_stock": {
                 "02 01 07": 0.0,
                 "03 01 01": 0.0,

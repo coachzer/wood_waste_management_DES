@@ -1,5 +1,6 @@
 import numpy as np
 from typing import Dict, Optional
+from core.abc_analysis import BiogenicCarbonABCAnalyzer
 from core.transport_manager import PointToPointTransport, TransportPriority, TransportRequest
 from models.data_classes import WasteTransformation, OperationalEntity, ProductStorage
 from models.distances import get_distance
@@ -42,7 +43,9 @@ class TreatmentOperator(OperationalEntity):
         scenario_config=None,
         stock_strategy: StockStrategy = None,
         inventory_policy: InventoryPolicy = None,
-        transport_manager: Optional[PointToPointTransport] = None
+        transport_manager: Optional[PointToPointTransport] = None,
+        enable_abc_prioritization: bool = True, 
+        abc_demand_config_path: str = "demand.json"
     ):
         super().__init__()
 
@@ -113,6 +116,12 @@ class TreatmentOperator(OperationalEntity):
         # Transformations
         self.transformations = transformations or self._default_transformations()
 
+        self.enable_abc_prioritization = enable_abc_prioritization
+        self.abc_priority_map = {}
+    
+        if self.enable_abc_prioritization:
+            self._initialize_abc_priorities(abc_demand_config_path)
+
         # Start processes
         self.process = env.process(self.run_facility())
         env.process(self.schedule_collection_requests())
@@ -142,7 +151,6 @@ class TreatmentOperator(OperationalEntity):
         if not isinstance(new_storage, dict):
             return
         
-        # Check for overflow
         total_new = sum(new_storage.values())
         if total_new > self.waste_storage_capacity:
             overflow_amount = total_new - self.waste_storage_capacity
@@ -152,7 +160,6 @@ class TreatmentOperator(OperationalEntity):
                 self.region
             )
             
-            # Scale down proportionally
             scaling_factor = self.waste_storage_capacity / total_new
             self._waste_storage = {
                 waste_type: amount * scaling_factor
@@ -160,6 +167,27 @@ class TreatmentOperator(OperationalEntity):
             }
         else:
             self._waste_storage = dict(new_storage)
+
+    def _initialize_abc_priorities(self, config_path: str):
+        """Initialize ABC priorities - reuse existing ABCAnalyzer"""
+        try:
+            print(f"[{self.name}] Initializing ABC priorities from {config_path}")
+            analyzer = BiogenicCarbonABCAnalyzer(config_path)
+            classifications = analyzer.perform_abc_classification()
+
+            self.abc_priority_map = {
+                item.product_type: item.priority_weight 
+                for item in classifications
+            }
+            print(f"[{self.name}] ABC priorities loaded: {self.abc_priority_map}")
+            
+        except Exception as e:
+            print(f"[{self.name}] ABC initialization failed: {e}, using default priorities")
+            self.abc_priority_map = {
+                "osb": 1.0,           
+                "particle_board": 0.7,   
+                "mdf": 0.4            
+            }
 
     def _apply_stock_strategy_to_demand_calculation(self, base_demand: float) -> float:
         """Apply stock strategy considerations to demand calculation"""
@@ -461,31 +489,50 @@ class TreatmentOperator(OperationalEntity):
         """Get transformations sorted by priority based on current demands and system state"""
         state = SimulationState.get_instance()
         unmet_demands = state.get_unmet_demands()
+
+        if not self.enable_abc_prioritization:
+            return self._get_default_prioritized_transformations(unmet_demands)
         
-        # Check if any demands are still unmet
+        transformation_scores = []
+        
+        for (input_type, output_type), transformation in self.transformations.items():
+            product_key = output_type.value.lower().replace('_', '_')
+            abc_priority = self.abc_priority_map.get(product_key, 0.5)
+            
+            current_demand = unmet_demands.get(product_key, 0)
+            has_demand = current_demand > 0
+            
+            # Scoring: ABC priority + demand urgency + efficiency + input
+            demand_score = min(current_demand / 5000, 1.0) if has_demand else 0.1
+            efficiency_score = get_transformation_efficiency(self, transformation)
+            input_availability = min(self.waste_storage.get(input_type, 0) / 100, 1.0)
+            
+            total_score = (abc_priority * 2.0) + demand_score + efficiency_score + input_availability
+            
+            transformation_scores.append(((input_type, output_type), transformation, total_score))
+        
+        transformation_scores.sort(key=lambda x: x[2], reverse=True)
+        return [(key, transform) for key, transform, _ in transformation_scores]
+        
+    def _get_default_prioritized_transformations(self, unmet_demands):
+        """Original logic (keep unchanged for fallback)"""
         if any(demand > 0 for demand in unmet_demands.values()):
-            # Still have unmet demands - prioritize based on remaining demand
             product_demands = {
                 OutputType.MDF: unmet_demands.get('mdf', 0),
                 OutputType.PARTICLE_BOARD: unmet_demands.get('particle_board', 0),
                 OutputType.OSB: unmet_demands.get('osb', 0)
             }
             
-            # Sort transformations by unmet demand and efficiency
             return sorted(
                 self.transformations.items(),
                 key=lambda x, demands=product_demands: (
-                    # Primary sort: Has unmet demand
                     demands.get(x[0][1], 0) > 0,
-                    # Secondary sort: Amount of unmet demand
                     demands.get(x[0][1], 0),
-                    # Tertiary sort: Efficiency
                     get_transformation_efficiency(self, x[1])
                 ),
                 reverse=True
             )
         else:
-            # All demands met - sort based on transformation efficiency
             return sorted(
                 self.transformations.items(),
                 key=lambda x: get_transformation_efficiency(self, x[1]),
@@ -567,25 +614,21 @@ class TreatmentOperator(OperationalEntity):
         update_waste_storage(self, input_type, output_type, amount_to_process, output_amount)
         
         if output_type in final_products:
-            # First, fulfill demand using product_to_sell storage
             total_to_sell_stored = sum(self.product_to_sell.current_storage.values())
             to_sell_capacity = self.product_to_sell.capacity
             addable_to_sell = min(output_amount, to_sell_capacity - total_to_sell_stored)
             overflow_after_sell = output_amount - addable_to_sell
             self.product_to_sell.current_storage[output_type] += addable_to_sell
 
-            # Fulfill demand and track in simulation state
             if addable_to_sell > 0:
                 fulfill_demand(self, output_type, addable_to_sell)
 
-            # Any excess product goes to product_storage (no buyer)
             if overflow_after_sell > 0:
                 total_stored = sum(self.product_storage.current_storage.values())
                 storage_capacity = self.product_storage.capacity
                 addable_to_storage = min(overflow_after_sell, storage_capacity - total_stored)
                 self.product_storage.current_storage[output_type] += addable_to_storage
 
-            # Track product volumes
             if output_type == OutputType.MDF:
                 self.product_volumes["mdf"] += output_amount # m³
             elif output_type == OutputType.PARTICLE_BOARD:

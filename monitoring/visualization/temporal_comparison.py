@@ -21,6 +21,7 @@ def create_temporal_comparisons(results: List[Dict], output_dir: str):
     _create_generation_comparison(results, os.path.join(temp_dir, "generation"))
     _create_collection_comparison(results, os.path.join(temp_dir, "collection"))
     _create_collection_efficiency_comparison(results, os.path.join(temp_dir, "collection"))
+    _create_generation_efficiency_comparison(results, os.path.join(temp_dir, "generation"))
     _create_processing_comparison(results, os.path.join(temp_dir, "processing"))
     _create_cost_comparison(results, os.path.join(temp_dir, "cost"))
     _create_environmental_impact_comparison(results, env_dir)
@@ -29,254 +30,319 @@ def create_temporal_comparisons(results: List[Dict], output_dir: str):
     _create_efficiency_frontier_analysis(results, pareto_dir)
     _create_entity_status_view(results, temp_dir)
 
+def create_output_directory(output_dir: str):
+    """Create output directory if it doesn't exist"""
+    os.makedirs(output_dir, exist_ok=True)
+
+def save_plot_files(fig: go.Figure, output_dir: str, filename: str, print_message: str = None):
+    """Save both HTML and PNG versions of a plot"""
+    create_output_directory(output_dir)
+    
+    fig.write_html(f"{output_dir}/{filename}.html")
+    
+    fig.write_image(f"{output_dir}/{filename}.png", scale=2)
+    
+    if print_message:
+        print(print_message)
+    else:
+        print(f"Plot saved: {filename}")
+
+def extract_total_costs_from_monitor_data(monitor_data: Dict) -> Dict[str, float]:
+    """Extract and aggregate total costs from all history sources in monitor data"""
+    all_costs_by_time = {}
+    
+    def process_cost_data(history_dict: Dict, cost_key: str = 'total_costs'):
+        for entity_data in history_dict.values():
+            timestamps = entity_data.get('timestamps', [])
+            if cost_key == 'operational.total_costs':
+                operational = entity_data.get('operational', {})
+                total_costs = operational.get('total_costs', [])
+            else:
+                total_costs = entity_data.get(cost_key, [])
+            
+            for i, timestamp in enumerate(timestamps):
+                if i < len(total_costs):
+                    all_costs_by_time[timestamp] = all_costs_by_time.get(timestamp, 0) + total_costs[i]
+    
+    process_cost_data(monitor_data.get('generation_history', {}))
+    process_cost_data(monitor_data.get('collection_history', {}))
+    process_cost_data(monitor_data.get('processing_history', {}), 'operational.total_costs')
+    
+    event_history = monitor_data.get('event_history', {})
+    if 'system_events' in event_history:
+        event_costs = event_history['system_events'].get('total_costs', [])
+        if event_costs:
+            event_timestamps = event_history['system_events'].get('timestamps', [])
+            for i, timestamp in enumerate(event_timestamps):
+                if i < len(event_costs):
+                    all_costs_by_time[timestamp] = all_costs_by_time.get(timestamp, 0) + event_costs[i]
+    
+    return all_costs_by_time
+
+def calculate_cumulative_data(data_by_time: Dict[str, float]) -> tuple:
+    """Calculate cumulative data from timestamped values"""
+    if not data_by_time:
+        return [], []
+    
+    timestamps = sorted(data_by_time.keys())
+    values = [data_by_time[t] for t in timestamps]
+    cumulative_values = np.cumsum(values)
+    
+    return timestamps, cumulative_values
+
+def add_scenario_trace(fig: go.Figure, x_data: list, y_data: list, scenario_name: str, **trace_kwargs):
+    """Add a trace for a scenario to a plotly figure"""
+    default_kwargs = {
+        'mode': 'lines',
+        'line': {'width': 2},
+        'name': scenario_name
+    }
+    default_kwargs.update(trace_kwargs)
+    
+    fig.add_trace(go.Scatter(x=x_data, y=y_data, **default_kwargs))
+
+def create_basic_time_series_plot(title: str, x_title: str, y_title: str) -> go.Figure:
+    """Create a basic time series plot with standard layout"""
+    fig = go.Figure()
+    fig.update_layout(
+        title=title,
+        xaxis_title=x_title,
+        yaxis_title=y_title,
+        hovermode='x unified'
+    )
+    return fig
+
+def extract_environmental_impacts_by_category(monitor_data: Dict, category: str) -> Dict[str, float]:
+    """Extract environmental impacts for a specific category from monitor data"""
+    all_impacts_by_time = {}
+    environmental_history = monitor_data.get('environmental_history', {})
+    
+    for entity_data in environmental_history.values():
+        timestamps = entity_data.get('timestamps', [])
+        impacts = entity_data.get(category, [])
+        
+        for i, timestamp in enumerate(timestamps):
+            if i < len(impacts):
+                all_impacts_by_time[timestamp] = all_impacts_by_time.get(timestamp, 0) + impacts[i]
+    
+    return all_impacts_by_time
+
+def calculate_total_environmental_impact(monitor_data: Dict) -> float:
+    """Calculate total environmental impact across all categories and entities"""
+    total_impact = 0
+    environmental_history = monitor_data.get('environmental_history', {})
+    
+    for entity_data in environmental_history.values():
+        total_impacts = entity_data.get('total_impact', [])
+        if total_impacts:
+            total_impact += sum(total_impacts)
+    
+    return total_impact
+
+def get_scenario_colors_and_symbols():
+    """Return standard color and symbol mappings for scenarios"""
+    colors = {
+        'push': '#1f77b4',  # Blue
+        'pull': '#ff7f0e'   # Orange
+    }
+    
+    symbols = {
+        'on_demand': 'circle',
+        'reorder_50': 'square', 
+        'reorder_90': 'diamond'
+    }
+    
+    return colors, symbols
+
+def create_scenario_label(result: Dict) -> str:
+    """Create a standardized scenario label from result data"""
+    return f"{result['inventory_policy']} | {result['stock_strategy']}"
+
+def group_results_by_scenario_and_policy(results: List[Dict]) -> Dict:
+    """Group results by base scenario name and inventory policy"""
+    grouped_results = {}
+    
+    for result in results:
+        scenario_name = result['scenario_name']
+        
+        if '_push_' in scenario_name:
+            base_scenario = scenario_name.split('_push_')[0]
+        elif '_pull_' in scenario_name:
+            base_scenario = scenario_name.split('_pull_')[0]
+        else:
+            base_scenario = scenario_name
+        
+        key = (base_scenario, result['inventory_policy'])
+        if key not in grouped_results:
+            grouped_results[key] = []
+        grouped_results[key].append(result)
+    
+    for key in grouped_results:
+        grouped_results[key].sort(key=lambda x: x['stock_strategy'])
+    
+    return grouped_results
+
 def _create_generation_comparison(results: List[Dict], output_dir: str):
     """Compare waste generation across scenarios over time"""
-    os.makedirs(output_dir, exist_ok=True)  
-    fig = go.Figure()
+    fig = create_basic_time_series_plot(
+        "Total Waste Generation Over Time - Scenario Comparison",
+        "Time",
+        "Cumulative Volume (m³)"
+    )
+    
+    for result in results:
+        monitor_data = result['monitor_data']
+        history = monitor_data['generation_history']
+        
+        total_generation = aggregate_generation_data(history)
+        if total_generation['timestamps']:
+            add_scenario_trace(
+                fig, 
+                total_generation['timestamps'],
+                total_generation['volumes'], 
+                result['scenario_name']
+            )
+    
+    save_plot_files(fig, output_dir, "generation_comparison", "Generation comparison plot saved")
+
+def _create_collection_comparison(results: List[Dict], output_dir: str):
+    """Compare collection volumes across scenarios"""
+    fig = create_basic_time_series_plot(
+        "Collection Volumes Over Time - Scenario Comparison",
+        "Time",
+        "Total Collected Volume"
+    )
+    
+    for result in results:
+        monitor_data = result['monitor_data']
+        history = monitor_data['collection_history']
+        
+        aggregated_data = aggregate_collection_data(history)
+        if aggregated_data['timestamps']:
+            add_scenario_trace(
+                fig,
+                aggregated_data['timestamps'],
+                aggregated_data['volumes'],
+                result['scenario_name']
+            )
+    
+    save_plot_files(fig, output_dir, "collection_comparison", "Collection comparison plot saved")
+
+def _create_collection_efficiency_comparison(results: List[Dict], output_dir: str):
+    """Compare collection efficiency across scenarios"""
+    fig = create_basic_time_series_plot(
+        "Collection Efficiency Over Time - Scenario Comparison",
+        "Time",
+        "Average Efficiency (%)"
+    )
+    
+    for result in results:
+        monitor_data = result['monitor_data']
+        history = monitor_data['collection_history']
+        
+        efficiency_data = calculate_average_efficiency(history)
+        if efficiency_data:
+            add_scenario_trace(
+                fig,
+                efficiency_data['timestamps'],
+                efficiency_data['efficiency'],
+                result['scenario_name']
+            )
+    
+    save_plot_files(fig, output_dir, "collection_efficiency_comparison", "Collection efficiency comparison plot saved")
+
+def _create_generation_efficiency_comparison(results: List[Dict], output_dir: str):
+    """Compare generation efficiency across scenarios"""
+    fig = create_basic_time_series_plot(
+        "Generation Efficiency Over Time - Scenario Comparison",
+        "Time",
+        "Average Efficiency (%)"
+    )
     
     for result in results:
         monitor_data = result['monitor_data']
         history = monitor_data['generation_history']
 
-        total_generation = aggregate_generation_data(history)
-        if total_generation['timestamps']:
-            fig.add_trace(go.Scatter(
-                x=total_generation['timestamps'],
-                y=total_generation['volumes'],
-                mode='lines',
-                name=f"{result['scenario_name']}",
-                line={'width': 2}
-            ))
-    
-    fig.update_layout(
-        title="Total Waste Generation Over Time - Scenario Comparison",
-        xaxis_title="Time",
-        yaxis_title="Cumulative Volume (m³)",
-        hovermode='x unified'
-    )
-    
-    fig.write_html(f"{output_dir}/generation_comparison.html")
-
-    png_path = "generation_comparison.png"
-    fig.write_image(f"{output_dir}/{png_path}", scale=2)
-    print(f"PNG version saved to {png_path}")
-
-def _create_collection_comparison(results: List[Dict], output_dir: str):
-    """Compare collection volumes across scenarios"""
-    os.makedirs(output_dir, exist_ok=True)
-    fig = go.Figure()
-    
-    for result in results:
-        monitor_data = result['monitor_data']
-        history = monitor_data['collection_history']
-
-        aggregated_data = aggregate_collection_data(history)
-        if aggregated_data['timestamps']:
-            fig.add_trace(go.Scatter(
-                x=aggregated_data['timestamps'],
-                y=aggregated_data['volumes'],
-                mode='lines',
-                name=f"{result['scenario_name']}",
-                line={'width': 2}
-            ))
-    
-    fig.update_layout(
-        title="Collection Volumes Over Time - Scenario Comparison",
-        xaxis_title="Time",
-        yaxis_title="Total Collected Volume",
-        hovermode='x unified'
-    )
-    
-    fig.write_html(f"{output_dir}/collection_comparison.html")
-
-    png_path = "collection_comparison.png"
-    fig.write_image(f"{output_dir}/{png_path}", scale=2)
-    print(f"PNG version saved to {png_path}")
-
-def _create_collection_efficiency_comparison(results: List[Dict], output_dir: str):
-    """Compare collection efficiency across scenarios"""
-    os.makedirs(output_dir, exist_ok=True)
-    fig = go.Figure()
-    
-    for result in results:
-        monitor_data = result['monitor_data']
-        history = monitor_data['collection_history']
-
         efficiency_data = calculate_average_efficiency(history)
         if efficiency_data:
-            fig.add_trace(go.Scatter(
-                x=efficiency_data['timestamps'],
-                y=efficiency_data['efficiency'],
-                mode='lines',
-                name=f"{result['scenario_name']}",
-                line={'width': 2}
-            ))  
-    fig.update_layout(
-        title="Collection Efficiency Over Time - Scenario Comparison",
-        xaxis_title="Time",
-        yaxis_title="Average Efficiency (%)",
-        hovermode='x unified'
-    )
-
-    fig.write_html(f"{output_dir}/collection_efficiency_comparison.html")
-
-    png_path = "collection_efficiency_comparison.png"
-    fig.write_image(f"{output_dir}/{png_path}", scale=2)
-    print(f"PNG version saved to {png_path}")
+            add_scenario_trace(
+                fig,
+                efficiency_data['timestamps'],
+                efficiency_data['efficiency'],
+                result['scenario_name']
+            )
+    
+    save_plot_files(fig, output_dir, "generation_efficiency_comparison", "Generation efficiency comparison plot saved")
 
 def _create_processing_comparison(results: List[Dict], output_dir: str):
     """Compare processing throughput across scenarios"""
-    os.makedirs(output_dir, exist_ok=True)
-    fig = go.Figure()
+    fig = create_basic_time_series_plot(
+        "Storage Throughput Over Time - Scenario Comparison",
+        "Time",
+        "Cumulative Storage Volume (m³)"
+    )
     
     for result in results:
         monitor_data = result['monitor_data']
         history = monitor_data['processing_history']
-
+        
         throughput = calculate_storage_levels(history)
         if throughput['timestamps']:
-            fig.add_trace(go.Scatter(
-                x=throughput['timestamps'],
-                y=throughput['storage'],
-                mode='lines',
-                name=f"{result['scenario_name']}",
-                line={'width': 2}
-            ))
+            add_scenario_trace(
+                fig,
+                throughput['timestamps'],
+                throughput['storage'],
+                result['scenario_name']
+            )
     
-    fig.update_layout(
-        title="Storage Throughput Over Time - Scenario Comparison",
-        xaxis_title="Time",
-        yaxis_title="Cumulative Storage Volume (m³)",
-        hovermode='x unified'
-    )
-    
-    fig.write_html(f"{output_dir}/processing_comparison.html")
-
-    png_path = "processing_comparison.png"
-    fig.write_image(f"{output_dir}/{png_path}", scale=2)
-    print(f"PNG version saved to {png_path}")
+    save_plot_files(fig, output_dir, "processing_comparison", "Processing comparison plot saved")
 
 def _create_cost_comparison(results: List[Dict], output_dir: str):
     """Compare cumulative costs across scenarios"""
-    os.makedirs(output_dir, exist_ok=True)
-    fig = go.Figure()
+    fig = create_basic_time_series_plot(
+        "Cumulative Costs Over Time - Scenario Comparison",
+        "Time", 
+        "Cumulative Cost"
+    )
     
     for result in results:
         monitor_data = result['monitor_data']
+        all_costs_by_time = extract_total_costs_from_monitor_data(monitor_data)
         
-        # Collect all timestamps and costs from embedded tracking
-        all_costs_by_time = {}
-        
-        # From generation history
-        for entity_data in monitor_data.get('generation_history', {}).values():
-            timestamps = entity_data.get('timestamps', [])
-            total_costs = entity_data.get('total_costs', [])
-            for i, timestamp in enumerate(timestamps):
-                if i < len(total_costs):
-                    all_costs_by_time[timestamp] = all_costs_by_time.get(timestamp, 0) + total_costs[i]
-        
-        # From collection history  
-        for entity_data in monitor_data.get('collection_history', {}).values():
-            timestamps = entity_data.get('timestamps', [])
-            total_costs = entity_data.get('total_costs', [])
-            for i, timestamp in enumerate(timestamps):
-                if i < len(total_costs):
-                    all_costs_by_time[timestamp] = all_costs_by_time.get(timestamp, 0) + total_costs[i]
-        
-        # From processing history
-        for entity_data in monitor_data.get('processing_history', {}).values():
-            timestamps = entity_data.get('timestamps', [])
-            operational = entity_data.get('operational', {})
-            total_costs = operational.get('total_costs', [])
-            for i, timestamp in enumerate(timestamps):
-                if i < len(total_costs):
-                    all_costs_by_time[timestamp] = all_costs_by_time.get(timestamp, 0) + total_costs[i]
-        
-        # Sort by timestamp and calculate cumulative
         if all_costs_by_time:
-            timestamps = sorted(all_costs_by_time.keys())
-            costs = [all_costs_by_time[t] for t in timestamps]
-            cumulative_costs = np.cumsum(costs)
-            
-            fig.add_trace(go.Scatter(
-                x=timestamps,
-                y=cumulative_costs,
-                mode='lines',
-                name=f"{result['scenario_name']}",
-                line={'width': 2}
-            ))
-
-    fig.update_layout(
-        title="Cumulative Costs Over Time - Scenario Comparison",
-        xaxis_title="Time",
-        yaxis_title="Cumulative Cost",
-        hovermode='x unified'
-    )
-    fig.write_html(f"{output_dir}/cost_comparison.html")
-
-    png_path = "cost_comparison.png"
-    fig.write_image(f"{output_dir}/{png_path}", scale=2)
-    print(f"PNG version saved to {png_path}")
+            timestamps, cumulative_costs = calculate_cumulative_data(all_costs_by_time)
+            add_scenario_trace(fig, timestamps, cumulative_costs, result['scenario_name'])
+    
+    save_plot_files(fig, output_dir, "cost_comparison", "Cost comparison plot saved")
 
 def _create_environmental_impact_comparison(results: List[Dict], output_dir: str):
     """Compare environmental impacts across scenarios over time"""
-    os.makedirs(output_dir, exist_ok=True)
+    create_output_directory(output_dir)
     
-    # Create separate plots for different impact categories
-    impact_categories = ['carbon_emissions', 'transport_emissions', 'landfill_emissions', 'total_impact']
+    impact_categories = {
+        'carbon_emissions': 'Carbon Emissions',
+        'transport_emissions': 'Transport Emissions', 
+        'landfill_emissions': 'Landfill Emissions',
+        'total_impact': 'Total Environmental Impact'
+    }
     
-    for category in impact_categories:
-        fig = go.Figure()
+    for category, title in impact_categories.items():
+        fig = create_basic_time_series_plot(
+            f"Cumulative {title} Over Time - Scenario Comparison",
+            "Time",
+            "Cumulative Impact (kg CO₂e)"
+        )
         
         for result in results:
             monitor_data = result['monitor_data']
-            environmental_history = monitor_data.get('environmental_history', {})
+            all_impacts_by_time = extract_environmental_impacts_by_category(monitor_data, category)
             
-            # Collect all timestamps and impacts for this category
-            all_impacts_by_time = {}
-            
-            for entity_name, entity_data in environmental_history.items():
-                timestamps = entity_data.get('timestamps', [])
-                impacts = entity_data.get(category, [])
-                
-                for i, timestamp in enumerate(timestamps):
-                    if i < len(impacts):
-                        all_impacts_by_time[timestamp] = all_impacts_by_time.get(timestamp, 0) + impacts[i]
-            
-            # Sort by timestamp and calculate cumulative
             if all_impacts_by_time:
-                timestamps = sorted(all_impacts_by_time.keys())
-                impacts = [all_impacts_by_time[t] for t in timestamps]
-                cumulative_impacts = np.cumsum(impacts)
-                
-                fig.add_trace(go.Scatter(
-                    x=timestamps,
-                    y=cumulative_impacts,
-                    mode='lines',
-                    name=f"{result['scenario_name']}",
-                    line={'width': 2}
-                ))
+                timestamps, cumulative_impacts = calculate_cumulative_data(all_impacts_by_time)
+                add_scenario_trace(fig, timestamps, cumulative_impacts, result['scenario_name'])
         
-        # Update layout based on category
-        category_titles = {
-            'carbon_emissions': 'Carbon Emissions',
-            'transport_emissions': 'Transport Emissions', 
-            'landfill_emissions': 'Landfill Emissions',
-            'total_impact': 'Total Environmental Impact'
-        }
-        
-        fig.update_layout(
-            title=f"Cumulative {category_titles[category]} Over Time - Scenario Comparison",
-            xaxis_title="Time",
-            yaxis_title="Cumulative Impact (kg CO₂e)",
-            hovermode='x unified'
-        )
-        
-        # Save files
         filename = f"environmental_{category}_comparison"
-        fig.write_html(f"{output_dir}/{filename}.html")
-        fig.write_image(f"{output_dir}/{filename}.png", scale=2)
-        print(f"Environmental impact plot saved: {filename}")
+        save_plot_files(fig, output_dir, filename, f"Environmental impact plot saved: {filename}")
 
 def _create_environmental_breakdown_comparison(results: List[Dict], output_dir: str):
     """Create stacked bar chart showing environmental impact breakdown by source"""
@@ -332,76 +398,49 @@ def _create_environmental_breakdown_comparison(results: List[Dict], output_dir: 
 
 def _create_cost_vs_environmental_pareto(results: List[Dict], output_dir: str):
     """Create Pareto chart showing cost vs environmental impact trade-offs"""
-    os.makedirs(output_dir, exist_ok=True)
+    create_output_directory(output_dir)
     
+    scenario_data = _extract_scenario_metrics(results)
+    fig = _create_pareto_scatter_plot(scenario_data)
+    _add_pareto_frontier(fig, scenario_data)
+    _add_performance_annotations(fig, scenario_data)
+    
+    # Save the plot
+    save_plot_files(fig, output_dir, "cost_vs_environmental_pareto", "Cost vs Environmental Pareto chart saved")
+    
+    # Create and save ranking table
+    _create_pareto_ranking_table(scenario_data, output_dir)
+
+def _extract_scenario_metrics(results: List[Dict]) -> List[Dict]:
+    """Extract cost and environmental metrics for each scenario"""
     scenario_data = []
     
     for result in results:
         monitor_data = result['monitor_data']
-        scenario_name = f"{result['inventory_policy']} | {result['stock_strategy']}"
+        scenario_name = create_scenario_label(result)
         
-        # Calculate total costs from embedded tracking
-        total_cost = 0
+        # Calculate total costs using our utility function
+        all_costs_by_time = extract_total_costs_from_monitor_data(monitor_data)
+        total_cost = sum(all_costs_by_time.values()) if all_costs_by_time else 0
         
-        # From generation history
-        for entity_data in monitor_data.get('generation_history', {}).values():
-            total_costs = entity_data.get('total_costs', [])
-            if total_costs:
-                total_cost += sum(total_costs)
-        
-        # From collection history
-        for entity_data in monitor_data.get('collection_history', {}).values():
-            total_costs = entity_data.get('total_costs', [])
-            if total_costs:
-                total_cost += sum(total_costs)
-        
-        # From processing history
-        for entity_data in monitor_data.get('processing_history', {}).values():
-            operational = entity_data.get('operational', {})
-            total_costs = operational.get('total_costs', [])
-            if total_costs:
-                total_cost += sum(total_costs)
-        
-        # Add overflow/event costs
-        event_history = monitor_data.get('event_history', {})
-        if 'system_events' in event_history:
-            event_costs = event_history['system_events'].get('total_costs', [])
-            if event_costs:
-                total_cost += sum(event_costs)
-        
-        # Calculate total environmental impact
-        total_environmental_impact = 0
-        environmental_history = monitor_data.get('environmental_history', {})
-        
-        for entity_data in environmental_history.values():
-            total_impacts = entity_data.get('total_impact', [])
-            if total_impacts:
-                total_environmental_impact += sum(total_impacts)
+        # Calculate total environmental impact using our utility function
+        total_environmental_impact = calculate_total_environmental_impact(monitor_data)
         
         scenario_data.append({
             'scenario': scenario_name,
-            'short_scenario': result['stock_strategy'],  # For cleaner labels
+            'short_scenario': result['stock_strategy'],
             'inventory_policy': result['inventory_policy'],
             'stock_strategy': result['stock_strategy'],
             'total_cost': total_cost,
             'total_environmental_impact': total_environmental_impact
         })
     
-    # Create the main Pareto chart
+    return scenario_data
+
+def _create_pareto_scatter_plot(scenario_data: List[Dict]) -> go.Figure:
+    """Create the main scatter plot for Pareto analysis"""
     fig = go.Figure()
-    
-    # Color mapping for inventory policies
-    colors = {
-        'PUSH': '#1f77b4',
-        'PULL': '#ff7f0e'
-    }
-    
-    # Shape mapping for stock strategies
-    symbols = {
-        'ON_DEMAND': 'circle',
-        'REORDER_50': 'square',
-        'REORDER_90': 'diamond'
-    }
+    colors, symbols = get_scenario_colors_and_symbols()
     
     for data in scenario_data:
         fig.add_trace(go.Scatter(
@@ -414,9 +453,9 @@ def _create_cost_vs_environmental_pareto(results: List[Dict], output_dir: str):
                 "size": 15,
                 "line": {'width': 2, 'color': 'white'}
             },
-            text=[data['short_scenario']],
+            text=[data['stock_strategy'].replace('_', ' ')],
             textposition='top center',
-            name=f"{data['inventory_policy']} - {data['stock_strategy']}",
+            name=f"{data['inventory_policy']} - {data['stock_strategy'].replace('_', ' ')}",
             hovertemplate=(
                 f"<b>{data['scenario']}</b><br>" +
                 "Total Cost: €%{x:,.0f}<br>" +
@@ -425,6 +464,25 @@ def _create_cost_vs_environmental_pareto(results: List[Dict], output_dir: str):
             )
         ))
     
+    fig.update_layout(
+        title="Cost vs Environmental Impact Pareto Analysis<br><sub>Lower-left is better (lower cost, lower impact)</sub>",
+        xaxis_title="Total Cost (€)",
+        yaxis_title="Total Environmental Impact (kg CO₂e)",
+        showlegend=True,
+        legend={
+            "yanchor": "top",
+            "y": 0.99,
+            "xanchor": "left",
+            "x": 1.02
+        },
+        width=1000,
+        height=700
+    )
+    
+    return fig
+
+def _add_pareto_frontier(fig: go.Figure, scenario_data: List[Dict]):
+    """Add Pareto frontier line to the plot"""
     sorted_data = sorted(scenario_data, key=lambda x: x['total_cost'])
     pareto_points = []
     min_impact = float('inf')
@@ -446,63 +504,46 @@ def _create_cost_vs_environmental_pareto(results: List[Dict], output_dir: str):
             name='Pareto Frontier',
             hoverinfo='skip'
         ))
+
+def _add_performance_annotations(fig: go.Figure, scenario_data: List[Dict]):
+    """Add annotations for best performing scenarios"""
+    if not scenario_data:
+        return
     
-    fig.update_layout(
-        title="Cost vs Environmental Impact Pareto Analysis<br><sub>Lower-left is better (lower cost, lower impact)</sub>",
-        xaxis_title="Total Cost (€)",
-        yaxis_title="Total Environmental Impact (kg CO₂e)",
-        showlegend=True,
-        legend={
-            "yanchor": "top",
-            "y": 0.99,
-            "xanchor": "left",
-            "x": 1.02
-        },
-        width=1000,
-        height=700
+    # Find minimum cost and minimum impact scenarios
+    min_cost_scenario = min(scenario_data, key=lambda x: x['total_cost'])
+    min_impact_scenario = min(scenario_data, key=lambda x: x['total_environmental_impact'])
+    
+    fig.add_annotation(
+        x=min_cost_scenario['total_cost'],
+        y=min_cost_scenario['total_environmental_impact'],
+        text="Lowest Cost",
+        arrowhead=1,
+        arrowsize=1,
+        arrowwidth=1,
+        arrowcolor="black",
+        ax=20,
+        ay=-30
     )
     
-    # Add annotations for best performers
-    if scenario_data:
-        # Find minimum cost scenario
-        min_cost_scenario = min(scenario_data, key=lambda x: x['total_cost'])
-        # Find minimum impact scenario  
-        min_impact_scenario = min(scenario_data, key=lambda x: x['total_environmental_impact'])
-        
-        fig.add_annotation(
-            x=min_cost_scenario['total_cost'],
-            y=min_cost_scenario['total_environmental_impact'],
-            text="Lowest Cost",
-            arrowhead=2,
-            arrowsize=1,
-            arrowwidth=2,
-            arrowcolor="blue",
-            ax=20,
-            ay=-30
-        )
-        
-        fig.add_annotation(
-            x=min_impact_scenario['total_cost'],
-            y=min_impact_scenario['total_environmental_impact'],
-            text="Lowest Impact",
-            arrowhead=2,
-            arrowsize=1,
-            arrowwidth=2,
-            arrowcolor="green",
-            ax=20,
-            ay=30
-        )
-    
-    # Save the plot
-    fig.write_html(f"{output_dir}/cost_vs_environmental_pareto.html")
-    fig.write_image(f"{output_dir}/cost_vs_environmental_pareto.png", scale=2)
-    print("Cost vs Environmental Pareto chart saved")
-    
-    # Create a summary table
+    fig.add_annotation(
+        x=min_impact_scenario['total_cost'],
+        y=min_impact_scenario['total_environmental_impact'],
+        text="Lowest Impact",
+        arrowhead=1,
+        arrowsize=1,
+        arrowwidth=1,
+        arrowcolor="black",
+        ax=20,
+        ay=30
+    )
+
+def _create_pareto_ranking_table(scenario_data: List[Dict], output_dir: str):
+    """Create and save the Pareto ranking table"""
     df = pd.DataFrame(scenario_data)
     df['cost_rank'] = df['total_cost'].rank()
     df['impact_rank'] = df['total_environmental_impact'].rank()
-    df['combined_rank'] = df['cost_rank'] + df['impact_rank']  # Simple ranking
+    df['combined_rank'] = df['cost_rank'] + df['impact_rank']
     df = df.sort_values('combined_rank')
     
     # Save ranking table
@@ -518,10 +559,113 @@ def _create_cost_vs_environmental_pareto(results: List[Dict], output_dir: str):
 
 def _create_efficiency_frontier_analysis(results: List[Dict], output_dir: str):
     """Create detailed efficiency frontier analysis with multiple metrics"""
-    os.makedirs(output_dir, exist_ok=True)
+    create_output_directory(output_dir)
     
-    # Create subplots for different trade-off analyses
-    fig = sp.make_subplots(
+    scenario_data = _extract_efficiency_metrics(results)
+    fig = _create_efficiency_subplot_figure()
+    _add_efficiency_scatter_plots(fig, scenario_data)
+    _add_cost_efficiency_bar_chart(fig, scenario_data)
+    _add_efficiency_legend(fig, scenario_data)
+    
+    fig.update_layout(
+        title="Multi-Criteria Efficiency Frontier Analysis",
+        height=800,
+        showlegend=True,
+        legend={
+            "yanchor": "top",
+            "y": 0.99,
+            "xanchor": "left",
+            "x": 1.02
+        }
+    )
+    
+    save_plot_files(fig, output_dir, "efficiency_frontier_analysis", "Efficiency frontier analysis saved")
+
+def _extract_efficiency_metrics(results: List[Dict]) -> List[Dict]:
+    """Extract all efficiency metrics for each scenario"""
+    scenario_data = []
+    
+    for result in results:
+        monitor_data = result['monitor_data']
+        
+        # Calculate total costs using utility function
+        all_costs_by_time = extract_total_costs_from_monitor_data(monitor_data)
+        total_cost = sum(all_costs_by_time.values()) if all_costs_by_time else 0
+        
+        # Calculate environmental impact using utility function
+        total_environmental_impact = calculate_total_environmental_impact(monitor_data)
+        
+        # Calculate collection and processing metrics
+        collection_metrics = _calculate_collection_metrics(monitor_data)
+        processing_metrics = _calculate_processing_metrics(monitor_data, collection_metrics['total_collected'])
+        
+        # Cost efficiency
+        cost_per_m3 = total_cost / processing_metrics['total_processed'] if processing_metrics['total_processed'] > 0 else float('inf')
+        
+        scenario_data.append({
+            'scenario': create_scenario_label(result),
+            'inventory_policy': result['inventory_policy'],
+            'stock_strategy': result['stock_strategy'],
+            'total_cost': total_cost,
+            'total_environmental_impact': total_environmental_impact,
+            'collection_efficiency': collection_metrics['collection_efficiency'],
+            'processing_efficiency': processing_metrics['processing_efficiency'],
+            'cost_per_m3': cost_per_m3,
+            'total_processed': processing_metrics['total_processed']
+        })
+    
+    return scenario_data
+
+def _calculate_collection_metrics(monitor_data: Dict) -> Dict:
+    """Calculate collection efficiency metrics"""
+    # Calculate total generated
+    total_generated = 0
+    for data in monitor_data.get('generation_history', {}).values():
+        total_gen = data.get('total_generated', {})
+        if isinstance(total_gen, dict):
+            total_generated += sum(
+                v[-1] if isinstance(v, list) and v else v 
+                for v in total_gen.values()
+            )
+        else:
+            total_generated += total_gen or 0
+    
+    # Calculate total collected
+    total_collected = 0
+    for data in monitor_data.get('collection_history', {}).values():
+        collected_volumes = data.get('collected_volumes', {})
+        for volumes in collected_volumes.values():
+            if isinstance(volumes, list) and volumes:
+                total_collected += volumes[-1]
+            elif volumes:
+                total_collected += volumes
+    
+    collection_efficiency = (total_collected / total_generated * 100) if total_generated > 0 else 0
+    
+    return {
+        'total_generated': total_generated,
+        'total_collected': total_collected,
+        'collection_efficiency': collection_efficiency
+    }
+
+def _calculate_processing_metrics(monitor_data: Dict, total_collected: float) -> Dict:
+    """Calculate processing efficiency metrics"""
+    total_processed = 0
+    for data in monitor_data.get('processing_history', {}).values():
+        processed_data = data.get('processed', {}).get('total', [])
+        if isinstance(processed_data, list) and processed_data:
+            total_processed += processed_data[-1]
+    
+    processing_efficiency = (total_processed / total_collected * 100) if total_collected > 0 else 0
+    
+    return {
+        'total_processed': total_processed,
+        'processing_efficiency': processing_efficiency
+    }
+
+def _create_efficiency_subplot_figure():
+    """Create the subplot structure for efficiency analysis"""
+    return sp.make_subplots(
         rows=2, cols=2,
         subplot_titles=[
             'Cost vs Environmental Impact',
@@ -532,133 +676,64 @@ def _create_efficiency_frontier_analysis(results: List[Dict], output_dir: str):
         horizontal_spacing=0.1,
         vertical_spacing=0.15
     )
+
+def _add_efficiency_scatter_plots(fig, scenario_data: List[Dict]):
+    """Add scatter plots for the first three subplots"""
+    colors, symbols = get_scenario_colors_and_symbols()
     
-    scenario_data = []
+    # Define the subplot configurations
+    subplot_configs = [
+        {'x': 'total_cost', 'y': 'total_environmental_impact', 'row': 1, 'col': 1, 
+         'hover': "Cost: €%{x:,.0f}<br>Impact: %{y:,.0f} kg CO₂e"},
+        {'x': 'total_cost', 'y': 'collection_efficiency', 'row': 1, 'col': 2,
+         'hover': "Cost: €%{x:,.0f}<br>Efficiency: %{y:.1f}%"},
+        {'x': 'total_environmental_impact', 'y': 'processing_efficiency', 'row': 2, 'col': 1,
+         'hover': "Impact: %{x:,.0f} kg CO₂e<br>Efficiency: %{y:.1f}%"}
+    ]
+
+    # Add traces for each subplot
+    for i, config in enumerate(subplot_configs):
+        for data in scenario_data:
+            fig.add_trace(go.Scatter(
+                x=[data[config['x']]],
+                y=[data[config['y']]],
+                mode='markers',
+                marker={
+                    "color": colors.get(data['inventory_policy'], '#2ca02c'),
+                    "symbol": symbols.get(data['stock_strategy'], 'circle'),
+                    "size": 10
+                },
+                name=f"{data['inventory_policy']} - {data['stock_strategy']}",
+                legendgroup=f"{data['inventory_policy']}_{data['stock_strategy']}",
+                showlegend=(i == 0),  # Only show legend on first subplot
+                hovertemplate=f"<b>{data['scenario']}</b><br>{config['hover']}<extra></extra>"
+            ), row=config['row'], col=config['col'])
     
-    # Collect all metrics for each scenario
-    for result in results:
-        monitor_data = result['monitor_data']
-        
-        # Calculate total costs (same as above)
-        total_cost = 0
-        for entity_data in monitor_data.get('generation_history', {}).values():
-            total_costs = entity_data.get('total_costs', [])
-            if total_costs:
-                total_cost += sum(total_costs)
-        for entity_data in monitor_data.get('collection_history', {}).values():
-            total_costs = entity_data.get('total_costs', [])
-            if total_costs:
-                total_cost += sum(total_costs)
-        for entity_data in monitor_data.get('processing_history', {}).values():
-            operational = entity_data.get('operational', {})
-            total_costs = operational.get('total_costs', [])
-            if total_costs:
-                total_cost += sum(total_costs)
-        
-        # Calculate environmental impact
-        total_environmental_impact = 0
-        for entity_data in monitor_data.get('environmental_history', {}).values():
-            total_impacts = entity_data.get('total_impact', [])
-            if total_impacts:
-                total_environmental_impact += sum(total_impacts)
-        
-        # Calculate collection efficiency
-        total_generated = sum(
-            sum(v[-1] if isinstance(v, list) and v else v for v in data.get('total_generated', {}).values())
-            if isinstance(data.get('total_generated'), dict)
-            else data.get('total_generated', 0)
-            for data in monitor_data.get('generation_history', {}).values()
-        )
-        
-        total_collected = sum(
-            sum(volumes[-1] if isinstance(volumes, list) and volumes else [volumes] if volumes else [0]
-                for volumes in data.get('collected_volumes', {}).values())
-            for data in monitor_data.get('collection_history', {}).values()
-        )
-        
-        collection_efficiency = (total_collected / total_generated * 100) if total_generated > 0 else 0
-        
-        # Calculate processing efficiency  
-        total_processed = sum(
-            data.get('processed', {}).get('total', [])[-1] if isinstance(data.get('processed', {}).get('total'), list) and data.get('processed', {}).get('total') else 0
-            for data in monitor_data.get('processing_history', {}).values()
-        )
-        
-        processing_efficiency = (total_processed / total_collected * 100) if total_collected > 0 else 0
-        
-        # Cost efficiency
-        cost_per_m3 = total_cost / total_processed if total_processed > 0 else float('inf')
-        
-        scenario_data.append({
-            'scenario': f"{result['inventory_policy']} | {result['stock_strategy']}",
-            'inventory_policy': result['inventory_policy'],
-            'stock_strategy': result['stock_strategy'],
-            'total_cost': total_cost,
-            'total_environmental_impact': total_environmental_impact,
-            'collection_efficiency': collection_efficiency,
-            'processing_efficiency': processing_efficiency,
-            'cost_per_m3': cost_per_m3,
-            'total_processed': total_processed
-        })
+    # Update axes for scatter plots
+    _update_scatter_plot_axes(fig)
+
+def _add_cost_efficiency_bar_chart(fig, scenario_data: List[Dict]):
+    """Add cost efficiency bar chart to subplot 4"""
+    colors, _ = get_scenario_colors_and_symbols()
     
-    colors = {'PUSH': '#1f77b4', 'PULL': '#ff7f0e'}
-    symbols = {'ON_DEMAND': 'circle', 'REORDER_50': 'square', 'REORDER_90': 'diamond'}
-    
-    # Plot 1: Cost vs Environmental Impact
-    for data in scenario_data:
-        fig.add_trace(go.Scatter(
-            x=[data['total_cost']],
-            y=[data['total_environmental_impact']],
-            mode='markers',
-            marker={
-                "color": colors.get(data['inventory_policy'], '#2ca02c'),
-                "symbol": symbols.get(data['stock_strategy'], 'circle'),
-                "size": 10
-            },
-            name=data['scenario'],
-            showlegend=False
-        ), row=1, col=1)
-    
-    # Plot 2: Cost vs Collection Efficiency
-    for data in scenario_data:
-        fig.add_trace(go.Scatter(
-            x=[data['total_cost']],
-            y=[data['collection_efficiency']],
-            mode='markers',
-            marker={
-                "color": colors.get(data['inventory_policy'], '#2ca02c'),
-                "symbol": symbols.get(data['stock_strategy'], 'circle'),
-                "size": 10
-            },
-            showlegend=False
-        ), row=1, col=2)
-    
-    # Plot 3: Environmental Impact vs Processing Efficiency
-    for data in scenario_data:
-        fig.add_trace(go.Scatter(
-            x=[data['total_environmental_impact']],
-            y=[data['processing_efficiency']],
-            mode='markers',
-            marker={
-                "color": colors.get(data['inventory_policy'], '#2ca02c'),
-                "symbol": symbols.get(data['stock_strategy'], 'circle'),
-                "size": 10
-            },
-            showlegend=False
-        ), row=2, col=1)
-    
-    # Plot 4: Cost Efficiency
-    scenario_names = [data['stock_strategy'] for data in scenario_data]
+    scenario_names = [data['stock_strategy'].replace('_', ' ') for data in scenario_data]
     cost_efficiencies = [data['cost_per_m3'] if data['cost_per_m3'] != float('inf') else 0 for data in scenario_data]
+    bar_colors = [colors.get(data['inventory_policy'], '#2ca02c') for data in scenario_data]
     
     fig.add_trace(go.Bar(
         x=scenario_names,
         y=cost_efficiencies,
-        marker_color=[colors.get(data['inventory_policy'], '#2ca02c') for data in scenario_data],
-        showlegend=False
+        marker_color=bar_colors,
+        showlegend=False,
+        hovertemplate="<b>%{x}</b><br>Cost per m³: €%{y:,.2f}<extra></extra>"
     ), row=2, col=2)
     
-    # Update axes
+    # Update axes for bar chart
+    fig.update_xaxes(title_text="Stock Strategy", row=2, col=2)
+    fig.update_yaxes(title_text="Cost per m³ (€/m³)", row=2, col=2)
+
+def _update_scatter_plot_axes(fig):
+    """Update axes labels for scatter plot subplots"""
     fig.update_xaxes(title_text="Total Cost (€)", row=1, col=1)
     fig.update_yaxes(title_text="Environmental Impact (kg CO₂e)", row=1, col=1)
     
@@ -667,19 +742,27 @@ def _create_efficiency_frontier_analysis(results: List[Dict], output_dir: str):
     
     fig.update_xaxes(title_text="Environmental Impact (kg CO₂e)", row=2, col=1)
     fig.update_yaxes(title_text="Processing Efficiency (%)", row=2, col=1)
+
+def _add_efficiency_legend(fig, scenario_data: List[Dict]):
+    """Add legend traces for unique combinations"""
+    colors, symbols = get_scenario_colors_and_symbols()
+    added_combinations = set()
     
-    fig.update_xaxes(title_text="Stock Strategy", row=2, col=2)
-    fig.update_yaxes(title_text="Cost per m³ (€/m³)", row=2, col=2)
-    
-    fig.update_layout(
-        title="Multi-Criteria Efficiency Frontier Analysis",
-        height=800,
-        showlegend=False
-    )
-    
-    fig.write_html(f"{output_dir}/efficiency_frontier_analysis.html")
-    fig.write_image(f"{output_dir}/efficiency_frontier_analysis.png", scale=2)
-    print("Efficiency frontier analysis saved")
+    for data in scenario_data:
+        combination = f"{data['inventory_policy']} - {data['stock_strategy']}"
+        if combination not in added_combinations:
+            fig.add_trace(go.Scatter(
+                x=[None], y=[None],
+                mode='markers',
+                marker={
+                    "color": colors.get(data['inventory_policy'], '#2ca02c'),
+                    "symbol": symbols.get(data['stock_strategy'], 'circle'),
+                    "size": 10
+                },
+                name=combination,
+                showlegend=True
+            ), row=1, col=1)
+            added_combinations.add(combination)
 
 def _create_entity_status_view(results: List[Dict], output_dir: str):
     """Create entity status timeline plots grouped by scenario and inventory policy, with stock strategies as subplots."""

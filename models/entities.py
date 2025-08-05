@@ -11,6 +11,7 @@ class Generator:
     generation_frequency: float
     waste_storage_capacity: float
     environmental_impact: float
+    efficiency: float
     initial_stock: Optional[Dict[str, float]] = None
 
 

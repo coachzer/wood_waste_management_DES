@@ -64,6 +64,7 @@ class FacilityBuilder:
             generation_frequency=gen_data.generation_frequency,
             waste_storage_capacity=gen_data.waste_storage_capacity,
             environmental_impact=gen_data.environmental_impact,
+            efficiency=gen_data.efficiency,
             region=region.value,
             uncertainty_set=self.uncertainty_set,
             initial_stock=initial_stock,

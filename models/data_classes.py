@@ -10,7 +10,7 @@ class FailureConfig:
     probability: float  # Daily probability of failure
     min_duration: float  # Minimum downtime in days
     max_duration: float  # Maximum downtime in days
-    check_interval: float = 24.0  # Daily between failure checks
+    check_interval: float = 1.0  # Daily between failure checks
 
 @dataclass(init=False)
 class OperationalEntity:
@@ -54,7 +54,6 @@ class OperationalEntity:
 
         if self.status == EntityStatus.OPERATIONAL:
             if self.rng.random() < failure_probability:
-                # Track
                 entity_type = self.__class__.__name__
                 if entity_type not in self._failure_counts:
                     self._failure_counts[entity_type] = 0
@@ -71,7 +70,6 @@ class OperationalEntity:
                 
         elif self.status == EntityStatus.FAILED:
             if current_time - self.failure_start_time >= self.downtime_duration:
-                # Start recovery phase
                 self.status = EntityStatus.RECOVERING
                 self.recovery_start_time = current_time
                 self.recovery_duration = self._get_recovery_duration()
@@ -81,12 +79,10 @@ class OperationalEntity:
                     self.waste_monitor.record_entity_status(self, current_time)
                 
         elif self.status == EntityStatus.RECOVERING:
-            # Calculate recovery progress
             elapsed = current_time - self.recovery_start_time
             self.recovery_progress = min(1.0, elapsed / self.recovery_duration)
             
             if self.recovery_progress >= 1.0:
-                # Recovery complete
                 self.status = EntityStatus.OPERATIONAL
                 if hasattr(self, 'waste_monitor') and self.waste_monitor:
                     self.waste_monitor.record_entity_status(self, current_time)
@@ -101,9 +97,8 @@ class OperationalEntity:
         if self.status == EntityStatus.OPERATIONAL:
             return 1.0
         elif self.status == EntityStatus.RECOVERING:
-            # gradual recovery
             return 0.3 + (0.7 * self.recovery_progress)
-        else:  # failed
+        else: 
             return 0.0
 
     def _get_recovery_duration(self):
@@ -117,7 +112,6 @@ class WasteStream:
     waste_type: WasteType
     volume: float
 
-
 @dataclass
 class WasteTransformation:
     """Data class to represent a waste transformation process"""
@@ -126,7 +120,6 @@ class WasteTransformation:
     output_type: WasteType
     conversion_efficiency: float  # Percentage of input mass converted to output
     energy_required: float  # Energy required per unit mass (kWh/kg)
-
 
 @dataclass
 class Vehicle:
@@ -138,7 +131,6 @@ class Vehicle:
     current_load: float = 0.0  # Current load in m³
     destination: Optional[RegionType] = None
     estimated_arrival: Optional[float] = None
-
 
 @dataclass(init=False)
 class CollectionCenter(OperationalEntity):
