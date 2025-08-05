@@ -133,9 +133,9 @@ class Vehicle:
     """Data class to represent a transport vehicle"""
     id: str
     capacity: float  # Storage capacity in m³
-    current_load: float = 0.0  # Current load in m³
     current_region: RegionType
     in_transit: bool = False
+    current_load: float = 0.0  # Current load in m³
     destination: Optional[RegionType] = None
     estimated_arrival: Optional[float] = None
 
