@@ -1,3 +1,7 @@
 LANDFILL_EMISSIONS_PER_M3 = 0.24  # t CO2e per m³
+LANDFILL_EMISSIONS_PER_M3_KG = 0.24 * 1_000  # 240 kg CO2e / m³
 TRANSPORT_EMISSIONS_PER_TON_KM = 0.087  # kg eCO2 per ton-kilometer or 87 g CO2e/ton km
+DENSITY = 0.6
+TRANSPORT_EMISSIONS_PER_M3_KM = 0.087 * DENSITY
 SIMULATION_DURATION = 365  # days in simulation (one full year)
+EXPANSION_SIZE_M3 = 500 # 500m³ expansion size

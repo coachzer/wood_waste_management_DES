@@ -1,6 +1,6 @@
 from config.base_config import get_cost_params
 from typing import Dict, Tuple
-from config.constants import LANDFILL_EMISSIONS_PER_M3
+from config.constants import LANDFILL_EMISSIONS_PER_M3, EXPANSION_SIZE_M3
 from models.enums import WasteType
 
 def check_storage_capacity(
@@ -33,20 +33,16 @@ def handle_storage_event(entity, volume, region, force_landfill=False):
     config = get_cost_params()
     expansion_count = getattr(entity, 'expansion_count', 0)
     landfill_count = getattr(entity, 'landfill_count', 0)  
-
-    # Expansion cost increases with each expansion
+    
     base_expansion_cost_per_m3 = config.expansion_cost_per_m3
-    expansion_cost_per_m3 = base_expansion_cost_per_m3 * (1 + expansion_count * 0.5)  
+    expansion_cost_per_m3 = base_expansion_cost_per_m3 * (1 + expansion_count * 0.5)
 
-    # Landfill cost increases with each landfill usage
     base_landfill_cost_per_m3 = config.landfill_per_m3
-    landfill_cost_per_m3 = base_landfill_cost_per_m3 * (1 + landfill_count * 0.3)  # 30% increase per use
+    landfill_cost_per_m3 = base_landfill_cost_per_m3 * (1 + landfill_count * 0.3) 
 
-    needed_expansion = volume * 1.4
-    expansion_cost = needed_expansion * expansion_cost_per_m3
+    expansion_cost = EXPANSION_SIZE_M3 * expansion_cost_per_m3
     landfill_cost = volume * landfill_cost_per_m3
 
-    # Check if landfill is forced or if it's the cheaper option
     if force_landfill or expansion_cost >= landfill_cost:
         entity.landfill_count = landfill_count + 1
         entity.landfill_costs = getattr(entity, 'landfill_costs', 0) + landfill_cost
@@ -72,7 +68,7 @@ def handle_storage_event(entity, volume, region, force_landfill=False):
 
         return landfill_cost, "landfill"
     else:
-        entity.waste_storage_capacity += needed_expansion
+        entity.waste_storage_capacity += EXPANSION_SIZE_M3  
         entity.expansion_count = expansion_count + 1
         entity.expansion_costs = getattr(entity, 'expansion_costs', 0) + expansion_cost
 

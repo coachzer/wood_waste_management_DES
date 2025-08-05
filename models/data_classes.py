@@ -131,12 +131,11 @@ class WasteTransformation:
 @dataclass
 class Vehicle:
     """Data class to represent a transport vehicle"""
-
     id: str
-    capacity: float
+    capacity: float  # Storage capacity in m³
+    current_load: float = 0.0  # Current load in m³
     current_region: RegionType
     in_transit: bool = False
-    current_load: float = 0.0
     destination: Optional[RegionType] = None
     estimated_arrival: Optional[float] = None
 
@@ -145,8 +144,8 @@ class Vehicle:
 class CollectionCenter(OperationalEntity):
     """Data class to represent a waste collection center"""
     region: RegionType
-    waste_storage_capacity: float
-    current_storage: Dict[WasteType, float]
+    waste_storage_capacity: float # Storage capacity in m³
+    current_storage: Dict[WasteType, float] # Current storage in m³ per waste type
     coordinates: Tuple[float, float]
 
     def __init__(self, region: RegionType, waste_storage_capacity: float, 
@@ -163,5 +162,5 @@ class CollectionCenter(OperationalEntity):
 class ProductStorage:
     """Data class to represent storage for finished products"""
     capacity: float
-    current_storage: Dict[OutputType, float]
+    current_storage: Dict[OutputType, float] # Current storage in m³ per product type
     densities: Optional[Dict[OutputType, float]] = None  # e.g., kg/m3 per product

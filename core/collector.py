@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Dict
-from config.constants import TRANSPORT_EMISSIONS_PER_TON_KM
+from config.constants import TRANSPORT_EMISSIONS_PER_M3_KM
 from core.transport_manager import PointToPointTransport, TransportPriority, TransportRequest
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
 from models.state import SimulationState
@@ -95,7 +95,7 @@ class CollectorCompany(OperationalEntity):
         self.vehicles = [
             Vehicle(
                 id=f"{self.name}_vehicle_{i}",
-                capacity=self.vehicle_capacity,
+                capacity=self.vehicle_capacity, # m³
                 current_region=self.region_type,
             )
             for i in range(num_vehicles)
@@ -150,14 +150,15 @@ class CollectorCompany(OperationalEntity):
         
         if collected_amount > 0:
             
+            volume_cost_factor = 0.1
             vehicle.current_load = collected_amount
             yield self.env.timeout(travel_time)
             
             self._add_to_collection_center(collected_waste)
-            collection_cost = self.transport_cost + (distance * 0.1 * collected_amount)
+            collection_cost = self.transport_cost + (distance * volume_cost_factor * collected_amount)
                 
             # Calculate transport emissions (convert m³ to tonnes using density, then multiply by distance and emissions factor)
-            emissions = collected_amount * distance * TRANSPORT_EMISSIONS_PER_TON_KM
+            emissions = collected_amount * distance * TRANSPORT_EMISSIONS_PER_M3_KM
 
             if hasattr(self, 'waste_monitor') and self.waste_monitor:
                 self.waste_monitor.update_entity_costs(

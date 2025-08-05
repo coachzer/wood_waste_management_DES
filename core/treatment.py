@@ -583,17 +583,15 @@ class TreatmentOperator(OperationalEntity):
                 total_stored = sum(self.product_storage.current_storage.values())
                 storage_capacity = self.product_storage.capacity
                 addable_to_storage = min(overflow_after_sell, storage_capacity - total_stored)
-                # No further action needed for overflow_storage
                 self.product_storage.current_storage[output_type] += addable_to_storage
-                # If overflow_storage > 0, optionally log or handle further overflow
 
             # Track product volumes
             if output_type == OutputType.MDF:
-                self.product_volumes["mdf"] += output_amount
+                self.product_volumes["mdf"] += output_amount # m³
             elif output_type == OutputType.PARTICLE_BOARD:
-                self.product_volumes["particle_board"] += output_amount
+                self.product_volumes["particle_board"] += output_amount # m³
             elif output_type == OutputType.OSB:
-                self.product_volumes["osb"] += output_amount
+                self.product_volumes["osb"] += output_amount # m³
         else:
             return  
         
