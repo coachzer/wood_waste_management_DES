@@ -58,5 +58,8 @@ plots/
 # GEOJSON files
 *.geojson
 
+# Copied files
+mfa_visualization_added_treatment_storage_types.py
+
 # plotting file
 data/plotting.py

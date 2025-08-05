@@ -18,7 +18,7 @@ class ABCClassification:
 class BiogenicCarbonABCAnalyzer:
     """ABC Analysis based on biogenic carbon stock values"""
     
-    def __init__(self, demand_config_path: str = "demand.json"):
+    def __init__(self, demand_config_path: str = "data/demand.json"):
         self.product_manager = ProductDataManager()
         self.demand_config_path = demand_config_path
         self.demand_data = self._load_demand_data()
@@ -235,7 +235,7 @@ class BiogenicCarbonABCAnalyzer:
         return updated_config
 
 if __name__ == "__main__":
-    analyzer = BiogenicCarbonABCAnalyzer("demand.json")
+    analyzer = BiogenicCarbonABCAnalyzer("data/demand.json")
     
     report = analyzer.generate_abc_report()
     print(report)

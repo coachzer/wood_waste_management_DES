@@ -45,7 +45,7 @@ class TreatmentOperator(OperationalEntity):
         inventory_policy: InventoryPolicy = None,
         transport_manager: Optional[PointToPointTransport] = None,
         enable_abc_prioritization: bool = True, 
-        abc_demand_config_path: str = "demand.json"
+        abc_demand_config_path: str = "data/demand.json"
     ):
         super().__init__()
 
@@ -108,7 +108,6 @@ class TreatmentOperator(OperationalEntity):
 
         # Stochastic components
         self.uncertainty_set = uncertainty_set
-        self.rng = np.random.default_rng(42)
         self.transformation_efficiency = 0.95
         if self.uncertainty_set and hasattr(self.uncertainty_set, 'treatment_failure'):
             self.failure_check_interval = self.uncertainty_set.treatment_failure.check_interval
@@ -299,33 +298,43 @@ class TreatmentOperator(OperationalEntity):
         yield self.env.timeout(self.processing_time)
 
     def _pull_collection_logic(self, current_time):
-        """PULL: Kanban-driven with strategy-appropriate signal handling"""
+        """PULL: Kanban-driven with continuous demand signaling"""
         active_signals = self.kanban_manager.get_signals(current_time)
         
         if active_signals:
-            # Filter signals based on stock strategy
-            relevant_signals = self._filter_signals_by_strategy(active_signals)
+            # Process existing signals
+            sorted_signals = sorted(active_signals, 
+                                key=lambda s: (s['priority'], current_time - s['timestamp']), 
+                                reverse=True)
             
-            if relevant_signals:
-                sorted_signals = sorted(relevant_signals, 
-                                    key=lambda s: (s['priority'], current_time - s['timestamp']), 
-                                    reverse=True)
-                
-                total_demand = sum(signal['volume'] for signal in sorted_signals)
-                self.demand = total_demand
-                self.trigger_collection()
-                
-                for signal in sorted_signals:
-                    self.kanban_manager.acknowledge_signal(signal['id'])
-                
-                yield self.env.timeout(self.processing_time)
-                return
+            total_demand = sum(signal['volume'] for signal in sorted_signals)
+            self.demand = total_demand
+            self.trigger_collection()
+            
+            for signal in sorted_signals:
+                self.kanban_manager.acknowledge_signal(signal['id'])
         
-        # Generate signals based on strategy
-        if self._should_trigger_collection_based_on_strategy():
-            self._generate_strategy_based_signals(current_time)
+        # NEW: Always check if we need more waste and generate signals accordingly
+        self._continuous_demand_signaling(current_time)
         
         yield self.env.timeout(self.processing_time)
+
+    def _continuous_demand_signaling(self, current_time):
+        """Continuously signal for waste when needed"""
+        
+        # Check if we're running low on any input waste types
+        input_waste_types = {key[0] for key in self.transformations.keys()}
+        
+        for waste_type in input_waste_types:
+            current_stock = self.waste_storage.get(waste_type, 0)
+            
+            # Signal if stock is low (less than 10% of capacity per waste type)
+            per_type_capacity = self.waste_storage_capacity / len(input_waste_types)
+            reorder_point = per_type_capacity * 0.1
+            
+            if current_stock < reorder_point:
+                needed_volume = per_type_capacity * 0.5  # Order up to 50% capacity
+                self._create_collection_signal(waste_type, needed_volume, current_time, priority=7)
 
     def _filter_signals_by_strategy(self, signals: list) -> list:
         """Filter incoming signals based on stock strategy"""
@@ -584,6 +593,9 @@ class TreatmentOperator(OperationalEntity):
             if self.status == EntityStatus.FAILED:
                 yield self.env.timeout(self.processing_time)
                 continue
+
+            if self.inventory_policy == InventoryPolicy.PULL:
+                self._continuous_demand_signaling(current_time)
 
             self._process_available_waste()
             yield self.env.timeout(self.processing_time)

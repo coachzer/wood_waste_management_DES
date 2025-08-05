@@ -11,6 +11,7 @@ from models.state import SimulationState
 from monitoring.waste_monitor import WasteMonitor
 from models.facility_data import FacilityDataManager
 from core.facility_builder import FacilityBuilder
+from core.kanban_manager import KanbanManager
 from core.generator import WasteGenerator
 from core.collector import CollectorCompany
 from core.treatment import TreatmentOperator
@@ -26,6 +27,9 @@ class SimulationManager:
         self.env = simpy.Environment()
         self.waste_monitor = WasteMonitor(self.env)
         self.transport_manager = PointToPointTransport()
+
+        # Kanban
+        self.kanban_manager = KanbanManager()
         
         # Data and building components
         self.facility_manager = FacilityDataManager()
@@ -47,7 +51,9 @@ class SimulationManager:
                 env=self.env,
                 facility_manager=self.facility_manager,
                 waste_monitor=self.waste_monitor,
-                uncertainty_set=uncertainty_set
+                uncertainty_set=uncertainty_set,
+                transport_manager=self.transport_manager,
+                kanban_manager=self.kanban_manager
             )
             
             # Build all facilities

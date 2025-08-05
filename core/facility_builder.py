@@ -23,11 +23,15 @@ class FacilityBuilder:
         facility_manager: FacilityDataManager,
         waste_monitor: WasteMonitor,
         uncertainty_set=None,
+        transport_manager=None,
+        kanban_manager=None
     ):
         self.env = env
         self.facility_manager = facility_manager
         self.waste_monitor = waste_monitor
         self.uncertainty_set = uncertainty_set
+        self.transport_manager = transport_manager
+        self.kanban_manager = kanban_manager
 
     def create_generator(self, gen_data, region: RegionType, stock_strategy=None, inventory_policy=None) -> WasteGenerator:
         """Create a single waste generator"""
@@ -71,6 +75,7 @@ class FacilityBuilder:
             waste_monitor=self.waste_monitor,
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
+            kanban_manager=self.kanban_manager
         )
 
     def create_collector(self, col_data, region: RegionType, stock_strategy=None, inventory_policy=None) -> CollectorCompany:
@@ -107,6 +112,8 @@ class FacilityBuilder:
             uncertainty_set=self.uncertainty_set,
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
+            transport_manager=self.transport_manager,
+            kanban_manager=self.kanban_manager
         )
 
     def create_processor(self, proc_data, region: RegionType, stock_strategy=None, inventory_policy=None) -> TreatmentOperator:
@@ -148,6 +155,8 @@ class FacilityBuilder:
             scenario_config=self.uncertainty_set,
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
+            transport_manager=self.transport_manager,
+            kanban_manager=self.kanban_manager
         )
 
     # Private helper methods for processor creation

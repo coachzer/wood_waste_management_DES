@@ -49,12 +49,50 @@ def _get_product_volumes() -> Dict:
         "OSB": state.total_products.get("osb", 0)
     }
 
+def _get_treatment_waste_volumes(processing_history: Dict) -> Dict:
+    """Calculate treatment waste storage volumes"""
+    treatment_waste_volumes = {}
+    state = SimulationState.get_instance()
+    
+    for treatment_op in state.treatment_operators:
+        total_waste = sum(treatment_op.waste_storage.values())
+        if total_waste > 0:
+            treatment_waste_volumes[f"{treatment_op.name} (Waste Storage)"] = total_waste
+    
+    return treatment_waste_volumes
+
+def _get_treatment_product_volumes() -> Dict:
+    """Calculate treatment product storage volumes"""
+    treatment_product_volumes = {}
+    state = SimulationState.get_instance()
+    
+    for treatment_op in state.treatment_operators:
+        total_products = sum(treatment_op.product_storage.current_storage.values())
+        if total_products > 0:
+            treatment_product_volumes[f"{treatment_op.name} (Product Storage)"] = total_products
+    
+    return treatment_product_volumes
+
+def _get_treatment_to_sell_volumes() -> Dict:
+    """Calculate treatment ready-to-sell storage volumes"""
+    treatment_to_sell_volumes = {}
+    state = SimulationState.get_instance()
+    
+    for treatment_op in state.treatment_operators:
+        total_to_sell = sum(treatment_op.product_to_sell.current_storage.values())
+        if total_to_sell > 0:
+            treatment_to_sell_volumes[f"{treatment_op.name} (Ready to Sell)"] = total_to_sell
+    
+    return treatment_to_sell_volumes
+
 def get_volumes(generation_history: Dict, collection_history: Dict, processing_history: Dict):
-    """Calculate volumes for each stage - simplified approach"""
+    """Calculate volumes for each stage - now includes all treatment storage types"""
     return (
         _get_generator_volumes(generation_history),
         _get_collector_volumes(collection_history), 
-        _get_treatment_volumes(processing_history),
+        _get_treatment_waste_volumes(processing_history),
+        _get_treatment_product_volumes(),
+        _get_treatment_to_sell_volumes(),
         _get_product_volumes()
     )
 
@@ -67,15 +105,13 @@ def _create_nodes(generators: Dict, collectors: Dict, treatments: Dict, products
     labels = []
     node_colors = []
     
-    # Define colors for each stage
     COLORS = {
         'generator': '#2ecc71',    # Green
         'collector': '#3498db',    # Blue  
         'treatment': '#9b59b6',    # Purple
         'product': '#e67e22'       # Orange
     }
-    
-    # Add nodes with their start indices
+
     gen_start = len(labels)
     for name, volume in generators.items():
         labels.append(f"{name}\n{format_volume(volume)}")
@@ -102,7 +138,6 @@ def _create_flows(transport_flows: list, labels: list):
     """Create flows based on actual transport data"""
     sources, targets, values = [], [], []
     
-    # Group flows by source-target pairs
     flow_matrix = {}
     
     for flow in transport_flows:
@@ -110,17 +145,14 @@ def _create_flows(transport_flows: list, labels: list):
         target_name = flow['target_name']
         volume = flow['volume']
         
-        # Find indices in labels
         source_idx = None
         target_idx = None
         
-        # Find source index (search for name in label)
         for i, label in enumerate(labels):
             if source_name in label:
                 source_idx = i
                 break
         
-        # Find target index  
         for i, label in enumerate(labels):
             if target_name in label:
                 target_idx = i
@@ -130,9 +162,8 @@ def _create_flows(transport_flows: list, labels: list):
             key = (source_idx, target_idx)
             flow_matrix[key] = flow_matrix.get(key, 0) + volume
     
-    # Convert to lists
     for (source_idx, target_idx), total_volume in flow_matrix.items():
-        if total_volume >= 0.1 and source_idx != target_idx:  # Minimum flow threshold
+        if total_volume >= 0.1 and source_idx != target_idx: 
             sources.append(source_idx)
             targets.append(target_idx)
             values.append(total_volume)
@@ -147,8 +178,13 @@ def create_sankey(generator_volumes: Dict, collector_volumes: Dict,
     collectors = _filter_volumes(collector_volumes, min_volume)
     treatments = _filter_volumes(treatment_volumes, min_volume)
     products   = _filter_volumes(product_volumes,   min_volume)
+
+    generators = dict(sorted(generators.items()))
+    collectors = dict(sorted(collectors.items()))
+    treatments = dict(sorted(treatments.items()))
+    products = dict(sorted(products.items()))
     
-    labels, node_colors, gen_start, col_start, treat_start, prod_start = _create_nodes(
+    labels, node_colors, _, _, treat_start, prod_start = _create_nodes(
         generators, collectors, treatments, products
     )
     
@@ -156,7 +192,6 @@ def create_sankey(generator_volumes: Dict, collector_volumes: Dict,
     transport_flows = state.transport_flows
     sources, targets, values = _create_flows(transport_flows, labels)
     
-    # add treatment → product links
     for t_idx, treat_name in enumerate(treatments.keys()):
         op = next((o for o in state.treatment_operators if o.name == treat_name), None)
         if not op:
@@ -169,7 +204,6 @@ def create_sankey(generator_volumes: Dict, collector_volumes: Dict,
                 targets.append(prod_start + p_idx)
                 values.append(vol)
     
-    # compute node positions: four vertical columns
     n_gen = len(generators)
     n_col = len(collectors)
     n_treat = len(treatments)
@@ -181,8 +215,6 @@ def create_sankey(generator_volumes: Dict, collector_volumes: Dict,
         y += [(i+1)/(count+1) for i in range(count)]
     
     return labels, node_colors, sources, targets, values, x, y
-
-
 
 def create_material_flow_analysis(generation_history: Dict, collection_history: Dict, 
                                   processing_history: Dict, 

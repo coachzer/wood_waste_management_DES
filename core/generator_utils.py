@@ -44,12 +44,10 @@ def handle_overflow(current_storage, waste_storage_capacity, waste_streams, regi
         for waste_type, stream in waste_streams.items()
     }
 
-    # Check if there's overflow
     total_current = sum(current_volumes.values())
     if total_current > waste_storage_capacity:
         overflow_amount = total_current - waste_storage_capacity
         
-        # Handle overflow through expansion/landfill
         handle_storage_event(
             generator_entity, 
             overflow_amount, 
@@ -57,7 +55,6 @@ def handle_overflow(current_storage, waste_storage_capacity, waste_streams, regi
             force_landfill=force_landfill
         )
         
-        # Remove overflow proportionally from waste streams
         scaling_factor = waste_storage_capacity / total_current
         
         state = SimulationState.get_instance()
@@ -93,9 +90,8 @@ def generate_waste_for_period(
     ):
         potential_volume = base_rate * seasonal_factor * daily_factor * efficiency
         
-        # Capacity check: can we fit this amount?
         if current_storage + potential_volume <= current_storage + available_storage:
-            # Yes, add it
+            
             current_storage = update_waste_stream(
                 waste_streams, total_generated, current_storage,
                 region, waste_type, potential_volume, current_time,

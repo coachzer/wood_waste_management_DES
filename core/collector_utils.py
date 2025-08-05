@@ -22,10 +22,10 @@ def handle_completed_transport(transport: Dict, current_time: float) -> None:
         target_collector.collection_center.current_storage[
             transport["waste_type"]
         ] += transport["volume"]
-        print(
-            f"{current_time}: Added {transport['volume']:.8f} m³ to "
-            f"{target_collector.name}'s collection center"
-        )
+        # print(
+        #     f"{current_time}: Added {transport['volume']:.8f} m³ to "
+        #     f"{target_collector.name}'s collection center"
+        # )
 
 def check_completed_transports(active_transports: List[Dict], current_time: float) -> List[Dict]:
     """Identify completed transports and update vehicle status"""

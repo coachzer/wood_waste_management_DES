@@ -395,12 +395,12 @@ class CollectorCompany(OperationalEntity):
             
             source_type = signal.get('source_type', 'generator')  
             source_id = signal.get('source_id', signal.get('generator_id')) 
+            current_time = self.env.now
             
             matching_generators = []
             
             match source_type:
                 case "generator":
-                    # Specific generator signal - look for that exact generator
                     matching_generators = [
                         g for g in get_prioritized_generators(self)
                         if (g.name == source_id and 
@@ -408,34 +408,59 @@ class CollectorCompany(OperationalEntity):
                             g.waste_streams[waste_type_enum].volume > 0)
                     ]
                 case "treatment":
-                    # Treatment facility needs waste - find any generators with this waste type
-                    # Prioritize based on volume and distance, not specific source
                     matching_generators = [
                         g for g in get_prioritized_generators(self)
                         if (waste_type_enum in g.waste_streams and 
                             g.waste_streams[waste_type_enum].volume > 0)
                     ]
                 case _:
-                    # Unknown source type - treat as general request
                     matching_generators = [
                         g for g in get_prioritized_generators(self)
                         if (waste_type_enum in g.waste_streams and 
                             g.waste_streams[waste_type_enum].volume > 0)
                     ]
             
-            # Process the matching generators
             if matching_generators:
                 for generator in matching_generators:
                     if self._find_available_vehicle():
                         self.collect_from_generator(generator)
                         
                         self.kanban_manager.acknowledge_signal(signal['id'])
-                        break  # Only collect from one generator per signal
+                        break  
                     else:
-                        break  # No point checking more generators if no vehicles available
+                        break  
             else:
+                if source_type == "treatment":
+                    self._propagate_signal_to_generators(signal, current_time)
+
                 # Acknowledge the signal to prevent it from staying active forever
                 self.kanban_manager.acknowledge_signal(signal['id'])
+
+    def _propagate_signal_to_generators(self, signal, current_time):
+        """Propagate demand signals upstream to generators"""
+        try:
+            waste_type_enum = WasteType[signal['waste_type']]
+        except KeyError:
+            return
+        
+        state = SimulationState.get_instance()
+        
+        local_generators = [
+            g for g in state.generators
+            if (g.region_type == self.region_type and 
+                waste_type_enum in g.waste_streams and
+                g.inventory_policy == InventoryPolicy.PULL)  
+        ]
+        
+        for generator in local_generators:
+            generator.kanban_manager.add_signal(
+                waste_type=waste_type_enum,
+                priority=signal['priority'] - 1,  
+                timestamp=current_time,
+                volume=signal['volume'],
+                source_id=self.name,
+                source_type="collector"
+            )
 
     def should_collect(self) -> bool:
         utilization = calculate_utilization(
