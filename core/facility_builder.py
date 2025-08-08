@@ -75,7 +75,8 @@ class FacilityBuilder:
             waste_monitor=self.waste_monitor,
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
-            kanban_manager=self.kanban_manager
+            kanban_manager=self.kanban_manager,
+            failure_config=self.uncertainty_set.generator_failure if self.uncertainty_set else None
         )
 
     def create_collector(self, col_data, region: RegionType, stock_strategy=None, inventory_policy=None) -> CollectorCompany:
@@ -113,7 +114,8 @@ class FacilityBuilder:
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
             transport_manager=self.transport_manager,
-            kanban_manager=self.kanban_manager
+            kanban_manager=self.kanban_manager,
+            failure_config=self.uncertainty_set.collector_failure if self.uncertainty_set else None
         )
 
     def create_processor(self, proc_data, region: RegionType, stock_strategy=None, inventory_policy=None) -> TreatmentOperator:
@@ -156,7 +158,8 @@ class FacilityBuilder:
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
             transport_manager=self.transport_manager,
-            kanban_manager=self.kanban_manager
+            kanban_manager=self.kanban_manager,
+            failure_config=self.uncertainty_set.treatment_failure if self.uncertainty_set else None
         )
 
     # Private helper methods for processor creation

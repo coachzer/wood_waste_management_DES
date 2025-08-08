@@ -1,10 +1,10 @@
 from typing import Dict, List, Optional
 from dataclasses import dataclass
-from .data_classes import OperationalEntity
+from .data_classes import FailureConfig, OperationalEntity
 
 
 @dataclass
-class Generator:
+class Generator(OperationalEntity):
     """Waste generator entity"""
     id: str
     waste_generation_rates: Dict[str, float]  # EWC code -> tonne/day
@@ -13,6 +13,24 @@ class Generator:
     environmental_impact: float
     efficiency: float
     initial_stock: Optional[Dict[str, float]] = None
+
+    def __init__(self, 
+                 id: str,
+                 waste_generation_rates: Dict[str, float],
+                 generation_frequency: float,
+                 waste_storage_capacity: float,
+                 environmental_impact: float,
+                 efficiency: float,
+                 initial_stock: Optional[Dict[str, float]] = None,
+                 failure_config: Optional[FailureConfig] = None):  
+        super().__init__(failure_config=failure_config)
+        self.id = id
+        self.waste_generation_rates = waste_generation_rates
+        self.generation_frequency = generation_frequency
+        self.waste_storage_capacity = waste_storage_capacity
+        self.environmental_impact = environmental_impact
+        self.efficiency = efficiency
+        self.initial_stock = initial_stock
 
 
 @dataclass
@@ -35,8 +53,9 @@ class Collector(OperationalEntity):
                  transport_cost: float,
                  environmental_impact: float, 
                  efficiency: float,
-                 availability: bool):
-        super().__init__()
+                 availability: bool,
+                 failure_config: Optional[FailureConfig] = None):
+        super().__init__(failure_config=failure_config)
         self.id = id
         self.waste_types = waste_types
         self.collection_capacity = collection_capacity
@@ -45,7 +64,6 @@ class Collector(OperationalEntity):
         self.environmental_impact = environmental_impact
         self.efficiency = efficiency
         self.availability = availability
-        self.downtime_duration = 12.0
 
 
 @dataclass
@@ -64,13 +82,21 @@ class Processor(OperationalEntity):
     conversion_rate: float = 1.0
     operational_costs: float = 1.0
 
-    def __init__(self, id: str, input_types: List[str], output_types: List[str],
-                 processing_capacity: float, processing_time: float,
-                 waste_storage_capacity: float, product_storage_capacity: Optional[float] = None,
+    def __init__(self, 
+                 id: str, 
+                 input_types: List[str], 
+                 output_types: List[str],
+                 processing_capacity: float, 
+                 processing_time: float,
+                 waste_storage_capacity: float, 
+                 product_storage_capacity: Optional[float] = None,
                  product_to_sell_capacity: float = 20000.0,
-                 energy_consumption: float = 1.0, environmental_impact: float = 1.0,
-                 conversion_rate: float = 1.0, operational_costs: float = 1.0):
-        super().__init__()
+                 energy_consumption: float = 1.0, 
+                 environmental_impact: float = 1.0,
+                 conversion_rate: float = 1.0, 
+                 operational_costs: float = 1.0,
+                 failure_config: Optional[FailureConfig] = None):
+        super().__init__(failure_config=failure_config)
         self.id = id
         self.input_types = input_types
         self.output_types = output_types
@@ -83,7 +109,6 @@ class Processor(OperationalEntity):
         self.environmental_impact = environmental_impact
         self.conversion_rate = conversion_rate
         self.operational_costs = operational_costs
-        self.downtime_duration = 72.0
 
 @dataclass
 class RegionalFacilities:

@@ -66,30 +66,26 @@ TIME_PERIODS = {
 
 LOW_FAILURE = FailureConfig(
     probability=0.0024,  # ~0.24% chance per day 
-    min_duration=1.0,   # 1 day minimum
-    max_duration=3.0,   # 3 days maximum
-    check_interval=1.0  # Check once per day
+    min_duration=1.0,    # 1 day minimum
+    max_duration=3.0,    # 3 days maximum
 )
 
 MEDIUM_FAILURE = FailureConfig(
-    probability=0.06,   # ~6% chance per day 
-    min_duration=0.5,   # 0.5 days (12 hours)
-    max_duration=2.0,   # 2 days maximum
-    check_interval=0.5  # Check twice per day
+    probability=0.06,    # ~6% chance per day 
+    min_duration=0.5,    # 0.5 days (12 hours)
+    max_duration=2.0,    # 2 days maximum
 )
 
 HIGH_FAILURE = FailureConfig(
-    probability=0.12,   # ~12% chance per day 
-    min_duration=0.25,  # 0.25 days (6 hours)
-    max_duration=1.5,   # 1.5 days maximum
-    check_interval=0.25 # Check four times per day
+    probability=0.12,    # ~12% chance per day 
+    min_duration=0.25,   # 0.25 days (6 hours)
+    max_duration=1.5,    # 1.5 days maximum
 )
 
 DISASTER_FAILURE = FailureConfig(
     probability=0.24,   # ~24% chance per day
-    min_duration=0.125, # 0.125 days (3 hours)
-    max_duration=0.25,  # 0.25 days (6 hours)
-    check_interval=0.25 # Check four times per day
+    min_duration=0.25, # 30 days minimum
+    max_duration=1.5,  # 60 days maximum
 )
 
 SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {

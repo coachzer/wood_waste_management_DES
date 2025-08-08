@@ -49,50 +49,12 @@ def _get_product_volumes() -> Dict:
         "OSB": state.total_products.get("osb", 0)
     }
 
-def _get_treatment_waste_volumes(processing_history: Dict) -> Dict:
-    """Calculate treatment waste storage volumes"""
-    treatment_waste_volumes = {}
-    state = SimulationState.get_instance()
-    
-    for treatment_op in state.treatment_operators:
-        total_waste = sum(treatment_op.waste_storage.values())
-        if total_waste > 0:
-            treatment_waste_volumes[f"{treatment_op.name} (Waste Storage)"] = total_waste
-    
-    return treatment_waste_volumes
-
-def _get_treatment_product_volumes() -> Dict:
-    """Calculate treatment product storage volumes"""
-    treatment_product_volumes = {}
-    state = SimulationState.get_instance()
-    
-    for treatment_op in state.treatment_operators:
-        total_products = sum(treatment_op.product_storage.current_storage.values())
-        if total_products > 0:
-            treatment_product_volumes[f"{treatment_op.name} (Product Storage)"] = total_products
-    
-    return treatment_product_volumes
-
-def _get_treatment_to_sell_volumes() -> Dict:
-    """Calculate treatment ready-to-sell storage volumes"""
-    treatment_to_sell_volumes = {}
-    state = SimulationState.get_instance()
-    
-    for treatment_op in state.treatment_operators:
-        total_to_sell = sum(treatment_op.product_to_sell.current_storage.values())
-        if total_to_sell > 0:
-            treatment_to_sell_volumes[f"{treatment_op.name} (Ready to Sell)"] = total_to_sell
-    
-    return treatment_to_sell_volumes
-
 def get_volumes(generation_history: Dict, collection_history: Dict, processing_history: Dict):
     """Calculate volumes for each stage - now includes all treatment storage types"""
     return (
         _get_generator_volumes(generation_history),
         _get_collector_volumes(collection_history), 
-        _get_treatment_waste_volumes(processing_history),
-        _get_treatment_product_volumes(),
-        _get_treatment_to_sell_volumes(),
+        _get_treatment_volumes(processing_history),
         _get_product_volumes()
     )
 

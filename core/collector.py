@@ -60,9 +60,14 @@ class CollectorCompany(OperationalEntity):
         kanban_manager: KanbanManager = None,
         inventory_policy: InventoryPolicy = None,
         stock_strategy: StockStrategy = None,
-        transport_manager: PointToPointTransport = None
+        transport_manager: PointToPointTransport = None,
+        failure_config = None
     ):
-        super().__init__()
+        self.uncertainty_set = uncertainty_set
+
+        if failure_config is None and uncertainty_set:
+            failure_config = uncertainty_set.collector_failure
+        super().__init__(failure_config=failure_config)
         self.env = env
         self.name = name
         self.facility_type = "collector"
@@ -80,7 +85,6 @@ class CollectorCompany(OperationalEntity):
         self.availability = availability
         self.region = region
         self.region_type = RegionType[region.upper().replace('-', '_')] if region else None
-        self.uncertainty_set = uncertainty_set
 
         self.collection_center = CollectionCenter(
             region=self.region_type, 
@@ -335,22 +339,16 @@ class CollectorCompany(OperationalEntity):
 
             self.update_efficiency()
 
-            if self.uncertainty_set and hasattr(self.uncertainty_set, 'collector_failure'):
-                is_failed = self.check_failure(current_time, self.uncertainty_set.collector_failure.probability)
-                
-                if is_failed and self.status == EntityStatus.FAILED:
-                    self.efficiency = 0.5
-                elif not is_failed and self.status == EntityStatus.OPERATIONAL:
-                    if hasattr(self, '_was_failed') and self._was_failed:
-                        base_recovery = 0.8
-                        if self.inventory_policy == InventoryPolicy.PULL and self.stock_strategy == StockStrategy.ON_DEMAND:
-                            self.efficiency = base_recovery * 1.1
-                        else:
-                            self.efficiency = base_recovery
-                
-                # Track previous failure state
-                self._was_failed = (self.status == EntityStatus.FAILED)
+            if self.failure_config:
+                self.check_failure(current_time, self.failure_config.probability)
 
+            # Use base class operational efficiency
+            if self.status == EntityStatus.FAILED:
+                self.efficiency = 0.1  
+            elif self.status == EntityStatus.RECOVERING:
+                self.efficiency = self.get_operational_efficiency()  
+            elif self.status == EntityStatus.OPERATIONAL:
+                self.efficiency = 1.0  
             if self.status == EntityStatus.FAILED:
                 yield self.env.timeout(self.collection_frequency)  
                 continue

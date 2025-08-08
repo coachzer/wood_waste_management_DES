@@ -10,7 +10,6 @@ class FailureConfig:
     probability: float  # Daily probability of failure
     min_duration: float  # Minimum downtime in days
     max_duration: float  # Maximum downtime in days
-    check_interval: float = 1.0  # Daily between failure checks
 
 @dataclass(init=False)
 class OperationalEntity:
@@ -22,20 +21,18 @@ class OperationalEntity:
     failure_time: Optional[float]
     recovery_time: Optional[float]
     waste_monitor: WasteMonitor
+    failure_config: Optional[FailureConfig] 
     downtime_duration: float
-    last_failure_check: float
-    failure_check_interval: float
     rng: np.random.Generator  
 
-    def __init__(self):
+    def __init__(self, failure_config: Optional[FailureConfig] = None):
         """Initialize operational entity with default values"""
         self.status = EntityStatus.OPERATIONAL
         self.failure_time = None
         self.recovery_time = None
         self.waste_monitor = WasteMonitor()
-        self.downtime_duration = 24.0  
-        self.last_failure_check = 0.0
-        self.failure_check_interval = 1.0  
+        self.failure_config = failure_config
+        self.downtime_duration = 1.0  
         self.rng = np.random.default_rng(42) 
 
     @classmethod
@@ -102,8 +99,13 @@ class OperationalEntity:
             return 0.0
 
     def _get_recovery_duration(self):
-        """Override in subclasses for entity-specific recovery times"""
-        return self.downtime_duration
+        """Get random recovery duration based on failure config"""
+        if self.failure_config:
+            return self.rng.uniform(
+                self.failure_config.min_duration,
+                self.failure_config.max_duration
+            )
+        return 1.0
     
 @dataclass
 class WasteStream:
@@ -148,7 +150,7 @@ class CollectionCenter(OperationalEntity):
         self.waste_storage_capacity = waste_storage_capacity
         self.current_storage = current_storage
         self.coordinates = coordinates
-        self.downtime_duration = 48.0  # Collection centers take longer to repair
+        self.downtime_duration = 2.0  # Collection centers take longer to repair
 
 @dataclass
 class ProductStorage:

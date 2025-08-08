@@ -45,9 +45,15 @@ class TreatmentOperator(OperationalEntity):
         inventory_policy: InventoryPolicy = None,
         transport_manager: Optional[PointToPointTransport] = None,
         enable_abc_prioritization: bool = True, 
-        abc_demand_config_path: str = "data/demand.json"
+        abc_demand_config_path: str = "data/demand.json",
+        failure_config = None
     ):
-        super().__init__()
+        self.uncertainty_set = uncertainty_set
+
+        if failure_config is None and uncertainty_set:
+            failure_config = uncertainty_set.treatment_failure
+
+        super().__init__(failure_config=failure_config)
 
         self.waste_monitor = waste_monitor
         self.scenario_config = scenario_config 
@@ -109,9 +115,6 @@ class TreatmentOperator(OperationalEntity):
         # Stochastic components
         self.uncertainty_set = uncertainty_set
         self.transformation_efficiency = 0.95
-        if self.uncertainty_set and hasattr(self.uncertainty_set, 'treatment_failure'):
-            self.failure_check_interval = self.uncertainty_set.treatment_failure.check_interval
-
         # Transformations
         self.transformations = transformations or self._default_transformations()
 
@@ -564,18 +567,21 @@ class TreatmentOperator(OperationalEntity):
 
     def _handle_failures(self, current_time: float):
         """Checks for and handles facility failures, updating processing capacity."""
-        if not (self.uncertainty_set and hasattr(self.uncertainty_set, 'treatment_failure')):
+        if not self.failure_config:
             return
 
-        is_failed = self.check_failure(current_time, self.uncertainty_set.treatment_failure.probability)
-        was_failed = getattr(self, '_was_failed', False)
+        # Use the base class failure checking with proper config
+        self.check_failure(current_time, self.failure_config.probability)
 
-        if is_failed and self.status == EntityStatus.FAILED:
-            self.processing_capacity = self.initial_processing_capacity * 0.3
-        elif not is_failed and self.status == EntityStatus.OPERATIONAL and was_failed:
-            self.processing_capacity = self.initial_processing_capacity * 0.8
-
-        self._was_failed = (self.status == EntityStatus.FAILED)
+        match self.status:
+            case EntityStatus.FAILED:
+                recovery_efficiency = self.get_operational_efficiency()
+                self.processing_capacity = self.initial_processing_capacity * recovery_efficiency
+            case EntityStatus.RECOVERING:
+                recovery_efficiency = self.get_operational_efficiency()
+                self.processing_capacity = self.initial_processing_capacity * recovery_efficiency
+            case EntityStatus.OPERATIONAL:
+                self.processing_capacity = self.initial_processing_capacity
 
     def _process_available_waste(self):
         """Processes waste based on prioritized transformations."""

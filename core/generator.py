@@ -26,9 +26,15 @@ class WasteGenerator(OperationalEntity):
         waste_monitor: Optional[WasteMonitor] = None,
         stock_strategy: StockStrategy = None,
         inventory_policy: InventoryPolicy = None,
-        kanban_manager=None,
+        kanban_manager = None,
+        failure_config = None
     ):
-        super().__init__()
+        self.uncertainty_set = uncertainty_set
+
+        if failure_config is None and uncertainty_set:
+            failure_config = uncertainty_set.generator_failure
+
+        super().__init__(failure_config=failure_config)
         self.env = env
         self.name = name
         self.facility_type = "generator"
@@ -103,8 +109,10 @@ class WasteGenerator(OperationalEntity):
 
     def _handle_entity_status(self, current_time):
         """Checks for failures and updates generation rates based on entity status."""
-        if self.uncertainty_set and hasattr(self.uncertainty_set, 'generator_failure'):
-            self.check_failure(current_time, self.uncertainty_set.generator_failure.probability)
+        if self.failure_config:
+            self.check_failure(current_time, self.failure_config.probability)
+        else:
+            raise ValueError("failure_config is required for entity status handling")
 
         if self.status == EntityStatus.FAILED:
             if not hasattr(self, '_original_rates'):
