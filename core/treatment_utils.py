@@ -27,26 +27,41 @@ def update_waste_storage(treatment_operator, input_type, output_type, amount_to_
 
 def fulfill_demand(treatment_operator, output_type, output_amount):
     """Fulfill demand for final products"""
-    
+
     # Get current unmet demand for this specific product type
     state = SimulationState.get_instance()
     product_type = output_type.value.lower()
-    
+
     unmet_demand = state.target_demands[product_type] - state.total_products[product_type]
-    
+
     # Use the actual unmet demand to limit production
     fulfilled_amount = min(output_amount, unmet_demand)
-    
+
     if fulfilled_amount > 0:
-        treatment_operator.waste_storage[output_type] -= fulfilled_amount
+
+        print(
+            f"Storage before: {treatment_operator.product_to_sell.current_storage[output_type]:.2f} m³ remaining"
+        )
+
+        # ✅ FIXED: Access current_storage dictionary, not the ProductStorage object directly
+        treatment_operator.product_to_sell.current_storage[
+            output_type
+        ] -= fulfilled_amount
         treatment_operator.demand -= fulfilled_amount
-        
+
+        print(
+            f"[{treatment_operator.name}] Fulfilled {fulfilled_amount:.2f} m³ of {output_type.value} demand"
+        )
+        print(
+            f"Storage after: {treatment_operator.product_to_sell.current_storage[output_type]:.2f} m³ remaining"
+        )
+
         # Record fulfilled amount in production history with product type
         treatment_operator.production_history.append((treatment_operator.env.now, output_type.value.lower(), fulfilled_amount))
-        
+
         # Report production to simulation state with current time
         state.track_product_production(product_type, fulfilled_amount, treatment_operator.env.now)
-        
+
         # print(
         #     f"{treatment_operator.env.now}: Fulfilled {fulfilled_amount:.2f} m³ of {output_type.value} demand "
         #     f"(Total: {state.total_products[product_type]:.2f}/{state.target_demands[product_type]:.2f})"

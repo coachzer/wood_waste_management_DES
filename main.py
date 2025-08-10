@@ -9,9 +9,12 @@ from monitoring.baseline_aggregate import extract_kpis
 import traceback
 import argparse
 import time
-import os
 import json
 from pathlib import Path
+
+# from monitoring.visualization.demand_visualization import (
+#     create_product_to_sell_vs_demand_plot,
+# )
 
 
 def run_single_simulation(
@@ -44,6 +47,23 @@ def run_single_simulation(
         manager.run_simulation()
 
         monitor_data = manager.get_monitor_data()
+
+        # out_dir = os.path.join(
+        #     "plots",
+        #     "product_vs_demand",
+        #     scenario_name,
+        #     inventory_policy.value,
+        #     stock_strategy.value,
+        # )
+        # for treatment_name in monitor_data["processing_history"].keys():
+        #     create_product_to_sell_vs_demand_plot(
+        #         monitor_data=monitor_data,
+        #         treatment_name=treatment_name,
+        #         product_types=None,
+        #         output_dir=out_dir,
+        #         filename=treatment_name.replace(" ", "_"),
+        #         show_events=True,
+        #     )
 
         mfa_path = None
         if create_mfa:

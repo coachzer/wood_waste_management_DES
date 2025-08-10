@@ -120,9 +120,13 @@ class TreatmentOperator(OperationalEntity):
 
         self.enable_abc_prioritization = enable_abc_prioritization
         self.abc_priority_map = {}
-    
+
         if self.enable_abc_prioritization:
             self._initialize_abc_priorities(abc_demand_config_path)
+
+        # Add ON_DEMAND buffer/target ratios
+        self.on_demand_buffer_ratio = 0.15  # reorder when <15% of capacity
+        self.on_demand_target_ratio = 0.35  # refill up to 35% of capacity
 
         # Start processes
         self.process = env.process(self.run_facility())
@@ -152,7 +156,7 @@ class TreatmentOperator(OperationalEntity):
         """Set waste storage with overflow detection"""
         if not isinstance(new_storage, dict):
             return
-        
+
         total_new = sum(new_storage.values())
         if total_new > self.waste_storage_capacity:
             overflow_amount = total_new - self.waste_storage_capacity
@@ -161,7 +165,7 @@ class TreatmentOperator(OperationalEntity):
                 overflow_amount, 
                 self.region
             )
-            
+
             scaling_factor = self.waste_storage_capacity / total_new
             self._waste_storage = {
                 waste_type: amount * scaling_factor
@@ -182,7 +186,7 @@ class TreatmentOperator(OperationalEntity):
                 for item in classifications
             }
             print(f"[{self.name}] ABC priorities loaded: {self.abc_priority_map}")
-            
+
         except Exception as e:
             print(f"[{self.name}] ABC initialization failed: {e}, using default priorities")
             self.abc_priority_map = {
@@ -196,15 +200,27 @@ class TreatmentOperator(OperationalEntity):
         current_total = sum(self.waste_storage.values())
         state = SimulationState.get_instance()
         unmet_demands = state.get_unmet_demands()
-        
+
         match self.stock_strategy:
             case StockStrategy.ON_DEMAND:
                 if any(demand > 0 for demand in unmet_demands.values()):
                     total_active_demand = sum(unmet_demands.values())
-                    return min(base_demand, total_active_demand * 1.1) 
+                    return min(base_demand, total_active_demand * 1.1)
                 else:
+                    print(
+                        f"[{self.name}] No active demand, using base demand: {base_demand}"
+                    )
+                    reorder_point = (
+                        self.waste_storage_capacity * self.on_demand_buffer_ratio
+                    )
+                    target_level = (
+                        self.waste_storage_capacity * self.on_demand_target_ratio
+                    )
+                    if current_total < reorder_point:
+                        shortage = max(0.0, target_level - current_total)
+                        return min(base_demand, shortage)
                     return 0.0
-                
+
             case StockStrategy.REORDER_50:
                 reorder_point = self.waste_storage_capacity * 0.5
                 if current_total < reorder_point:
@@ -212,7 +228,7 @@ class TreatmentOperator(OperationalEntity):
                     return max(base_demand, shortage)
                 else:
                     return 0.0
-                    
+
             case StockStrategy.REORDER_90:
                 reorder_point = self.waste_storage_capacity * 0.9
                 if current_total < reorder_point:
@@ -220,7 +236,7 @@ class TreatmentOperator(OperationalEntity):
                     return max(base_demand, shortage)
                 else:
                     return 0.0
-                    
+
         return base_demand
 
     def _should_trigger_collection_based_on_strategy(self) -> bool:
@@ -228,53 +244,54 @@ class TreatmentOperator(OperationalEntity):
         current_total = sum(self.waste_storage.values())
         state = SimulationState.get_instance()
         unmet_demands = state.get_unmet_demands()
-        
+
         match self.stock_strategy:
             case StockStrategy.ON_DEMAND:
                 has_active_demand = any(demand > 0 for demand in unmet_demands.values())
+                below_buffer = current_total < (
+                    self.waste_storage_capacity * self.on_demand_buffer_ratio
+                )
                 can_process_existing = current_total > self.minimum_required_waste
-                has_processing_capacity = self.current_storage < self.waste_storage_capacity * 0.3  # Keep lean
-                
-                # Collect if: (has demand) OR (can process AND staying lean)
-                return has_active_demand or (can_process_existing and has_processing_capacity)
-            
-                
+                has_processing_capacity = (
+                    self.current_storage < self.waste_storage_capacity
+                )
+                return (
+                    has_active_demand
+                    or below_buffer
+                    or (can_process_existing and has_processing_capacity)
+                )
+
             case StockStrategy.REORDER_50:
                 reorder_point = self.waste_storage_capacity * 0.5
                 return current_total < reorder_point
-                
+
             case StockStrategy.REORDER_90:
                 reorder_point = self.waste_storage_capacity * 0.9
                 return current_total < reorder_point
-                
+
         return True  
 
     def _get_reorder_quantity(self) -> float:
         """Calculate how much to reorder based on strategy"""
         current_total = sum(self.waste_storage.values())
-        
+
         match self.stock_strategy:
             case StockStrategy.ON_DEMAND:
                 state = SimulationState.get_instance()
                 unmet_demands = state.get_unmet_demands()
                 total_current_demand = sum(unmet_demands.values())
-                return total_current_demand * 1.2
-                
-            case StockStrategy.REORDER_50:
-                target_level = self.waste_storage_capacity * 0.5
-                return max(0, target_level - current_total)
-                
-            case StockStrategy.REORDER_90:
-                target_level = self.waste_storage_capacity * 0.9
-                return max(0, target_level - current_total)
-                
+                if total_current_demand > 0:
+                    return total_current_demand
+                target_level = self.waste_storage_capacity * self.on_demand_target_ratio
+                return max(0.0, target_level - current_total)
+
         return self.processing_capacity 
 
     def schedule_collection_requests(self):
         """Transport-safe PUSH vs PULL with startup protection"""
         while True:
             current_time = self.env.now
-            
+
             match self.inventory_policy:
                 case InventoryPolicy.PUSH:
                     yield from self._push_collection_logic()
@@ -282,59 +299,59 @@ class TreatmentOperator(OperationalEntity):
                     yield from self._pull_collection_logic(current_time)
                 case _:
                     yield self.env.timeout(7)
-    
+
     def _push_collection_logic(self):
         """PUSH: Strategy-based with proper reorder point logic"""
-        
+
         # Check if we should collect based on strategy
         if not self._should_trigger_collection_based_on_strategy():
             yield self.env.timeout(self.processing_time)
             return
-        
+
         # Calculate reorder quantity based on strategy
         reorder_quantity = self._get_reorder_quantity()
-        
+
         if reorder_quantity > 0:
             self.demand = reorder_quantity
             self.trigger_collection()
-        
+
         yield self.env.timeout(self.processing_time)
 
     def _pull_collection_logic(self, current_time):
         """PULL: Kanban-driven with continuous demand signaling"""
         active_signals = self.kanban_manager.get_signals(current_time)
-        
+
         if active_signals:
             # Process existing signals
             sorted_signals = sorted(active_signals, 
                                 key=lambda s: (s['priority'], current_time - s['timestamp']), 
                                 reverse=True)
-            
+
             total_demand = sum(signal['volume'] for signal in sorted_signals)
             self.demand = total_demand
             self.trigger_collection()
-            
+
             for signal in sorted_signals:
                 self.kanban_manager.acknowledge_signal(signal['id'])
-        
+
         # NEW: Always check if we need more waste and generate signals accordingly
         self._continuous_demand_signaling(current_time)
-        
+
         yield self.env.timeout(self.processing_time)
 
     def _continuous_demand_signaling(self, current_time):
         """Continuously signal for waste when needed"""
-        
+
         # Check if we're running low on any input waste types
         input_waste_types = {key[0] for key in self.transformations.keys()}
-        
+
         for waste_type in input_waste_types:
             current_stock = self.waste_storage.get(waste_type, 0)
-            
+
             # Signal if stock is low (less than 10% of capacity per waste type)
             per_type_capacity = self.waste_storage_capacity / len(input_waste_types)
             reorder_point = per_type_capacity * 0.1
-            
+
             if current_stock < reorder_point:
                 needed_volume = per_type_capacity * 0.5  # Order up to 50% capacity
                 self._create_collection_signal(waste_type, needed_volume, current_time, priority=7)
@@ -344,7 +361,7 @@ class TreatmentOperator(OperationalEntity):
         match self.stock_strategy:
             case StockStrategy.ON_DEMAND:
                 return signals
-                
+
             case StockStrategy.REORDER_50:
                 current_total = sum(self.waste_storage.values())
                 reorder_point = self.waste_storage_capacity * 0.5
@@ -352,7 +369,7 @@ class TreatmentOperator(OperationalEntity):
                     return signals
                 else:
                     return []
-                    
+
             case StockStrategy.REORDER_90:
                 current_total = sum(self.waste_storage.values())
                 reorder_point = self.waste_storage_capacity * 0.9
@@ -360,7 +377,7 @@ class TreatmentOperator(OperationalEntity):
                     return signals
                 else:
                     return []  
-                    
+
         return signals
 
     def _generate_strategy_based_signals(self, current_time: float):
@@ -369,26 +386,28 @@ class TreatmentOperator(OperationalEntity):
             case StockStrategy.ON_DEMAND:
                 state = SimulationState.get_instance()
                 unmet_demands = state.get_unmet_demands()
-                
+
                 if any(demand > 0 for demand in unmet_demands.values()):
                     for waste_type, stream_volume in self.waste_storage.items():
                         if stream_volume < self.minimum_required_waste:
                             needed = self._calculate_waste_needed_for_demand(waste_type)
                             if needed > 0:
-                                self._create_collection_signal(waste_type, needed, current_time, priority=9)
-                
+                                self._create_collection_signal(
+                                    waste_type, needed, current_time, priority=9
+                                )
+
             case StockStrategy.REORDER_50:
                 reorder_point = self.waste_storage_capacity * 0.5
                 current_total = sum(self.waste_storage.values())
-                
+
                 if current_total < reorder_point:
                     shortage = reorder_point - current_total
                     self._create_reorder_signals(shortage, current_time, priority=5)
-                    
+
             case StockStrategy.REORDER_90:
                 reorder_point = self.waste_storage_capacity * 0.9
                 current_total = sum(self.waste_storage.values())
-                
+
                 if current_total < reorder_point:
                     shortage = reorder_point - current_total
                     self._create_reorder_signals(shortage, current_time, priority=3)
@@ -397,16 +416,16 @@ class TreatmentOperator(OperationalEntity):
         """Calculate how much of a specific waste type is needed to fulfill current demand"""
         state = SimulationState.get_instance()
         unmet_demands = state.get_unmet_demands()
-        
+
         # Find transformations that use this waste type
         relevant_transformations = [
             (key, transform) for key, transform in self.transformations.items()
             if key[0] == waste_type
         ]
-        
+
         if not relevant_transformations:
             return 0.0
-        
+
         total_needed = 0.0
         for (input_type, output_type), transformation in relevant_transformations:
             output_key = output_type.value.lower().replace('_', '_')
@@ -415,7 +434,7 @@ class TreatmentOperator(OperationalEntity):
                 efficiency = transformation.conversion_efficiency
                 waste_needed = unmet_demands[output_key] / efficiency
                 total_needed += waste_needed
-        
+
         return total_needed
 
     def _create_collection_signal(self, waste_type: WasteType, volume: float, timestamp: float, priority: int):
@@ -428,27 +447,28 @@ class TreatmentOperator(OperationalEntity):
             source_id=self.name,
             source_type="treatment"
         )
-        
+
         self._propagate_signal_to_collectors(waste_type, volume, timestamp)
 
     def _create_reorder_signals(self, total_shortage: float, timestamp: float, priority: int):
         """Create reorder signals distributed across waste types"""
         input_waste_types = {key[0] for key in self.transformations.keys()}
-        
+
         if not input_waste_types:
             return
-        
+
         shortage_per_type = total_shortage / len(input_waste_types)
-        
+
         for waste_type in input_waste_types:
             if shortage_per_type > 0:
-                self._create_collection_signal(waste_type, shortage_per_type, timestamp, priority)
-    
+                self._create_collection_signal(
+                    waste_type, shortage_per_type, timestamp, priority
+                )
 
     def _propagate_signal_to_collectors(self, waste_type, needed_volume, current_time):
         """Propagate signals to collectors with availability checking"""
         state = SimulationState.get_instance()
-        
+
         local_collectors = [
             c for c in state.collectors 
             if (c.region_type == self.region_type and 
@@ -456,11 +476,11 @@ class TreatmentOperator(OperationalEntity):
                 c.availability and 
                 c.collection_center.current_storage.get(waste_type, 0) > 0) 
         ]
-        
+
         for collector in local_collectors:
             available_volume = collector.collection_center.current_storage.get(waste_type, 0)
             signal_volume = min(needed_volume, available_volume)
-            
+
             if signal_volume > 0:
                 collector.kanban_manager.add_signal(
                     waste_type=waste_type,
@@ -475,17 +495,17 @@ class TreatmentOperator(OperationalEntity):
         """Calculate realistic demand based on stock strategy"""
         # Base calculation remains the same
         current_total = sum(self.waste_storage.values())
-        
+
         available_capacity = (self.waste_storage_capacity - current_total) * 0.8
         max_processable = self.processing_capacity * 3.0
-        
+
         state = SimulationState.get_instance()
         unmet_demands = state.get_unmet_demands()
         total_unmet = sum(unmet_demands.values())
-        
+
         if not self._should_trigger_collection_based_on_strategy():
             return 0.0  # Strategy says don't collect
-        
+
         # Calculate base demand
         base_demand = min(
             available_capacity,
@@ -494,9 +514,9 @@ class TreatmentOperator(OperationalEntity):
             self.waste_storage_capacity * 0.1
         )
         strategy_demand = self._apply_stock_strategy_to_demand_calculation(base_demand)
-        
+
         return max(strategy_demand, 0.0)
-            
+
     def _get_prioritized_transformations(self):
         """Get transformations sorted by priority based on current demands and system state"""
         state = SimulationState.get_instance()
@@ -504,28 +524,28 @@ class TreatmentOperator(OperationalEntity):
 
         if not self.enable_abc_prioritization:
             return self._get_default_prioritized_transformations(unmet_demands)
-        
+
         transformation_scores = []
-        
+
         for (input_type, output_type), transformation in self.transformations.items():
             product_key = output_type.value.lower().replace('_', '_')
             abc_priority = self.abc_priority_map.get(product_key, 0.5)
-            
+
             current_demand = unmet_demands.get(product_key, 0)
             has_demand = current_demand > 0
-            
+
             # Scoring: ABC priority + demand urgency + efficiency + input
             demand_score = min(current_demand / 5000, 1.0) if has_demand else 0.1
             efficiency_score = get_transformation_efficiency(self, transformation)
             input_availability = min(self.waste_storage.get(input_type, 0) / 100, 1.0)
-            
+
             total_score = (abc_priority * 2.0) + demand_score + efficiency_score + input_availability
-            
+
             transformation_scores.append(((input_type, output_type), transformation, total_score))
-        
+
         transformation_scores.sort(key=lambda x: x[2], reverse=True)
         return [(key, transform) for key, transform, _ in transformation_scores]
-        
+
     def _get_default_prioritized_transformations(self, unmet_demands):
         """Original logic (keep unchanged for fallback)"""
         if any(demand > 0 for demand in unmet_demands.values()):
@@ -534,7 +554,7 @@ class TreatmentOperator(OperationalEntity):
                 OutputType.PARTICLE_BOARD: unmet_demands.get('particle_board', 0),
                 OutputType.OSB: unmet_demands.get('osb', 0)
             }
-            
+
             return sorted(
                 self.transformations.items(),
                 key=lambda x, demands=product_demands: (
@@ -550,7 +570,7 @@ class TreatmentOperator(OperationalEntity):
                 key=lambda x: get_transformation_efficiency(self, x[1]),
                 reverse=True
             )
-        
+
     def request_waste_delivery(self, waste_type: WasteType, volume: float, 
                              from_region: RegionType, priority: TransportPriority = TransportPriority.NORMAL):
         """Request waste delivery from a specific region"""
@@ -576,7 +596,9 @@ class TreatmentOperator(OperationalEntity):
         match self.status:
             case EntityStatus.FAILED:
                 recovery_efficiency = self.get_operational_efficiency()
-                self.processing_capacity = self.initial_processing_capacity * recovery_efficiency
+                self.processing_capacity = (
+                    self.initial_processing_capacity * recovery_efficiency
+                )
             case EntityStatus.RECOVERING:
                 recovery_efficiency = self.get_operational_efficiency()
                 self.processing_capacity = self.initial_processing_capacity * recovery_efficiency
@@ -608,7 +630,7 @@ class TreatmentOperator(OperationalEntity):
 
     def _process_waste_transformation(self, input_type, output_type, transformation):
         """Process a single waste transformation"""
-        
+
         final_products = {
             OutputType.MDF,
             OutputType.PARTICLE_BOARD,
@@ -618,19 +640,19 @@ class TreatmentOperator(OperationalEntity):
             return
 
         amount_to_process = min(self.waste_storage[input_type], self.processing_capacity)
-        
+
         if amount_to_process <= 0:
             return
-        
+
         efficiency = min(get_transformation_efficiency(self, transformation), 1.0)
-        
+
         amount_to_process, output_amount = calculate_output_amounts(
             amount_to_process, 
             efficiency
         )
-        
+
         update_waste_storage(self, input_type, output_type, amount_to_process, output_amount)
-        
+
         if output_type in final_products:
             total_to_sell_stored = sum(self.product_to_sell.current_storage.values())
             to_sell_capacity = self.product_to_sell.capacity
@@ -655,10 +677,10 @@ class TreatmentOperator(OperationalEntity):
                 self.product_volumes["osb"] += output_amount # m³
         else:
             return  
-        
+
         # Track processing costs
         track_treatment_properties(self, amount_to_process, transformation)
-        
+
         # Update utilization metrics
         update_utilization_metrics(self, amount_to_process)
 
@@ -685,7 +707,7 @@ class TreatmentOperator(OperationalEntity):
         """Collect waste from local collectors."""
         state = SimulationState.get_instance()
         local_collectors = [c for c in state.collectors if c.region_type == self.region_type and c.availability]
-        
+
         remaining = amount_to_collect
         for collector in local_collectors:
             if remaining <= 0: break
@@ -700,15 +722,15 @@ class TreatmentOperator(OperationalEntity):
     def _collect_from_cross_region(self, amount_to_collect: float, waste_types: set, collected_waste: dict) -> float:
         """Collect waste from cross-region collectors via transport."""
         if amount_to_collect <= 0: return 0.0
-        
+
         state = SimulationState.get_instance()
         remote_collectors = [c for c in state.collectors if c.region_type != self.region_type and c.availability]
         remote_collectors.sort(key=lambda c: get_distance(self.region_type, c.region_type))
-        
+
         remaining = amount_to_collect
         for collector in remote_collectors[:3]:
             if remaining <= 0: break
-            
+
             transport_collected = self._request_via_transport(collector, remaining, waste_types)
             for waste_type, amount in transport_collected.items():
                 collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
@@ -719,7 +741,7 @@ class TreatmentOperator(OperationalEntity):
         """Collect waste from any available collector as a fallback."""
         state = SimulationState.get_instance()
         all_collectors = [c for c in state.collectors if c.availability]
-        
+
         remaining = amount_to_collect
         for collector in all_collectors:
             if remaining <= 0: break
@@ -731,63 +753,63 @@ class TreatmentOperator(OperationalEntity):
 
     def _request_via_transport(self, collector, amount: float, waste_types: set) -> Dict[WasteType, float]:
         """Request waste via transport system"""
-        
+
         available_waste = self._get_available_waste_from_collector(collector, amount, waste_types)
-        
+
         transported_waste = {}
         for waste_type, volume in available_waste.items():
             if volume > 0:
-                
+
                 # Call transport system
                 success = collector.transfer_waste_to_region(
                     waste_type, volume, self.region_type
                 )
-                
+
                 if success:
                     transported_waste[waste_type] = volume
                 else:
                     print(f"[TRANSPORT FAILED] Could not schedule transport for {waste_type.value}")
-        
+
         return transported_waste
 
     def _get_available_waste_from_collector(self, collector, max_amount: float, waste_types: set) -> Dict[WasteType, float]:
         """Check what waste is available from a collector"""
         available_waste = {}
         remaining_capacity = max_amount
-        
+
         for waste_type in waste_types:
             if remaining_capacity <= 0:
                 break
-                
+
             available_in_storage = collector.collection_center.current_storage[waste_type]
             if available_in_storage > 0:
                 can_take = min(available_in_storage, remaining_capacity)
                 available_waste[waste_type] = can_take
                 remaining_capacity -= can_take
-        
+
         return available_waste
-    
+
     def trigger_collection(self):
         """Request waste collection based on current needs"""
         state = SimulationState.get_instance()
-        
+
         product_demands = {}
-        
+
         for product_type in [OutputType.MDF, OutputType.PARTICLE_BOARD, OutputType.OSB]:
             key = product_type.value.lower().replace('_', '_') 
             if key in state.target_demands and key in state.total_products:
                 unmet_demand = state.target_demands[key] - state.total_products[key]
                 if unmet_demand > 0:
                     product_demands[product_type] = unmet_demand
-        
+
         self.demand = sum(product_demands.values())
-        
+
         required_waste = self.calculate_realistic_demand()
         if required_waste <= 0:
             return 0, 0
 
         input_waste_types = {key[0] for key in self.transformations.keys()}
-        
+
         collected_waste = self.request_waste_directly(required_waste, input_waste_types)
 
         if not collected_waste or sum(collected_waste.values()) == 0:
@@ -889,7 +911,7 @@ class TreatmentOperator(OperationalEntity):
         product_spec = self.product_manager.get_product_specification(product_type)
         if not product_spec:
             return {}
-        
+
         return {
             "wood_density_min": product_spec.wood_density_min,
             "wood_density_max": product_spec.wood_density_max,
@@ -901,7 +923,7 @@ class TreatmentOperator(OperationalEntity):
     def calculate_total_biogenic_carbon_stored(self) -> dict:
         """Calculate total biogenic carbon stored in all produced products"""
         total_biogenic_storage = {}
-        
+
         for product_type, volume in self.product_volumes.items():
             if volume > 0:
                 product_spec = self.product_manager.get_product_specification(product_type)
@@ -911,7 +933,7 @@ class TreatmentOperator(OperationalEntity):
                         "biogenic_carbon_total": volume * product_spec.biogenic_carbon_stock,
                         "wood_content_kg": volume * product_spec.wood_density_avg
                     }
-        
+
         return total_biogenic_storage
 
     def get_wood_density_for_product(self, product_type: str) -> float:
