@@ -37,11 +37,11 @@ def create_output_directory(output_dir: str):
 def save_plot_files(fig: go.Figure, output_dir: str, filename: str, print_message: str = None):
     """Save both HTML and PNG versions of a plot"""
     create_output_directory(output_dir)
-    
+
     fig.write_html(f"{output_dir}/{filename}.html")
-    
-    fig.write_image(f"{output_dir}/{filename}.png", scale=2)
-    
+
+    fig.write_image(f"{output_dir}/{filename}.pdf", scale=2)
+
     if print_message:
         print(print_message)
     else:
@@ -347,35 +347,35 @@ def _create_environmental_impact_comparison(results: List[Dict], output_dir: str
 def _create_environmental_breakdown_comparison(results: List[Dict], output_dir: str):
     """Create stacked bar chart showing environmental impact breakdown by source"""
     os.makedirs(output_dir, exist_ok=True)
-    
+
     scenario_labels = []
     impact_data = {
         'carbon_emissions': [],
         'transport_emissions': [], 
         'landfill_emissions': []
     }
-    
+
     for result in results:
         monitor_data = result['monitor_data']
         scenario_labels.append(f"{result['inventory_policy']} | {result['stock_strategy']}")
         environmental_history = monitor_data.get('environmental_history', {})
-        
+
         # Sum total impacts by category
         totals = {'carbon_emissions': 0, 'transport_emissions': 0, 'landfill_emissions': 0}
-        
+
         for entity_data in environmental_history.values():
             for category in totals.keys():
                 impacts = entity_data.get(category, [])
                 if impacts:
                     totals[category] += sum(impacts)
-        
+
         for category in totals.keys():
             impact_data[category].append(totals[category])
-    
+
     # Create stacked bar chart
     fig = go.Figure()
     colors = {'carbon_emissions': '#1f77b4', 'transport_emissions': '#ff7f0e', 'landfill_emissions': '#d62728'}
-    
+
     for category, color in colors.items():
         fig.add_trace(go.Bar(
             x=scenario_labels,
@@ -383,7 +383,7 @@ def _create_environmental_breakdown_comparison(results: List[Dict], output_dir: 
             name=category.replace('_', ' ').title(),
             marker_color=color
         ))
-    
+
     fig.update_layout(
         title="Environmental Impact Breakdown by Scenario",
         barmode='stack',
@@ -391,23 +391,22 @@ def _create_environmental_breakdown_comparison(results: List[Dict], output_dir: 
         yaxis_title="Total Impact (kg CO₂e)",
         xaxis={'tickangle': 45}
     )
-    
+
     fig.write_html(f"{output_dir}/environmental_breakdown_comparison.html")
-    fig.write_image(f"{output_dir}/environmental_breakdown_comparison.png", scale=2)
+    fig.write_image(f"{output_dir}/environmental_breakdown_comparison.pdf", scale=2)
     print("Environmental breakdown comparison saved")
 
 def _create_cost_vs_environmental_pareto(results: List[Dict], output_dir: str):
     """Create Pareto chart showing cost vs environmental impact trade-offs"""
     create_output_directory(output_dir)
-    
+
     scenario_data = _extract_scenario_metrics(results)
     fig = _create_pareto_scatter_plot(scenario_data)
     _add_pareto_frontier(fig, scenario_data)
-    _add_performance_annotations(fig, scenario_data)
-    
+
     # Save the plot
     save_plot_files(fig, output_dir, "cost_vs_environmental_pareto", "Cost vs Environmental Pareto chart saved")
-    
+
     # Create and save ranking table
     _create_pareto_ranking_table(scenario_data, output_dir)
 
@@ -441,102 +440,133 @@ def _create_pareto_scatter_plot(scenario_data: List[Dict]) -> go.Figure:
     """Create the main scatter plot for Pareto analysis"""
     fig = go.Figure()
     colors, symbols = get_scenario_colors_and_symbols()
-    
+
     for data in scenario_data:
-        fig.add_trace(go.Scatter(
-            x=[data['total_cost']],
-            y=[data['total_environmental_impact']],
-            mode='markers+text',
-            marker={
-                "color": colors.get(data['inventory_policy'], '#2ca02c'),
-                "symbol": symbols.get(data['stock_strategy'], 'circle'),
-                "size": 15,
-                "line": {'width': 2, 'color': 'white'}
-            },
-            text=[data['stock_strategy'].replace('_', ' ')],
-            textposition='top center',
-            name=f"{data['inventory_policy']} - {data['stock_strategy'].replace('_', ' ')}",
-            hovertemplate=(
-                f"<b>{data['scenario']}</b><br>" +
-                "Total Cost: €%{x:,.0f}<br>" +
-                "Environmental Impact: %{y:,.0f} kg CO₂e<br>" +
-                "<extra></extra>"
+        fig.add_trace(
+            go.Scatter(
+                x=[data["total_cost"]],
+                y=[data["total_environmental_impact"]],
+                mode="markers+text",
+                marker={
+                    "color": colors.get(data["inventory_policy"], "#2ca02c"),
+                    "symbol": symbols.get(data["stock_strategy"], "circle"),
+                    "size": 12,
+                    "line": {"width": 1.5, "color": "white"},
+                },
+                text=[data["stock_strategy"].replace("_", " ")],
+                textposition="top center",
+                textfont={"size": 10, "color": "black"},
+                name=f"{data['inventory_policy']} - {data['stock_strategy'].replace('_', ' ')}",
+                hovertemplate=(
+                    f"<b>{data['scenario']}</b><br>"
+                    + "Total Cost: €%{x:,.0f}<br>"
+                    + "Environmental Impact: %{y:,.0f} kg CO₂e<br>"
+                    + "<extra></extra>"
+                ),
             )
-        ))
-    
+        )
+
     fig.update_layout(
-        title="Cost vs Environmental Impact Pareto Analysis<br><sub>Lower-left is better (lower cost, lower impact)</sub>",
-        xaxis_title="Total Cost (€)",
-        yaxis_title="Total Environmental Impact (kg CO₂e)",
-        showlegend=True,
-        legend={
-            "yanchor": "top",
-            "y": 0.99,
-            "xanchor": "left",
-            "x": 1.02
+        # title={
+        #     "text": "Cost vs Environmental Impact Trade-offs",
+        #     "x": 0.5,
+        #     "font": {"size": 16, "color": "black"},
+        # },
+        xaxis={
+            "title": {"text": "Total Cost (€)", "font": {"size": 14}},
+            "showgrid": True,
+            "gridcolor": "#E5E5E5",
+            "gridwidth": 0.5,
+            "zeroline": False,
+            "showline": True,
+            "linecolor": "black",
+            "linewidth": 1,
+            "tickfont": {"size": 12},
         },
-        width=1000,
-        height=700
+        yaxis={
+            "title": {
+                "text": "Total Environmental Impact (kg CO₂e)",
+                "font": {"size": 14},
+            },
+            "showgrid": True,
+            "gridcolor": "#E5E5E5",
+            "gridwidth": 0.5,
+            "zeroline": False,
+            "showline": True,
+            "linecolor": "black",
+            "linewidth": 1,
+            "tickfont": {"size": 12},
+        },
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        showlegend=True,
+        width=800,
+        height=600,
+        margin={"l": 80, "r": 40, "t": 40, "b": 60},
     )
-    
+
     return fig
 
 def _add_pareto_frontier(fig: go.Figure, scenario_data: List[Dict]):
-    """Add Pareto frontier line to the plot"""
-    sorted_data = sorted(scenario_data, key=lambda x: x['total_cost'])
-    pareto_points = []
-    min_impact = float('inf')
-    
-    for point in sorted_data:
-        if point['total_environmental_impact'] < min_impact:
-            min_impact = point['total_environmental_impact']
-            pareto_points.append(point)
-    
-    if len(pareto_points) > 1:
-        pareto_x = [p['total_cost'] for p in pareto_points]
-        pareto_y = [p['total_environmental_impact'] for p in pareto_points]
-        
-        fig.add_trace(go.Scatter(
-            x=pareto_x,
-            y=pareto_y,
-            mode='lines',
-            line={'color': 'red', 'width': 3, 'dash': 'dash'},
-            name='Pareto Frontier',
-            hoverinfo='skip'
-        ))
+    """Add Pareto frontier or highlight extreme points"""
 
-def _add_performance_annotations(fig: go.Figure, scenario_data: List[Dict]):
-    """Add annotations for best performing scenarios"""
-    if not scenario_data:
-        return
-    
-    # Find minimum cost and minimum impact scenarios
-    min_cost_scenario = min(scenario_data, key=lambda x: x['total_cost'])
-    min_impact_scenario = min(scenario_data, key=lambda x: x['total_environmental_impact'])
-    
-    fig.add_annotation(
-        x=min_cost_scenario['total_cost'],
-        y=min_cost_scenario['total_environmental_impact'],
-        text="Lowest Cost",
-        arrowhead=1,
-        arrowsize=1,
-        arrowwidth=1,
-        arrowcolor="black",
-        ax=20,
-        ay=-30
-    )
-    
-    fig.add_annotation(
-        x=min_impact_scenario['total_cost'],
-        y=min_impact_scenario['total_environmental_impact'],
-        text="Lowest Impact",
-        arrowhead=1,
-        arrowsize=1,
-        arrowwidth=1,
-        arrowcolor="black",
-        ax=20,
-        ay=30
-    )
+    def is_dominated(point1, point2):
+        return (
+            point2["total_cost"] <= point1["total_cost"]
+            and point2["total_environmental_impact"]
+            <= point1["total_environmental_impact"]
+            and (
+                point2["total_cost"] < point1["total_cost"]
+                or point2["total_environmental_impact"]
+                < point1["total_environmental_impact"]
+            )
+        )
+
+    pareto_points = []
+    for point in scenario_data:
+        if not any(is_dominated(point, other) for other in scenario_data):
+            pareto_points.append(point)
+
+    if len(pareto_points) > 1:
+        pareto_points_sorted = sorted(pareto_points, key=lambda x: x["total_cost"])
+        pareto_x = [p["total_cost"] for p in pareto_points_sorted]
+        pareto_y = [p["total_environmental_impact"] for p in pareto_points_sorted]
+
+        fig.add_trace(
+            go.Scatter(
+                x=pareto_x,
+                y=pareto_y,
+                mode="lines+markers",
+                line={"color": "#D32F2F", "width": 2},
+                marker={"color": "#D32F2F", "size": 8},
+                name="Pareto Frontier",
+                showlegend=True,
+                hoverinfo="skip",
+            )
+        )
+    else:
+        # Highlight extreme points instead
+        min_cost = min(scenario_data, key=lambda x: x["total_cost"])
+        min_impact = min(scenario_data, key=lambda x: x["total_environmental_impact"])
+
+        if min_cost != min_impact:
+            fig.add_trace(
+                go.Scatter(
+                    x=[min_cost["total_cost"], min_impact["total_cost"]],
+                    y=[
+                        min_cost["total_environmental_impact"],
+                        min_impact["total_environmental_impact"],
+                    ],
+                    mode="lines+markers",
+                    line={"color": "#D32F2F", "width": 2, "dash": "dot"},
+                    marker={"color": "#D32F2F", "size": 8},
+                    name="Efficiency Line",
+                    showlegend=True,
+                    hoverinfo="skip",
+                )
+            )
+
+    print(f"Found {len(pareto_points)} Pareto-efficient points")
 
 def _create_pareto_ranking_table(scenario_data: List[Dict], output_dir: str):
     """Create and save the Pareto ranking table"""
@@ -558,27 +588,82 @@ def _create_pareto_ranking_table(scenario_data: List[Dict], output_dir: str):
     print("Pareto ranking table saved")
 
 def _create_efficiency_frontier_analysis(results: List[Dict], output_dir: str):
-    """Create detailed efficiency frontier analysis with multiple metrics"""
+    """Create efficiency frontier analysis"""
     create_output_directory(output_dir)
-    
+
     scenario_data = _extract_efficiency_metrics(results)
     fig = _create_efficiency_subplot_figure()
     _add_efficiency_scatter_plots(fig, scenario_data)
     _add_cost_efficiency_bar_chart(fig, scenario_data)
-    _add_efficiency_legend(fig, scenario_data)
-    
+
     fig.update_layout(
-        title="Multi-Criteria Efficiency Frontier Analysis",
+        # title={
+        #     'text': "Multi-Criteria Efficiency Analysis",
+        #     'x': 0.5,  # Center title
+        #     'font': {'size': 16, 'color': 'black'}
+        # },
         height=800,
+        width=1000,
+        plot_bgcolor="white",
+        paper_bgcolor="white",
         showlegend=True,
         legend={
             "yanchor": "top",
-            "y": 0.99,
+            "y": 0.98,
             "xanchor": "left",
-            "x": 1.02
-        }
+            "x": 1.02,
+            "font": {"size": 10},
+            "bordercolor": "#E5E5E5",
+            "borderwidth": 1,
+        },
+        annotations=[
+            {
+                "text": "Cost vs Environmental Impact",
+                "x": 0.225,
+                "y": 1,
+                "xref": "paper",
+                "yref": "paper",
+                "xanchor": "center",
+                "yanchor": "bottom",
+                "showarrow": False,
+                "font": {"size": 12},
+            },
+            {
+                "text": "Cost vs Collection Efficiency",
+                "x": 0.775,
+                "y": 1,
+                "xref": "paper",
+                "yref": "paper",
+                "xanchor": "center",
+                "yanchor": "bottom",
+                "showarrow": False,
+                "font": {"size": 12},
+            },
+            {
+                "text": "Environmental Impact vs Processing Efficiency",
+                "x": 0.225,
+                "y": 0.45,
+                "xref": "paper",
+                "yref": "paper",
+                "xanchor": "center",
+                "yanchor": "bottom",
+                "showarrow": False,
+                "font": {"size": 12},
+            },
+            {
+                "text": "Cost Efficiency by Strategy",
+                "x": 0.775,
+                "y": 0.45,
+                "xref": "paper",
+                "yref": "paper",
+                "xanchor": "center",
+                "yanchor": "bottom",
+                "showarrow": False,
+                "font": {"size": 12},
+            },
+        ],
     )
-    
+
     save_plot_files(fig, output_dir, "efficiency_frontier_analysis", "Efficiency frontier analysis saved")
 
 def _extract_efficiency_metrics(results: List[Dict]) -> List[Dict]:
@@ -664,24 +749,28 @@ def _calculate_processing_metrics(monitor_data: Dict, total_collected: float) ->
     }
 
 def _create_efficiency_subplot_figure():
-    """Create the subplot structure for efficiency analysis"""
+    """Create subplot structure"""
     return sp.make_subplots(
-        rows=2, cols=2,
+        rows=2,
+        cols=2,
         subplot_titles=[
-            'Cost vs Environmental Impact',
-            'Cost vs Collection Efficiency', 
-            'Environmental Impact vs Processing Efficiency',
-            'Cost Efficiency (Cost per m³ processed)'
+            "Cost vs Environmental Impact",
+            "Cost vs Collection Efficiency",
+            "Environmental Impact vs Processing Efficiency",
+            "Cost Efficiency by Strategy",
         ],
-        horizontal_spacing=0.1,
-        vertical_spacing=0.15
+        horizontal_spacing=0.12,
+        vertical_spacing=0.18,
+        specs=[
+            [{"secondary_y": False}, {"secondary_y": False}],
+            [{"secondary_y": False}, {"secondary_y": False}],
+        ],
     )
 
 def _add_efficiency_scatter_plots(fig, scenario_data: List[Dict]):
-    """Add scatter plots for the first three subplots"""
+    """Add scatter plots with consistent styling"""
     colors, symbols = get_scenario_colors_and_symbols()
-    
-    # Define the subplot configurations
+
     subplot_configs = [
         {'x': 'total_cost', 'y': 'total_environmental_impact', 'row': 1, 'col': 1, 
          'hover': "Cost: €%{x:,.0f}<br>Impact: %{y:,.0f} kg CO₂e"},
@@ -691,86 +780,106 @@ def _add_efficiency_scatter_plots(fig, scenario_data: List[Dict]):
          'hover': "Impact: %{x:,.0f} kg CO₂e<br>Efficiency: %{y:.1f}%"}
     ]
 
-    # Add traces for each subplot
     for i, config in enumerate(subplot_configs):
         for data in scenario_data:
-            fig.add_trace(go.Scatter(
-                x=[data[config['x']]],
-                y=[data[config['y']]],
-                mode='markers',
-                marker={
-                    "color": colors.get(data['inventory_policy'], '#2ca02c'),
-                    "symbol": symbols.get(data['stock_strategy'], 'circle'),
-                    "size": 10
-                },
-                name=f"{data['inventory_policy']} - {data['stock_strategy']}",
-                legendgroup=f"{data['inventory_policy']}_{data['stock_strategy']}",
-                showlegend=(i == 0),  # Only show legend on first subplot
-                hovertemplate=f"<b>{data['scenario']}</b><br>{config['hover']}<extra></extra>"
-            ), row=config['row'], col=config['col'])
-    
-    # Update axes for scatter plots
-    _update_scatter_plot_axes(fig)
+            fig.add_trace(
+                go.Scatter(
+                    x=[data[config["x"]]],
+                    y=[data[config["y"]]],
+                    mode="markers",
+                    marker={
+                        "color": colors.get(data["inventory_policy"], "#2ca02c"),
+                        "symbol": symbols.get(data["stock_strategy"], "circle"),
+                        "size": 8,
+                        "line": {"width": 1, "color": "white"},
+                    },
+                    name=f"{data['inventory_policy']} - {data['stock_strategy']}",
+                    legendgroup=f"{data['inventory_policy']}_{data['stock_strategy']}",
+                    showlegend=(i == 0),
+                    hovertemplate=f"<b>{data['scenario']}</b><br>{config['hover']}<extra></extra>",
+                ),
+                row=config["row"],
+                col=config["col"],
+            )
+
+    _update_all_subplot_styling(fig)
+
+
+def _update_all_subplot_styling(fig):
+    """Apply consistent styling to all subplots"""
+
+    # Common axis styling
+    axis_style = {
+        "showgrid": True,
+        "gridcolor": "#E5E5E5",
+        "gridwidth": 0.5,
+        "zeroline": False,
+        "showline": True,
+        "linecolor": "black",
+        "linewidth": 1,
+        "tickfont": {"size": 10},
+    }
+
+    # Update x-axes
+    fig.update_xaxes(title_text="Total Cost (€)", row=1, col=1, **axis_style)
+    fig.update_xaxes(title_text="Total Cost (€)", row=1, col=2, **axis_style)
+    fig.update_xaxes(
+        title_text="Environmental Impact (kg CO₂e)", row=2, col=1, **axis_style
+    )
+    fig.update_xaxes(title_text="Strategy", row=2, col=2, **axis_style, tickangle=45)
+
+    # Update y-axes
+    fig.update_yaxes(
+        title_text="Environmental Impact<br>(kg CO₂e)", row=1, col=1, **axis_style
+    )
+    fig.update_yaxes(title_text="Collection Efficiency (%)", row=1, col=2, **axis_style)
+    fig.update_yaxes(title_text="Processing Efficiency (%)", row=2, col=1, **axis_style)
+    fig.update_yaxes(title_text="Cost per m³ (€/m³)", row=2, col=2, **axis_style)
+
 
 def _add_cost_efficiency_bar_chart(fig, scenario_data: List[Dict]):
-    """Add cost efficiency bar chart to subplot 4"""
+    """Add bar chart"""
     colors, _ = get_scenario_colors_and_symbols()
-    
-    scenario_names = [data['stock_strategy'].replace('_', ' ') for data in scenario_data]
-    cost_efficiencies = [data['cost_per_m3'] if data['cost_per_m3'] != float('inf') else 0 for data in scenario_data]
-    bar_colors = [colors.get(data['inventory_policy'], '#2ca02c') for data in scenario_data]
-    
-    fig.add_trace(go.Bar(
-        x=scenario_names,
-        y=cost_efficiencies,
-        marker_color=bar_colors,
-        showlegend=False,
-        hovertemplate="<b>%{x}</b><br>Cost per m³: €%{y:,.2f}<extra></extra>"
-    ), row=2, col=2)
-    
-    # Update axes for bar chart
-    fig.update_xaxes(title_text="Stock Strategy", row=2, col=2)
-    fig.update_yaxes(title_text="Cost per m³ (€/m³)", row=2, col=2)
 
-def _update_scatter_plot_axes(fig):
-    """Update axes labels for scatter plot subplots"""
-    fig.update_xaxes(title_text="Total Cost (€)", row=1, col=1)
-    fig.update_yaxes(title_text="Environmental Impact (kg CO₂e)", row=1, col=1)
-    
-    fig.update_xaxes(title_text="Total Cost (€)", row=1, col=2)
-    fig.update_yaxes(title_text="Collection Efficiency (%)", row=1, col=2)
-    
-    fig.update_xaxes(title_text="Environmental Impact (kg CO₂e)", row=2, col=1)
-    fig.update_yaxes(title_text="Processing Efficiency (%)", row=2, col=1)
+    sorted_data = sorted(
+        scenario_data,
+        key=lambda x: x["cost_per_m3"] if x["cost_per_m3"] != float("inf") else 999999,
+    )
 
-def _add_efficiency_legend(fig, scenario_data: List[Dict]):
-    """Add legend traces for unique combinations"""
-    colors, symbols = get_scenario_colors_and_symbols()
-    added_combinations = set()
-    
-    for data in scenario_data:
-        combination = f"{data['inventory_policy']} - {data['stock_strategy']}"
-        if combination not in added_combinations:
-            fig.add_trace(go.Scatter(
-                x=[None], y=[None],
-                mode='markers',
-                marker={
-                    "color": colors.get(data['inventory_policy'], '#2ca02c'),
-                    "symbol": symbols.get(data['stock_strategy'], 'circle'),
-                    "size": 10
-                },
-                name=combination,
-                showlegend=True
-            ), row=1, col=1)
-            added_combinations.add(combination)
+    scenario_names = [
+        data["stock_strategy"].replace("_", " ").title() for data in sorted_data
+    ]
+    cost_efficiencies = [
+        data["cost_per_m3"] if data["cost_per_m3"] != float("inf") else 0
+        for data in sorted_data
+    ]
+    bar_colors = [
+        colors.get(data["inventory_policy"], "#2ca02c") for data in sorted_data
+    ]
+
+    fig.add_trace(
+        go.Bar(
+            x=scenario_names,
+            y=cost_efficiencies,
+            marker={
+                "color": bar_colors,
+                "line": {"color": "white", "width": 1},
+            },
+            showlegend=False,
+            hovertemplate="<b>%{x}</b><br>Cost per m³: €%{y:,.2f}<extra></extra>",
+        ),
+        row=2,
+        col=2,
+    )
+
 
 def _create_entity_status_view(results: List[Dict], output_dir: str):
     """Create entity status timeline plots grouped by scenario and inventory policy, with stock strategies as subplots."""
-    
+
     # Create entity_status subdirectory
     entity_status_dir = os.path.join(output_dir, "entity_status")
     os.makedirs(entity_status_dir, exist_ok=True)
-    
+
     def get_status_color(status):
         color_map = {
             'OPERATIONAL': 'green', 'FAILED': 'red', 'RECOVERING': 'orange',
@@ -788,7 +897,7 @@ def _create_entity_status_view(results: List[Dict], output_dir: str):
     grouped_results = {}
     for result in results:
         scenario_name = result['scenario_name']
-        
+
         # Extract base scenario name
         if '_push_' in scenario_name:
             base_scenario = scenario_name.split('_push_')[0]
@@ -796,12 +905,12 @@ def _create_entity_status_view(results: List[Dict], output_dir: str):
             base_scenario = scenario_name.split('_pull_')[0]
         else:
             base_scenario = scenario_name
-        
+
         key = (base_scenario, result['inventory_policy'])
         if key not in grouped_results:
             grouped_results[key] = []
         grouped_results[key].append(result)
-    
+
     for key in grouped_results:
         grouped_results[key].sort(key=lambda x: x['stock_strategy'])
 
@@ -829,10 +938,10 @@ def _create_entity_status_view(results: List[Dict], output_dir: str):
     for (base_scenario, inventory_policy), results_group in grouped_results.items():
         file_id = f"{base_scenario}_{inventory_policy}"
         file_id = file_id.replace(' ', '_').replace('|', '_').replace(',', '_')
-        
+
         for config in entity_configs:
             num_strategies = len(results_group)
-            
+
             fig = sp.make_subplots(
                 rows=num_strategies, 
                 cols=1,
@@ -840,24 +949,24 @@ def _create_entity_status_view(results: List[Dict], output_dir: str):
                 vertical_spacing=0.12,  
                 specs=[[{"secondary_y": False}] for _ in range(num_strategies)]
             )
-            
+
             max_entities = 0  
-            
+
             for subplot_idx, result in enumerate(results_group, 1):
                 monitor_data = result['monitor_data']
                 history_dict = monitor_data[config['history_key']]
-                
+
                 entity_list = sorted(history_dict.keys())
                 entity_positions = {entity: idx for idx, entity in enumerate(entity_list)}
                 max_entities = max(max_entities, len(entity_list))
-                
+
                 if not entity_list:  
                     continue
 
                 for entity_name, data in history_dict.items():
                     if 'status' not in data or not data['status']:
                         continue
-                        
+
                     timestamps = data['timestamps']
                     statuses = data['status']
                     y_position = entity_positions[entity_name]
@@ -866,13 +975,13 @@ def _create_entity_status_view(results: List[Dict], output_dir: str):
                     if timestamps and statuses:
                         current_status = statuses[0]
                         start_idx = 0
-                        
+
                         for idx in range(1, len(statuses)):
                             if statuses[idx] != current_status:
                                 segments.append((start_idx, idx, current_status))
                                 start_idx = idx
                                 current_status = statuses[idx]
-                        
+
                         # Add the final segment
                         segments.append((start_idx, len(statuses), current_status))
 
@@ -880,7 +989,7 @@ def _create_entity_status_view(results: List[Dict], output_dir: str):
                     for seg_start, seg_end, seg_status in segments:
                         seg_timestamps = timestamps[seg_start:seg_end]
                         seg_y = [y_position] * len(seg_timestamps)
-                        
+
                         fig.add_trace(
                             go.Scatter(
                                 x=seg_timestamps,
@@ -896,7 +1005,7 @@ def _create_entity_status_view(results: List[Dict], output_dir: str):
                         )
 
             title = f"{config['title_prefix']} - {base_scenario}<br>Inventory Policy: {inventory_policy}"
-            
+
             fig.update_layout(
                 title=title,
                 height=max(400, num_strategies * max(200, max_entities * 25)), 
@@ -909,7 +1018,7 @@ def _create_entity_status_view(results: List[Dict], output_dir: str):
                     'x': 1.02
                 }
             )
-            
+
             # Update axes for each subplot
             for i in range(1, num_strategies + 1):
                 fig.update_xaxes(title_text="Time", row=i, col=1)
@@ -919,7 +1028,7 @@ def _create_entity_status_view(results: List[Dict], output_dir: str):
             filename = f"{config['filename_prefix']}_{file_id}.html"
             fig.write_html(f"{entity_status_dir}/{filename}")
 
-            # Save PNG version
-            png_path = filename.replace('.html', '.png')
-            fig.write_image(f"{entity_status_dir}/{png_path}", scale=2)
-            print(f"PNG version saved to {png_path}")
+            # Save PDF version
+            pdf_path = filename.replace(".html", ".pdf")
+            fig.write_image(f"{entity_status_dir}/{pdf_path}", scale=2)
+            print(f"PDF version saved to {pdf_path}")

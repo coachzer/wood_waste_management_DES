@@ -5,20 +5,39 @@ from core.simulation_manager import SimulationManager
 from models.enums import InventoryPolicy, StockStrategy
 from monitoring.mfa_visualization import create_material_flow_analysis
 from monitoring.scenario_comparison import ScenarioComparison
+from monitoring.baseline_aggregate import extract_kpis
 import traceback
+import argparse
 import time
+import os
+import json
+from pathlib import Path
 
-def run_single_simulation(scenario_name: str, inventory_policy: InventoryPolicy, stock_strategy: StockStrategy) -> dict:
+
+def run_single_simulation(
+    scenario_name: str,
+    inventory_policy: InventoryPolicy,
+    stock_strategy: StockStrategy,
+    seed: int | None = None,
+    create_mfa: bool = True,
+) -> dict:
     """Run a single simulation configuration and return results"""
     print(f"\n=== Running: {scenario_name} | {inventory_policy.value} | {stock_strategy.value} ===")
-    
+
+    if seed is not None:
+        import random
+        import numpy as np
+
+        random.seed(seed)
+        np.random.seed(seed)
+
     try:
         scenario_config = get_scenario_with_strategies(
             base_scenario_name=scenario_name,
             inventory_policy=inventory_policy,
             stock_strategy=stock_strategy
         )
-        
+
         manager = SimulationManager()
         manager.initialize_entities(scenario_config)
         manager.setup_processes()
@@ -26,29 +45,159 @@ def run_single_simulation(scenario_name: str, inventory_policy: InventoryPolicy,
 
         monitor_data = manager.get_monitor_data()
 
-        mfa_path = create_material_flow_analysis(
-            generation_history=monitor_data['generation_history'],
-            collection_history=monitor_data['collection_history'],
-            processing_history=monitor_data['processing_history'],
-            scenario_name=scenario_name,
-            inventory_policy=inventory_policy.value,
-            stock_strategy=stock_strategy.value
-        )
+        mfa_path = None
+        if create_mfa:
+            mfa_path = create_material_flow_analysis(
+                generation_history=monitor_data["generation_history"],
+                collection_history=monitor_data["collection_history"],
+                processing_history=monitor_data["processing_history"],
+                scenario_name=scenario_name,
+                inventory_policy=inventory_policy.value,
+                stock_strategy=stock_strategy.value,
+            )
 
         print_failure_analysis()
-        
+
         return {
             "base_scenario": scenario_name,
             "scenario_name": scenario_config.name,
             "inventory_policy": inventory_policy.value,
             "stock_strategy": stock_strategy.value,
+            "seed": seed,
             "monitor_data": monitor_data,
-            "mfa_path": mfa_path
+            "mfa_path": mfa_path,
         }
 
     except Exception as e:
         traceback.print_exc()
         raise SystemExit(f"Simulation failed for scenario {scenario_name} with {inventory_policy.value}, {stock_strategy.value}") from e
+
+
+def run_monte_carlo_baseline(
+    replications: int = 100, scenario_filter: str | None = None
+) -> list[dict]:
+    """
+    Run baseline Monte Carlo: 100 replications per InventoryPolicy x StockStrategy.
+    """
+    start_time = time.time()
+    results: list[dict] = []
+
+    scenarios = [scenario_filter] if scenario_filter else list_available_scenarios()
+    inventory_policies = list(InventoryPolicy)
+    stock_strategies = list(StockStrategy)
+
+    print(f"\nBaseline Monte Carlo | replications={replications}")
+    print(f"Scenarios: {scenarios}")
+    print(f"Inventory policies: {[p.value for p in inventory_policies]}")
+    print(f"Stock strategies: {[s.value for s in stock_strategies]}")
+
+    base_seed = 123456  # deterministic seed series across runs
+    out_root = Path("outputs") / "baseline"
+    out_root.mkdir(parents=True, exist_ok=True)
+
+    for scenario_name in scenarios:
+        print(f"\n{'='*60}")
+        print(f"Scenario: {scenario_name}")
+        print(f"{'='*60}")
+
+        scenario_dir = out_root / scenario_name
+        scenario_dir.mkdir(parents=True, exist_ok=True)
+
+        for policy in inventory_policies:
+            for strategy in stock_strategies:
+                print(f"\n-- {policy.value} x {strategy.value} --")
+                combo_dir = scenario_dir / f"{policy.value}__{strategy.value}"
+                combo_dir.mkdir(parents=True, exist_ok=True)
+                combo_kpis: list[dict] = []
+                for i in range(replications):
+                    seed = base_seed + i
+                    res = run_single_simulation(
+                        scenario_name=scenario_name,
+                        inventory_policy=policy,
+                        stock_strategy=strategy,
+                        seed=seed,
+                        create_mfa=False,
+                    )
+                    results.append(res)
+                    kpis = extract_kpis(res["monitor_data"])
+                    combo_kpis.append(kpis)
+                    # Persist per-run KPIs (avoid raw monitor_data with Enums)
+                    run_path = combo_dir / f"run_{i:03d}.json"
+                    try:
+                        with open(run_path, "w", encoding="utf-8") as f:
+                            json.dump(
+                                {
+                                    "base_scenario": res["base_scenario"],
+                                    "scenario_name": res["scenario_name"],
+                                    "inventory_policy": res["inventory_policy"],
+                                    "stock_strategy": res["stock_strategy"],
+                                    "seed": res["seed"],
+                                    "kpis": kpis,
+                                },
+                                f,
+                                separators=(",", ":"),
+                            )
+                    except Exception as e:
+                        print(f"Warning: failed to write {run_path}: {e}")
+
+                print(
+                    f"Completed {replications} reps for {policy.value} x {strategy.value}"
+                )
+                # Write per-combo summary CSV
+                summary_csv = combo_dir / "summary.csv"
+                try:
+                    _write_combo_summary(summary_csv, combo_kpis)
+                except Exception as e:
+                    print(
+                        f"Warning: failed to write summary CSV for {policy.value}__{strategy.value}: {e}"
+                    )
+    elapsed = time.time() - start_time
+    print(
+        f"\nBaseline Monte Carlo complete. Total runs: {len(results)} in {elapsed:.2f}s"
+    )
+    return results
+
+
+def _write_combo_summary(csv_path: Path, kpis_list: list[dict]) -> None:
+    import math
+
+    metrics = [
+        "total_generated_m3",
+        "total_collected_m3",
+        "total_processed_m3",
+        "collection_rate_pct",
+        "processing_rate_pct",
+        "overall_efficiency_pct",
+        "landfill_volume_m3",
+        "total_emissions_kgco2e",
+        "max_collector_util_pct",
+        "max_processor_waste_util_pct",
+        "max_processor_product_util_pct",
+        "service_level_overall_pct",
+    ]
+    rows = ["metric,mean,stdev,ci95_low,ci95_high,count"]
+    n = len(kpis_list)
+    if n == 0:
+        csv_path.write_text("\n".join(rows), encoding="utf-8")
+        return
+    z = 1.96
+    for m in metrics:
+        vals = [float(v[m]) for v in kpis_list if v.get(m) is not None]
+        if not vals:
+            continue
+        mean = sum(vals) / len(vals)
+        if len(vals) > 1:
+            var = sum((x - mean) ** 2 for x in vals) / (len(vals) - 1)
+            stdev = math.sqrt(var)
+            moe = z * stdev / math.sqrt(len(vals))
+            lo = mean - moe
+            hi = mean + moe
+        else:
+            stdev = 0.0
+            lo = hi = mean
+        rows.append(f"{m},{mean:.6g},{stdev:.6g},{lo:.6g},{hi:.6g},{len(vals)}")
+    csv_path.write_text("\n".join(rows), encoding="utf-8")
+
 
 def main():
     """Main simulation runner - orchestrates all scenario combinations"""
@@ -115,4 +264,30 @@ def main():
     return results
 
 if __name__ == "__main__":
-    all_results = main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--mode",
+        choices=["grid", "baseline"],
+        default="grid",
+        help="grid = single run per combo; baseline = 100 Monte Carlo replications per combo",
+    )
+    parser.add_argument(
+        "--replications",
+        type=int,
+        default=100,
+        help="Replications per combo for baseline mode",
+    )
+    parser.add_argument(
+        "--scenario",
+        type=str,
+        default=None,
+        help="Run only this scenario name (optional)",
+    )
+    args = parser.parse_args()
+
+    if args.mode == "baseline":
+        _ = run_monte_carlo_baseline(
+            replications=args.replications, scenario_filter=args.scenario
+        )
+    else:
+        all_results = main()

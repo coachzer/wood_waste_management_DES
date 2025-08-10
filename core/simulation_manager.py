@@ -170,7 +170,13 @@ class SimulationManager:
             'processing_history': self.waste_monitor.get_processing_history,
             'environmental_history': self.waste_monitor.get_environmental_history,
             'event_history': self.waste_monitor.get_event_history,
-            'entity_status_history': self.waste_monitor.get_entity_status_history
+            'entity_status_history': self.waste_monitor.get_entity_status_history,
+            'final_summary': {
+                'simulation_time': self.env.now,
+                'total_products': self.state.total_products,
+                'target_demands': self.state.target_demands,
+                'unmet_demands': self.state.get_unmet_demands()
+            }
         }
 
     def _check_demand_satisfaction(self):

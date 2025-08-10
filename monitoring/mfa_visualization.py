@@ -185,21 +185,21 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
                                   stock_strategy: str = None,
                                   save_path: str = None):
     """Create material flow analysis visualization with fixed node columns"""
-    
+
     if save_path is None:
         suffix = ""
         if scenario_name and inventory_policy and stock_strategy:
             suffix = f"_{scenario_name}_{inventory_policy}_{stock_strategy}"
         save_path = f"plots/material_flow_analysis{suffix}.html"
-    
+
     gen_vol, col_vol, treat_vol, prod_vol = get_volumes(
         generation_history, collection_history, processing_history
     )
-    
+
     labels, node_colors, sources, targets, values, x, y = create_sankey(
         gen_vol, col_vol, treat_vol, prod_vol
     )
-    
+
     fig = go.Figure(data=[go.Sankey(
         node={
             "pad": 15,
@@ -217,20 +217,20 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
             "color": "rgba(128, 128, 128, 0.4)"
         }
     )])
-    
+
     title = "Wood Waste Material Flow Analysis"
     if scenario_name:
         title += f" - {scenario_name}"
     elif inventory_policy and stock_strategy:
         title += f" - {inventory_policy} | {stock_strategy}"
-    
+
     fig.update_layout(
         title=title,
         font_size=12,
         height=600,
         margin={"l": 50, "r": 50, "t": 50, "b": 50}
     )
-    
+
     if inventory_policy and stock_strategy:
         fig.add_annotation(
             text=f"Scenario: {scenario_name}<br>Inventory Policy: {inventory_policy}<br>Stock Strategy: {stock_strategy}",
@@ -239,12 +239,12 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
             bgcolor="rgba(255,255,255,0.8)",
             bordercolor="black", borderwidth=1
         )
-    
+
     fig.write_html(save_path)
     print(f"Material flow analysis saved to {save_path}")
-    
-    png_path = save_path.replace('.html', '.png')
-    fig.write_image(png_path, height=600, width=1600)
-    print(f"PNG version saved to {png_path}")
-    
+
+    pdf_path = save_path.replace(".html", ".pdf")
+    fig.write_image(pdf_path, height=600, width=1600)
+    print(f"PDF version saved to {pdf_path}")
+
     return save_path

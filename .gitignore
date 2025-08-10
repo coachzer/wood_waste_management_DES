@@ -55,6 +55,15 @@ plots/
 *.jpeg
 *.html
 
+# Outputs
+outputs/
+
+# Tests
+tests/
+
+# Tools
+tools/
+
 # GEOJSON files
 *.geojson
 
