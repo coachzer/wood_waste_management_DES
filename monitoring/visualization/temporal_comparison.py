@@ -413,18 +413,18 @@ def _create_cost_vs_environmental_pareto(results: List[Dict], output_dir: str):
 def _extract_scenario_metrics(results: List[Dict]) -> List[Dict]:
     """Extract cost and environmental metrics for each scenario"""
     scenario_data = []
-    
+
     for result in results:
         monitor_data = result['monitor_data']
         scenario_name = create_scenario_label(result)
-        
+
         # Calculate total costs using our utility function
         all_costs_by_time = extract_total_costs_from_monitor_data(monitor_data)
         total_cost = sum(all_costs_by_time.values()) if all_costs_by_time else 0
-        
+
         # Calculate total environmental impact using our utility function
         total_environmental_impact = calculate_total_environmental_impact(monitor_data)
-        
+
         scenario_data.append({
             'scenario': scenario_name,
             'short_scenario': result['stock_strategy'],
@@ -433,15 +433,47 @@ def _extract_scenario_metrics(results: List[Dict]) -> List[Dict]:
             'total_cost': total_cost,
             'total_environmental_impact': total_environmental_impact
         })
-    
+
     return scenario_data
+
+
+def generate_position_dict(strategy_list):
+    """Generate positions that cycle through available options to minimize overlap"""
+    positions = [
+        "top center",
+        "bottom center",
+        "middle left",
+        "middle right",
+        "top left",
+        "top right",
+        "bottom left",
+        "bottom right",
+    ]
+
+    unique_strategies = sorted(set(strategy_list))
+
+    return {
+        strategy: positions[i % len(positions)]
+        for i, strategy in enumerate(unique_strategies)
+    }
+
 
 def _create_pareto_scatter_plot(scenario_data: List[Dict]) -> go.Figure:
     """Create the main scatter plot for Pareto analysis"""
     fig = go.Figure()
     colors, symbols = get_scenario_colors_and_symbols()
 
+    all_strategies = [data["stock_strategy"] for data in scenario_data]
+
+    position_dict = generate_position_dict(all_strategies)
+
+    print("Generated position dictionary:")
+    for strategy, position in position_dict.items():
+        print(f"'{strategy}': '{position}',")
+
     for data in scenario_data:
+        strategy_name = data["stock_strategy"]
+
         fig.add_trace(
             go.Scatter(
                 x=[data["total_cost"]],
@@ -453,10 +485,10 @@ def _create_pareto_scatter_plot(scenario_data: List[Dict]) -> go.Figure:
                     "size": 12,
                     "line": {"width": 1.5, "color": "white"},
                 },
-                text=[data["stock_strategy"].replace("_", " ")],
-                textposition="top center",
-                textfont={"size": 10, "color": "black"},
-                name=f"{data['inventory_policy']} - {data['stock_strategy'].replace('_', ' ')}",
+                text=[strategy_name.replace("_", " ")],
+                textposition=[position_dict[strategy_name]],
+                textfont={"size": 8, "color": "black"},
+                name=f"{data['inventory_policy']} - {strategy_name.replace('_', ' ')}",
                 hovertemplate=(
                     f"<b>{data['scenario']}</b><br>"
                     + "Total Cost: €%{x:,.0f}<br>"
@@ -467,11 +499,6 @@ def _create_pareto_scatter_plot(scenario_data: List[Dict]) -> go.Figure:
         )
 
     fig.update_layout(
-        # title={
-        #     "text": "Cost vs Environmental Impact Trade-offs",
-        #     "x": 0.5,
-        #     "font": {"size": 16, "color": "black"},
-        # },
         xaxis={
             "title": {"text": "Total Cost (€)", "font": {"size": 14}},
             "showgrid": True,
@@ -506,7 +533,6 @@ def _create_pareto_scatter_plot(scenario_data: List[Dict]) -> go.Figure:
     )
 
     return fig
-
 def _add_pareto_frontier(fig: go.Figure, scenario_data: List[Dict]):
     """Add Pareto frontier or highlight extreme points"""
 

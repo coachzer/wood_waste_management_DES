@@ -217,35 +217,43 @@ class WasteGenerator(OperationalEntity):
 
         kanban_signals = self.kanban_manager.get_signals(self.env.now)
 
-        if kanban_signals or self.current_storage < threshold * 0.3: 
+        trigger_point = threshold * 0.5
+
+        if kanban_signals or self.current_storage < trigger_point:
             available_storage = self.waste_storage_capacity - self.current_storage
 
             if kanban_signals:
                 total_demand = sum(signal['volume'] for signal in kanban_signals)
-                demand_factor = min(1.5, total_demand / sum(self.waste_generation_rates.values()))
+                base_total = sum(self.waste_generation_rates.values()) or 1.0
+                demand_factor = min(1.3, total_demand / base_total)  # Consistent boost
 
-                adjusted_rates = {
-                    wt: rate * demand_factor 
+                rates_to_use = {
+                    wt: rate * demand_factor
                     for wt, rate in self.waste_generation_rates.items()
                 }
-
-                available_storage, self.current_storage, self.history_index = generate_waste_for_period(
-                    self.name, self.status, self.uncertainty_set,
-                    adjusted_rates, self.region, self.waste_streams,
-                    self.total_generated, self.generation_history, self.history_index,
-                    self.current_storage, self.rng, seasonal_factor, available_storage,
-                    current_time, self.efficiency
-                )
             else:
-                minimal_rates = {wt: rate * 0.3 for wt, rate in self.waste_generation_rates.items()}
+                # Fixed: Use normal rates instead of minimal rates when rebuilding
+                rates_to_use = self.waste_generation_rates  # Changed from 0.3x to 1.0x
 
-                available_storage, self.current_storage, self.history_index = generate_waste_for_period(
-                    self.name, self.status, self.uncertainty_set,
-                    minimal_rates, self.region, self.waste_streams,
-                    self.total_generated, self.generation_history, self.history_index,
-                    self.current_storage, self.rng, seasonal_factor, available_storage,
-                    current_time, self.efficiency
+            available_storage, self.current_storage, self.history_index = (
+                generate_waste_for_period(
+                    self.name,
+                    self.status,
+                    self.uncertainty_set,
+                    rates_to_use,
+                    self.region,
+                    self.waste_streams,
+                    self.total_generated,
+                    self.generation_history,
+                    self.history_index,
+                    self.current_storage,
+                    self.rng,
+                    seasonal_factor,
+                    available_storage,
+                    current_time,
+                    self.efficiency,
                 )
+            )
 
             if self.current_storage >= threshold:
                 self._kanban_signal(current_time, priority)
@@ -258,17 +266,16 @@ class WasteGenerator(OperationalEntity):
                 )
 
     def _process_pull_on_demand(self, current_time, seasonal_factor):
-        """PULL ON_DEMAND: Only generate when there are demand signals"""
+        """PULL ON_DEMAND: Generate when there are demand signals, otherwise use minimal rates"""
         kanban_signals = self.kanban_manager.get_signals(self.env.now)
 
         if kanban_signals:
+            input("Press Enter to continue...")
             available_storage = self.waste_storage_capacity - self.current_storage
 
-            # Calculate total demand from signals
-            total_demand = sum(signal['volume'] for signal in kanban_signals)  # FIX: Use dictionary key
+            total_demand = sum(signal["volume"] for signal in kanban_signals)
             total_base_generation = sum(self.waste_generation_rates.values())
 
-            # Generate only what's demanded (with small buffer)
             demand_factor = (
                 min(1.2, total_demand / total_base_generation)
                 if total_base_generation > 0
@@ -280,18 +287,61 @@ class WasteGenerator(OperationalEntity):
                 for wt, rate in self.waste_generation_rates.items()
             }
 
-            for wt, rate in adjusted_rates.items():
-                print(f"  {wt}: {self.waste_generation_rates[wt]:.2f} -> {rate:.2f}")
-
-            available_storage, self.current_storage, self.history_index = generate_waste_for_period(
-                self.name, self.status, self.uncertainty_set,
-                adjusted_rates, self.region, self.waste_streams,
-                self.total_generated, self.generation_history, self.history_index,
-                self.current_storage, self.rng, seasonal_factor, available_storage,
-                current_time, self.efficiency
+            available_storage, self.current_storage, self.history_index = (
+                generate_waste_for_period(
+                    self.name,
+                    self.status,
+                    self.uncertainty_set,
+                    adjusted_rates,
+                    self.region,
+                    self.waste_streams,
+                    self.total_generated,
+                    self.generation_history,
+                    self.history_index,
+                    self.current_storage,
+                    self.rng,
+                    seasonal_factor,
+                    available_storage,
+                    current_time,
+                    self.efficiency,
+                )
             )
 
-            # PULL ON_DEMAND should rarely overflow, but if it does, handle it
+            if self.current_storage > self.waste_storage_capacity:
+                self.current_storage = handle_overflow(
+                    self.current_storage,
+                    self.waste_storage_capacity,
+                    self.waste_streams,
+                    self.region,
+                    self,
+                    force_landfill=False,
+                )
+        else:
+            available_storage = self.waste_storage_capacity - self.current_storage
+            minimal_rates = {
+                wt: rate * 0.1 for wt, rate in self.waste_generation_rates.items()
+            }
+
+            available_storage, self.current_storage, self.history_index = (
+                generate_waste_for_period(
+                    self.name,
+                    self.status,
+                    self.uncertainty_set,
+                    minimal_rates,
+                    self.region,
+                    self.waste_streams,
+                    self.total_generated,
+                    self.generation_history,
+                    self.history_index,
+                    self.current_storage,
+                    self.rng,
+                    seasonal_factor,
+                    available_storage,
+                    current_time,
+                    self.efficiency,
+                )
+            )
+
             if self.current_storage > self.waste_storage_capacity:
                 self.current_storage = handle_overflow(
                     self.current_storage,

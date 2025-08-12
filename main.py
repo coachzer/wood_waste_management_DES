@@ -10,6 +10,8 @@ import traceback
 import argparse
 import time
 import json
+import random
+import numpy as np
 from pathlib import Path
 
 # from monitoring.visualization.demand_visualization import (
@@ -28,8 +30,6 @@ def run_single_simulation(
     print(f"\n=== Running: {scenario_name} | {inventory_policy.value} | {stock_strategy.value} ===")
 
     if seed is not None:
-        import random
-        import numpy as np
 
         random.seed(seed)
         np.random.seed(seed)
