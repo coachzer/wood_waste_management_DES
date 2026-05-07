@@ -23,9 +23,8 @@ def handle_storage_event(entity, volume, region, force_landfill=False):
         raise ValueError("Entity cannot be None for overflow handling")
     if volume is None or volume < 0:
         raise ValueError("Volume must be a non-negative number")
-    TOLERANCE = 1e-10  
+    TOLERANCE = 1e-10
     if volume < TOLERANCE:
-        print(f"DEBUG: Returning early for near-zero volume ({volume})")
         return 0.0, "no_action"
     if region is None:
         raise ValueError("Region cannot be None")

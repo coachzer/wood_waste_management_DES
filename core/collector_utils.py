@@ -1,4 +1,5 @@
 from typing import List, Dict, Optional
+from config.constants import LOCAL_COLLECTION_RATIO
 from models.distances import get_closest_regions
 from models.enums import InventoryPolicy, StockStrategy, WasteType
 from models.state import SimulationState
@@ -22,10 +23,6 @@ def handle_completed_transport(transport: Dict, current_time: float) -> None:
         target_collector.collection_center.current_storage[
             transport["waste_type"]
         ] += transport["volume"]
-        # print(
-        #     f"{current_time}: Added {transport['volume']:.8f} m³ to "
-        #     f"{target_collector.name}'s collection center"
-        # )
 
 def check_completed_transports(active_transports: List[Dict], current_time: float) -> List[Dict]:
     """Identify completed transports and update vehicle status"""
@@ -228,8 +225,8 @@ def get_prioritized_generators(collector) -> List:
         if g.region_type != collector.region_type
     ]
     
-    same_region_target = total_collection_capacity * 0.8  # 80% for same region
-    cross_region_target = total_collection_capacity * 0.2  # 20% for cross region
+    same_region_target = total_collection_capacity * LOCAL_COLLECTION_RATIO
+    cross_region_target = total_collection_capacity * (1.0 - LOCAL_COLLECTION_RATIO)
     
     prioritized_generators = []
     

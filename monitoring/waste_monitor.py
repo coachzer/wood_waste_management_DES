@@ -298,8 +298,6 @@ class WasteMonitor:
 
         history["total_costs"][-1] = cost_incurred
 
-        print(f"[EVENT TRACKED] {facility_type} at {timestamp}: {volume:.2f}m³ via {strategy}, cost: €{cost_incurred:.2f}")
-
     def track_environmental_impact(self, entity_name: str, entity_type: str, 
                                 environmental_impact: float, timestamp: float, 
                                 impact_category: str = "carbon_emissions"):

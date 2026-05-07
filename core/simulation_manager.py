@@ -19,10 +19,12 @@ from core.treatment import TreatmentOperator
 class SimulationManager:
     """Manages complete simulation lifecycle - setup, execution, and monitoring"""
     
-    def __init__(self):
+    def __init__(self, seed=None):
         # Reset simulation state
         SimulationState._instance = None
-        
+
+        self.seed = seed
+
         # Core simulation components
         self.env = simpy.Environment()
         self.waste_monitor = WasteMonitor(self.env)
@@ -30,11 +32,11 @@ class SimulationManager:
 
         # Kanban
         self.kanban_manager = KanbanManager()
-        
+
         # Data and building components
         self.facility_manager = FacilityDataManager()
         self.facility_builder = None
-        
+
         # Simulation state
         self.state = SimulationState.get_instance()
         
@@ -53,7 +55,8 @@ class SimulationManager:
                 waste_monitor=self.waste_monitor,
                 uncertainty_set=uncertainty_set,
                 transport_manager=self.transport_manager,
-                kanban_manager=self.kanban_manager
+                kanban_manager=self.kanban_manager,
+                seed=self.seed
             )
             
             # Build all facilities

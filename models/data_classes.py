@@ -1,6 +1,7 @@
 import numpy as np
 from dataclasses import dataclass
 from typing import Dict, Tuple, Optional
+from config.constants import RECOVERING_BASE_EFFICIENCY
 from monitoring.waste_monitor import WasteMonitor
 from .enums import WasteType, RegionType, EntityStatus, OutputType
 
@@ -25,15 +26,15 @@ class OperationalEntity:
     downtime_duration: float
     rng: np.random.Generator  
 
-    def __init__(self, failure_config: Optional[FailureConfig] = None):
+    def __init__(self, failure_config: Optional[FailureConfig] = None, seed=None):
         """Initialize operational entity with default values"""
         self.status = EntityStatus.OPERATIONAL
         self.failure_time = None
         self.recovery_time = None
         self.waste_monitor = WasteMonitor()
         self.failure_config = failure_config
-        self.downtime_duration = 1.0  
-        self.rng = np.random.default_rng(42) 
+        self.downtime_duration = 1.0
+        self.rng = np.random.default_rng(seed)
 
     @classmethod
     def get_entity_counts(cls):
@@ -94,7 +95,7 @@ class OperationalEntity:
         if self.status == EntityStatus.OPERATIONAL:
             return 1.0
         elif self.status == EntityStatus.RECOVERING:
-            return 0.3 + (0.7 * self.recovery_progress)
+            return RECOVERING_BASE_EFFICIENCY + ((1.0 - RECOVERING_BASE_EFFICIENCY) * self.recovery_progress)
         else: 
             return 0.0
 

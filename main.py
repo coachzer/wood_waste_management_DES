@@ -37,7 +37,7 @@ def run_single_simulation(
             stock_strategy=stock_strategy
         )
 
-        manager = SimulationManager()
+        manager = SimulationManager(seed=seed)
         manager.initialize_entities(scenario_config)
         manager.setup_processes()
         manager.run_simulation()

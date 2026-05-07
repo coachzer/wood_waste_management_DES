@@ -44,19 +44,20 @@ class TreatmentOperator(OperationalEntity):
         stock_strategy: StockStrategy = None,
         inventory_policy: InventoryPolicy = None,
         transport_manager: Optional[PointToPointTransport] = None,
-        enable_abc_prioritization: bool = True, 
+        enable_abc_prioritization: bool = True,
         abc_demand_config_path: str = "data/demand.json",
-        failure_config = None
+        failure_config = None,
+        seed = None
     ):
         self.uncertainty_set = uncertainty_set
 
         if failure_config is None and uncertainty_set:
             failure_config = uncertainty_set.treatment_failure
 
-        super().__init__(failure_config=failure_config)
+        super().__init__(failure_config=failure_config, seed=seed)
 
         self.waste_monitor = waste_monitor
-        self.scenario_config = scenario_config 
+        self.scenario_config = scenario_config
         self.stock_strategy = stock_strategy
         self.inventory_policy = inventory_policy
 
@@ -124,9 +125,9 @@ class TreatmentOperator(OperationalEntity):
         if self.enable_abc_prioritization:
             self._initialize_abc_priorities(abc_demand_config_path)
 
-        # Add ON_DEMAND buffer/target ratios
-        self.on_demand_buffer_ratio = 0.15  # reorder when <15% of capacity
-        self.on_demand_target_ratio = 0.35  # refill up to 35% of capacity
+        from config.constants import ON_DEMAND_BUFFER_RATIO, ON_DEMAND_TARGET_RATIO
+        self.on_demand_buffer_ratio = ON_DEMAND_BUFFER_RATIO
+        self.on_demand_target_ratio = ON_DEMAND_TARGET_RATIO
 
         # Start processes
         self.process = env.process(self.run_facility())
@@ -177,22 +178,21 @@ class TreatmentOperator(OperationalEntity):
     def _initialize_abc_priorities(self, config_path: str):
         """Initialize ABC priorities - reuse existing ABCAnalyzer"""
         try:
-            print(f"[{self.name}] Initializing ABC priorities from {config_path}")
             analyzer = BiogenicCarbonABCAnalyzer(config_path)
             classifications = analyzer.perform_abc_classification()
 
             self.abc_priority_map = {
-                item.product_type: item.priority_weight 
+                item.product_type: item.priority_weight
                 for item in classifications
             }
-            print(f"[{self.name}] ABC priorities loaded: {self.abc_priority_map}")
 
         except Exception as e:
-            print(f"[{self.name}] ABC initialization failed: {e}, using default priorities")
+            import logging
+            logging.warning(f"[{self.name}] ABC initialization failed: {e}, using default priorities")
             self.abc_priority_map = {
-                "osb": 1.0,           
-                "particle_board": 0.7,   
-                "mdf": 0.4            
+                "osb": 1.0,
+                "particle_board": 0.7,
+                "mdf": 0.4
             }
 
     def _apply_stock_strategy_to_demand_calculation(self, base_demand: float) -> float:
@@ -685,10 +685,11 @@ class TreatmentOperator(OperationalEntity):
         update_utilization_metrics(self, amount_to_process)
 
     def request_waste_directly(self, required_waste: float, input_waste_types: set) -> Dict[WasteType, float]:
-        """Request waste with realistic 80% local / 20% cross-region routing"""
+        """Request waste with local/cross-region routing split"""
+        from config.constants import LOCAL_COLLECTION_RATIO
         collected_waste = {}
-        local_portion = required_waste * 0.8
-        cross_region_portion = required_waste * 0.2
+        local_portion = required_waste * LOCAL_COLLECTION_RATIO
+        cross_region_portion = required_waste * (1.0 - LOCAL_COLLECTION_RATIO)
 
         # 1. Local collection
         remaining_local = self._collect_from_local(local_portion, input_waste_types, collected_waste)

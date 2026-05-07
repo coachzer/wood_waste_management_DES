@@ -130,7 +130,6 @@ def _create_flows(transport_flows: list, labels: list):
             targets.append(target_idx)
             values.append(total_volume)
     
-    print(f"[MFA DEBUG] Created {len(sources)} real transport flows")
     return sources, targets, values
 
 def create_sankey(generator_volumes: Dict, collector_volumes: Dict, 

@@ -623,11 +623,6 @@ def _create_efficiency_frontier_analysis(results: List[Dict], output_dir: str):
     _add_cost_efficiency_bar_chart(fig, scenario_data)
 
     fig.update_layout(
-        # title={
-        #     'text': "Multi-Criteria Efficiency Analysis",
-        #     'x': 0.5,  # Center title
-        #     'font': {'size': 16, 'color': 'black'}
-        # },
         height=800,
         width=1000,
         plot_bgcolor="white",

@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Dict
-from config.constants import TRANSPORT_EMISSIONS_PER_M3_KM
+from config.constants import TRANSPORT_EMISSIONS_PER_M3_KM, FAILED_ENTITY_EFFICIENCY
 from core.transport_manager import PointToPointTransport, TransportPriority, TransportRequest
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
 from models.state import SimulationState
@@ -61,13 +61,14 @@ class CollectorCompany(OperationalEntity):
         inventory_policy: InventoryPolicy = None,
         stock_strategy: StockStrategy = None,
         transport_manager: PointToPointTransport = None,
-        failure_config = None
+        failure_config = None,
+        seed = None
     ):
         self.uncertainty_set = uncertainty_set
 
         if failure_config is None and uncertainty_set:
             failure_config = uncertainty_set.collector_failure
-        super().__init__(failure_config=failure_config)
+        super().__init__(failure_config=failure_config, seed=seed)
         self.env = env
         self.name = name
         self.facility_type = "collector"
@@ -111,9 +112,7 @@ class CollectorCompany(OperationalEntity):
 
         self.waste_monitor = waste_monitor
         if waste_monitor is None:
-            raise ValueError("waste_monitor is required for TreatmentOperator")
-
-        self.rng = np.random.default_rng(42)
+            raise ValueError("waste_monitor is required for CollectorCompany")
 
         self.process = env.process(self.collection_loop())
         self.transport_process = env.process(self.manage_transport())
@@ -342,9 +341,8 @@ class CollectorCompany(OperationalEntity):
             if self.failure_config:
                 self.check_failure(current_time, self.failure_config.probability)
 
-            # Use base class operational efficiency
             if self.status == EntityStatus.FAILED:
-                self.efficiency = 0.1  
+                self.efficiency = FAILED_ENTITY_EFFICIENCY
             elif self.status == EntityStatus.RECOVERING:
                 self.efficiency = self.get_operational_efficiency()  
             elif self.status == EntityStatus.OPERATIONAL:

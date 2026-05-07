@@ -127,16 +127,16 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
     # )
 }
 
-def validate_tuple(tup: Tuple[float, float], name: str) -> None:
+def validate_tuple(mean_std_tuple: Tuple[float, float], name: str) -> None:
     """Validate a mean/std tuple"""
     config_dict = {
-        f"{name}_mean": tup[0],
-        f"{name}_std": tup[1]
+        f"{name}_mean": mean_std_tuple[0],
+        f"{name}_std": mean_std_tuple[1]
     }
 
     validate_all_numeric_positive(config_dict, allow_zero=True, exceptions=[f"{name}_std"])
 
-    if tup[1] < 0:
+    if mean_std_tuple[1] < 0:
         raise ValueError(f"{name} standard deviation must be non-negative")
 
 def validate_scenario_config(config: ScenarioConfig) -> None:

@@ -1,6 +1,6 @@
-import random
 import numpy as np
 from typing import Dict, Optional
+from config.constants import FAILED_ENTITY_EFFICIENCY, HISTORY_BUFFER_SIZE, SEASONAL_PERIODS
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
 from models.data_classes import WasteStream, OperationalEntity
 from monitoring.waste_monitor import WasteMonitor
@@ -27,14 +27,15 @@ class WasteGenerator(OperationalEntity):
         stock_strategy: StockStrategy = None,
         inventory_policy: InventoryPolicy = None,
         kanban_manager = None,
-        failure_config = None
+        failure_config = None,
+        seed = None
     ):
         self.uncertainty_set = uncertainty_set
 
         if failure_config is None and uncertainty_set:
             failure_config = uncertainty_set.generator_failure
 
-        super().__init__(failure_config=failure_config)
+        super().__init__(failure_config=failure_config, seed=seed)
         self.env = env
         self.name = name
         self.facility_type = "generator"
@@ -77,8 +78,7 @@ class WasteGenerator(OperationalEntity):
             for waste_type in waste_streams.keys()
         }
 
-        # Optimize history tracking with fixed-size arrays
-        self.history_size = 1000
+        self.history_size = HISTORY_BUFFER_SIZE
         self.history_index = 0
         self.generation_history = {
             waste_type: {
@@ -90,18 +90,13 @@ class WasteGenerator(OperationalEntity):
             for waste_type in waste_streams.keys()
         }
 
-        # Pre-calculate seasonal factors for efficiency
-        self.seasonal_periods = 4
+        self.seasonal_periods = SEASONAL_PERIODS
         self.seasonal_factors = np.array(
             [
                 1 + 0.2 * np.sin(2 * np.pi * t / self.seasonal_periods)
                 for t in range(self.seasonal_periods)
             ]
         )  
-
-        # Initialize RNG with seed for reproducibility
-        seed =  random.randint(0, 2**32 - 1)
-        self.rng = np.random.default_rng(seed)
 
         # Start waste generation process
         self.action = env.process(self.generate_waste())
@@ -116,7 +111,7 @@ class WasteGenerator(OperationalEntity):
         if self.status == EntityStatus.FAILED:
             if not hasattr(self, '_original_rates'):
                 self._original_rates = self.waste_generation_rates.copy()
-            self.waste_generation_rates = {wt: r * 0.1 for wt, r in self._original_rates.items()}
+            self.waste_generation_rates = {wt: r * FAILED_ENTITY_EFFICIENCY for wt, r in self._original_rates.items()}
         elif self.status == EntityStatus.RECOVERING:
             if hasattr(self, '_original_rates'):
                 self.efficiency = self.get_operational_efficiency()

@@ -1,3 +1,4 @@
+import numpy as np
 from simpy import Environment
 from models.facility_data import FacilityDataManager
 from models.enums import RegionType, WasteType, OutputType
@@ -24,7 +25,8 @@ class FacilityBuilder:
         waste_monitor: WasteMonitor,
         uncertainty_set=None,
         transport_manager=None,
-        kanban_manager=None
+        kanban_manager=None,
+        seed=None
     ):
         self.env = env
         self.facility_manager = facility_manager
@@ -32,6 +34,7 @@ class FacilityBuilder:
         self.uncertainty_set = uncertainty_set
         self.transport_manager = transport_manager
         self.kanban_manager = kanban_manager
+        self.seed_sequence = np.random.SeedSequence(seed)
 
     def create_generator(self, gen_data, region: RegionType, stock_strategy=None, inventory_policy=None) -> WasteGenerator:
         """Create a single waste generator"""
@@ -60,6 +63,7 @@ class FacilityBuilder:
             raise SystemExit(f"Error: No inventory policy specified for generator {gen_data.id}")
         
         facilities['WasteGenerator'] += 1
+        [child_seed] = self.seed_sequence.spawn(1)
 
         return WasteGenerator(
             env=self.env,
@@ -76,7 +80,8 @@ class FacilityBuilder:
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
             kanban_manager=self.kanban_manager,
-            failure_config=self.uncertainty_set.generator_failure if self.uncertainty_set else None
+            failure_config=self.uncertainty_set.generator_failure if self.uncertainty_set else None,
+            seed=child_seed
         )
 
     def create_collector(self, col_data, region: RegionType, stock_strategy=None, inventory_policy=None) -> CollectorCompany:
@@ -95,8 +100,8 @@ class FacilityBuilder:
 
         waste_types_enum = [WasteType(wtype) if not isinstance(wtype, WasteType) else wtype for wtype in col_data.waste_types]
 
-        # count this collector
         facilities['CollectorCompany'] += 1
+        [child_seed] = self.seed_sequence.spawn(1)
 
         return CollectorCompany(
             env=self.env,
@@ -115,7 +120,8 @@ class FacilityBuilder:
             inventory_policy=inventory_policy,
             transport_manager=self.transport_manager,
             kanban_manager=self.kanban_manager,
-            failure_config=self.uncertainty_set.collector_failure if self.uncertainty_set else None
+            failure_config=self.uncertainty_set.collector_failure if self.uncertainty_set else None,
+            seed=child_seed
         )
 
     def create_processor(self, proc_data, region: RegionType, stock_strategy=None, inventory_policy=None) -> TreatmentOperator:
@@ -136,8 +142,8 @@ class FacilityBuilder:
         if inventory_policy is None:
             raise SystemExit(f"Error: No inventory policy specified for processor {proc_data.id}")
         
-        # count this processor
         facilities['TreatmentOperator'] += 1
+        [child_seed] = self.seed_sequence.spawn(1)
 
         return TreatmentOperator(
             env=self.env,
@@ -159,7 +165,8 @@ class FacilityBuilder:
             inventory_policy=inventory_policy,
             transport_manager=self.transport_manager,
             kanban_manager=self.kanban_manager,
-            failure_config=self.uncertainty_set.treatment_failure if self.uncertainty_set else None
+            failure_config=self.uncertainty_set.treatment_failure if self.uncertainty_set else None,
+            seed=child_seed
         )
 
     # Private helper methods for processor creation

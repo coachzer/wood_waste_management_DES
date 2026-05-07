@@ -65,9 +65,9 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
     max_processor_waste_util = 0.0
     max_processor_product_util = 0.0
     for hist in proc_hist.values():
-        s = hist.get("storage", {})
-        waste_util = s.get("waste_utilization", [])
-        prod_util = s.get("product_utilization", [])
+        storage_data = hist.get("storage", {})
+        waste_util = storage_data.get("waste_utilization", [])
+        prod_util = storage_data.get("product_utilization", [])
         if waste_util:
             max_processor_waste_util = max(
                 max_processor_waste_util, float(max(waste_util))
@@ -88,10 +88,10 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         service_level_overall = (
             (total_out / total_target * 100.0) if total_target > 0 else None
         )
-        for p, tgt in targets.items():
-            v = float(totals.get(p, 0.0))
-            t = float(tgt)
-            service_level_by_product[p] = (v / t * 100.0) if t > 0 else None
+        for product_name, target_volume in targets.items():
+            produced_volume = float(totals.get(product_name, 0.0))
+            target_value = float(target_volume)
+            service_level_by_product[product_name] = (produced_volume / target_value * 100.0) if target_value > 0 else None
 
     return {
         "total_generated_m3": total_generated,
