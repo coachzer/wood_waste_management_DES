@@ -42,11 +42,13 @@ test-results/
 # Pytest
 .cache
 pytestcache/
+.pytest_cache/
 
 # Miscellaneous
 *.DS_Store
 *.pyo
 *.pyd
+misc
 
 # Plots
 plots/
@@ -55,8 +57,12 @@ plots/
 *.jpeg
 *.html
 
+# Claude
+.claude/
+
 # Outputs
 outputs/
+analysis/
 
 # Tests
 tests/

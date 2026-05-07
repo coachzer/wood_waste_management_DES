@@ -102,7 +102,6 @@ class WasteGenerator(OperationalEntity):
         # Initialize RNG with seed for reproducibility
         seed =  random.randint(0, 2**32 - 1)
         self.rng = np.random.default_rng(seed)
-        # self.rng = np.random.default_rng(42)
 
         # Start waste generation process
         self.action = env.process(self.generate_waste())
@@ -146,31 +145,9 @@ class WasteGenerator(OperationalEntity):
             yield self.env.timeout(self.generation_frequency)
 
     def _process_stock_strategy(self, current_time, seasonal_factor):
-        """Enhanced strategy processing with PUSH/PULL logic"""
+        """Unified strategy processing - always generate waste, manage inventory based on strategy"""
 
-        if self.inventory_policy == InventoryPolicy.PUSH:
-            match self.stock_strategy:
-                case StockStrategy.REORDER_90:
-                    self._process_push_reorder(current_time, seasonal_factor, 0.9)
-                case StockStrategy.REORDER_50:
-                    self._process_push_reorder(current_time, seasonal_factor, 0.5)
-                case StockStrategy.ON_DEMAND:
-                    self._process_push_on_demand(current_time, seasonal_factor)
-
-        elif self.inventory_policy == InventoryPolicy.PULL:
-            match self.stock_strategy:
-                case StockStrategy.REORDER_90:
-                    self._process_pull_reorder(current_time, seasonal_factor, 0.9)
-                case StockStrategy.REORDER_50:
-                    self._process_pull_reorder(current_time, seasonal_factor, 0.5)
-                case StockStrategy.ON_DEMAND:
-                    self._process_pull_on_demand(current_time, seasonal_factor)
-
-    def _process_push_reorder(self, current_time, seasonal_factor, threshold_ratio):
-        """PUSH REORDER: Generate aggressively, expand storage when needed"""
-        threshold = self.waste_storage_capacity * threshold_ratio
-        priority = 6 if np.isclose(threshold_ratio, 0.9, rtol=1e-09, atol=1e-09) else 4
-
+        # STEP 1: Always generate waste
         available_storage = self.waste_storage_capacity - self.current_storage
 
         available_storage, self.current_storage, self.history_index = generate_waste_for_period(
@@ -181,176 +158,47 @@ class WasteGenerator(OperationalEntity):
             current_time, self.efficiency
         )
 
-        if self.current_storage >= threshold:
-            self._kanban_signal(current_time, priority)
-
+        # STEP 2: Handle overflow if storage is exceeded
         if self.current_storage > self.waste_storage_capacity:
             self.current_storage = handle_overflow(
-                self.current_storage, self.waste_storage_capacity,
-                self.waste_streams, self.region, self,
-                force_landfill=False  
+                self.current_storage,
+                self.waste_storage_capacity,
+                self.waste_streams,
+                self.region,
+                self,
+                force_landfill=False,  # Try expansion first
             )
 
-    def _process_push_on_demand(self, current_time, seasonal_factor):
-        """PUSH ON_DEMAND: Generate continuously, handle overflow through expansion"""
-        available_storage = self.waste_storage_capacity - self.current_storage
+        # STEP 3: Strategy-based signaling for collection
+        self._handle_inventory_signaling(current_time)
 
-        available_storage, self.current_storage, self.history_index = generate_waste_for_period(
-            self.name, self.status, self.uncertainty_set,
-            self.waste_generation_rates, self.region, self.waste_streams,
-            self.total_generated, self.generation_history, self.history_index,
-            self.current_storage, self.rng, seasonal_factor, available_storage,
-            current_time, self.efficiency
-        )
+    def _handle_inventory_signaling(self, current_time):
+        """Signal for collection based on stock strategy and current inventory levels"""
 
-        if self.current_storage > self.waste_storage_capacity:
-            self.current_storage = handle_overflow(
-                self.current_storage, self.waste_storage_capacity,
-                self.waste_streams, self.region, self,
-                force_landfill=False  
-            )
+        match self.stock_strategy:
+            case StockStrategy.REORDER_90:
+                threshold = self.waste_storage_capacity * 0.9
+                if self.current_storage >= threshold:
+                    self._kanban_signal(current_time, priority=6)
 
-    def _process_pull_reorder(self, current_time, seasonal_factor, threshold_ratio):
-        """PULL REORDER: Generate based on demand signals and thresholds"""
-        threshold = self.waste_storage_capacity * threshold_ratio
-        priority = 6 if np.isclose(threshold_ratio, 0.9, rtol=1e-09, atol=1e-09) else 4
+            case StockStrategy.REORDER_50:
+                threshold = self.waste_storage_capacity * 0.5
+                if self.current_storage >= threshold:
+                    self._kanban_signal(current_time, priority=4)
 
-        kanban_signals = self.kanban_manager.get_signals(self.env.now)
-
-        trigger_point = threshold * 0.5
-
-        if kanban_signals or self.current_storage < trigger_point:
-            available_storage = self.waste_storage_capacity - self.current_storage
-
-            if kanban_signals:
-                total_demand = sum(signal['volume'] for signal in kanban_signals)
-                base_total = sum(self.waste_generation_rates.values()) or 1.0
-                demand_factor = min(1.3, total_demand / base_total)  # Consistent boost
-
-                rates_to_use = {
-                    wt: rate * demand_factor
-                    for wt, rate in self.waste_generation_rates.items()
-                }
-            else:
-                # Fixed: Use normal rates instead of minimal rates when rebuilding
-                rates_to_use = self.waste_generation_rates  # Changed from 0.3x to 1.0x
-
-            available_storage, self.current_storage, self.history_index = (
-                generate_waste_for_period(
-                    self.name,
-                    self.status,
-                    self.uncertainty_set,
-                    rates_to_use,
-                    self.region,
-                    self.waste_streams,
-                    self.total_generated,
-                    self.generation_history,
-                    self.history_index,
-                    self.current_storage,
-                    self.rng,
-                    seasonal_factor,
-                    available_storage,
-                    current_time,
-                    self.efficiency,
-                )
-            )
-
-            if self.current_storage >= threshold:
-                self._kanban_signal(current_time, priority)
-
-            if self.current_storage > self.waste_storage_capacity:
-                self.current_storage = handle_overflow(
-                    self.current_storage, self.waste_storage_capacity,
-                    self.waste_streams, self.region, self,
-                    force_landfill=False  
-                )
-
-    def _process_pull_on_demand(self, current_time, seasonal_factor):
-        """PULL ON_DEMAND: Generate when there are demand signals, otherwise use minimal rates"""
-        kanban_signals = self.kanban_manager.get_signals(self.env.now)
-
-        if kanban_signals:
-            input("Press Enter to continue...")
-            available_storage = self.waste_storage_capacity - self.current_storage
-
-            total_demand = sum(signal["volume"] for signal in kanban_signals)
-            total_base_generation = sum(self.waste_generation_rates.values())
-
-            demand_factor = (
-                min(1.2, total_demand / total_base_generation)
-                if total_base_generation > 0
-                else 0
-            )
-
-            adjusted_rates = {
-                wt: rate * demand_factor 
-                for wt, rate in self.waste_generation_rates.items()
-            }
-
-            available_storage, self.current_storage, self.history_index = (
-                generate_waste_for_period(
-                    self.name,
-                    self.status,
-                    self.uncertainty_set,
-                    adjusted_rates,
-                    self.region,
-                    self.waste_streams,
-                    self.total_generated,
-                    self.generation_history,
-                    self.history_index,
-                    self.current_storage,
-                    self.rng,
-                    seasonal_factor,
-                    available_storage,
-                    current_time,
-                    self.efficiency,
-                )
-            )
-
-            if self.current_storage > self.waste_storage_capacity:
-                self.current_storage = handle_overflow(
-                    self.current_storage,
-                    self.waste_storage_capacity,
-                    self.waste_streams,
-                    self.region,
-                    self,
-                    force_landfill=False,
-                )
-        else:
-            available_storage = self.waste_storage_capacity - self.current_storage
-            minimal_rates = {
-                wt: rate * 0.1 for wt, rate in self.waste_generation_rates.items()
-            }
-
-            available_storage, self.current_storage, self.history_index = (
-                generate_waste_for_period(
-                    self.name,
-                    self.status,
-                    self.uncertainty_set,
-                    minimal_rates,
-                    self.region,
-                    self.waste_streams,
-                    self.total_generated,
-                    self.generation_history,
-                    self.history_index,
-                    self.current_storage,
-                    self.rng,
-                    seasonal_factor,
-                    available_storage,
-                    current_time,
-                    self.efficiency,
-                )
-            )
-
-            if self.current_storage > self.waste_storage_capacity:
-                self.current_storage = handle_overflow(
-                    self.current_storage,
-                    self.waste_storage_capacity,
-                    self.waste_streams,
-                    self.region,
-                    self,
-                    force_landfill=False,
-                )
+            case StockStrategy.ON_DEMAND:
+                # For PULL ON_DEMAND: Only signal if we have waste AND there are active signals from downstream
+                if self.inventory_policy == InventoryPolicy.PULL:
+                    # Check if we have downstream demand signals
+                    active_signals = self.kanban_manager.get_signals(current_time)
+                    if active_signals and self.current_storage > 0:
+                        self._kanban_signal(
+                            current_time, priority=8
+                        )  # High priority for demand response
+                else:
+                    # For PUSH ON_DEMAND: Signal when we have substantial waste
+                    if self.current_storage > self.waste_storage_capacity * 0.1:
+                        self._kanban_signal(current_time, priority=3)
 
     def _kanban_signal(self, current_time, priority):
         active_waste_types = [

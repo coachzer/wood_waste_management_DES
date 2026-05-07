@@ -402,7 +402,7 @@ def _create_cost_vs_environmental_pareto(results: List[Dict], output_dir: str):
 
     scenario_data = _extract_scenario_metrics(results)
     fig = _create_pareto_scatter_plot(scenario_data)
-    _add_pareto_frontier(fig, scenario_data)
+    # _add_pareto_frontier(fig, scenario_data)
 
     # Save the plot
     save_plot_files(fig, output_dir, "cost_vs_environmental_pareto", "Cost vs Environmental Pareto chart saved")
