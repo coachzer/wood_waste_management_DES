@@ -64,12 +64,6 @@ plots/
 outputs/
 analysis/
 
-# Tests
-tests/
-
-# Tools
-tools/
-
 # GEOJSON files
 *.geojson
 

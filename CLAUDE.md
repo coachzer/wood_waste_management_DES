@@ -16,12 +16,6 @@ python main.py --mode baseline --scenario Baseline --replications 50  # Single s
 
 Outputs: `outputs/baseline/{scenario}/{policy}__{strategy}/`. MFA visualizations (Plotly HTML) to `plots/`.
 
-Post-processing Monte Carlo results:
-
-```bash
-python tools/merge_and_plot_summaries.py <path-to-baseline-output>
-```
-
 ## Architecture
 
 **Three-layer pipeline**: `WasteGenerator` → `CollectorCompany` → `TreatmentOperator` (all in `core/`). Each inherits `OperationalEntity` (`models/data_classes.py`) providing failure injection via `FailureConfig` and a three-state lifecycle: `OPERATIONAL → FAILED → RECOVERING`.
@@ -38,17 +32,16 @@ python tools/merge_and_plot_summaries.py <path-to-baseline-output>
 
 **Config flow**: `ScenarioConfig` → `to_uncertainty_set()` → `FacilityBuilder` → injected into every entity. Scenarios defined in `SCENARIO_CONFIGS` dict in `config/base_config.py`.
 
-**Kanban/pull coordination**: `KanbanManager` is wired into all entities but not actively driving behavior in the current simplified approach.
+**Kanban/pull coordination**: `KanbanManager` is active in PULL mode — treatment signals collectors, collectors signal generators via kanban signals with priority weighting. In PUSH mode, generators emit signals but collectors ignore them (collection is volume-driven instead).
 
 ## Key Conventions
 
 - **Units**: Waste volumes in m³ (converted from tonnes via `utils/unit_conversion.py`). Simulation time in days (0–365).
-- **Seeding**: `random.seed(s)` + `np.random.seed(s)` in `run_single_simulation()`. Entities also use `np.random.default_rng(42)` for failure checks.
+- **Seeding**: `random.seed(s)` + `np.random.seed(s)` in `run_single_simulation()`. Per-entity RNGs are seeded via `np.random.SeedSequence` propagated through `SimulationManager` → `FacilityBuilder` → each entity gets a deterministic child seed.
 - **Waste types**: EWC codes as enum values (e.g., `WasteType.CONSTRUCTION_WOOD_17_02_01 = "17 02 01"`). Transformations keyed by `(WasteType, OutputType)`.
 - **Storage overflow**: Exceeding `waste_storage_capacity` → landfill, tracked in `WasteMonitor`. Treatment can dynamically expand (`EXPANSION_SIZE_M3 = 500`).
 - **Region data**: One JSON per region in `data/regions/`. Distances via `models/distances.py::get_distance()`.
-- **Constants**: All in `config/constants.py` (simulation duration, emission factors, density).
-- **Tests**: `tests/` structure exists but test files are minimal. Validate with deterministic grid runs.
+- **Constants**: All in `config/constants.py` — simulation duration, emission factors, density, and entity behavior constants (failure efficiency, collection ratios, buffer thresholds).
 
 ## Adding New Waste Types or Products
 
@@ -60,7 +53,7 @@ python tools/merge_and_plot_summaries.py <path-to-baseline-output>
 ## Debugging
 
 - **Singleton reset**: `SimulationState._instance = None` in `SimulationManager.__init__()` — each run gets fresh state. Stale entity references mean this reset was skipped.
-- **Pull policy deadlock**: Pull requires treatment to trigger collection; if treatment never requests waste, collectors stall. Verify `TreatmentOperator.demand` is set via `_distribute_demand()`.
+- **Pull policy deadlock**: Pull requires treatment to trigger collection; if treatment never requests waste, collectors stall. Verify `TreatmentOperator.demand` is set via `_apply_stock_strategy_to_demand_calculation()`.
 - **KPIs**: Extracted via `monitoring/baseline_aggregate.py::extract_kpis()` from monitor history dicts.
 
 ## Code Review Standards
@@ -93,33 +86,6 @@ The orchestrator reviews all sub-agent code against these criteria:
 - [ ] No new dependencies without justification
 - [ ] No commented-out code or TODOs without tickets
 - [ ] Error handling matches existing patterns
-- [ ] Tests cover the new code paths
-
-## Dependency Management
-
-Use `addBlockedBy` to express task relationships:
-
-- Task A: Define schema types
-- Task B: Implement service (blocked by A)
-- Task C: Write tests (blocked by B)
-- Task D: Update documentation (blocked by B)
-
-Tasks B, C, D can be spawned in parallel - the dependency system handles ordering.
-
-## PRD Treatment
-
-- Treat as starting point, not immutable spec
-- Flag contradictions or ambiguities immediately
-- Propose amendments with technical rationale
-- Document deviations in task descriptions
-
-## Orchestrator Responsibilities
-
-1. **Decompose** requirements into bounded tasks
-2. **Delegate** to sub-agents with explicit scope
-3. **Review** all sub-agent output before integration
-4. **Reject** work that doesn't meet standards (with specific feedback)
-5. **Integrate** approved work and update task status
 
 ## Development Rules
 
