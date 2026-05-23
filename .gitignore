@@ -64,6 +64,9 @@ plots/
 outputs/
 analysis/
 
+# Paper draft (local notes only)
+paper-draft/
+
 # GEOJSON files
 *.geojson
 
