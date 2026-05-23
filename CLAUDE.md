@@ -91,3 +91,61 @@ The orchestrator reviews all sub-agent code against these criteria:
 
 - **Variable naming** - Never use short-form or abbreviated variable names. All variables must be verbose and descriptive so their purpose is clear at first glance (e.g., `waste_storage_capacity` not `wsc`, `treatment_operator` not `tOp`).
 - **No emojis** - No emojis in code or comments. Docs only sparingly to highlight important features.
+
+## Design Principles
+
+1. **Modularity**: each module has one job
+2. **Domain-Driven Design**: use real-world terms (Roundwood, Facility, Product)
+3. **Painfully Explicit Specs**: no magic numbers (use `constants.py`), document every parameter
+4. **Excessive Documentation**: add docstrings, update docs when changing behavior
+
+## Working Style
+
+- **Think before coding**: state assumptions explicitly. Ask rather than guess. Push back when a simpler approach exists. Stop when confused.
+- **Surgical changes**: touch only what you must. Don't improve adjacent code. Match existing style. Don't refactor what isn't broken.
+- **Goal-driven execution**: define success criteria. Loop until verified. Strong success criteria let Claude loop independently.
+
+## Agent Skills
+
+### Issue tracker
+
+Issues tracked as local markdown under `.scratch/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary (needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout (one CONTEXT.md + docs/adr/ at repo root). See `docs/agents/domain.md`.
+
+## Available Skills (global, loaded on demand via `/skill-name`)
+
+| Skill | Purpose |
+| --- | --- |
+| `/diagnose` | Structured debugging: reproduce, minimise, hypothesise, instrument, fix |
+| `/grill-with-docs` | Stress-test a plan against domain model, updates CONTEXT.md and ADRs |
+| `/grill-me` | Relentless interview about a plan or design until shared understanding |
+| `/tdd` | Red-green-refactor test-driven development loop |
+| `/improve-codebase-architecture` | Find refactoring and design improvement opportunities |
+| `/prototype` | Build throwaway prototypes (terminal app or UI variations) |
+| `/to-issues` | Break a plan/spec into independently-grabbable issues |
+| `/to-prd` | Convert conversation context into a PRD |
+| `/triage` | Issue triage via state machine workflow |
+| `/zoom-out` | Get broader architectural perspective on unfamiliar code |
+| `/caveman` | Ultra-compressed communication (~75% token reduction) |
+| `/handoff` | Compact conversation context for agent handoffs |
+| `/write-a-skill` | Create new agent skills |
+| `/setup-matt-pocock-skills` | Configure repo issue tracker, triage labels, domain docs |
+
+## Commit Convention
+
+Use imperative mood, under 72 characters. Format:
+
+```text
+<Verb> <what changed>
+
+<why, if non-obvious>
+```
+
+Verbs: `Add`, `Fix`, `Refactor`, `Update`, `Remove`, `Improve`. No colons after the verb. If a commit needs a semicolon, it should probably be two commits. The body (separated by a blank line) explains *why*, not *what* -- use it for non-trivial logic changes.
