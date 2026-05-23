@@ -1,6 +1,6 @@
 from config.base_config import get_cost_params
 from typing import Dict, Tuple
-from config.constants import LANDFILL_EMISSIONS_PER_M3, EXPANSION_SIZE_M3
+from config.constants import LANDFILL_EMISSIONS_PER_M3_KG, EXPANSION_SIZE_M3
 from models.enums import WasteType
 
 def check_storage_capacity(
@@ -14,9 +14,18 @@ def check_storage_capacity(
     available_capacity = max(0, capacity - current_total)
     
     if addition_total <= available_capacity:
-        return dict(additions), 0.0  
-    else:
-        return dict(additions), addition_total - available_capacity
+        return dict(additions), 0.0
+
+    if available_capacity <= 0:
+        return {waste_type: 0.0 for waste_type in additions}, addition_total
+
+    scale_factor = available_capacity / addition_total
+    scaled_additions = {
+        waste_type: amount * scale_factor
+        for waste_type, amount in additions.items()
+    }
+    overflow = addition_total - available_capacity
+    return scaled_additions, overflow
     
 def handle_storage_event(entity, volume, region, force_landfill=False):
     if entity is None:
@@ -46,7 +55,7 @@ def handle_storage_event(entity, volume, region, force_landfill=False):
         entity.landfill_count = landfill_count + 1
         entity.landfill_costs = getattr(entity, 'landfill_costs', 0) + landfill_cost
 
-        emissions = volume * (LANDFILL_EMISSIONS_PER_M3 * 1000)   
+        emissions = volume * LANDFILL_EMISSIONS_PER_M3_KG
         
         if hasattr(entity, 'waste_monitor') and entity.waste_monitor:
             entity.waste_monitor.track_event(

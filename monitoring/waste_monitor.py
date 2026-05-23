@@ -26,27 +26,27 @@ class WasteMonitor:
 
     @property
     def get_generation_history(self):
-        return self.generation_history
+        return dict(self.generation_history)
 
     @property
     def get_collection_history(self):
-        return self.collection_history
+        return dict(self.collection_history)
 
     @property
     def get_processing_history(self):
-        return self.processing_history
+        return dict(self.processing_history)
 
     @property
     def get_environmental_history(self):
-        return self.environmental_history
+        return dict(self.environmental_history)
 
     @property
     def get_event_history(self):
-        return self.event_history
+        return dict(self.event_history)
 
     @property
     def get_entity_status_history(self):
-        return self.entity_status_history
+        return dict(self.entity_status_history)
 
     def track_generation(self, generator, timestamp, region=None):
         """Track waste generation events with timestamps, region info, and costs"""
@@ -135,7 +135,7 @@ class WasteMonitor:
             history["collected_volumes"][waste_type].append(amount)
 
         history["efficiency"].append(collector.efficiency)
-        history["transport_costs"].append(collector.transport_cost)
+        history["transport_costs"].append(getattr(collector, 'last_collection_cost', 0.0))
 
         total_storage = sum(collector.collection_center.current_storage.values())
         utilization = (total_storage / collector.collection_center.waste_storage_capacity) * 100
@@ -449,7 +449,7 @@ class WasteMonitor:
         history["operational"]["conversion_rate"].append(treatment.conversion_rate)
         history["operational"]["demand"].append(treatment.demand)
         history["operational"]["demand_satisfaction"].append(
-            total_processed >= treatment.demand if treatment.demand > 0 else 1.0
+            min(1.0, total_processed / treatment.demand) if treatment.demand > 0 else 1.0
         )
 
     def _track_product_metrics(self, treatment, history, timestamp):

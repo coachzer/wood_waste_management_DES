@@ -28,11 +28,13 @@ class KanbanManager:
         self.acknowledged_signals.add(signal_id)
 
     def clean_old_signals(self, current_time):
-        """Remove signals older than max_signal_age"""
+        """Remove signals older than max_signal_age and prune stale acknowledgments"""
         self.signals = [
-            signal for signal in self.signals 
+            signal for signal in self.signals
             if current_time - signal['timestamp'] <= self.max_signal_age
         ]
+        remaining_ids = {signal['id'] for signal in self.signals}
+        self.acknowledged_signals &= remaining_ids
 
     def get_signals(self, current_time=None):
         """Get non-acknowledged, non-expired signals"""

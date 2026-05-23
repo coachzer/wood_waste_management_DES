@@ -20,9 +20,6 @@ def update_waste_storage(treatment_operator, input_type, output_type, amount_to_
     """Update waste storage and track raw production"""
     treatment_operator.waste_storage[input_type] -= amount_to_process
     treatment_operator.processed_volumes[input_type] += amount_to_process
-    treatment_operator.waste_storage[output_type] = (
-        treatment_operator.waste_storage.get(output_type, 0.0) + output_amount
-    )
     treatment_operator.total_products_created += output_amount
 
 def fulfill_demand(treatment_operator, output_type, output_amount):
@@ -86,7 +83,10 @@ def track_treatment_properties(treatment_operator, amount_to_process, transforma
 
 def update_utilization_metrics(treatment_operator, amount_to_process):
     """Update utilization history for capacity management"""
-    current_utilization = amount_to_process / treatment_operator.processing_capacity
+    if treatment_operator.processing_capacity <= 0:
+        current_utilization = 0.0
+    else:
+        current_utilization = amount_to_process / treatment_operator.processing_capacity
     treatment_operator.utilization_history.append(current_utilization)
     if len(treatment_operator.utilization_history) > treatment_operator.utilization_window:
         treatment_operator.utilization_history.pop(0)

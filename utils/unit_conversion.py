@@ -19,12 +19,6 @@ WASTE_DENSITIES = {
     WasteType.BULKY_WASTE_20_03_07: 300.0
 }
 
-def convert_ewc_dict_to_waste_type_dict(ewc_dict: Dict[str, str]) -> Dict[str, WasteType]:
-    """
-    Convert a dictionary of EWC codes to WasteType enums
-    """
-    return {ewc_code: WasteType[ewc_code] for ewc_code in ewc_dict if ewc_code in WasteType.__members__}
-
 def tonnes_to_cubic_meters(tonnes: float, waste_type: WasteType) -> float:
     """
     Convert tonnes to cubic meters for a specific waste type

@@ -6,10 +6,12 @@ from config.base_config import (
 )
 from config.constants import SIMULATION_DURATION
 from core.transport_manager import PointToPointTransport
+from models.data_classes import OperationalEntity
 from models.enums import RegionType
 from models.state import SimulationState
 from monitoring.waste_monitor import WasteMonitor
 from models.facility_data import FacilityDataManager
+from core import facility_builder as facility_builder_module
 from core.facility_builder import FacilityBuilder
 from core.kanban_manager import KanbanManager
 from core.generator import WasteGenerator
@@ -22,6 +24,13 @@ class SimulationManager:
     def __init__(self, seed=None):
         # Reset simulation state
         SimulationState._instance = None
+        OperationalEntity._entity_registry.clear()
+        OperationalEntity._failure_counts.clear()
+        facility_builder_module.facilities = {
+            'WasteGenerator': 0,
+            'CollectorCompany': 0,
+            'TreatmentOperator': 0
+        }
 
         self.seed = seed
 
@@ -112,7 +121,9 @@ class SimulationManager:
 
     def _distribute_demand(self, processors: List[TreatmentOperator]) -> None:
         """Distribute national demand among processors by output type"""
-        # Group processors by their output types
+        for processor in processors:
+            processor.demand = 0
+
         processor_by_output = {}
         for processor in processors:
             for transformation in processor.transformations.values():
@@ -120,8 +131,7 @@ class SimulationManager:
                 if output_type_str not in processor_by_output:
                     processor_by_output[output_type_str] = []
                 processor_by_output[output_type_str].append(processor)
-        
-        # Distribute demand evenly among processors for each product type
+
         national_demand = self.facility_manager.demand
         for product_type, total_demand in national_demand.items():
             processors_for_product = processor_by_output.get(product_type, [])
@@ -129,7 +139,7 @@ class SimulationManager:
                 demand_per_processor = total_demand / len(processors_for_product)
                 print(f"Distributing {product_type} demand {total_demand} among {len(processors_for_product)} processors")
                 for processor in processors_for_product:
-                    processor.demand = demand_per_processor
+                    processor.demand += demand_per_processor
                     print(f"Assigned {demand_per_processor:.2f} m³ {product_type} demand to {processor.name}")
 
     def _handle_initialization_error(self, error: ValueError) -> None:

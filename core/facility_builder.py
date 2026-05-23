@@ -173,12 +173,14 @@ class FacilityBuilder:
     def _get_base_transformations(self):
         """Get base transformation efficiencies and energy requirements"""
         return {
-            WasteType.CONSTRUCTION_WOOD_17_02_01: (0.98, 0.90),   
-            WasteType.WOODEN_PACKAGING_15_01_03: (0.88, 0.95), 
+            WasteType.CONSTRUCTION_WOOD_17_02_01: (0.98, 0.90),
+            WasteType.WOODEN_PACKAGING_15_01_03: (0.88, 0.95),
             WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: (0.95, 0.50),
             WasteType.BARK_CORK_WASTE_03_01_01: (0.85, 0.70),
             WasteType.NON_HAZARDOUS_WOOD_20_01_38: (0.88, 0.60),
             WasteType.PAPER_PACKAGING_15_01_01: (0.82, 0.65),
+            WasteType.FORESTRY_WASTE_02_01_07: (0.82, 0.75),
+            WasteType.OTHER_WOOD_WASTE_03_01_99: (0.85, 0.65),
         }
 
     def _map_waste_type(self, input_type):
@@ -204,6 +206,8 @@ class FacilityBuilder:
             WasteType.BARK_CORK_WASTE_03_01_01: ['mdf', 'particle_board'],
             WasteType.NON_HAZARDOUS_WOOD_20_01_38: ['particle_board', 'mdf', 'osb'],
             WasteType.PAPER_PACKAGING_15_01_01: ['mdf'],
+            WasteType.FORESTRY_WASTE_02_01_07: ['particle_board', 'mdf'],
+            WasteType.OTHER_WOOD_WASTE_03_01_99: ['particle_board', 'mdf', 'osb'],
         }
 
     def _build_transformations(self, proc_data):

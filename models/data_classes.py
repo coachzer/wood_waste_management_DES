@@ -120,7 +120,7 @@ class WasteTransformation:
     """Data class to represent a waste transformation process"""
 
     input_type: WasteType
-    output_type: WasteType
+    output_type: OutputType
     conversion_efficiency: float  # Percentage of input mass converted to output
     energy_required: float  # Energy required per unit mass (kWh/kg)
 

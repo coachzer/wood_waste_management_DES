@@ -18,6 +18,7 @@ class UncertaintySet:
     generator_failure: FailureConfig
     collector_failure: FailureConfig
     treatment_failure: FailureConfig
+    waste_generation_mean: float = 1.0               # Scenario multiplier on base rates
     waste_generation_variability: float = 0.2      # ±20% variation on regional rates
 
 @dataclass
@@ -46,14 +47,14 @@ class ScenarioConfig:
         """Convert scenario config to uncertainty set"""
 
         return UncertaintySet(
-            # Required fields
-            name = self.name,
+            name=self.name,
             collection_efficiency=self.coll_eff,
             treatment_conversion=self.treat_conv,
             transportation_time=self.trans_time,
             generator_failure=self.generator_failure,
             collector_failure=self.collector_failure,
             treatment_failure=self.treatment_failure,
+            waste_generation_mean=self.waste_gen[0],
             waste_generation_variability=self.waste_gen[1]
         )
 
@@ -84,8 +85,8 @@ HIGH_FAILURE = FailureConfig(
 
 DISASTER_FAILURE = FailureConfig(
     probability=0.24,   # ~24% chance per day
-    min_duration=0.25, # 30 days minimum
-    max_duration=1.5,  # 60 days maximum
+    min_duration=30.0,  # 30 days minimum
+    max_duration=60.0,  # 60 days maximum
 )
 
 SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
@@ -158,7 +159,8 @@ def _create_uncertainty_set(config: ScenarioConfig) -> UncertaintySet:
         generator_failure=config.generator_failure,
         collector_failure=config.collector_failure,
         treatment_failure=config.treatment_failure,
-        waste_generation_variability=config.waste_gen[1] 
+        waste_generation_mean=config.waste_gen[0],
+        waste_generation_variability=config.waste_gen[1]
     )
 
 def validate_time_periods() -> None:

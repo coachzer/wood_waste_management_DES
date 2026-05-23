@@ -49,24 +49,29 @@ def handle_overflow(current_storage, waste_storage_capacity, waste_streams, regi
         overflow_amount = total_current - waste_storage_capacity
         
         handle_storage_event(
-            generator_entity, 
-            overflow_amount, 
+            generator_entity,
+            overflow_amount,
             region,
             force_landfill=force_landfill
         )
-        
-        scaling_factor = waste_storage_capacity / total_current
-        
-        state = SimulationState.get_instance()
-        
-        for waste_type, stream in waste_streams.items():
-            new_volume = stream.volume * scaling_factor
-            reduced_volume = stream.volume - new_volume
-            if reduced_volume > 0:
-                state.track_remove_waste(region, waste_type, reduced_volume)
-                stream.volume = new_volume
-        
-        current_storage = waste_storage_capacity
+
+        effective_capacity = generator_entity.waste_storage_capacity
+
+        if total_current > effective_capacity:
+            scaling_factor = effective_capacity / total_current
+
+            state = SimulationState.get_instance()
+
+            for waste_type, stream in waste_streams.items():
+                new_volume = stream.volume * scaling_factor
+                reduced_volume = stream.volume - new_volume
+                if reduced_volume > 0:
+                    state.track_remove_waste(region, waste_type, reduced_volume)
+                    stream.volume = new_volume
+
+            current_storage = effective_capacity
+        else:
+            current_storage = total_current
     
     return current_storage
 
@@ -90,7 +95,7 @@ def generate_waste_for_period(
     ):
         potential_volume = base_rate * seasonal_factor * daily_factor * efficiency
         
-        if current_storage + potential_volume <= current_storage + available_storage:
+        if potential_volume <= available_storage:
             
             current_storage = update_waste_stream(
                 waste_streams, total_generated, current_storage,

@@ -285,7 +285,15 @@ class TreatmentOperator(OperationalEntity):
                 target_level = self.waste_storage_capacity * self.on_demand_target_ratio
                 return max(0.0, target_level - current_total)
 
-        return self.processing_capacity 
+            case StockStrategy.REORDER_50:
+                reorder_point = self.waste_storage_capacity * 0.5
+                return max(0.0, reorder_point - current_total)
+
+            case StockStrategy.REORDER_90:
+                reorder_point = self.waste_storage_capacity * 0.9
+                return max(0.0, reorder_point - current_total)
+
+        return self.processing_capacity
 
     def schedule_collection_requests(self):
         """Transport-safe PUSH vs PULL with startup protection"""
@@ -439,15 +447,6 @@ class TreatmentOperator(OperationalEntity):
 
     def _create_collection_signal(self, waste_type: WasteType, volume: float, timestamp: float, priority: int):
         """Create a collection signal for specific waste type and volume"""
-        self.kanban_manager.add_signal(
-            waste_type=waste_type,
-            priority=priority,
-            timestamp=timestamp,
-            volume=volume,
-            source_id=self.name,
-            source_type="treatment"
-        )
-
         self._propagate_signal_to_collectors(waste_type, volume, timestamp)
 
     def _create_reorder_signals(self, total_shortage: float, timestamp: float, priority: int):
@@ -510,8 +509,7 @@ class TreatmentOperator(OperationalEntity):
         base_demand = min(
             available_capacity,
             max_processable,
-            total_unmet * 0.3,
-            self.waste_storage_capacity * 0.1
+            total_unmet * 0.3
         )
         strategy_demand = self._apply_stock_strategy_to_demand_calculation(base_demand)
 
@@ -676,12 +674,9 @@ class TreatmentOperator(OperationalEntity):
             elif output_type == OutputType.OSB:
                 self.product_volumes["osb"] += output_amount # m³
         else:
-            return  
+            print(f"[{self.name}] Unclassified output: {output_amount:.2f} m³ of {output_type.value} from {input_type.value}")
 
-        # Track processing costs
         track_treatment_properties(self, amount_to_process, transformation)
-
-        # Update utilization metrics
         update_utilization_metrics(self, amount_to_process)
 
     def request_waste_directly(self, required_waste: float, input_waste_types: set) -> Dict[WasteType, float]:
@@ -792,19 +787,6 @@ class TreatmentOperator(OperationalEntity):
 
     def trigger_collection(self):
         """Request waste collection based on current needs"""
-        state = SimulationState.get_instance()
-
-        product_demands = {}
-
-        for product_type in [OutputType.MDF, OutputType.PARTICLE_BOARD, OutputType.OSB]:
-            key = product_type.value.lower().replace('_', '_') 
-            if key in state.target_demands and key in state.total_products:
-                unmet_demand = state.target_demands[key] - state.total_products[key]
-                if unmet_demand > 0:
-                    product_demands[product_type] = unmet_demand
-
-        self.demand = sum(product_demands.values())
-
         required_waste = self.calculate_realistic_demand()
         if required_waste <= 0:
             return 0, 0
@@ -833,12 +815,14 @@ class TreatmentOperator(OperationalEntity):
     def _default_transformations(self) -> Dict[WasteType, WasteTransformation]:
         """Define default transformation pathways for all waste types"""
         base_transformations = {
-            WasteType.CONSTRUCTION_WOOD_17_02_01: (0.98, 0.90),   
-            WasteType.WOODEN_PACKAGING_15_01_03: (0.88, 0.95),     
-            WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: (0.95, 0.50),  
-            WasteType.BARK_CORK_WASTE_03_01_01: (0.85, 0.70),       
-            WasteType.NON_HAZARDOUS_WOOD_20_01_38: (0.88, 0.60), 
-            WasteType.PAPER_PACKAGING_15_01_01: (0.82, 0.65),   
+            WasteType.CONSTRUCTION_WOOD_17_02_01: (0.98, 0.90),
+            WasteType.WOODEN_PACKAGING_15_01_03: (0.88, 0.95),
+            WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: (0.95, 0.50),
+            WasteType.BARK_CORK_WASTE_03_01_01: (0.85, 0.70),
+            WasteType.NON_HAZARDOUS_WOOD_20_01_38: (0.88, 0.60),
+            WasteType.PAPER_PACKAGING_15_01_01: (0.82, 0.65),
+            WasteType.FORESTRY_WASTE_02_01_07: (0.82, 0.75),
+            WasteType.OTHER_WOOD_WASTE_03_01_99: (0.85, 0.65),
         }
 
         transformations = {}
@@ -867,7 +851,16 @@ class TreatmentOperator(OperationalEntity):
                 OutputType.OSB,    
             ],
             WasteType.PAPER_PACKAGING_15_01_01: [
-                OutputType.MDF,  
+                OutputType.MDF,
+            ],
+            WasteType.FORESTRY_WASTE_02_01_07: [
+                OutputType.PARTICLE_BOARD,
+                OutputType.MDF,
+            ],
+            WasteType.OTHER_WOOD_WASTE_03_01_99: [
+                OutputType.PARTICLE_BOARD,
+                OutputType.MDF,
+                OutputType.OSB,
             ],
         }
 

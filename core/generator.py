@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Dict, Optional
-from config.constants import FAILED_ENTITY_EFFICIENCY, HISTORY_BUFFER_SIZE, SEASONAL_PERIODS
+from config.constants import FAILED_ENTITY_EFFICIENCY, HISTORY_BUFFER_SIZE, SEASONAL_PERIODS, SIMULATION_DURATION
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
 from models.data_classes import WasteStream, OperationalEntity
 from monitoring.waste_monitor import WasteMonitor
@@ -54,7 +54,13 @@ class WasteGenerator(OperationalEntity):
             )
             for waste_type in waste_streams.keys()
         }
-        self.waste_generation_rates = waste_streams
+        self.waste_generation_rates = dict(waste_streams)
+        if uncertainty_set and uncertainty_set.waste_generation_mean != 1.0:
+            mean_multiplier = uncertainty_set.waste_generation_mean
+            self.waste_generation_rates = {
+                waste_type: rate * mean_multiplier
+                for waste_type, rate in self.waste_generation_rates.items()
+            }
         self.generation_frequency = generation_frequency
         self.waste_storage_capacity = waste_storage_capacity
         self.uncertainty_set = uncertainty_set
@@ -118,6 +124,7 @@ class WasteGenerator(OperationalEntity):
                 self.waste_generation_rates = {wt: r * self.efficiency for wt, r in self._original_rates.items()}
         elif self.status == EntityStatus.OPERATIONAL:
             if hasattr(self, '_original_rates'):
+                self.efficiency = 1.0
                 self.waste_generation_rates = self._original_rates.copy()
                 delattr(self, '_original_rates')
 
@@ -131,7 +138,7 @@ class WasteGenerator(OperationalEntity):
                 yield self.env.timeout(self.generation_frequency)
                 continue
 
-            season_index = int(current_time % self.seasonal_periods)
+            season_index = min(3, int(current_time / (SIMULATION_DURATION / SEASONAL_PERIODS)))
             seasonal_factor = self.seasonal_factors[season_index]
 
             self._process_stock_strategy(current_time, seasonal_factor)

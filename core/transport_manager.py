@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import List, Dict, Optional
 from enum import Enum
+from config.constants import TRAVEL_SPEED_KMH
 from models.enums import RegionType, WasteType
 from models.distances import get_distance
 from models.state import SimulationState
@@ -83,15 +84,13 @@ class PointToPointTransport:
         vehicle = vehicle_info["vehicle"]
         collector = vehicle_info["collector"]
         
-        # Calculate travel time (assuming 50 km/h average speed)
         distance = get_distance(request.origin, request.destination)
-        travel_time = distance / 50.0 / 24.0
-        
-        # Check if vehicle needs to travel to origin first
+        travel_time = distance / TRAVEL_SPEED_KMH / 24.0
+
         pickup_time = current_time
         if vehicle.current_region != request.origin:
             pickup_distance = get_distance(vehicle.current_region, request.origin)
-            pickup_time += pickup_distance / 50.0
+            pickup_time += pickup_distance / TRAVEL_SPEED_KMH / 24.0
         
         arrival_time = pickup_time + travel_time
         

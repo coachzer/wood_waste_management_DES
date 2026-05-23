@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Dict
-from config.constants import TRANSPORT_EMISSIONS_PER_M3_KM, FAILED_ENTITY_EFFICIENCY
+from config.constants import TRANSPORT_EMISSIONS_PER_M3_KM, FAILED_ENTITY_EFFICIENCY, TRAVEL_SPEED_KMH
 from core.transport_manager import PointToPointTransport, TransportPriority, TransportRequest
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
 from models.state import SimulationState
@@ -78,9 +78,12 @@ class CollectorCompany(OperationalEntity):
         self.inventory_policy = inventory_policy
         self.stock_strategy = stock_strategy
         self.transport_manager = transport_manager or PointToPointTransport()
+        self.initial_collection_capacity = collection_capacity
         self.collection_capacity = collection_capacity
         self.collection_frequency = collection_frequency
-        self.transport_cost = transport_cost 
+        self.initial_transport_cost = transport_cost
+        self.transport_cost = transport_cost
+        self.last_collection_cost = 0.0
         self.environmental_impact = environmental_impact
         self.efficiency = efficiency
         self.availability = availability
@@ -133,7 +136,7 @@ class CollectorCompany(OperationalEntity):
             # Different region: use full inter-region distance
             distance = get_distance(self.region_type, generator.region_type)
         
-        travel_time_hours = distance / 40.0  
+        travel_time_hours = distance / TRAVEL_SPEED_KMH
         travel_time_days = travel_time_hours / 24.0 
         return travel_time_days, distance
 
@@ -159,7 +162,8 @@ class CollectorCompany(OperationalEntity):
             
             self._add_to_collection_center(collected_waste)
             collection_cost = self.transport_cost + (distance * volume_cost_factor * collected_amount)
-                
+            self.last_collection_cost = collection_cost
+
             # Calculate transport emissions (convert m³ to tonnes using density, then multiply by distance and emissions factor)
             emissions = collected_amount * distance * TRANSPORT_EMISSIONS_PER_M3_KM
 
@@ -344,15 +348,13 @@ class CollectorCompany(OperationalEntity):
             if self.status == EntityStatus.FAILED:
                 self.efficiency = FAILED_ENTITY_EFFICIENCY
             elif self.status == EntityStatus.RECOVERING:
-                self.efficiency = self.get_operational_efficiency()  
-            elif self.status == EntityStatus.OPERATIONAL:
-                self.efficiency = 1.0  
+                self.efficiency = self.get_operational_efficiency()
             if self.status == EntityStatus.FAILED:
                 yield self.env.timeout(self.collection_frequency)  
                 continue
 
-            self.collection_capacity = max(10, self.collection_capacity * self.efficiency)
-            self.transport_cost = min(100, self.transport_cost * (2 - self.efficiency))
+            self.collection_capacity = max(10, self.initial_collection_capacity * self.efficiency)
+            self.transport_cost = min(100, self.initial_transport_cost * (2 - self.efficiency))
 
             base_timeout = self.collection_frequency
             if self.inventory_policy == InventoryPolicy.PULL and self.kanban_manager.get_signals(self.env.now):
@@ -363,11 +365,6 @@ class CollectorCompany(OperationalEntity):
             yield self.env.timeout(timeout)
 
             current_time = self.env.now
-            if self.uncertainty_set and hasattr(self.uncertainty_set, 'collector_failure'):
-                self.check_failure(current_time, self.uncertainty_set.collector_failure.probability)
-
-            if self.status == EntityStatus.FAILED:
-                continue
 
             if not self.should_collect():
                 continue
@@ -384,10 +381,7 @@ class CollectorCompany(OperationalEntity):
     def _process_kanban_signals(self, signals):
         """Process signals with acknowledgment and cross-region support"""
         for signal in signals:
-            try:
-                waste_type_enum = WasteType[signal['waste_type']]
-            except KeyError:
-                continue
+            waste_type_enum = signal['waste_type']
             
             source_type = signal.get('source_type', 'generator')  
             source_id = signal.get('source_id', signal.get('generator_id')) 
@@ -434,10 +428,7 @@ class CollectorCompany(OperationalEntity):
 
     def _propagate_signal_to_generators(self, signal, current_time):
         """Propagate demand signals upstream to generators"""
-        try:
-            waste_type_enum = WasteType[signal['waste_type']]
-        except KeyError:
-            return
+        waste_type_enum = signal['waste_type']
         
         state = SimulationState.get_instance()
         
@@ -527,24 +518,24 @@ class CollectorCompany(OperationalEntity):
             
         available_vehicle.in_transit = True
 
-        # Calculate available space in collection center
         collection_center_available = (
-            self.collection_center.waste_storage_capacity - 
+            self.collection_center.waste_storage_capacity -
             sum(self.collection_center.current_storage.values())
         )
-        
+
         if collection_center_available <= 0:
+            available_vehicle.in_transit = False
             return self.env.process(self._dummy_process(0))
-        
-        # Calculate target collection volume considering all constraints
+
         target_volume = min(
-            generator.current_storage,                    # What's available at generator
-            self.collection_capacity * self.efficiency,  # Our collection capacity
-            available_vehicle.capacity,                   # Vehicle capacity
-            collection_center_available                   # Available storage space
+            generator.current_storage,
+            self.collection_capacity * self.efficiency,
+            available_vehicle.capacity,
+            collection_center_available
         )
-        
+
         if target_volume <= 0:
+            available_vehicle.in_transit = False
             return self.env.process(self._dummy_process(0))
         
         # Dispatch vehicle
