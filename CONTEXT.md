@@ -9,27 +9,44 @@ The total annual volume of each product type that the market consumes over a 365
 _Avoid_: quota, target, order
 
 **Market Consumption**:
-A SimPy process that periodically removes finished products from treatment operators' sell storage, simulating buyers taking delivery. Drives the demand signaling rate and keeps processors active throughout the simulation year.
+A SimPy process that periodically removes finished products from treatment operators' finished goods inventory, simulating buyers taking delivery. Drives the demand signaling rate and keeps processors active throughout the simulation year.
 _Avoid_: sales, shipment
 
 **Service Level**:
-The fraction of demand that was fulfilled when consumption occurred. Only meaningful because demand arrives continuously — a one-shot quota would yield binary hit/miss.
-_Avoid_: fill rate, completion rate
+The fraction of demand that was fulfilled when consumption occurred. Two derived metrics from the same consumption-event log:
+- `full_service_level` (headline) = `total_consumed / total_attempted` — includes both `no_capability` and `stockout` lost sales. Used as the cross-policy comparator because the `no_capability` floor is identical across all six PUSH/PULL × strategy configurations (same regional capability layout).
+- `operational_service_level` (diagnostic) = `total_consumed / (total_attempted - no_capability_lost)` — measures policy effectiveness on demand the system can actually fulfill. Strips the structural floor to expose pure operational performance.
+
+Per-operator and per-product breakdowns derive from the same event log by filtering. Only meaningful because demand arrives continuously — a one-shot quota would yield binary hit/miss.
+_Avoid_: fill rate, completion rate, feasible service level (use `operational_service_level`)
 
 **Treatment Operator**:
 A production facility that converts waste into final products. In PUSH mode, replenishes based on internal inventory thresholds. In PULL mode, produces in response to **Consumption Events**.
 _Avoid_: processor, factory
 
+**Finished Goods**:
+A **Treatment Operator**'s buyer-facing inventory of completed products (MDF, particle board, OSB). Drained by **Market Consumption**, filled by production. Capacity per operator is `market_share × (annual_demand_total / 52) × 4` (four weeks of expected consumption); **Initial Inventory** primes it at 50% (two weeks). Production is clamped per output type to remaining headroom — a saturated OSB inventory throttles OSB transformations even when MDF has headroom. Replaces the prior two-buffer `product_to_sell` + `product_storage` design; the secondary buffer had no drain path and was always vestigial.
+_Avoid_: product_to_sell (old name), inventory (too generic — could mean waste_storage too)
+
 **PUSH (Inventory Policy)**:
-Each entity reasons from its own observable state — inventory levels, storage utilization, reorder points. Information does not flow downstream-to-upstream as events. The **Market Consumption** process drains `product_to_sell` but does not notify PUSH operators; they detect the inventory drop via their **Stock Strategy** thresholds. Physical storage capacity serves as the implicit production target — there is no separate forecast or `target_inventory` parameter. PUSH-ON_DEMAND = produce until full; PUSH-REORDER_50 = produce until 50% of capacity. Structurally: make-to-stock without explicit forecast.
+Each entity reasons from its own observable state — inventory levels, storage utilization, reorder points. Information does not flow downstream-to-upstream as events. The **Market Consumption** process drains `finished_goods` but does not notify PUSH operators; they detect the inventory drop via their **Stock Strategy** thresholds. Physical storage capacity serves as the implicit production target — there is no separate forecast or `target_inventory` parameter. PUSH-ON_DEMAND = produce until full; PUSH-REORDER_50 = produce until 50% of capacity. Structurally: make-to-stock without explicit forecast.
 _Avoid_: forecast-driven, planned
 
 **PULL (Inventory Policy)**:
-The trigger is the downstream consumption event itself, not the inventory drop it causes. When the **Market Consumption** process pulls from a PULL operator, that operator receives an explicit **Consumption Event** with volume. The operator decides whether to produce (gated by **Stock Strategy** on `product_to_sell`), checks waste storage, and if waste is insufficient, signals upstream — also gated by stock strategy. The signal chain is causal: consumption causes production, production causes upstream waste demand, upstream waste demand causes collector activity. No autonomous inventory polling. Structurally: make-to-order / JIT.
+The trigger is the downstream consumption event itself, not the inventory drop it causes. When the **Market Consumption** process pulls from a PULL operator, that operator receives an explicit **Consumption Event** with volume and responds by producing — production volume tracks event volume, subject to the partial-batch headroom clamp on `finished_goods`. The **Stock Strategy** gates upstream waste-side replenishment only: after production consumes input waste, if `waste_storage` has dropped below the strategy threshold, the operator signals upstream collectors. Production responds to every event regardless of `finished_goods` level — strategy does not target a downstream buffer. The signal chain is causal: consumption causes production; production causes upstream waste demand when the strategy threshold is crossed; upstream waste demand causes collector activity. No autonomous polling on `finished_goods`. Structurally: lot-for-lot downstream, `(s, S)` policy upstream.
 _Avoid_: reactive, demand-driven (too vague)
 
+**Stock Strategy**:
+The local waste-side replenishment policy applied at each entity. Three variants:
+- `ON_DEMAND`: signal upstream lot-for-lot — every waste consumption triggers a signal for replacement volume
+- `REORDER_50`: signal upstream when `waste_storage` drops below 50% of `waste_storage_capacity`
+- `REORDER_90`: signal upstream when `waste_storage` drops below 90% of capacity
+
+Strategy gates waste-side decisions only (when upstream signals fire). Does not gate `finished_goods` production: in **PUSH**, production triggers on autonomous waste-state polling against the same threshold; in **PULL**, production triggers on **Consumption Event** arrival regardless of strategy. The strategy parameter sets the reorder point (`s` in `(s, S)` notation). The order-up-to level is `S = waste_storage_capacity` — when threshold breached, the signal volume is `waste_storage_capacity - current_waste_storage` (order up to full capacity). ON_DEMAND under this rule is lot-for-lot: s = S = capacity, signal_volume = amount-just-consumed.
+_Avoid_: reorder policy (overloaded), inventory policy (that's PUSH/PULL)
+
 **Consumption Event**:
-An explicit notification from the **Market Consumption** process to a PULL **Treatment Operator** that product was consumed (or attempted). Carries the product type and volume. Delivered via **KanbanManager** with `source_type="market"`, making the PULL cascade uniform: market → treatment → collector → generator, all through the same signal infrastructure.
+An explicit notification from the **Market Consumption** process to a PULL **Treatment Operator** that the market attempted to buy product. Carries the product type and `attempted` volume — the full demand including any unfulfilled portion, not just what flowed through `finished_goods`. Demand-aware PULL: the operator's production target = `attempted`, so a stockout on tick N does not silence the signal on tick N+1 (no death-spiral). Lost-sale tracking stays at the market/SimulationState level; the operator does not need to see `consumed` or `lost` separately. Delivered via **KanbanManager** with `source_type="market"`, making the PULL cascade uniform: market → treatment → collector → generator, all through the same signal infrastructure.
 _Avoid_: demand signal, order
 
 **Demand Signal**:
@@ -41,16 +58,20 @@ A sinusoidal factor `1 + 0.2 * sin(2πt/T)` applied to both waste generation rat
 _Avoid_: seasonal index (ambiguous — could refer to the array index or the factor value)
 
 **Consumption Tick**:
-The weekly interval (every 7 time units) at which the **Market Consumption** process removes products from treatment operators' sell storage. Each tick consumes `(annual_demand / 52) * seasonal_factor` per product type, distributed across operators.
+The weekly interval (every 7 time units) at which the **Market Consumption** process removes products from treatment operators' finished goods inventory. Each tick consumes `(annual_demand / 52) * seasonal_factor` per product type, distributed across operators.
 _Avoid_: consumption rate, sales cycle
 
 **Lost Sales**:
-When a **Consumption Tick** cannot be fully fulfilled from available sell storage, the unfulfilled portion is lost — the market sourced from a competitor. The shortfall counts against **Service Level**. No backlog carries over to the next tick. Each lost sale is tagged by reason: `no_capability` (operator has no transformation pathway for the requested product) or `stockout` (operator could produce it but had insufficient stock). Per-operator service level reports both components separately; system-level service level aggregates them.
+When a **Consumption Tick** cannot be fully fulfilled from available finished goods inventory, the unfulfilled portion is lost — the market sourced from a competitor. The shortfall counts against **Service Level**. No backlog carries over to the next tick. Each lost sale is tagged by reason: `no_capability` (operator has no transformation pathway for the requested product) or `stockout` (operator could produce it but had insufficient stock). Per-operator service level reports both components separately; system-level service level aggregates them.
 _Avoid_: stockout (as a general term — use the specific reason tags)
 
 **Consumption Distribution**:
 Each **Treatment Operator**'s share of weekly **Market Consumption** is proportional to its processing capacity relative to the national total. A facility with 64,000 m³ capacity absorbs more consumption than one with 14,400 m³. Each facility has its own effective regional market share.
 _Avoid_: market allocation, demand split
+
+**ABC Classification**:
+A Pareto-style prioritization of output products (OSB, particle board, MDF) by total biogenic carbon stock impact. Products are ranked by `demand_volume × biogenic_carbon_per_unit`, then classified: Class A (cumulative ≤70%, weight 1.0), Class B (≤95%, weight 0.7), Class C (remainder, weight 0.4). Current classification: OSB = A, particle board = B, MDF = C. The priority weights feed into transformation selection scoring at a 2.0× multiplier, making ABC the dominant factor in what a **Treatment Operator** produces when multiple transformations are available. Always enabled — every processor runs with the same classification. Not traditional Activity-Based Costing; this is an environmental-impact Pareto ranking.
+_Avoid_: Activity-Based Costing, cost classification
 
 **Run**:
 One invocation of `main.py` — the entire batch of simulations it produces. A grid run executes one simulation per policy/strategy combo; a baseline run executes N replications per combo. Individual simulations within a baseline run are replications, not runs. Runs are identified by a generated name encoding mode, variant, and flags, and all artifacts (config snapshot, results, plots, per-replication data) live in a single run directory.
@@ -61,10 +82,10 @@ An auto-generated slug that identifies a run at a glance: `{mode}_{variant}_{fla
 _Avoid_: run ID, job name
 
 **Initial Inventory**:
-All echelons are primed with 2 weeks of inventory at expected consumption rate before simulation starts. Treatment operators' `product_to_sell` is initialized to `(annual_demand / 52) * 2 * market_share` per product type. Waste storage is initialized to enough waste to produce 2 weeks of product (adjusted by transformation efficiency). Collectors and generators use existing `initial_stock` from region JSON. Same initial conditions for both PUSH and PULL — ensures fair comparison and avoids cold-start artifacts in early-simulation metrics.
+All echelons are primed with 2 weeks of inventory at expected consumption rate before simulation starts. Treatment operators' `finished_goods` is initialized to `(annual_demand / 52) * 2 * market_share` per product type — 50% of `finished_goods_capacity` (which is sized for four weeks), giving symmetric headroom for over- and under-production phases. Waste storage is initialized to enough waste to produce 2 weeks of product (adjusted by transformation efficiency). Collectors and generators use existing `initial_stock` from region JSON. Same initial conditions for both PUSH and PULL — ensures fair comparison and avoids cold-start artifacts in early-simulation metrics.
 _Avoid_: warm-up stock, safety stock (different concept)
 
 ## Example dialogue
 
 > **Dev**: "The simulation finishes at day 100 — all demands are met."
-> **Domain expert**: "That's wrong. The demand envelope is 30,000 m³ of OSB *per year*. The market consumes that over 365 days. If processors produce faster than the market consumes, product piles up in sell storage — it doesn't mean demand is 'met.' Service level measures whether we keep up with consumption, not whether we hit a ceiling."
+> **Domain expert**: "That's wrong. The demand envelope is 30,000 m³ of OSB *per year*. The market consumes that over 365 days. If processors produce faster than the market consumes, product piles up in finished goods inventory — it doesn't mean demand is 'met.' Service level measures whether we keep up with consumption, not whether we hit a ceiling."

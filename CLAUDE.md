@@ -34,6 +34,8 @@ Outputs: `outputs/baseline/{scenario}/{policy}__{strategy}/`. MFA visualizations
 
 **Kanban/pull coordination**: `KanbanManager` is active in PULL mode — treatment signals collectors, collectors signal generators via kanban signals with priority weighting. In PUSH mode, generators emit signals but collectors ignore them (collection is volume-driven instead).
 
+**ABC prioritization**: `BiogenicCarbonABCAnalyzer` (`core/abc_analysis.py`) ranks products by biogenic carbon stock impact into A/B/C classes with priority weights (1.0/0.7/0.4). Always enabled — `TreatmentOperator` constructor defaults `enable_abc_prioritization=True` and `FacilityBuilder` does not pass this parameter, so every processor uses the default. Priorities are used in `_get_prioritized_transformations()` with a 2.0× scoring multiplier. Not configurable per scenario. Data source: `data/demand.json` + `models/products.py` biogenic carbon values. The standalone-generated `demand_with_abc.json` at repo root is not consumed by the simulation.
+
 ## Key Conventions
 
 - **Units**: Waste volumes in m³ (converted from tonnes via `utils/unit_conversion.py`). Simulation time in days (0–365).
