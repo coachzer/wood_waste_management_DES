@@ -9,6 +9,12 @@ EXPANSION_SIZE_M3 = 500  # 500m³ expansion size
 LOCAL_COLLECTION_RATIO = 0.8
 ON_DEMAND_BUFFER_RATIO = 0.15
 ON_DEMAND_TARGET_RATIO = 0.35
+
+# PUSH (s, S) waste-storage reorder thresholds (ADR 0002, signal-volume rule).
+# When total waste_storage drops below this fraction of waste_storage_capacity,
+# the PUSH trigger fires and orders up to full capacity (S = waste_storage_capacity).
+PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_50 = 0.5
+PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_90 = 0.9
 FAILED_ENTITY_EFFICIENCY = 0.1
 RECOVERING_BASE_EFFICIENCY = 0.3
 HISTORY_BUFFER_SIZE = 1000
