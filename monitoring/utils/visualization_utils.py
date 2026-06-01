@@ -104,13 +104,9 @@ def extract_processor_waste_storage_data(history: Dict) -> Dict:
     """Extract waste storage utilization for processors"""
     return _extract_processor_storage_data(history, 'waste_utilization')
 
-def extract_processor_product_storage_data(history: Dict) -> Dict:
-    """Extract product storage utilization for processors"""
-    return _extract_processor_storage_data(history, 'product_utilization')
-
-def extract_processor_product_to_sell_storage_data(history: Dict) -> Dict:
-    """Extract product-to-sell storage utilization for processors"""
-    return _extract_processor_storage_data(history, 'product_to_sell_utilization')
+def extract_processor_finished_goods_storage_data(history: Dict) -> Dict:
+    """Extract finished-goods storage utilization for processors"""
+    return _extract_processor_storage_data(history, 'finished_goods_utilization')
 
 def _extract_processor_storage_data(history: Dict, metric: str) -> Dict:
     """Helper method for processor storage data extraction"""

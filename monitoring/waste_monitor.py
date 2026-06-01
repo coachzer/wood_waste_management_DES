@@ -191,10 +191,8 @@ class WasteMonitor:
                 "by_type": {waste_type: [] for waste_type in WasteType},
                 "utilization": [],
                 "waste_utilization": [],
-                "product_utilization": [],
-                "product_to_sell_utilization": [],
-                "product_to_sell_by_type": {ptype: [] for ptype in product_types},
-                "product_storage_by_type": {ptype: [] for ptype in product_types},
+                "finished_goods_utilization": [],
+                "finished_goods_by_type": {ptype: [] for ptype in product_types},
             },
             "processed": {
                 "total": [],
@@ -417,21 +415,15 @@ class WasteMonitor:
             )
         waste_util = (treatment.current_storage / treatment.waste_storage_capacity * 100) if treatment.waste_storage_capacity > 0 else 0.0
         history["storage"]["waste_utilization"].append(waste_util)
-        prod_util = (sum(treatment.product_storage.current_storage.values()) / treatment.product_storage_capacity * 100) if treatment.product_storage_capacity > 0 else 0.0
-        history["storage"]["product_utilization"].append(prod_util)
-        prod_sell_util = (sum(treatment.product_to_sell.current_storage.values()) / treatment.product_to_sell_capacity * 100) if treatment.product_to_sell_capacity > 0 else 0.0
-        history["storage"]["product_to_sell_utilization"].append(prod_sell_util)
+        finished_goods_capacity_total = sum(treatment.finished_goods.capacity.values())
+        finished_goods_util = (sum(treatment.finished_goods.current_storage.values()) / finished_goods_capacity_total * 100) if finished_goods_capacity_total > 0 else 0.0
+        history["storage"]["finished_goods_utilization"].append(finished_goods_util)
 
-        for out_enum, qty in treatment.product_to_sell.current_storage.items():
+        for out_enum, qty in treatment.finished_goods.current_storage.items():
             key = out_enum.value
-            if key not in history["storage"]["product_to_sell_by_type"]:
-                history["storage"]["product_to_sell_by_type"][key] = []
-            history["storage"]["product_to_sell_by_type"][key].append(qty)
-        for out_enum, qty in treatment.product_storage.current_storage.items():
-            key = out_enum.value
-            if key not in history["storage"]["product_storage_by_type"]:
-                history["storage"]["product_storage_by_type"][key] = []
-            history["storage"]["product_storage_by_type"][key].append(qty)
+            if key not in history["storage"]["finished_goods_by_type"]:
+                history["storage"]["finished_goods_by_type"][key] = []
+            history["storage"]["finished_goods_by_type"][key].append(qty)
 
     def _track_processing_metrics(self, treatment, history):
         """Track processing-related metrics"""
@@ -468,7 +460,7 @@ class WasteMonitor:
         unmet = state.get_unmet_demands() if state else {}
 
         pts_by_key = {}
-        for out_enum, qty in treatment.product_to_sell.current_storage.items():
+        for out_enum, qty in treatment.finished_goods.current_storage.items():
             pts_by_key[out_enum.value] = qty
 
         for ptype in product_types:

@@ -75,25 +75,21 @@ class Processor(OperationalEntity):
     processing_capacity: float
     processing_time: float
     waste_storage_capacity: float
-    product_storage_capacity: float 
-    product_to_sell_capacity: float = 20000.0
     energy_consumption: float = 1.0
     environmental_impact: float = 1.0
     conversion_rate: float = 1.0
     operational_costs: float = 1.0
 
-    def __init__(self, 
-                 id: str, 
-                 input_types: List[str], 
+    def __init__(self,
+                 id: str,
+                 input_types: List[str],
                  output_types: List[str],
-                 processing_capacity: float, 
+                 processing_capacity: float,
                  processing_time: float,
-                 waste_storage_capacity: float, 
-                 product_storage_capacity: Optional[float] = None,
-                 product_to_sell_capacity: float = 20000.0,
-                 energy_consumption: float = 1.0, 
+                 waste_storage_capacity: float,
+                 energy_consumption: float = 1.0,
                  environmental_impact: float = 1.0,
-                 conversion_rate: float = 1.0, 
+                 conversion_rate: float = 1.0,
                  operational_costs: float = 1.0,
                  failure_config: Optional[FailureConfig] = None):
         super().__init__(failure_config=failure_config)
@@ -103,8 +99,6 @@ class Processor(OperationalEntity):
         self.processing_capacity = processing_capacity
         self.processing_time = processing_time
         self.waste_storage_capacity = waste_storage_capacity
-        self.product_storage_capacity = product_storage_capacity if product_storage_capacity is not None else 20000.0
-        self.product_to_sell_capacity = product_to_sell_capacity
         self.energy_consumption = energy_consumption
         self.environmental_impact = environmental_impact
         self.conversion_rate = conversion_rate

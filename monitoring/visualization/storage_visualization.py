@@ -7,8 +7,7 @@ from ..utils.visualization_utils import (
     extract_collection_storage_data,
     extract_processing_storage_data,
     extract_processor_waste_storage_data,
-    extract_processor_product_storage_data,
-    extract_processor_product_to_sell_storage_data
+    extract_processor_finished_goods_storage_data
 )
 
 def create_storage_heatmaps(results: List[Dict], output_dir: str):
@@ -61,7 +60,7 @@ def create_storage_heatmaps(results: List[Dict], output_dir: str):
             raise RuntimeError(f"Failed creating {entity_type} plots: {str(e)}") from e
 
     # Create processing storage plots
-    for storage_type in ['waste', 'product', 'product_to_sell']:
+    for storage_type in ['waste', 'finished_goods']:
         processing_subdir = os.path.join(processing_dir, storage_type)
         os.makedirs(processing_subdir, exist_ok=True)  # Ensure subdirectory exists
         try:
@@ -110,12 +109,9 @@ def _create_processing_storage_heatmaps_grouped(grouped_results: Dict, storage_t
                 case "waste":
                     heatmap_data = extract_processor_waste_storage_data(history)
                     title_suffix = "Waste Storage Utilization (%)"
-                case 'product':
-                    heatmap_data = extract_processor_product_storage_data(history)
-                    title_suffix = "Product Storage Utilization (%)"
-                case 'product_to_sell':
-                    heatmap_data = extract_processor_product_to_sell_storage_data(history)
-                    title_suffix = "Product-to-Sell Storage Utilization (%)"
+                case 'finished_goods':
+                    heatmap_data = extract_processor_finished_goods_storage_data(history)
+                    title_suffix = "Finished-Goods Storage Utilization (%)"
                 case _:
                     raise ValueError(f"Unknown storage_type: {storage_type}")
 

@@ -20,3 +20,11 @@ TRAVEL_SPEED_KMH = 50.0
 WEEKS_PER_YEAR = 52  # annual demand is spread across this many consumption ticks
 CONSUMPTION_INTERVAL_DAYS = 7  # the market consumes finished goods weekly
 MARKET_SIGNAL_PRIORITY = 10  # kanban priority of downstream market-demand signals
+
+# Inventory priming (ADR 0002, Phase C). Finished-goods capacity per product is
+# sized to FINISHED_GOODS_BUFFER_WEEKS of that product's expected consumption;
+# initial inventory starts at INITIAL_INVENTORY_FRACTION of capacity, and
+# waste storage is primed to WASTE_STORAGE_PRIMING_WEEKS of producible throughput.
+FINISHED_GOODS_BUFFER_WEEKS = 4  # weeks of expected demand held as finished-goods capacity
+INITIAL_INVENTORY_FRACTION = 0.5  # finished goods start half-full (2 weeks of the 4-week buffer)
+WASTE_STORAGE_PRIMING_WEEKS = 2  # weeks of producible throughput primed into waste storage

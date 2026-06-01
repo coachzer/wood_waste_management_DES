@@ -315,9 +315,9 @@ class SimulationManager:
 
                     output_type = OutputType(product)
                     if output_type in producible_outputs:
-                        inventory = operator.product_to_sell.current_storage[output_type]
+                        inventory = operator.finished_goods.current_storage[output_type]
                         consumed = min(attempted, inventory)
-                        operator.product_to_sell.current_storage[output_type] -= consumed
+                        operator.finished_goods.current_storage[output_type] -= consumed
                         reason = "stockout" if consumed < attempted else None
                         producible_attempted += attempted
                     else:

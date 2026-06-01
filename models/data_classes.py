@@ -156,6 +156,6 @@ class CollectionCenter(OperationalEntity):
 @dataclass
 class ProductStorage:
     """Data class to represent storage for finished products"""
-    capacity: float
+    capacity: Dict[OutputType, float]  # Capacity in m³ per product type (ADR 0002, Phase C)
     current_storage: Dict[OutputType, float] # Current storage in m³ per product type
     densities: Optional[Dict[OutputType, float]] = None  # e.g., kg/m3 per product

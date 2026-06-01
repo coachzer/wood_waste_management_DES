@@ -11,6 +11,7 @@ from core.kanban_manager import KanbanManager
 from models.enums import InventoryPolicy
 from models.products import ProductDataManager
 from utils.capacity_utils import handle_storage_event, check_storage_capacity
+from config.constants import INITIAL_INVENTORY_FRACTION
 
 class TreatmentOperator(OperationalEntity):
     """Treatment operator that processes waste into products"""
@@ -30,8 +31,8 @@ class TreatmentOperator(OperationalEntity):
         transformations: Optional[Dict[WasteType, WasteTransformation]] = None,
         waste_monitor: Optional[WasteMonitor] = None,
         kanban_manager: KanbanManager = None,
-        product_storage_capacity: float = 0.0,
-        product_to_sell_capacity: float = 0.0,
+        finished_goods_capacity: Optional[Dict[OutputType, float]] = None,
+        initial_waste_storage: Optional[Dict[WasteType, float]] = None,
         market_share: float = 0.0,
         scenario_config=None,
         stock_strategy: StockStrategy = None,
@@ -86,7 +87,12 @@ class TreatmentOperator(OperationalEntity):
         self.demand_history = []
         self.minimum_required_waste = 0.1
         self.production_history = []
+        # Waste storage primed to ~2 weeks of producible throughput (ADR 0002,
+        # Phase C); collection self-corrects the mix within ~2 weeks.
         self._waste_storage = dict.fromkeys(WasteType, 0.0)
+        if initial_waste_storage:
+            for waste_type, volume in initial_waste_storage.items():
+                self._waste_storage[waste_type] = volume
         self.total_products_created = 0.0
         self.processed_volumes = dict.fromkeys(WasteType, 0.0)
         self.product_volumes = {
@@ -98,16 +104,17 @@ class TreatmentOperator(OperationalEntity):
         # Initialize product data manager for accessing product specifications
         self.product_manager = ProductDataManager()
 
-        # Product storage
-        self.product_storage_capacity = product_storage_capacity
-        self.product_to_sell_capacity = product_to_sell_capacity
-        self.product_storage = ProductStorage(
-            capacity=self.product_storage_capacity,
-            current_storage=dict.fromkeys(OutputType, 0.0)
-        )
-        self.product_to_sell = ProductStorage(
-            capacity=self.product_to_sell_capacity,
-            current_storage=dict.fromkeys(OutputType, 0.0)
+        # Finished-goods inventory: per-product capacity sized to a fixed buffer
+        # of expected demand, primed to INITIAL_INVENTORY_FRACTION of capacity so
+        # the run starts warmed up rather than empty (ADR 0002, Phase C). Capacity
+        # covers only producible products; others stay at zero.
+        finished_goods_capacity = finished_goods_capacity or {}
+        self.finished_goods = ProductStorage(
+            capacity=finished_goods_capacity,
+            current_storage={
+                output_type: INITIAL_INVENTORY_FRACTION * finished_goods_capacity.get(output_type, 0.0)
+                for output_type in OutputType
+            }
         )
 
         # Stochastic components
@@ -650,12 +657,24 @@ class TreatmentOperator(OperationalEntity):
         if input_type in final_products:
             return
 
-        amount_to_process = min(self.waste_storage[input_type], self.processing_capacity)
+        efficiency = min(self._get_transformation_efficiency(transformation), 1.0)
+
+        # Per-output finished-goods headroom clamp (ADR 0002, Phase C). Production
+        # is throttled per output type so a saturated buffer for one product never
+        # stalls or overflows another. With no overflow there is no silent product
+        # discard and no secondary storage buffer.
+        headroom = self.finished_goods.capacity.get(output_type, 0.0) - self.finished_goods.current_storage[output_type]
+        if headroom <= 0:
+            return
+
+        amount_to_process = min(
+            self.waste_storage[input_type],
+            self.processing_capacity,
+            headroom / efficiency,
+        )
 
         if amount_to_process <= 0:
             return
-
-        efficiency = min(self._get_transformation_efficiency(transformation), 1.0)
 
         amount_to_process, output_amount = self._calculate_output_amounts(
             amount_to_process, efficiency
@@ -664,20 +683,8 @@ class TreatmentOperator(OperationalEntity):
         self._update_waste_storage(input_type, amount_to_process, output_amount)
 
         if output_type in final_products:
-            total_to_sell_stored = sum(self.product_to_sell.current_storage.values())
-            to_sell_capacity = self.product_to_sell.capacity
-            addable_to_sell = min(output_amount, to_sell_capacity - total_to_sell_stored)
-            overflow_after_sell = output_amount - addable_to_sell
-            self.product_to_sell.current_storage[output_type] += addable_to_sell
-
-            if addable_to_sell > 0:
-                self._fulfill_demand(output_type, addable_to_sell)
-
-            if overflow_after_sell > 0:
-                total_stored = sum(self.product_storage.current_storage.values())
-                storage_capacity = self.product_storage.capacity
-                addable_to_storage = min(overflow_after_sell, storage_capacity - total_stored)
-                self.product_storage.current_storage[output_type] += addable_to_storage
+            self.finished_goods.current_storage[output_type] += output_amount
+            self._fulfill_demand(output_type, output_amount)
 
             if output_type == OutputType.MDF:
                 self.product_volumes["mdf"] += output_amount # m³
@@ -719,7 +726,7 @@ class TreatmentOperator(OperationalEntity):
         """Record cumulative production against the legacy demand ceiling.
 
         ADR 0002 makes the market consumption process the sole drain of
-        ``product_to_sell``: it removes finished goods weekly at a
+        ``finished_goods``: it removes finished goods weekly at a
         seasonally-modulated rate. This method no longer drains inventory at
         production time -- doing so front-ran the market and left only
         over-target overshoot on the shelf, contaminating per-product service

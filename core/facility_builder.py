@@ -8,6 +8,11 @@ from core.collector import CollectorCompany
 from core.treatment import TreatmentOperator
 from monitoring.waste_monitor import WasteMonitor
 from utils.unit_conversion import convert_generation_rates_to_volume
+from config.constants import (
+    WEEKS_PER_YEAR,
+    FINISHED_GOODS_BUFFER_WEEKS,
+    WASTE_STORAGE_PRIMING_WEEKS,
+)
 
 facilities = {
     'WasteGenerator': 0,
@@ -132,8 +137,8 @@ class FacilityBuilder:
         capacity since a single processor cannot know the system-wide total.
         """
         transformations = self._build_transformations(proc_data)
-        product_storage_capacity = getattr(proc_data, "product_storage_capacity", proc_data.waste_storage_capacity)
-        product_to_sell_capacity = getattr(proc_data, "product_to_sell_capacity", product_storage_capacity)
+        finished_goods_capacity = self._finished_goods_capacity(transformations, market_share)
+        initial_waste_storage = self._prime_waste_storage(transformations, region, market_share)
 
         if stock_strategy is None and hasattr(self.uncertainty_set, 'stock_strategy'):
             stock_strategy = self.uncertainty_set.stock_strategy
@@ -163,8 +168,8 @@ class FacilityBuilder:
             uncertainty_set=self.uncertainty_set,
             transformations=transformations,
             waste_monitor=self.waste_monitor,
-            product_storage_capacity=product_storage_capacity,
-            product_to_sell_capacity=product_to_sell_capacity,
+            finished_goods_capacity=finished_goods_capacity,
+            initial_waste_storage=initial_waste_storage,
             market_share=market_share,
             scenario_config=self.uncertainty_set,
             stock_strategy=stock_strategy,
@@ -174,6 +179,87 @@ class FacilityBuilder:
             failure_config=self.uncertainty_set.treatment_failure if self.uncertainty_set else None,
             seed=child_seed
         )
+
+    def _finished_goods_capacity(self, transformations, market_share: float) -> dict:
+        """Per-product finished-goods capacity (ADR 0002, Phase C).
+
+        ``capacity[product] = market_share * (annual_demand[product] /
+        WEEKS_PER_YEAR) * FINISHED_GOODS_BUFFER_WEEKS`` for every product the
+        operator can actually produce. Non-producible products are omitted: the
+        market records them as no-capability lost sales and never touches their
+        inventory, so priding them would be meaningless dead stock.
+        """
+        national_demand = self.facility_manager.demand
+        producible_outputs = {
+            transformation.output_type for transformation in transformations.values()
+        }
+        return {
+            output_type: (
+                market_share
+                * (national_demand[output_type.value] / WEEKS_PER_YEAR)
+                * FINISHED_GOODS_BUFFER_WEEKS
+            )
+            for output_type in producible_outputs
+            if output_type.value in national_demand
+        }
+
+    def _prime_waste_storage(self, transformations, region: RegionType, market_share: float) -> dict:
+        """Prime waste storage to ~2 weeks of producible throughput (ADR 0002, Phase C).
+
+        The total primed volume is ``(annual_demand_total / WEEKS_PER_YEAR) *
+        WASTE_STORAGE_PRIMING_WEEKS * market_share / blended_efficiency`` waste
+        m3, distributed across the operator's accepted input waste types in
+        proportion to the region's volume-generation mix. A type the region does
+        not generate gets zero (it arrives later via collection); if the region
+        generates none of the input types, an even split avoids divide-by-zero.
+        ``blended_efficiency`` is the mean conversion efficiency across the
+        operator's transformations -- this only shapes the warm-up mix, which
+        collection self-corrects within ~2 weeks, so precision is irrelevant.
+        """
+        input_types = {transformation.input_type for transformation in transformations.values()}
+        if not input_types:
+            return {}
+
+        efficiencies = [transformation.conversion_efficiency for transformation in transformations.values()]
+        blended_efficiency = sum(efficiencies) / len(efficiencies)
+
+        national_demand = self.facility_manager.demand
+        annual_demand_total = sum(national_demand.values())
+        total_prime = (
+            (annual_demand_total / WEEKS_PER_YEAR)
+            * WASTE_STORAGE_PRIMING_WEEKS
+            * market_share
+            / blended_efficiency
+        )
+
+        region_volume_by_type = self._region_generation_volume(region)
+        weights = {waste_type: region_volume_by_type.get(waste_type, 0.0) for waste_type in input_types}
+        total_weight = sum(weights.values())
+
+        if total_weight <= 0:
+            even_share = total_prime / len(input_types)
+            return {waste_type: even_share for waste_type in input_types}
+
+        return {
+            waste_type: total_prime * weight / total_weight
+            for waste_type, weight in weights.items()
+        }
+
+    def _region_generation_volume(self, region: RegionType) -> dict:
+        """Sum each waste type's volume-generation rate across the region's generators.
+
+        Generation rates live in tonnes; ``convert_generation_rates_to_volume``
+        applies per-type densities so the priming split reflects how waste
+        actually arrives (waste storage is measured in m3).
+        """
+        volume_by_type = {}
+        facilities = self.facility_manager.get_region_facilities(region)
+        if not facilities:
+            return volume_by_type
+        for generator in facilities.generators:
+            for waste_type, volume in convert_generation_rates_to_volume(generator.waste_generation_rates).items():
+                volume_by_type[waste_type] = volume_by_type.get(waste_type, 0.0) + volume
+        return volume_by_type
 
     # Private helper methods for processor creation
     def _get_base_transformations(self):

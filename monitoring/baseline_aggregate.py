@@ -63,18 +63,18 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
             max_collector_util = max(max_collector_util, float(max(series)))
 
     max_processor_waste_util = 0.0
-    max_processor_product_util = 0.0
+    max_processor_finished_goods_util = 0.0
     for hist in proc_hist.values():
         storage_data = hist.get("storage", {})
         waste_util = storage_data.get("waste_utilization", [])
-        prod_util = storage_data.get("product_utilization", [])
+        finished_goods_util = storage_data.get("finished_goods_utilization", [])
         if waste_util:
             max_processor_waste_util = max(
                 max_processor_waste_util, float(max(waste_util))
             )
-        if prod_util:
-            max_processor_product_util = max(
-                max_processor_product_util, float(max(prod_util))
+        if finished_goods_util:
+            max_processor_finished_goods_util = max(
+                max_processor_finished_goods_util, float(max(finished_goods_util))
             )
 
     # Service levels
@@ -116,7 +116,7 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         "total_emissions_kgco2e": total_emissions,
         "max_collector_util_pct": max_collector_util,
         "max_processor_waste_util_pct": max_processor_waste_util,
-        "max_processor_product_util_pct": max_processor_product_util,
+        "max_processor_finished_goods_util_pct": max_processor_finished_goods_util,
         "service_level_overall_pct": service_level_overall,
         "service_level_by_product": service_level_by_product,
         "service_level_full_pct": service_level_full,
