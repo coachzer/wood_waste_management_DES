@@ -42,7 +42,6 @@ class TreatmentOperator(OperationalEntity):
         stock_strategy: StockStrategy = None,
         inventory_policy: InventoryPolicy = None,
         transport_manager: Optional[PointToPointTransport] = None,
-        enable_abc_prioritization: bool = True,
         abc_demand_config_path: str = "data/demand.json",
         failure_config = None,
         seed = None
@@ -127,11 +126,10 @@ class TreatmentOperator(OperationalEntity):
         # Transformations
         self.transformations = transformations or self._default_transformations()
 
-        self.enable_abc_prioritization = enable_abc_prioritization
+        # ABC prioritization is always on (ADR 0002, Phase F): biogenic-carbon
+        # priority weights feed the transformation scorer unconditionally.
         self.abc_priority_map = {}
-
-        if self.enable_abc_prioritization:
-            self._initialize_abc_priorities(abc_demand_config_path)
+        self._initialize_abc_priorities(abc_demand_config_path)
 
         # Start processes
         self.process = env.process(self.run_facility())
@@ -348,24 +346,31 @@ class TreatmentOperator(OperationalEntity):
                 )
 
     def _get_prioritized_transformations(self):
-        """Get transformations sorted by priority based on current demands and system state"""
-        state = SimulationState.get_instance()
-        unmet_demands = state.get_unmet_demands()
+        """Get transformations sorted by priority based on current system state.
 
-        if not self.enable_abc_prioritization:
-            return self._get_default_prioritized_transformations(unmet_demands)
-
+        The demand component is a finished-goods shortfall term: the output type
+        whose finished-goods inventory is most depleted relative to its buffer
+        scores highest, steering production toward what most needs restocking
+        (ADR 0002, Phase F / Q8). It reuses the per-output headroom shape of the
+        production clamp and is naturally bounded to [0, 1]. The scoring is
+        symmetric across PUSH and PULL and no longer reads the demand ceiling.
+        """
         transformation_scores = []
 
         for (input_type, output_type), transformation in self.transformations.items():
-            product_key = output_type.value.lower().replace('_', '_')
+            product_key = output_type.value.lower()
             abc_priority = self.abc_priority_map.get(product_key, 0.5)
 
-            current_demand = unmet_demands.get(product_key, 0)
-            has_demand = current_demand > 0
+            # Finished-goods shortfall in [0, 1]: full buffer scores 0, empty
+            # buffer scores 1. A zero-capacity output contributes no shortfall
+            # rather than dividing by zero.
+            capacity = self.finished_goods.capacity.get(output_type, 0.0)
+            if capacity > 0:
+                current = self.finished_goods.current_storage[output_type]
+                demand_score = max(0.0, capacity - current) / capacity
+            else:
+                demand_score = 0.0
 
-            # Scoring: ABC priority + demand urgency + efficiency + input
-            demand_score = min(current_demand / 5000, 1.0) if has_demand else 0.1
             efficiency_score = self._get_transformation_efficiency(transformation)
             input_availability = min(self.waste_storage.get(input_type, 0) / 100, 1.0)
 
@@ -375,31 +380,6 @@ class TreatmentOperator(OperationalEntity):
 
         transformation_scores.sort(key=lambda x: x[2], reverse=True)
         return [(key, transform) for key, transform, _ in transformation_scores]
-
-    def _get_default_prioritized_transformations(self, unmet_demands):
-        """Original logic (keep unchanged for fallback)"""
-        if any(demand > 0 for demand in unmet_demands.values()):
-            product_demands = {
-                OutputType.MDF: unmet_demands.get('mdf', 0),
-                OutputType.PARTICLE_BOARD: unmet_demands.get('particle_board', 0),
-                OutputType.OSB: unmet_demands.get('osb', 0)
-            }
-
-            return sorted(
-                self.transformations.items(),
-                key=lambda x, demands=product_demands: (
-                    demands.get(x[0][1], 0) > 0,
-                    demands.get(x[0][1], 0),
-                    self._get_transformation_efficiency(x[1]),
-                ),
-                reverse=True,
-            )
-        else:
-            return sorted(
-                self.transformations.items(),
-                key=lambda x: self._get_transformation_efficiency(x[1]),
-                reverse=True,
-            )
 
     def request_waste_delivery(self, waste_type: WasteType, volume: float, 
                              from_region: RegionType, priority: TransportPriority = TransportPriority.NORMAL):
