@@ -716,7 +716,18 @@ class TreatmentOperator(OperationalEntity):
         self.total_products_created += output_amount
 
     def _fulfill_demand(self, output_type, output_amount):
-        """Fulfill demand for final products"""
+        """Record cumulative production against the legacy demand ceiling.
+
+        ADR 0002 makes the market consumption process the sole drain of
+        ``product_to_sell``: it removes finished goods weekly at a
+        seasonally-modulated rate. This method no longer drains inventory at
+        production time -- doing so front-ran the market and left only
+        over-target overshoot on the shelf, contaminating per-product service
+        level. It is retained only to keep ``total_products`` advancing, since
+        the still-live PUSH/PULL collection triggers read it via
+        ``get_unmet_demands()``. Both the bookkeeping and this method retire in
+        Phase F once those triggers move off the ceiling.
+        """
         state = SimulationState.get_instance()
         product_type = output_type.value.lower()
 
@@ -727,9 +738,6 @@ class TreatmentOperator(OperationalEntity):
         fulfilled_amount = min(output_amount, unmet_demand)
 
         if fulfilled_amount > 0:
-            self.product_to_sell.current_storage[output_type] -= fulfilled_amount
-            self.demand -= fulfilled_amount
-
             self.production_history.append(
                 (self.env.now, output_type.value.lower(), fulfilled_amount)
             )
