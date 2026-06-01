@@ -25,7 +25,7 @@ A production facility that converts waste into final products. In PUSH mode, rep
 _Avoid_: processor, factory
 
 **Finished Goods**:
-A **Treatment Operator**'s buyer-facing inventory of completed products (MDF, particle board, OSB). Drained by **Market Consumption**, filled by production. Capacity per operator is `market_share × (annual_demand_total / 52) × 4` (four weeks of expected consumption); **Initial Inventory** primes it at 50% (two weeks). Production is clamped per output type to remaining headroom — a saturated OSB inventory throttles OSB transformations even when MDF has headroom. Replaces the prior two-buffer `product_to_sell` + `product_storage` design; the secondary buffer had no drain path and was always vestigial.
+A **Treatment Operator**'s buyer-facing inventory of completed products (MDF, particle board, OSB). Drained by **Market Consumption**, filled by production. Capacity is **per product type**: `finished_goods_capacity[P] = market_share × (annual_demand[P] / 52) × 4` (four weeks of *that product's* expected consumption); the operator's aggregate buffer is their sum. **Initial Inventory** primes each product at 50% (two weeks). Production is clamped per output type to that product's remaining headroom — a saturated OSB buffer throttles OSB transformations even when MDF has headroom. Replaces the prior two-buffer `product_to_sell` + `product_storage` design; the secondary buffer had no drain path and was always vestigial.
 _Avoid_: product_to_sell (old name), inventory (too generic — could mean waste_storage too)
 
 **PUSH (Inventory Policy)**:
@@ -33,7 +33,7 @@ Each entity reasons from its own observable state — inventory levels, storage 
 _Avoid_: forecast-driven, planned
 
 **PULL (Inventory Policy)**:
-The trigger is the downstream consumption event itself, not the inventory drop it causes. When the **Market Consumption** process pulls from a PULL operator, that operator receives an explicit **Consumption Event** with volume and responds by producing — production volume tracks event volume, subject to the partial-batch headroom clamp on `finished_goods`. The **Stock Strategy** gates upstream waste-side replenishment only: after production consumes input waste, if `waste_storage` has dropped below the strategy threshold, the operator signals upstream collectors. Production responds to every event regardless of `finished_goods` level — strategy does not target a downstream buffer. The signal chain is causal: consumption causes production; production causes upstream waste demand when the strategy threshold is crossed; upstream waste demand causes collector activity. No autonomous polling on `finished_goods`. Structurally: lot-for-lot downstream, `(s, S)` policy upstream.
+The trigger is the downstream consumption event itself, not the inventory drop it causes. When the **Market Consumption** process pulls from a PULL operator, that operator is woken by the per-tick **Market Signal** and reads its **Consumption Events** for the tick, producing each product up to that product's `attempted` volume, subject to the partial-batch headroom clamp on `finished_goods`. The **Stock Strategy** gates upstream waste-side replenishment only: after production consumes input waste, if `waste_storage` has dropped below the strategy threshold, the operator signals upstream collectors. Production responds to every event regardless of `finished_goods` level — strategy does not target a downstream buffer. The signal chain is causal: consumption causes production; production causes upstream waste demand when the strategy threshold is crossed; upstream waste demand causes collector activity. No autonomous polling on `finished_goods`. Structurally: lot-for-lot downstream, `(s, S)` policy upstream.
 _Avoid_: reactive, demand-driven (too vague)
 
 **Stock Strategy**:
@@ -46,8 +46,14 @@ Strategy gates waste-side decisions only (when upstream signals fire). Does not 
 _Avoid_: reorder policy (overloaded), inventory policy (that's PUSH/PULL)
 
 **Consumption Event**:
-An explicit notification from the **Market Consumption** process to a PULL **Treatment Operator** that the market attempted to buy product. Carries the product type and `attempted` volume — the full demand including any unfulfilled portion, not just what flowed through `finished_goods`. Demand-aware PULL: the operator's production target = `attempted`, so a stockout on tick N does not silence the signal on tick N+1 (no death-spiral). Lost-sale tracking stays at the market/SimulationState level; the operator does not need to see `consumed` or `lost` separately. Delivered via **KanbanManager** with `source_type="market"`, making the PULL cascade uniform: market → treatment → collector → generator, all through the same signal infrastructure.
+The record of a single market consumption attempt against one **Treatment Operator** for one product, written to the consumption-event log on `SimulationState`. Carries product type, `attempted` volume (full demand including any unfulfilled portion), `consumed`, and the **Lost Sales** reason. The log is the authoritative per-product record and the basis for **Service Level**.
+
+A PULL operator is *notified* that consumption occurred by a single per-tick **Market Signal** (delivered via **KanbanManager**, `source_type="market"`) carrying its total producible `attempted` volume — an edge trigger, not the payload. On that trigger the operator reads its Consumption Events for the tick from the log and sets each product's production target to that product's `attempted`, so a stockout on tick N does not silence production on tick N+1 (no death-spiral). Lost-sale tracking stays at the `SimulationState` level; the operator never needs `consumed` or `lost`. The aggregate Market Signal keeps the PULL cascade uniform (market → treatment → collector → generator) while per-product demand comes from the log.
 _Avoid_: demand signal, order
+
+**Market Signal**:
+The per-tick, per-operator edge trigger emitted by **Market Consumption** to a PULL **Treatment Operator** (via **KanbanManager**, `source_type="market"`), carrying the operator's total producible `attempted` volume for that **Consumption Tick**. It wakes the operator and is acknowledged once; the per-product production targets come from the **Consumption Event** log, not from this signal. Distinct from a **Demand Signal**, which is the operator's downstream waste-side request to collectors.
+_Avoid_: consumption signal, market order
 
 **Demand Signal**:
 A request from a **Treatment Operator** to collectors (and transitively to generators) for a specific waste type and volume. In PULL mode, triggered by **Consumption Events**. In PUSH mode, triggered by stock strategy thresholds detecting low inventory.
@@ -82,7 +88,7 @@ An auto-generated slug that identifies a run at a glance: `{mode}_{variant}_{fla
 _Avoid_: run ID, job name
 
 **Initial Inventory**:
-All echelons are primed with 2 weeks of inventory at expected consumption rate before simulation starts. Treatment operators' `finished_goods` is initialized to `(annual_demand / 52) * 2 * market_share` per product type — 50% of `finished_goods_capacity` (which is sized for four weeks), giving symmetric headroom for over- and under-production phases. Waste storage is initialized to enough waste to produce 2 weeks of product (adjusted by transformation efficiency). Collectors and generators use existing `initial_stock` from region JSON. Same initial conditions for both PUSH and PULL — ensures fair comparison and avoids cold-start artifacts in early-simulation metrics.
+All echelons are primed with 2 weeks of inventory at expected consumption rate before simulation starts. Treatment operators' `finished_goods` is initialized to `(annual_demand / 52) * 2 * market_share` per product type — 50% of `finished_goods_capacity` (which is sized for four weeks), giving symmetric headroom for over- and under-production phases. Waste storage is initialized to enough waste to produce 2 weeks of product (the 2-week product target divided by blended transformation efficiency), distributed across the operator's input waste types in proportion to the region's waste generation mix. Collectors and generators use existing `initial_stock` from region JSON. Same initial conditions for both PUSH and PULL — ensures fair comparison and avoids cold-start artifacts in early-simulation metrics.
 _Avoid_: warm-up stock, safety stock (different concept)
 
 ## Example dialogue
