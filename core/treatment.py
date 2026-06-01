@@ -32,6 +32,7 @@ class TreatmentOperator(OperationalEntity):
         kanban_manager: KanbanManager = None,
         product_storage_capacity: float = 0.0,
         product_to_sell_capacity: float = 0.0,
+        market_share: float = 0.0,
         scenario_config=None,
         stock_strategy: StockStrategy = None,
         inventory_policy: InventoryPolicy = None,
@@ -76,7 +77,11 @@ class TreatmentOperator(OperationalEntity):
         self.processing_capacity = self.waste_storage_capacity * 0.8
         self.initial_processing_capacity = self.processing_capacity
         self.region = region
-        self.region_type = RegionType[region.upper().replace('-', '_')] 
+        self.region_type = RegionType[region.upper().replace('-', '_')]
+        # Share of national market demand this operator is presented each
+        # consumption tick, proportional to its processing capacity. Assigned
+        # at construction by SimulationManager (demand-as-consumption, ADR 0002).
+        self.market_share = market_share
         self.demand = 0
         self.demand_history = []
         self.minimum_required_waste = 0.1
@@ -320,6 +325,11 @@ class TreatmentOperator(OperationalEntity):
     def _pull_collection_logic(self, current_time):
         """PULL: Kanban-driven with continuous demand signaling"""
         active_signals = self.kanban_manager.get_signals(current_time)
+
+        # Market consumption signals (source_type="market") are the downstream
+        # demand trigger for the PULL refactor (ADR 0002, Phase E); the waste-
+        # collection path here must not treat them as upstream waste demand.
+        active_signals = [s for s in active_signals if s.get("source_type") != "market"]
 
         if active_signals:
             # Process existing signals

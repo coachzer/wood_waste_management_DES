@@ -124,8 +124,13 @@ class FacilityBuilder:
             seed=child_seed
         )
 
-    def create_processor(self, proc_data, region: RegionType, stock_strategy=None, inventory_policy=None) -> TreatmentOperator:
-        """Create a single treatment processor"""
+    def create_processor(self, proc_data, region: RegionType, stock_strategy=None, inventory_policy=None, market_share: float = 0.0) -> TreatmentOperator:
+        """Create a single treatment processor.
+
+        ``market_share`` is the operator's proportional share of national
+        market demand (ADR 0002), computed by the caller from total processing
+        capacity since a single processor cannot know the system-wide total.
+        """
         transformations = self._build_transformations(proc_data)
         product_storage_capacity = getattr(proc_data, "product_storage_capacity", proc_data.waste_storage_capacity)
         product_to_sell_capacity = getattr(proc_data, "product_to_sell_capacity", product_storage_capacity)
@@ -160,6 +165,7 @@ class FacilityBuilder:
             waste_monitor=self.waste_monitor,
             product_storage_capacity=product_storage_capacity,
             product_to_sell_capacity=product_to_sell_capacity,
+            market_share=market_share,
             scenario_config=self.uncertainty_set,
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
