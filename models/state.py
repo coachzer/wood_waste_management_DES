@@ -1,3 +1,4 @@
+from typing import Optional
 from utils.helpers import load_json
 from models import regional_tracker
 
@@ -38,6 +39,8 @@ class SimulationState:
                 'particle_board': None,
                 'osb': None
             }
+            # Market consumption event log (demand-as-consumption model, ADR 0002)
+            cls._instance.consumption_events = []
         return cls._instance
 
     @classmethod
@@ -119,7 +122,100 @@ class SimulationState:
             product: max(0, demand - self.total_products[product])
             for product, demand in self.target_demands.items()
         }
-        
+
+    def record_consumption_event(self, operator_name: str, product: str,
+                                 attempted: float, consumed: float,
+                                 reason: str = None, timestamp: float = None) -> None:
+        """Record a single market consumption event for service-level accounting.
+
+        One event is one (operator, product) consumption attempt at a market
+        tick. ``attempted`` is the demand volume presented to the operator;
+        ``consumed`` is the portion fulfilled from finished-goods inventory.
+        The shortfall ``attempted - consumed`` is lost sales tagged by
+        ``reason`` -- ``"no_capability"`` when the operator cannot produce the
+        product at all, ``"stockout"`` when it can but inventory was
+        insufficient. ``reason`` is recorded only when a shortfall exists.
+        """
+        lost = max(0.0, attempted - consumed)
+        self.consumption_events.append({
+            'timestamp': timestamp,
+            'operator': operator_name,
+            'product': product,
+            'attempted': attempted,
+            'consumed': consumed,
+            'lost': lost,
+            'reason': reason if lost > 0 else None,
+        })
+
+    @property
+    def total_attempted_consumption(self) -> float:
+        """Total demand volume presented to operators across all events."""
+        return sum(event['attempted'] for event in self.consumption_events)
+
+    @property
+    def total_consumed(self) -> float:
+        """Total volume fulfilled from finished-goods inventory."""
+        return sum(event['consumed'] for event in self.consumption_events)
+
+    @property
+    def no_capability_lost(self) -> float:
+        """Lost sales from operators structurally unable to make the product."""
+        return sum(event['lost'] for event in self.consumption_events
+                   if event['reason'] == 'no_capability')
+
+    @property
+    def stockout_lost(self) -> float:
+        """Lost sales from capable operators whose inventory was insufficient."""
+        return sum(event['lost'] for event in self.consumption_events
+                   if event['reason'] == 'stockout')
+
+    @property
+    def full_service_level(self) -> Optional[float]:
+        """Headline service level: total_consumed / total_attempted.
+
+        Includes both no-capability and stockout lost sales. Returns ``None``
+        when no consumption has been attempted yet (undefined, not zero).
+        """
+        attempted = self.total_attempted_consumption
+        if attempted <= 0:
+            return None
+        return self.total_consumed / attempted
+
+    @property
+    def operational_service_level(self) -> Optional[float]:
+        """Diagnostic service level over operationally-fulfillable demand.
+
+        total_consumed / (total_attempted - no_capability_lost) -- measures
+        policy effectiveness on demand the system could actually satisfy.
+        Returns ``None`` when no fulfillable demand has been attempted.
+        """
+        feasible = self.total_attempted_consumption - self.no_capability_lost
+        if feasible <= 0:
+            return None
+        return self.total_consumed / feasible
+
+    def service_level(self, operator_name: str = None, product: str = None,
+                      kind: str = "full") -> Optional[float]:
+        """Service level filtered by operator and/or product.
+
+        ``kind`` selects ``"full"`` (all lost sales) or ``"operational"``
+        (excludes no-capability lost sales from the denominator). Returns
+        ``None`` when the filtered slice has no fulfillable demand.
+        """
+        events = self.consumption_events
+        if operator_name is not None:
+            events = [event for event in events if event['operator'] == operator_name]
+        if product is not None:
+            events = [event for event in events if event['product'] == product]
+
+        attempted = sum(event['attempted'] for event in events)
+        if kind == "operational":
+            attempted -= sum(event['lost'] for event in events
+                             if event['reason'] == 'no_capability')
+        if attempted <= 0:
+            return None
+        return sum(event['consumed'] for event in events) / attempted
+
     def reset(self):
         """Reset simulation state to initial values"""
         self.generators = []
@@ -144,6 +240,8 @@ class SimulationState:
             'particle_board': None,
             'osb': None
         }
+        # Reset market consumption event log
+        self.consumption_events = []
 
     def get_transport_flow_summary(self):
         """Get summary of transport flows for debugging"""
