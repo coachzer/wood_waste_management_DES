@@ -358,7 +358,10 @@ class CollectorCompany(OperationalEntity):
             if not self.should_collect():
                 continue
 
-            kanban_signals = self.kanban_manager.get_signals(self.env.now)
+            kanban_signals = [
+                s for s in self.kanban_manager.get_signals(self.env.now)
+                if s.get('source_type') != "market"
+            ]
             if kanban_signals and self.inventory_policy == InventoryPolicy.PULL:
                 self._process_kanban_signals(kanban_signals)
             else:
@@ -370,6 +373,14 @@ class CollectorCompany(OperationalEntity):
     def _process_kanban_signals(self, signals):
         """Process signals with acknowledgment and cross-region support"""
         for signal in signals:
+            # Market signals (source_type="market") are downstream demand for
+            # treatment production (ADR 0002, Phase E), not upstream waste-
+            # collection requests. Collectors must not consume or acknowledge
+            # them -- doing so starves the treatment operator's event-driven
+            # production loop, which is the sole consumer of these signals.
+            if signal.get('source_type') == "market":
+                continue
+
             waste_type_enum = signal['waste_type']
 
             source_type = signal.get('source_type', 'generator')  
@@ -411,10 +422,10 @@ class CollectorCompany(OperationalEntity):
             if matching_generators:
                 for generator in matching_generators:
                     if self._find_available_vehicle():
-                        self.collect_from_generator(generator)
+                        self.collect_from_generator(generator, requested_volume=signal.get('volume'))
 
                         self.kanban_manager.acknowledge_signal(signal['id'])
-                        break  
+                        break
                     else:
                         break  
             else:
@@ -457,7 +468,12 @@ class CollectorCompany(OperationalEntity):
             return should
 
         elif self.inventory_policy == InventoryPolicy.PULL:
-            signals = self.kanban_manager.get_signals(self.env.now)
+            # Market signals are downstream demand for treatment, not collection
+            # requests (ADR 0002, Phase E); they must not trigger collection.
+            signals = [
+                s for s in self.kanban_manager.get_signals(self.env.now)
+                if s.get('source_type') != "market"
+            ]
             if signals:
                 return True
 
@@ -497,8 +513,15 @@ class CollectorCompany(OperationalEntity):
         else:
             return False
 
-    def collect_from_generator(self, generator):
-        """Vehicle-based collection with proper overflow handling and storage management"""
+    def collect_from_generator(self, generator, requested_volume=None):
+        """Vehicle-based collection with proper overflow handling and storage management.
+
+        ``requested_volume`` (PULL, ADR 0002 Phase E) bounds the pickup to the
+        volume the downstream kanban signal actually asked for, so the collector
+        replenishes to demand rather than grabbing a full vehicle load every
+        trip. Without it (autonomous / PUSH collection) the pickup is the
+        physical maximum, as before.
+        """
         if self.status == EntityStatus.FAILED:
             return self.env.process(self._dummy_process(0))
 
@@ -522,12 +545,15 @@ class CollectorCompany(OperationalEntity):
             available_vehicle.in_transit = False
             return self.env.process(self._dummy_process(0))
 
-        target_volume = min(
+        clamps = [
             generator.current_storage,
             self.collection_capacity * self.efficiency,
             available_vehicle.capacity,
-            collection_center_available
-        )
+            collection_center_available,
+        ]
+        if requested_volume is not None:
+            clamps.append(max(0.0, requested_volume))
+        target_volume = min(clamps)
 
         if target_volume <= 0:
             available_vehicle.in_transit = False
