@@ -3,12 +3,10 @@ from typing import Dict, Optional
 from config.constants import FAILED_ENTITY_EFFICIENCY, HISTORY_BUFFER_SIZE, SEASONAL_PERIODS, SIMULATION_DURATION
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
 from models.data_classes import WasteStream, OperationalEntity
+from models.state import SimulationState
 from monitoring.waste_monitor import WasteMonitor
 from core.kanban_manager import KanbanManager
-from core.generator_utils import (
-    handle_overflow,
-    generate_waste_for_period,
-)
+from utils.capacity_utils import handle_storage_event
 
 class WasteGenerator(OperationalEntity):
     def __init__(
@@ -150,26 +148,11 @@ class WasteGenerator(OperationalEntity):
         """Unified strategy processing - always generate waste, manage inventory based on strategy"""
 
         # STEP 1: Always generate waste
-        available_storage = self.waste_storage_capacity - self.current_storage
-
-        available_storage, self.current_storage, self.history_index = generate_waste_for_period(
-            self.name, self.status, self.uncertainty_set,
-            self.waste_generation_rates, self.region, self.waste_streams,
-            self.total_generated, self.generation_history, self.history_index,
-            self.current_storage, self.rng, seasonal_factor, available_storage,
-            current_time, self.efficiency
-        )
+        self._generate_waste_for_period(seasonal_factor, current_time)
 
         # STEP 2: Handle overflow if storage is exceeded
         if self.current_storage > self.waste_storage_capacity:
-            self.current_storage = handle_overflow(
-                self.current_storage,
-                self.waste_storage_capacity,
-                self.waste_streams,
-                self.region,
-                self,
-                force_landfill=False,  # Try expansion first
-            )
+            self._handle_overflow(force_landfill=False)  # Try expansion first
 
         # STEP 3: Strategy-based signaling for collection
         self._handle_inventory_signaling(current_time)
@@ -218,3 +201,95 @@ class WasteGenerator(OperationalEntity):
                     source_id=self.name,
                     source_type="generator"
                 )
+
+    def _calculate_daily_factors(self):
+        """Calculate daily generation factors based on uncertainty"""
+        if not self.uncertainty_set:
+            return [1.0] * len(self.waste_generation_rates)
+
+        daily_factors = []
+        variability = getattr(self.uncertainty_set, 'waste_generation_variability', 0.2)
+
+        for _ in self.waste_generation_rates.keys():
+            factor = self.rng.normal(1.0, variability)
+            daily_factors.append(np.clip(factor, 0.1, 2.0))
+        return daily_factors
+
+    def _update_waste_stream(self, waste_type, generated_volume, current_time, history_index):
+        """Update waste stream and history records"""
+        history = self.generation_history[waste_type]
+
+        self.waste_streams[waste_type].volume += generated_volume
+        self.current_storage += generated_volume
+        self.total_generated[waste_type] += generated_volume
+
+        SimulationState.get_instance().track_add_waste(
+            self.region, waste_type, generated_volume
+        )
+
+        if history_index >= len(history["times"]):
+            history_index = 0
+
+        history["times"][history_index] = current_time
+        history["volumes"][history_index] = generated_volume
+        history["totals"][history_index] = self.total_generated[waste_type]
+        history["storage"][history_index] = self.current_storage
+
+    def _handle_overflow(self, force_landfill=False):
+        """Handle storage overflow situation"""
+        current_volumes = {
+            waste_type: stream.volume
+            for waste_type, stream in self.waste_streams.items()
+        }
+
+        total_current = sum(current_volumes.values())
+        if total_current > self.waste_storage_capacity:
+            overflow_amount = total_current - self.waste_storage_capacity
+
+            handle_storage_event(
+                self,
+                overflow_amount,
+                self.region,
+                force_landfill=force_landfill
+            )
+
+            # Capacity may have expanded inside handle_storage_event; read it fresh
+            effective_capacity = self.waste_storage_capacity
+
+            if total_current > effective_capacity:
+                scaling_factor = effective_capacity / total_current
+
+                state = SimulationState.get_instance()
+
+                for waste_type, stream in self.waste_streams.items():
+                    new_volume = stream.volume * scaling_factor
+                    reduced_volume = stream.volume - new_volume
+                    if reduced_volume > 0:
+                        state.track_remove_waste(self.region, waste_type, reduced_volume)
+                        stream.volume = new_volume
+
+                self.current_storage = effective_capacity
+            else:
+                self.current_storage = total_current
+
+    def _generate_waste_for_period(self, seasonal_factor, current_time):
+        """Generate waste for all waste types in one period with efficiency consideration"""
+        if self.uncertainty_set:
+            if self.status == EntityStatus.FAILED:
+                return
+            elif self.status == EntityStatus.RECOVERING:
+                print(f"{current_time}: Generator {self.name} is recovering (efficiency: {self.efficiency:.2f})")
+
+        available_storage = self.waste_storage_capacity - self.current_storage
+        daily_factors = self._calculate_daily_factors()
+
+        for (waste_type, base_rate), daily_factor in zip(
+            self.waste_generation_rates.items(), daily_factors
+        ):
+            potential_volume = base_rate * seasonal_factor * daily_factor * self.efficiency
+
+            if potential_volume <= available_storage:
+                self._update_waste_stream(
+                    waste_type, potential_volume, current_time, self.history_index
+                )
+                available_storage -= potential_volume

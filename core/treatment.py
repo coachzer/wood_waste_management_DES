@@ -11,14 +11,6 @@ from core.kanban_manager import KanbanManager
 from models.enums import InventoryPolicy
 from models.products import ProductDataManager
 from utils.capacity_utils import handle_storage_event, check_storage_capacity
-from core.treatment_utils import (
-    get_transformation_efficiency,
-    calculate_output_amounts,
-    update_waste_storage,
-    fulfill_demand,
-    track_treatment_properties,
-    update_utilization_metrics
-)
 
 class TreatmentOperator(OperationalEntity):
     """Treatment operator that processes waste into products"""
@@ -445,12 +437,25 @@ class TreatmentOperator(OperationalEntity):
 
         return total_needed
 
-    def _create_collection_signal(self, waste_type: WasteType, volume: float, timestamp: float, priority: int):
-        """Create a collection signal for specific waste type and volume"""
+    def _create_collection_signal(
+        self, waste_type: WasteType, volume: float, timestamp: float, priority: int
+    ):
+        """Create a collection signal for specific waste type and volume.
+
+        NOTE: `priority` is accepted but not yet propagated downstream --
+        `_propagate_signal_to_collectors` currently hardcodes the kanban
+        signal priority. Wiring strategy priority through the kanban bus is
+        tracked in .scratch/kanban-priority-wiring/. Do not delete the
+        parameter; it documents the intended (not-yet-implemented) contract.
+        """
         self._propagate_signal_to_collectors(waste_type, volume, timestamp)
 
     def _create_reorder_signals(self, total_shortage: float, timestamp: float, priority: int):
-        """Create reorder signals distributed across waste types"""
+        """Create reorder signals distributed across waste types.
+
+        NOTE: `priority` is accepted but not yet propagated -- see
+        .scratch/kanban-priority-wiring/. Do not delete the parameter.
+        """
         input_waste_types = {key[0] for key in self.transformations.keys()}
 
         if not input_waste_types:
@@ -460,9 +465,7 @@ class TreatmentOperator(OperationalEntity):
 
         for waste_type in input_waste_types:
             if shortage_per_type > 0:
-                self._create_collection_signal(
-                    waste_type, shortage_per_type, timestamp, priority
-                )
+                self._create_collection_signal(waste_type, shortage_per_type, timestamp, priority)
 
     def _propagate_signal_to_collectors(self, waste_type, needed_volume, current_time):
         """Propagate signals to collectors with availability checking"""
@@ -534,7 +537,7 @@ class TreatmentOperator(OperationalEntity):
 
             # Scoring: ABC priority + demand urgency + efficiency + input
             demand_score = min(current_demand / 5000, 1.0) if has_demand else 0.1
-            efficiency_score = get_transformation_efficiency(self, transformation)
+            efficiency_score = self._get_transformation_efficiency(transformation)
             input_availability = min(self.waste_storage.get(input_type, 0) / 100, 1.0)
 
             total_score = (abc_priority * 2.0) + demand_score + efficiency_score + input_availability
@@ -558,15 +561,15 @@ class TreatmentOperator(OperationalEntity):
                 key=lambda x, demands=product_demands: (
                     demands.get(x[0][1], 0) > 0,
                     demands.get(x[0][1], 0),
-                    get_transformation_efficiency(self, x[1])
+                    self._get_transformation_efficiency(x[1]),
                 ),
-                reverse=True
+                reverse=True,
             )
         else:
             return sorted(
                 self.transformations.items(),
-                key=lambda x: get_transformation_efficiency(self, x[1]),
-                reverse=True
+                key=lambda x: self._get_transformation_efficiency(x[1]),
+                reverse=True,
             )
 
     def request_waste_delivery(self, waste_type: WasteType, volume: float, 
@@ -642,14 +645,13 @@ class TreatmentOperator(OperationalEntity):
         if amount_to_process <= 0:
             return
 
-        efficiency = min(get_transformation_efficiency(self, transformation), 1.0)
+        efficiency = min(self._get_transformation_efficiency(transformation), 1.0)
 
-        amount_to_process, output_amount = calculate_output_amounts(
-            amount_to_process, 
-            efficiency
+        amount_to_process, output_amount = self._calculate_output_amounts(
+            amount_to_process, efficiency
         )
 
-        update_waste_storage(self, input_type, output_type, amount_to_process, output_amount)
+        self._update_waste_storage(input_type, amount_to_process, output_amount)
 
         if output_type in final_products:
             total_to_sell_stored = sum(self.product_to_sell.current_storage.values())
@@ -659,7 +661,7 @@ class TreatmentOperator(OperationalEntity):
             self.product_to_sell.current_storage[output_type] += addable_to_sell
 
             if addable_to_sell > 0:
-                fulfill_demand(self, output_type, addable_to_sell)
+                self._fulfill_demand(output_type, addable_to_sell)
 
             if overflow_after_sell > 0:
                 total_stored = sum(self.product_storage.current_storage.values())
@@ -676,8 +678,95 @@ class TreatmentOperator(OperationalEntity):
         else:
             print(f"[{self.name}] Unclassified output: {output_amount:.2f} m³ of {output_type.value} from {input_type.value}")
 
-        track_treatment_properties(self, amount_to_process, transformation)
-        update_utilization_metrics(self, amount_to_process)
+        self._track_treatment_properties(amount_to_process, transformation)
+        self._update_utilization_metrics(amount_to_process)
+
+    def _get_transformation_efficiency(self, transformation):
+        """Calculate transformation efficiency with uncertainty if applicable"""
+        efficiency = transformation.conversion_efficiency
+        if self.uncertainty_set:
+            if (
+                hasattr(self.uncertainty_set.treatment_conversion, "__len__")
+                and len(self.uncertainty_set.treatment_conversion) == 2
+            ):
+                mean, std = self.uncertainty_set.treatment_conversion
+                efficiency = np.clip(self.rng.normal(mean * efficiency, std), 0.6, 1.0)
+        return efficiency
+
+    def _calculate_output_amounts(self, amount_to_process, efficiency):
+        """Calculate actual processing and output amounts considering capacity constraints"""
+        potential_output = amount_to_process * efficiency
+        output_amount = potential_output
+        return amount_to_process, output_amount
+
+    def _update_waste_storage(self, input_type, amount_to_process, output_amount):
+        """Update waste storage and track raw production"""
+        self.waste_storage[input_type] -= amount_to_process
+        self.processed_volumes[input_type] += amount_to_process
+        self.total_products_created += output_amount
+
+    def _fulfill_demand(self, output_type, output_amount):
+        """Fulfill demand for final products"""
+        state = SimulationState.get_instance()
+        product_type = output_type.value.lower()
+
+        unmet_demand = (
+            state.target_demands[product_type] - state.total_products[product_type]
+        )
+
+        fulfilled_amount = min(output_amount, unmet_demand)
+
+        if fulfilled_amount > 0:
+            self.product_to_sell.current_storage[output_type] -= fulfilled_amount
+            self.demand -= fulfilled_amount
+
+            self.production_history.append(
+                (self.env.now, output_type.value.lower(), fulfilled_amount)
+            )
+
+            state.track_product_production(product_type, fulfilled_amount, self.env.now)
+
+    def _track_treatment_properties(self, amount_to_process, transformation):
+        """Track energy and operational costs"""
+        energy_cost = (
+            amount_to_process * transformation.energy_required * self.energy_consumption
+        )
+        operational_cost = amount_to_process * self.operational_costs
+        environmental_impact_emissions = amount_to_process * self.environmental_impact
+
+        environmental_cost = (
+            environmental_impact_emissions * 0.05
+        )  # €0.05 per kg CO₂e (example)
+
+        monitor = self.waste_monitor
+        name = self.name
+        timestamp = self.env.now
+
+        monitor.update_entity_costs(
+            entity_name=name,
+            entity_type="treatment",
+            energy_cost=energy_cost,
+            processing_cost=operational_cost + environmental_cost,
+            transport_cost=0.0,
+        )
+
+        monitor.track_environmental_impact(
+            entity_name=name,
+            entity_type="treatment",
+            environmental_impact=environmental_impact_emissions,  # kg CO₂e
+            timestamp=timestamp,
+            impact_category="carbon_emissions",
+        )
+
+    def _update_utilization_metrics(self, amount_to_process):
+        """Update utilization history for capacity management"""
+        if self.processing_capacity <= 0:
+            current_utilization = 0.0
+        else:
+            current_utilization = amount_to_process / self.processing_capacity
+        self.utilization_history.append(current_utilization)
+        if len(self.utilization_history) > self.utilization_window:
+            self.utilization_history.pop(0)
 
     def request_waste_directly(self, required_waste: float, input_waste_types: set) -> Dict[WasteType, float]:
         """Request waste with local/cross-region routing split"""
