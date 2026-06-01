@@ -324,29 +324,20 @@ class TreatmentOperator(OperationalEntity):
         yield self.env.timeout(self.processing_time)
 
     def _pull_collection_logic(self, current_time):
-        """PULL: Kanban-driven with continuous demand signaling"""
-        active_signals = self.kanban_manager.get_signals(current_time)
+        """PULL: strategy-aware (s, S) upstream replenishment (ADR 0002, Phase E).
 
-        # Market consumption signals (source_type="market") are the downstream
-        # demand trigger for the PULL refactor (ADR 0002, Phase E); the waste-
-        # collection path here must not treat them as upstream waste demand.
-        active_signals = [s for s in active_signals if s.get("source_type") != "market"]
-
-        if active_signals:
-            # Process existing signals
-            sorted_signals = sorted(active_signals, 
-                                key=lambda s: (s['priority'], current_time - s['timestamp']), 
-                                reverse=True)
-
-            total_demand = sum(signal['volume'] for signal in sorted_signals)
-            self.demand = total_demand
-            self.trigger_collection()
-
-            for signal in sorted_signals:
-                self.kanban_manager.acknowledge_signal(signal['id'])
-
-        # NEW: Always check if we need more waste and generate signals accordingly
-        self._continuous_demand_signaling(current_time)
+        Mirrors the PUSH (s, S) rule -- order up to full capacity when waste
+        storage drops below the strategy threshold -- but additionally
+        propagates the demand upstream through the kanban cascade, which PUSH
+        deliberately does not do. The ingest volume is passed explicitly so
+        collection is bounded by the (s, S) gap and bypasses the legacy
+        ``unmet_demands`` ceiling in ``calculate_realistic_demand``.
+        """
+        if self._should_trigger_collection_based_on_strategy():
+            signal_volume = self._get_reorder_quantity()
+            if signal_volume > 0:
+                self._create_reorder_signals(signal_volume, current_time, priority=8)
+                self.trigger_collection(explicit_collection_volume=signal_volume)
 
         yield self.env.timeout(self.processing_time)
 
@@ -624,6 +615,51 @@ class TreatmentOperator(OperationalEntity):
             if self.waste_storage.get(input_type, 0) > 0:
                 self._process_waste_transformation(input_type, output_type, transformation)
 
+    def _produce_for_consumption_events(self, current_time):
+        """Produce in response to downstream market consumption events (PULL).
+
+        ADR 0002 (Phase E): PULL production is event-triggered, not supply-driven.
+        The operator scans its own unacknowledged Market Signals, reads the
+        Consumption Events they reference, and produces each product up to the
+        attempted demand volume (clamped by waste, capacity and finished-goods
+        headroom in ``_process_waste_transformation``). This keeps the bullwhip
+        contrast ``var(production) ~= var(attempted)`` and the PUSH/PULL
+        distinction crisp; PUSH retains the autonomous ``_process_available_waste``
+        loop.
+        """
+        market_signals = [
+            signal for signal in self.kanban_manager.get_signals(current_time)
+            if signal.get("source_type") == "market" and signal.get("source_id") == self.name
+        ]
+        if not market_signals:
+            return
+
+        # Per-product demand target = summed ``attempted`` across the Consumption
+        # Events these signals reference, matched by (operator, signal timestamp).
+        # Ticks land on exact multiples of CONSUMPTION_INTERVAL_DAYS and each
+        # signal shares its events' timestamp, so float equality is safe.
+        signal_timestamps = {signal["timestamp"] for signal in market_signals}
+        state = SimulationState.get_instance()
+        targets: Dict[str, float] = {}
+        for event in state.consumption_events:
+            if event["operator"] == self.name and event["timestamp"] in signal_timestamps:
+                targets[event["product"]] = targets.get(event["product"], 0.0) + event["attempted"]
+
+        # Produce against targets, preserving ABC prioritization. Each
+        # transformation draws down the remaining target for its output product.
+        for (input_type, output_type), transformation in self._get_prioritized_transformations():
+            product = output_type.value.lower()
+            remaining = targets.get(product, 0.0)
+            if remaining <= 0 or self.waste_storage.get(input_type, 0) <= 0:
+                continue
+            produced = self._process_waste_transformation(
+                input_type, output_type, transformation, output_cap=remaining
+            )
+            targets[product] = remaining - produced
+
+        for signal in market_signals:
+            self.kanban_manager.acknowledge_signal(signal["id"])
+
     def run_facility(self):
         """Main process loop for the treatment facility."""
         while True:
@@ -634,14 +670,27 @@ class TreatmentOperator(OperationalEntity):
                 yield self.env.timeout(self.processing_time)
                 continue
 
+            # PUSH produces autonomously from available waste (supply-driven);
+            # PULL produces only in response to downstream consumption events
+            # (demand-driven). ADR 0002, Phase E.
             if self.inventory_policy == InventoryPolicy.PULL:
-                self._continuous_demand_signaling(current_time)
+                self._produce_for_consumption_events(current_time)
+            else:
+                self._process_available_waste()
 
-            self._process_available_waste()
             yield self.env.timeout(self.processing_time)
 
-    def _process_waste_transformation(self, input_type, output_type, transformation):
-        """Process a single waste transformation"""
+    def _process_waste_transformation(self, input_type, output_type, transformation, output_cap=None):
+        """Process a single waste transformation.
+
+        ``output_cap`` (PULL, ADR 0002 Phase E) bounds production to the
+        demand-driven target: when provided, ``output_cap / efficiency`` joins
+        the input-waste, processing-capacity and finished-goods-headroom clamps,
+        so the operator produces only what the consumption event pulled. PUSH
+        callers omit it and keep the supply-driven clamp unchanged. Returns the
+        output volume produced (0.0 when nothing was processed) so the PULL
+        caller can draw down its per-product target.
+        """
 
         final_products = {
             OutputType.MDF,
@@ -649,7 +698,7 @@ class TreatmentOperator(OperationalEntity):
             OutputType.OSB
         }
         if input_type in final_products:
-            return
+            return 0.0
 
         efficiency = min(self._get_transformation_efficiency(transformation), 1.0)
 
@@ -659,16 +708,19 @@ class TreatmentOperator(OperationalEntity):
         # discard and no secondary storage buffer.
         headroom = self.finished_goods.capacity.get(output_type, 0.0) - self.finished_goods.current_storage[output_type]
         if headroom <= 0:
-            return
+            return 0.0
 
-        amount_to_process = min(
+        clamps = [
             self.waste_storage[input_type],
             self.processing_capacity,
             headroom / efficiency,
-        )
+        ]
+        if output_cap is not None:
+            clamps.append(output_cap / efficiency)
+        amount_to_process = min(clamps)
 
         if amount_to_process <= 0:
-            return
+            return 0.0
 
         amount_to_process, output_amount = self._calculate_output_amounts(
             amount_to_process, efficiency
@@ -691,6 +743,8 @@ class TreatmentOperator(OperationalEntity):
 
         self._track_treatment_properties(amount_to_process, transformation)
         self._update_utilization_metrics(amount_to_process)
+
+        return output_amount
 
     def _get_transformation_efficiency(self, transformation):
         """Calculate transformation efficiency with uncertainty if applicable"""
