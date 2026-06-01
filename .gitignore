@@ -67,6 +67,9 @@ analysis/
 # Paper draft (local notes only)
 paper-draft/
 
+# Local working notes (plans, issues, handoffs)
+.scratch/
+
 # GEOJSON files
 *.geojson
 
