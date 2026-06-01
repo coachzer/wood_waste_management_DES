@@ -6,6 +6,7 @@ from models.enums import InventoryPolicy, StockStrategy
 from monitoring.mfa_visualization import create_material_flow_analysis
 from monitoring.scenario_comparison import ScenarioComparison
 from monitoring.baseline_aggregate import extract_kpis
+from monitoring.paired_comparison import write_paired_comparison_report
 import traceback
 import argparse
 import time
@@ -150,6 +151,16 @@ def run_monte_carlo_baseline(
                     print(
                         f"Warning: failed to write summary CSV for {policy.value}__{strategy.value}: {e}"
                     )
+
+        # Paired (CRN) comparison across all combos in this scenario. Exploits the
+        # shared seed series to compare combos by per-replication differences,
+        # which summary.csv's marginal CIs cannot. (monitoring/paired_comparison.py)
+        try:
+            report_path = write_paired_comparison_report(scenario_dir)
+            if report_path is not None:
+                print(f"Wrote paired comparison report: {report_path}")
+        except Exception as e:
+            print(f"Warning: failed to write paired comparison report for {scenario_name}: {e}")
     elapsed = time.time() - start_time
     print(
         f"\nBaseline Monte Carlo complete. Total runs: {len(results)} in {elapsed:.2f}s"

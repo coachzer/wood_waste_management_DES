@@ -19,9 +19,12 @@ Each fact lives in one place; other docs point to it rather than restate it.
 python main.py                                        # Grid mode: 1 run per policy×strategy combo
 python main.py --mode baseline --replications 100     # Monte Carlo: 100 seeds per combo
 python main.py --mode baseline --scenario Baseline --replications 50  # Single scenario
+python monitoring/paired_comparison.py outputs/baseline/Baseline      # Post-hoc paired (CRN) stats
 ```
 
 Outputs: `outputs/baseline/{scenario}/{policy}__{strategy}/`. MFA visualizations (Plotly HTML) to `plots/`.
+
+**Seeding is Common Random Numbers (CRN)**: baseline replication `i` uses `seed = base_seed + i` reused across every policy×strategy combo, so combos face identical waste/failure draws. `summary.csv` reports marginal per-combo CIs; `monitoring/paired_comparison.py` exploits the pairing — per-replication KPI differences with paired-t CIs and a per-metric Holm-Bonferroni correction — and is auto-written as `{scenario}/paired_comparison.csv` after each baseline run (run it standalone via a file path, not `-m`, to avoid the `monitoring/__init__` circular import).
 
 ## Architecture
 
