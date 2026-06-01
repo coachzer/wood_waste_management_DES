@@ -228,7 +228,21 @@ class SimulationManager:
                 'simulation_time': self.env.now,
                 'total_products': self.state.total_products,
                 'target_demands': self.state.target_demands,
-                'unmet_demands': self.state.get_unmet_demands()
+                'unmet_demands': self.state.get_unmet_demands(),
+                # Continuous market-consumption metrics (ADR 0002). These
+                # supersede the ceiling-based service level derived from
+                # total_products/target_demands above, which is removed in
+                # Phase F.
+                'full_service_level': self.state.full_service_level,
+                'operational_service_level': self.state.operational_service_level,
+                'total_attempted_consumption': self.state.total_attempted_consumption,
+                'total_consumed': self.state.total_consumed,
+                'no_capability_lost': self.state.no_capability_lost,
+                'stockout_lost': self.state.stockout_lost,
+                'consumption_service_by_product': {
+                    product: self.state.service_level(product=product, kind="full")
+                    for product in self.state.target_demands
+                },
             }
         }
 

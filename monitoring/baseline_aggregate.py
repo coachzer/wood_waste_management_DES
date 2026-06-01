@@ -93,6 +93,18 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
             target_value = float(target_volume)
             service_level_by_product[product_name] = (produced_volume / target_value * 100.0) if target_value > 0 else None
 
+    # Continuous market-consumption service levels (ADR 0002). None when no
+    # consumption was attempted (undefined, not zero); fractions -> percent.
+    def _pct(fraction):
+        return fraction * 100.0 if fraction is not None else None
+
+    service_level_full = _pct(final_summary.get("full_service_level"))
+    service_level_operational = _pct(final_summary.get("operational_service_level"))
+    service_level_full_by_product = {
+        product_name: _pct(value)
+        for product_name, value in (final_summary.get("consumption_service_by_product") or {}).items()
+    }
+
     return {
         "total_generated_m3": total_generated,
         "total_collected_m3": total_collected,
@@ -107,4 +119,11 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         "max_processor_product_util_pct": max_processor_product_util,
         "service_level_overall_pct": service_level_overall,
         "service_level_by_product": service_level_by_product,
+        "service_level_full_pct": service_level_full,
+        "service_level_operational_pct": service_level_operational,
+        "service_level_full_by_product_pct": service_level_full_by_product,
+        "total_attempted_m3": float(final_summary.get("total_attempted_consumption") or 0.0),
+        "total_consumed_m3": float(final_summary.get("total_consumed") or 0.0),
+        "no_capability_lost_m3": float(final_summary.get("no_capability_lost") or 0.0),
+        "stockout_lost_m3": float(final_summary.get("stockout_lost") or 0.0),
     }
