@@ -28,6 +28,15 @@ class SimulationState:
                 'particle_board': 0,
                 'osb': 0
             }
+            # Finished goods removed from inventory without consumption (mass-balance
+            # discard term, ADR 0002 Phase E.5). Zero by construction -- the
+            # partial-batch headroom clamp leaves no discard path; the counter
+            # exists so the mass-balance identity is explicit and as a guard.
+            cls._instance.production_discarded = {
+                'mdf': 0.0,
+                'particle_board': 0.0,
+                'osb': 0.0
+            }
             cls._instance.target_demands = {
                 'mdf': demand["mdf"],
                 'particle_board': demand["particle_board"],
@@ -228,6 +237,11 @@ class SimulationState:
             'mdf': 0,
             'particle_board': 0,
             'osb': 0
+        }
+        self.production_discarded = {
+            'mdf': 0.0,
+            'particle_board': 0.0,
+            'osb': 0.0
         }
         self.target_demands = {
             'mdf': demand["mdf"],

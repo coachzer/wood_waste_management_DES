@@ -22,8 +22,14 @@ def run_single_simulation(
     stock_strategy: StockStrategy,
     seed: int | None = None,
     create_mfa: bool = True,
+    raise_on_violation: bool = True,
 ) -> dict:
-    """Run a single simulation configuration and return results"""
+    """Run a single simulation configuration and return results.
+
+    ``raise_on_violation`` controls the mass-balance monitor: single runs raise
+    on a broken invariant; batch Monte Carlo passes ``False`` so one bad seed
+    warns and continues rather than aborting the remaining replications.
+    """
     print(f"\n=== Running: {scenario_name} | {inventory_policy.value} | {stock_strategy.value} ===")
 
     if seed is not None:
@@ -40,7 +46,7 @@ def run_single_simulation(
 
         manager = SimulationManager(seed=seed)
         manager.initialize_entities(scenario_config)
-        manager.setup_processes()
+        manager.setup_processes(raise_on_violation=raise_on_violation)
         manager.run_simulation()
 
         monitor_data = manager.get_monitor_data()
@@ -117,6 +123,7 @@ def run_monte_carlo_baseline(
                         stock_strategy=strategy,
                         seed=seed,
                         create_mfa=False,
+                        raise_on_violation=False,
                     )
                     results.append(res)
                     kpis = extract_kpis(res["monitor_data"])

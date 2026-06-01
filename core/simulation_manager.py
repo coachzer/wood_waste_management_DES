@@ -18,6 +18,7 @@ from models.data_classes import OperationalEntity
 from models.enums import RegionType, OutputType, InventoryPolicy
 from models.state import SimulationState
 from monitoring.waste_monitor import WasteMonitor
+from monitoring.mass_balance import EntityRegistry, MassBalanceMonitor
 from models.facility_data import FacilityDataManager
 from core import facility_builder as facility_builder_module
 from core.facility_builder import FacilityBuilder
@@ -192,8 +193,13 @@ class SimulationManager:
         traceback.print_exc()
         raise
 
-    def setup_processes(self) -> None:
-        """Set up all simulation processes"""
+    def setup_processes(self, raise_on_violation: bool = True) -> None:
+        """Set up all simulation processes.
+
+        ``raise_on_violation`` is forwarded to the mass-balance monitor: single
+        runs raise on a broken invariant; batch Monte Carlo passes ``False`` so
+        one bad seed warns and continues instead of aborting the batch.
+        """
         # Start monitoring process
         self.env.process(
             self.waste_monitor.monitor_system_process(
@@ -202,17 +208,45 @@ class SimulationManager:
                 self.state.treatment_operators,
             )
         )
-        
+
         # Start demand satisfaction checking
         self.env.process(self._check_demand_satisfaction())
 
         # Start weekly market consumption of finished goods
         self.env.process(self._market_consumption_process())
 
+        # Mass-balance safety net (ADR 0002, Phase E.5). Construct now, at t=0,
+        # so the snapshot captures the primed finished-goods inventory. Start
+        # the check process AFTER market consumption so same-tick events fire
+        # in insertion order -- the check runs once consumption has settled.
+        self.mass_balance_monitor = MassBalanceMonitor(
+            EntityRegistry(
+                state=self.state,
+                operators=self.state.treatment_operators,
+                generators=self.state.generators,
+                collectors=self.state.collectors,
+            ),
+            raise_on_violation=raise_on_violation,
+        )
+        self.env.process(self._mass_balance_check_process())
+
+    def _mass_balance_check_process(self):
+        """Check the product mass-balance invariant every consumption tick.
+
+        Ticks on the same CONSUMPTION_INTERVAL_DAYS cadence as market
+        consumption; because this process is started after the consumption
+        process, its same-time event fires afterwards, so the check sees the
+        inventory state once the tick's consumption has settled.
+        """
+        while True:
+            yield self.env.timeout(CONSUMPTION_INTERVAL_DAYS)
+            self.mass_balance_monitor.check_continuous(self.env.now)
+
     def run_simulation(self) -> None:
         """Execute the simulation"""
         print(f"Starting simulation for {SIMULATION_DURATION} time units...")
         self.env.run(until=SIMULATION_DURATION)
+        self.mass_balance_monitor.check_final(self.env.now)
         self._print_final_status()
 
     def get_monitor_data(self) -> Dict[str, Any]:
