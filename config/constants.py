@@ -7,8 +7,6 @@ SIMULATION_DURATION = 365  # days in simulation (one full year)
 EXPANSION_SIZE_M3 = 500  # 500m³ expansion size
 
 LOCAL_COLLECTION_RATIO = 0.8
-ON_DEMAND_BUFFER_RATIO = 0.15
-ON_DEMAND_TARGET_RATIO = 0.35
 
 # PUSH (s, S) waste-storage reorder thresholds (ADR 0002, signal-volume rule).
 # When total waste_storage drops below this fraction of waste_storage_capacity,
