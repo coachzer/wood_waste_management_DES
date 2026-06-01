@@ -1,7 +1,7 @@
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Dict, Tuple, List
-from config.constants import SIMULATION_DURATION
+from config.constants import SIMULATION_DURATION, DENSITY
 from models.enums import InventoryPolicy, StockStrategy
 from models.data_classes import FailureConfig
 from utils.helpers import (
@@ -23,8 +23,15 @@ class UncertaintySet:
 
 @dataclass
 class CostParams:
-    """Cost parameters"""
-    landfill_per_m3: float = 20.4       # Cost per m³ landfilled ($46/tonne) (lebanon paper)
+    """Cost parameters.
+
+    landfill_per_m3 = $46/t (Lebanon) x 0.6 t/m³ = $27.6/m³. Derived (not hard-coded) so it stays consistent if DENSITY changes — the old value (20.4) implied ~0.44 t/m³.
+
+    This anchors handle_storage_event's landfill-vs-expand decision: artificially cheap landfill biases toward dumping and understates the case for waste diversion.
+    """
+    landfill_per_m3: float = (
+        46.0 * DENSITY
+    )  # $46/tonne (lebanon paper) x DENSITY = 27.6 $/m³
     expansion_cost_per_m3: float = 100.0  # Cost to expand storage by 1m³
 
 DEFAULT_COSTS = CostParams()
