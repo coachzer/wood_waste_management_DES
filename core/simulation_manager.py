@@ -11,7 +11,6 @@ from config.constants import (
     SEASONAL_AMPLITUDE,
     WEEKS_PER_YEAR,
     CONSUMPTION_INTERVAL_DAYS,
-    MARKET_SIGNAL_PRIORITY,
 )
 from core.transport_manager import PointToPointTransport
 from models.data_classes import OperationalEntity
@@ -328,7 +327,6 @@ class SimulationManager:
                         and producible_attempted > 0):
                     self.kanban_manager.add_signal(
                         waste_type=None,
-                        priority=MARKET_SIGNAL_PRIORITY,
                         timestamp=current_time,
                         volume=producible_attempted,
                         source_id=operator.name,

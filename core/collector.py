@@ -451,7 +451,6 @@ class CollectorCompany(OperationalEntity):
         for generator in local_generators:
             generator.kanban_manager.add_signal(
                 waste_type=waste_type_enum,
-                priority=signal['priority'] - 1,  
                 timestamp=current_time,
                 volume=signal['volume'],
                 source_id=self.name,

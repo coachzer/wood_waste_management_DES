@@ -42,7 +42,7 @@ Outputs: `outputs/baseline/{scenario}/{policy}__{strategy}/`. MFA visualizations
 
 **Config flow**: `ScenarioConfig` → `to_uncertainty_set()` → `FacilityBuilder` → injected into every entity. Scenarios in `SCENARIO_CONFIGS` (`config/base_config.py`).
 
-**Kanban/pull coordination**: `KanbanManager` is active in PULL mode — treatment signals collectors, collectors signal generators via kanban signals with priority weighting. In PUSH mode, generators emit signals but collectors ignore them (collection is volume-driven).
+**Kanban/pull coordination**: `KanbanManager` is active in PULL mode — treatment signals collectors, collectors signal generators via kanban signals consumed in insertion order (no priority weighting; the half-wired signal `priority` field was removed — the deferred urgency-aware variant is recorded in `.scratch/metrics-roadmap.md`). In PUSH mode, generators emit signals but collectors ignore them (collection is volume-driven).
 
 **ABC prioritization**: `BiogenicCarbonABCAnalyzer` (`core/abc_analysis.py`) ranks products by biogenic carbon stock impact into A/B/C classes (priority weights 1.0/0.7/0.4). Always on — there is no enable flag; `TreatmentOperator` initializes the priority map unconditionally. Used in `_get_prioritized_transformations()` with a 2.0× scoring multiplier, alongside a finished-goods shortfall term (`max(0, capacity - current) / capacity` per output type) that steers production toward the most depleted buffer. Not configurable per scenario. Data source: `data/demand.json` + `models/products.py`.
 

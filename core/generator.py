@@ -164,12 +164,12 @@ class WasteGenerator(OperationalEntity):
             case StockStrategy.REORDER_90:
                 threshold = self.waste_storage_capacity * 0.9
                 if self.current_storage >= threshold:
-                    self._kanban_signal(current_time, priority=6)
+                    self._kanban_signal(current_time)
 
             case StockStrategy.REORDER_50:
                 threshold = self.waste_storage_capacity * 0.5
                 if self.current_storage >= threshold:
-                    self._kanban_signal(current_time, priority=4)
+                    self._kanban_signal(current_time)
 
             case StockStrategy.ON_DEMAND:
                 # For PULL ON_DEMAND: Only signal if we have waste AND there are active signals from downstream
@@ -177,15 +177,13 @@ class WasteGenerator(OperationalEntity):
                     # Check if we have downstream demand signals
                     active_signals = self.kanban_manager.get_signals(current_time)
                     if active_signals and self.current_storage > 0:
-                        self._kanban_signal(
-                            current_time, priority=8
-                        )  # High priority for demand response
+                        self._kanban_signal(current_time)
                 else:
                     # For PUSH ON_DEMAND: Signal when we have substantial waste
                     if self.current_storage > self.waste_storage_capacity * 0.1:
-                        self._kanban_signal(current_time, priority=3)
+                        self._kanban_signal(current_time)
 
-    def _kanban_signal(self, current_time, priority):
+    def _kanban_signal(self, current_time):
         active_waste_types = [
             waste_type for waste_type, stream in self.waste_streams.items()
             if stream.volume > 0
@@ -195,7 +193,6 @@ class WasteGenerator(OperationalEntity):
             for waste_type in active_waste_types:
                 self.kanban_manager.add_signal(
                     waste_type=waste_type,
-                    priority=priority,
                     timestamp=current_time,
                     volume=self.waste_streams[waste_type].volume,
                     source_id=self.name,

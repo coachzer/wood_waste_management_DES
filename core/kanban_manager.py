@@ -8,15 +8,14 @@ class KanbanManager:
         self.signal_history = defaultdict(list)
         self.acknowledged_signals = set()  # Track processed signals
 
-    def add_signal(self, waste_type, priority, timestamp, volume=0, source_id=None, source_type=None):
+    def add_signal(self, waste_type, timestamp, volume=0, source_id=None, source_type=None):
         signal_id = f"{source_id}_{waste_type}_{timestamp}"
-        
+
         # Avoid duplicate signals
         if signal_id not in self.acknowledged_signals:
             self.signals.append({
                 'id': signal_id,
                 'waste_type': waste_type,
-                'priority': priority,
                 'timestamp': timestamp,
                 'volume': volume,
                 'source_id': source_id,

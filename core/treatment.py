@@ -281,30 +281,19 @@ class TreatmentOperator(OperationalEntity):
         if self._should_trigger_collection_based_on_strategy():
             signal_volume = self._get_reorder_quantity()
             if signal_volume > 0:
-                self._create_reorder_signals(signal_volume, current_time, priority=8)
+                self._create_reorder_signals(signal_volume, current_time)
                 self.trigger_collection(explicit_collection_volume=signal_volume)
 
         yield self.env.timeout(self.processing_time)
 
     def _create_collection_signal(
-        self, waste_type: WasteType, volume: float, timestamp: float, priority: int
+        self, waste_type: WasteType, volume: float, timestamp: float
     ):
-        """Create a collection signal for specific waste type and volume.
-
-        NOTE: `priority` is accepted but not yet propagated downstream --
-        `_propagate_signal_to_collectors` currently hardcodes the kanban
-        signal priority. Wiring strategy priority through the kanban bus is
-        tracked in .scratch/kanban-priority-wiring/. Do not delete the
-        parameter; it documents the intended (not-yet-implemented) contract.
-        """
+        """Create a collection signal for specific waste type and volume."""
         self._propagate_signal_to_collectors(waste_type, volume, timestamp)
 
-    def _create_reorder_signals(self, total_shortage: float, timestamp: float, priority: int):
-        """Create reorder signals distributed across waste types.
-
-        NOTE: `priority` is accepted but not yet propagated -- see
-        .scratch/kanban-priority-wiring/. Do not delete the parameter.
-        """
+    def _create_reorder_signals(self, total_shortage: float, timestamp: float):
+        """Create reorder signals distributed across waste types."""
         input_waste_types = sorted(
             {key[0] for key in self.transformations.keys()}, key=lambda w: w.value
         )
@@ -316,7 +305,7 @@ class TreatmentOperator(OperationalEntity):
 
         for waste_type in input_waste_types:
             if shortage_per_type > 0:
-                self._create_collection_signal(waste_type, shortage_per_type, timestamp, priority)
+                self._create_collection_signal(waste_type, shortage_per_type, timestamp)
 
     def _propagate_signal_to_collectors(self, waste_type, needed_volume, current_time):
         """Propagate signals to collectors with availability checking"""
@@ -337,7 +326,6 @@ class TreatmentOperator(OperationalEntity):
             if signal_volume > 0:
                 collector.kanban_manager.add_signal(
                     waste_type=waste_type,
-                    priority=8,  
                     timestamp=current_time,
                     volume=signal_volume,
                     source_id=self.name,

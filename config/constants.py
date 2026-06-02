@@ -23,7 +23,6 @@ TRAVEL_SPEED_KMH = 50.0
 # Market consumption (demand-as-continuous-consumption model, ADR 0002)
 WEEKS_PER_YEAR = 52  # annual demand is spread across this many consumption ticks
 CONSUMPTION_INTERVAL_DAYS = 7  # the market consumes finished goods weekly
-MARKET_SIGNAL_PRIORITY = 10  # kanban priority of downstream market-demand signals
 
 # Inventory priming (ADR 0002, Phase C). Finished-goods capacity per product is
 # sized to FINISHED_GOODS_BUFFER_WEEKS of that product's expected consumption;
