@@ -86,17 +86,14 @@ class TreatmentOperator(OperationalEntity):
         # consumption tick, proportional to its processing capacity. Assigned
         # at construction by SimulationManager (demand-as-consumption, ADR 0002).
         self.market_share = market_share
-        self.demand = 0
         self.demand_history = []
         self.minimum_required_waste = 0.1
-        self.production_history = []
         # Waste storage primed to ~2 weeks of producible throughput (ADR 0002,
         # Phase C); collection self-corrects the mix within ~2 weeks.
         self._waste_storage = dict.fromkeys(WasteType, 0.0)
         if initial_waste_storage:
             for waste_type, volume in initial_waste_storage.items():
                 self._waste_storage[waste_type] = volume
-        self.total_products_created = 0.0
         self.processed_volumes = dict.fromkeys(WasteType, 0.0)
         self.product_volumes = {
             "mdf": 0.0,
@@ -539,7 +536,6 @@ class TreatmentOperator(OperationalEntity):
 
         if output_type in final_products:
             self.finished_goods.current_storage[output_type] += output_amount
-            self._fulfill_demand(output_type, output_amount)
 
             if output_type == OutputType.MDF:
                 self.product_volumes["mdf"] += output_amount # m³
@@ -577,36 +573,6 @@ class TreatmentOperator(OperationalEntity):
         """Update waste storage and track raw production"""
         self.waste_storage[input_type] -= amount_to_process
         self.processed_volumes[input_type] += amount_to_process
-        self.total_products_created += output_amount
-
-    def _fulfill_demand(self, output_type, output_amount):
-        """Record cumulative production against the legacy demand ceiling.
-
-        ADR 0002 makes the market consumption process the sole drain of
-        ``finished_goods``: it removes finished goods weekly at a
-        seasonally-modulated rate. This method no longer drains inventory at
-        production time -- doing so front-ran the market and left only
-        over-target overshoot on the shelf, contaminating per-product service
-        level. It is retained only to keep ``total_products`` advancing, since
-        the still-live PUSH/PULL collection triggers read it via
-        ``get_unmet_demands()``. Both the bookkeeping and this method retire in
-        Phase F once those triggers move off the ceiling.
-        """
-        state = SimulationState.get_instance()
-        product_type = output_type.value.lower()
-
-        unmet_demand = (
-            state.target_demands[product_type] - state.total_products[product_type]
-        )
-
-        fulfilled_amount = min(output_amount, unmet_demand)
-
-        if fulfilled_amount > 0:
-            self.production_history.append(
-                (self.env.now, output_type.value.lower(), fulfilled_amount)
-            )
-
-            state.track_product_production(product_type, fulfilled_amount, self.env.now)
 
     def _track_treatment_properties(self, amount_to_process, transformation):
         """Track energy and operational costs"""

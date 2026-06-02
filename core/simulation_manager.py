@@ -79,10 +79,7 @@ class SimulationManager:
             
             # Build all facilities
             generators, collectors, processors = self._build_all_facilities(scenario_config)
-            
-            # Distribute demand among processors
-            self._distribute_demand(processors)
-            
+
             # Initialize simulation state
             self.state.initialize(generators, collectors, processors)
             
@@ -157,29 +154,6 @@ class SimulationManager:
                 total += proc_data.waste_storage_capacity
         return total
 
-    def _distribute_demand(self, processors: List[TreatmentOperator]) -> None:
-        """Distribute national demand among processors by output type"""
-        for processor in processors:
-            processor.demand = 0
-
-        processor_by_output = {}
-        for processor in processors:
-            for transformation in processor.transformations.values():
-                output_type_str = transformation.output_type.value
-                if output_type_str not in processor_by_output:
-                    processor_by_output[output_type_str] = []
-                processor_by_output[output_type_str].append(processor)
-
-        national_demand = self.facility_manager.demand
-        for product_type, total_demand in national_demand.items():
-            processors_for_product = processor_by_output.get(product_type, [])
-            if processors_for_product:
-                demand_per_processor = total_demand / len(processors_for_product)
-                print(f"Distributing {product_type} demand {total_demand} among {len(processors_for_product)} processors")
-                for processor in processors_for_product:
-                    processor.demand += demand_per_processor
-                    print(f"Assigned {demand_per_processor:.2f} m³ {product_type} demand to {processor.name}")
-
     def _handle_initialization_error(self, error: ValueError) -> None:
         """Handle entity initialization errors with detailed debugging"""
         print(f"Error loading entities: {str(error)}")
@@ -208,9 +182,6 @@ class SimulationManager:
                 self.state.treatment_operators,
             )
         )
-
-        # Start demand satisfaction checking
-        self.env.process(self._check_demand_satisfaction())
 
         # Start weekly market consumption of finished goods
         self.env.process(self._market_consumption_process())
@@ -260,13 +231,8 @@ class SimulationManager:
             'entity_status_history': self.waste_monitor.get_entity_status_history,
             'final_summary': {
                 'simulation_time': self.env.now,
-                'total_products': self.state.total_products,
-                'target_demands': self.state.target_demands,
-                'unmet_demands': self.state.get_unmet_demands(),
-                # Continuous market-consumption metrics (ADR 0002). These
-                # supersede the ceiling-based service level derived from
-                # total_products/target_demands above, which is removed in
-                # Phase F.
+                # Continuous market-consumption metrics (ADR 0002) -- the sole
+                # service-level surface now that the demand ceiling is retired.
                 'full_service_level': self.state.full_service_level,
                 'operational_service_level': self.state.operational_service_level,
                 'total_attempted_consumption': self.state.total_attempted_consumption,
@@ -275,19 +241,10 @@ class SimulationManager:
                 'stockout_lost': self.state.stockout_lost,
                 'consumption_service_by_product': {
                     product: self.state.service_level(product=product, kind="full")
-                    for product in self.state.target_demands
+                    for product in self.facility_manager.demand
                 },
             }
         }
-
-    def _check_demand_satisfaction(self):
-        """Monitor and report when all demands are satisfied"""
-        demands_met = False
-        while True:
-            if self.state.check_all_demands_met() and not demands_met:
-                demands_met = True
-                self._print_demand_status()
-            yield self.env.timeout(1)
 
     def _seasonal_factor(self, current_time: float) -> float:
         """Seasonal demand multiplier, aligned with waste-generation seasonality.
@@ -378,26 +335,17 @@ class SimulationManager:
                         source_type="market",
                     )
 
-    def _print_demand_status(self):
-        """Print current demand satisfaction status"""
-        print(f"\n=== All product demands have been met at time {self.env.now}! ===")
-        print("Current production vs targets:")
-        for product, amount in self.state.total_products.items():
-            target = self.state.target_demands[product]
-            print(f"- {product}: {amount:.2f}/{target:.2f} m³")
-
     def _print_final_status(self):
-        """Print final simulation results"""
+        """Print final simulation results (continuous market-consumption model)."""
         print(f"\n=== Simulation Complete (Time: {self.env.now}) ===")
-        print("Final Production Status:")
-        
-        unmet = self.state.get_unmet_demands()
-        if any(demand > 0 for demand in unmet.values()):
-            print("Some demands were not met:")
-            for product, remaining in unmet.items():
-                if remaining > 0:
-                    target = self.state.target_demands[product]
-                    achieved = self.state.total_products[product]
-                    print(f"- {product}: {achieved:.2f}/{target:.2f} m³ (remaining: {remaining:.2f} m³)")
-        else:
-            print("All demands were successfully met!")
+        full = self.state.full_service_level
+        operational = self.state.operational_service_level
+        full_str = f"{full * 100:.2f}%" if full is not None else "n/a"
+        operational_str = (
+            f"{operational * 100:.2f}%" if operational is not None else "n/a"
+        )
+        print(
+            f"Service level -- full: {full_str}, operational: {operational_str} "
+            f"(consumed {self.state.total_consumed:.2f} / "
+            f"attempted {self.state.total_attempted_consumption:.2f} m³)"
+        )

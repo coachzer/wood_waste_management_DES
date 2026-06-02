@@ -1,9 +1,5 @@
 from typing import Optional
-from utils.helpers import load_json
 from models import regional_tracker
-
-# Load demand data
-_demand_data = load_json("data/demand.json")
 
 
 class SimulationState:
@@ -21,13 +17,6 @@ class SimulationState:
             cls._instance.transport_flows = []
             # Initialize regional waste tracker
             cls._instance.waste_tracker = regional_tracker.RegionalWasteTracker()
-            # Initialize product tracking with values from demand.json
-            demand = _demand_data["national_demand"]
-            cls._instance.total_products = {
-                'mdf': 0,
-                'particle_board': 0,
-                'osb': 0
-            }
             # Finished goods removed from inventory without consumption (mass-balance
             # discard term, ADR 0002 Phase E.5). Zero by construction -- the
             # partial-batch headroom clamp leaves no discard path; the counter
@@ -36,17 +25,6 @@ class SimulationState:
                 'mdf': 0.0,
                 'particle_board': 0.0,
                 'osb': 0.0
-            }
-            cls._instance.target_demands = {
-                'mdf': demand["mdf"],
-                'particle_board': demand["particle_board"],
-                'osb': demand["osb"]
-            }
-            # Track when each demand was met
-            cls._instance.demand_met_times = {
-                'mdf': None,
-                'particle_board': None,
-                'osb': None
             }
             # Market consumption event log (demand-as-consumption model, ADR 0002)
             cls._instance.consumption_events = []
@@ -106,32 +84,6 @@ class SimulationState:
             print(f"Warning: Could not get regional stats - {str(e)}")
             return {}
             
-    def track_product_production(self, product_type: str, amount: float, current_time: float = None) -> None:
-        """Track production of final products"""
-        if product_type in self.total_products:
-            self.total_products[product_type] += amount
-            target = self.target_demands[product_type]
-            print(f"- {product_type}: {self.total_products[product_type]:.2f}/{target:.2f} m³")
-            
-            # Check if this production met the demand
-            if current_time is not None and self.demand_met_times[product_type] is None:
-                if self.total_products[product_type] >= self.target_demands[product_type]:
-                    self.demand_met_times[product_type] = current_time
-            
-    def check_all_demands_met(self) -> bool:
-        """Check if all product demands have been met"""
-        return all(
-            self.total_products[product] >= demand 
-            for product, demand in self.target_demands.items()
-        )
-        
-    def get_unmet_demands(self) -> dict:
-        """Get dictionary of unmet demands for each product"""
-        return {
-            product: max(0, demand - self.total_products[product])
-            for product, demand in self.target_demands.items()
-        }
-
     def record_consumption_event(self, operator_name: str, product: str,
                                  attempted: float, consumed: float,
                                  reason: str = None, timestamp: float = None) -> None:
@@ -232,27 +184,10 @@ class SimulationState:
         self.treatment_operators = []
         self.transport_flows = []
         self.waste_tracker = regional_tracker.RegionalWasteTracker()
-        demand = _demand_data["national_demand"]
-        self.total_products = {
-            'mdf': 0,
-            'particle_board': 0,
-            'osb': 0
-        }
         self.production_discarded = {
             'mdf': 0.0,
             'particle_board': 0.0,
             'osb': 0.0
-        }
-        self.target_demands = {
-            'mdf': demand["mdf"],
-            'particle_board': demand["particle_board"],
-            'osb': demand["osb"]
-        }
-        # Reset demand met times
-        self.demand_met_times = {
-            'mdf': None,
-            'particle_board': None,
-            'osb': None
         }
         # Reset market consumption event log
         self.consumption_events = []
