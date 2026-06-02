@@ -77,22 +77,6 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
                 max_processor_finished_goods_util, float(max(finished_goods_util))
             )
 
-    # Service levels
-    service_level_overall = None
-    service_level_by_product = {}
-    if final_summary:
-        totals = final_summary.get("total_products", {}) or {}
-        targets = final_summary.get("target_demands", {}) or {}
-        total_out = sum(float(v) for v in totals.values())
-        total_target = sum(float(v) for v in targets.values())
-        service_level_overall = (
-            (total_out / total_target * 100.0) if total_target > 0 else None
-        )
-        for product_name, target_volume in targets.items():
-            produced_volume = float(totals.get(product_name, 0.0))
-            target_value = float(target_volume)
-            service_level_by_product[product_name] = (produced_volume / target_value * 100.0) if target_value > 0 else None
-
     # Continuous market-consumption service levels (ADR 0002). None when no
     # consumption was attempted (undefined, not zero); fractions -> percent.
     def _pct(fraction):
@@ -117,8 +101,6 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         "max_collector_util_pct": max_collector_util,
         "max_processor_waste_util_pct": max_processor_waste_util,
         "max_processor_finished_goods_util_pct": max_processor_finished_goods_util,
-        "service_level_overall_pct": service_level_overall,
-        "service_level_by_product": service_level_by_product,
         "service_level_full_pct": service_level_full,
         "service_level_operational_pct": service_level_operational,
         "service_level_full_by_product_pct": service_level_full_by_product,

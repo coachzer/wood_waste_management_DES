@@ -189,7 +189,6 @@ def _write_combo_summary(csv_path: Path, kpis_list: list[dict]) -> None:
         "max_collector_util_pct",
         "max_processor_waste_util_pct",
         "max_processor_finished_goods_util_pct",
-        "service_level_overall_pct",
         "service_level_full_pct",
         "service_level_operational_pct",
         "total_attempted_m3",

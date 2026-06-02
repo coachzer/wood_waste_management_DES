@@ -200,21 +200,11 @@ class WasteMonitor:
             },
             "products": {
                 "total": [],
-                "by_type": {ptype: [] for ptype in product_types},
                 "quality": [],
-                "unmet_by_type": {ptype: [] for ptype in product_types},
-                "coverage_ratio_by_type": {ptype: [] for ptype in product_types},
-                "met_event_timestamps_by_type": {ptype: [] for ptype in product_types},
-                "unmet_event_timestamps_by_type": {
-                    ptype: [] for ptype in product_types
-                },
-                "first_met_timestamp_by_type": dict.fromkeys(product_types, None),
             },
             "operational": {
                 "energy_consumption": [],
                 "conversion_rate": [],
-                "demand": [],
-                "demand_satisfaction": [],
                 "energy_costs": [],
                 "processing_costs": [],
                 "total_costs": [],
@@ -439,10 +429,6 @@ class WasteMonitor:
         """Track operational metrics"""
         history["operational"]["energy_consumption"].append(treatment.energy_consumption)
         history["operational"]["conversion_rate"].append(treatment.conversion_rate)
-        history["operational"]["demand"].append(treatment.demand)
-        history["operational"]["demand_satisfaction"].append(
-            min(1.0, total_processed / treatment.demand) if treatment.demand > 0 else 1.0
-        )
 
     def _track_product_metrics(self, treatment, history, timestamp):
         """Track product-related metrics"""
@@ -452,73 +438,8 @@ class WasteMonitor:
             total_products = sum(treatment.product_volumes.get(ptype, 0) for ptype in product_types)
         history["products"]["total"].append(total_products)
 
-        self._track_production_history(treatment, history, timestamp)
         quality = getattr(treatment, 'product_quality', 1.0)
         history["products"]["quality"].append(quality)
-
-        state = SimulationState.get_instance()
-        unmet = state.get_unmet_demands() if state else {}
-
-        pts_by_key = {}
-        for out_enum, qty in treatment.finished_goods.current_storage.items():
-            pts_by_key[out_enum.value] = qty
-
-        for ptype in product_types:
-            current_unmet = max(unmet.get(ptype, 0.0), 0.0)
-            if ptype not in history["products"]["unmet_by_type"]:
-                history["products"]["unmet_by_type"][ptype] = []
-            history["products"]["unmet_by_type"][ptype].append(current_unmet)
-
-            current_pts = pts_by_key.get(ptype, 0.0)
-            ratio = (current_pts / current_unmet) if current_unmet > 0 else None
-            if ptype not in history["products"]["coverage_ratio_by_type"]:
-                history["products"]["coverage_ratio_by_type"][ptype] = []
-            history["products"]["coverage_ratio_by_type"][ptype].append(ratio)
-
-            prev_unmet = None
-            prev_series = history["products"]["unmet_by_type"][ptype]
-            if len(prev_series) >= 2:
-                prev_unmet = prev_series[-2]
-
-            if prev_unmet is not None:
-                if prev_unmet > 0 and current_unmet <= 0:
-                    history["products"]["met_event_timestamps_by_type"][ptype].append(
-                        timestamp
-                    )
-                    if (
-                        history["products"]["first_met_timestamp_by_type"].get(ptype)
-                        is None
-                    ):
-                        history["products"]["first_met_timestamp_by_type"][
-                            ptype
-                        ] = timestamp
-                elif (prev_unmet <= 0) and (current_unmet > 0):
-                    history["products"]["unmet_event_timestamps_by_type"][ptype].append(
-                        timestamp
-                    )
-
-    def get_demand_met_times_for_treatment(self, treatment_name: str) -> dict:
-        hist = self.processing_history.get(treatment_name)
-        if not hist:
-            return {}
-        return {
-            "first_met": hist["products"]["first_met_timestamp_by_type"],
-            "all_met_events": hist["products"]["met_event_timestamps_by_type"],
-            "unmet_events": hist["products"]["unmet_event_timestamps_by_type"],
-        }
-
-    def _track_production_history(self, treatment, history, timestamp):
-        """Track detailed production history"""
-        product_types = self._get_product_types()
-        if hasattr(treatment, 'production_history'):
-            current_totals = dict.fromkeys(product_types, 0)
-            for t, product_type, amount in treatment.production_history:
-                if t <= timestamp and product_type in current_totals:
-                    current_totals[product_type] += amount
-            for product_type, total in current_totals.items():
-                if product_type not in history["products"]["by_type"]:
-                    history["products"]["by_type"][product_type] = []
-                history["products"]["by_type"][product_type].append(total)
 
     def _get_product_types(self):
         """Load product types from demand.json"""
@@ -578,6 +499,3 @@ class WasteMonitor:
                 report.append(f"- Total waste processed: {total_processed:.2f} m³")
             if history["storage"]["utilization"]:
                 report.append(f"- Current storage utilization: {history['storage']['utilization'][-1]:.1f}%")
-            if history["operational"]["demand_satisfaction"]:
-                satisfaction_rate = history["operational"]["demand_satisfaction"][-1] * 100
-                report.append(f"- Current demand satisfaction rate: {satisfaction_rate:.1f}%")

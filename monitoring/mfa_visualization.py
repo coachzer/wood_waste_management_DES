@@ -41,13 +41,19 @@ def _get_treatment_volumes(processing_history: Dict) -> Dict:
     return treatment_volumes
 
 def _get_product_volumes() -> Dict:
-    """Get product volumes from simulation state"""
+    """Sum true per-operator product output (m³) across treatment operators.
+
+    Sourced from each operator's ``product_volumes`` -- the real cumulative
+    output counters -- rather than the retired demand-ceiling state, so the
+    Sankey reports actual production with no ceiling cap.
+    """
     state = SimulationState.get_instance()
-    return {
-        "MDF": state.total_products.get("mdf", 0),
-        "Particle Board": state.total_products.get("particle_board", 0),
-        "OSB": state.total_products.get("osb", 0)
-    }
+    totals = {"MDF": 0.0, "Particle Board": 0.0, "OSB": 0.0}
+    label_by_key = {"mdf": "MDF", "particle_board": "Particle Board", "osb": "OSB"}
+    for operator in state.treatment_operators:
+        for key, label in label_by_key.items():
+            totals[label] += operator.product_volumes.get(key, 0.0)
+    return totals
 
 def get_volumes(generation_history: Dict, collection_history: Dict, processing_history: Dict):
     """Calculate volumes for each stage - now includes all treatment storage types"""
