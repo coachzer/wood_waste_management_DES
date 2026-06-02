@@ -15,6 +15,12 @@ def _sum_last_nested(histories: Dict[str, Any], key: str) -> float:
     return total
 
 
+def _sum_series(series: Any) -> float:
+    # Cost series hold the cost incurred per tracking step (not a running
+    # cumulative), so the entity total is the sum over the whole series.
+    return float(sum(series)) if isinstance(series, list) else 0.0
+
+
 def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
     gen_hist = monitor_data.get("generation_history", {})
     col_hist = monitor_data.get("collection_history", {})
@@ -54,6 +60,23 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         series = hist.get("total_impact", [])
         if isinstance(series, list) and series:
             total_emissions += float(series[-1])
+
+    # System cost (section 4.4): total system cost across collection/transport,
+    # processing, and storage. Each entity's per-step total_costs series is
+    # summed; the three component totals add to total_system_cost.
+    collection_transport_cost = sum(
+        _sum_series(hist.get("total_costs")) for hist in col_hist.values()
+    )
+    processing_cost = sum(
+        _sum_series(hist.get("operational", {}).get("total_costs"))
+        for hist in proc_hist.values()
+    )
+    storage_overflow_cost = _sum_series(
+        evt_hist.get("system_events", {}).get("total_costs")
+    )
+    total_system_cost = (
+        collection_transport_cost + processing_cost + storage_overflow_cost
+    )
 
     # Storage utilizations
     max_collector_util = 0.0
@@ -98,6 +121,10 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         "overall_efficiency_pct": overall_eff,
         "landfill_volume_m3": landfill_volume,
         "total_emissions_kgco2e": total_emissions,
+        "collection_transport_cost": collection_transport_cost,
+        "processing_cost": processing_cost,
+        "storage_overflow_cost": storage_overflow_cost,
+        "total_system_cost": total_system_cost,
         "max_collector_util_pct": max_collector_util,
         "max_processor_waste_util_pct": max_processor_waste_util,
         "max_processor_finished_goods_util_pct": max_processor_finished_goods_util,
