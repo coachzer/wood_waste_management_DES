@@ -13,6 +13,7 @@ from models.data_classes import Vehicle, CollectionCenter, OperationalEntity
 from models.distances import REGION_COORDINATES, get_distance, get_closest_regions
 from utils.capacity_utils import handle_storage_event, check_storage_capacity
 from core.kanban_manager import KanbanManager
+from core.strategies import build_stock_strategy, build_inventory_policy
 
 class CollectorCompany(OperationalEntity):
     """A company that collects waste from generators"""
@@ -54,6 +55,8 @@ class CollectorCompany(OperationalEntity):
         kanban_manager: KanbanManager = None,
         inventory_policy: InventoryPolicy = None,
         stock_strategy: StockStrategy = None,
+        stock_strategy_behavior = None,
+        inventory_policy_behavior = None,
         transport_manager: PointToPointTransport = None,
         state = None,
         failure_config = None,
@@ -73,6 +76,8 @@ class CollectorCompany(OperationalEntity):
         self.state = state
         self.inventory_policy = inventory_policy
         self.stock_strategy = stock_strategy
+        self.stock_strategy_behavior = stock_strategy_behavior or build_stock_strategy(stock_strategy)
+        self.inventory_policy_behavior = inventory_policy_behavior or build_inventory_policy(inventory_policy)
         self.transport_manager = transport_manager or PointToPointTransport()
         self.initial_collection_capacity = collection_capacity
         self.collection_capacity = collection_capacity
@@ -348,11 +353,14 @@ class CollectorCompany(OperationalEntity):
             self.collection_capacity = max(10, self.initial_collection_capacity * self.efficiency)
             self.transport_cost = min(100, self.initial_transport_cost * (2 - self.efficiency))
 
-            base_timeout = self.collection_frequency
-            if self.inventory_policy == InventoryPolicy.PULL and self.kanban_manager.get_signals(self.env.now):
-                timeout = base_timeout
-            else:
-                timeout = base_timeout + self.rng.uniform(1, 4)
+            # PULL with pending signals skips the jitter draw; the signal read is
+            # a callable because ``get_signals`` prunes stale signals as a side
+            # effect and PUSH must not trigger it (it short-circuited before).
+            timeout = self.inventory_policy_behavior.collection_timeout(
+                base_timeout=self.collection_frequency,
+                has_signals_fn=lambda: bool(self.kanban_manager.get_signals(self.env.now)),
+                rng=self.rng,
+            )
 
             yield self.env.timeout(timeout)
 
@@ -363,7 +371,7 @@ class CollectorCompany(OperationalEntity):
                 s for s in self.kanban_manager.get_signals(self.env.now)
                 if s.get('source_type') != "market"
             ]
-            if kanban_signals and self.inventory_policy == InventoryPolicy.PULL:
+            if self.inventory_policy_behavior.should_process_kanban_signals(kanban_signals):
                 self._process_kanban_signals(kanban_signals)
             else:
                 # Regular collection based on policy
@@ -459,31 +467,18 @@ class CollectorCompany(OperationalEntity):
             )
 
     def should_collect(self) -> bool:
-        utilization = self._calculate_utilization()
-
-        if self.inventory_policy == InventoryPolicy.PUSH:
-            base_threshold = self._get_adaptive_threshold()
-            push_threshold = min(0.80, base_threshold + 0.10)  # +10% buffer for PUSH
-            should = utilization < push_threshold
-            return should
-
-        elif self.inventory_policy == InventoryPolicy.PULL:
-            # Market signals are downstream demand for treatment, not collection
-            # requests (ADR 0002, Phase E); they must not trigger collection.
-            signals = [
+        # The non-market signal read is wrapped in a callable because
+        # ``get_signals`` prunes stale signals as a side effect: only the PULL
+        # path consulted it, so PUSH must not trigger it. The adaptive threshold
+        # is pure, so computing it eagerly is observationally identical.
+        return self.inventory_policy_behavior.collector_should_collect(
+            utilization=self._calculate_utilization(),
+            adaptive_threshold=self.stock_strategy_behavior.collector_adaptive_threshold(self.env.now),
+            non_market_signals_fn=lambda: [
                 s for s in self.kanban_manager.get_signals(self.env.now)
                 if s.get('source_type') != "market"
-            ]
-            if signals:
-                return True
-
-            # PULL uses much lower thresholds
-            base_threshold = self._get_adaptive_threshold()
-            pull_threshold = max(0.15, base_threshold - 0.15)  # -15% for lean operation
-            should = utilization < pull_threshold
-            return should
-
-        return False
+            ],
+        )
 
     def transfer_waste_to_region(self, waste_type: WasteType, volume: float, destination: RegionType) -> bool:
         """Updated method using point-to-point transport"""
@@ -689,21 +684,6 @@ class CollectorCompany(OperationalEntity):
 
         return active_streams
 
-    def _get_adaptive_threshold(self) -> float:
-        """Get adaptive threshold that increases over time for ON_DEMAND"""
-        base_time = self.env.now
-        match self.stock_strategy:
-            case StockStrategy.ON_DEMAND:
-                # Gradually increase threshold over time to trigger more collections
-                time_factor = min(0.3, base_time * 0.001)  # Caps at 30%
-                return 0.10 + time_factor  # Start at 10%, grow to 40%
-            case StockStrategy.REORDER_50:
-                return 0.50
-            case StockStrategy.REORDER_90:
-                return 0.90
-            case _:
-                raise ValueError(f"Unknown StockStrategy: {self.stock_strategy}")
-
     def _calculate_utilization(self) -> float:
         """Calculate storage utilization percentage"""
         storage_dict = self.collection_center.current_storage
@@ -717,111 +697,9 @@ class CollectorCompany(OperationalEntity):
     ) -> float:
         """Calculate efficiency multiplier based on policy and strategy"""
         base_degradation = max(0.5, 1.0 - (base_time * 0.0005))
-
-        if self.inventory_policy == InventoryPolicy.PUSH:
-            return self._calculate_push_efficiency(utilization, base_degradation)
-        elif self.inventory_policy == InventoryPolicy.PULL:
-            return self._calculate_pull_efficiency(
-                utilization, kanban_signals, base_degradation
-            )
-
-        return base_degradation
-
-    def _calculate_push_efficiency(self, utilization: float, base: float) -> float:
-        """Calculate efficiency for PUSH policies with smooth curves"""
-
-        utilization = max(0.0, min(1.0, utilization))
-
-        match self.stock_strategy:
-            case StockStrategy.REORDER_90:
-                # Sweet spot around 85% utilization (80-90% range)
-                if 0.8 <= utilization <= 0.9:
-                    return base * 1.05  # Optimal efficiency
-                else:
-                    # Smooth degradation away from sweet spot
-                    distance_from_optimal = abs(utilization - 0.85)
-                    penalty = min(0.3, distance_from_optimal * 0.5)  # Max 30% penalty
-                    return base * (1.0 - penalty)
-
-            case StockStrategy.REORDER_50:
-                # 50% strategy prefers moderate utilization (30-70% range)
-                if 0.3 <= utilization <= 0.7:
-                    return base * 1.0  # Normal efficiency
-                elif utilization < 0.3:
-                    # Penalty for underutilization
-                    underutilization_penalty = (
-                        0.3 - utilization
-                    ) * 0.2  # Up to 6% penalty
-                    return base * (1.0 - underutilization_penalty)
-                else:
-                    # Penalty for overutilization
-                    overutilization_penalty = (
-                        utilization - 0.7
-                    ) * 0.15  # Up to 4.5% penalty
-                    return base * (1.0 - overutilization_penalty)
-
-            case StockStrategy.ON_DEMAND:
-                # ON_DEMAND efficiency depends more on responsiveness than utilization
-                if utilization < 0.1:
-                    return base * 1.05  # Slight bonus for staying lean
-                elif utilization > 0.8:
-                    return base * 0.95  # Penalty for accumulating too much
-                else:
-                    return base
-
-            case _:
-                raise ValueError(f"Unknown StockStrategy: {self.stock_strategy}")
-
-    def _calculate_pull_efficiency(
-        self, utilization: float, signals: int, base: float
-    ) -> float:
-        """Calculate efficiency for PULL policies with signal responsiveness"""
-
-        # Clamp utilization and signals to reasonable ranges
-        utilization = max(0.0, min(1.0, utilization))
-        signals = max(0, signals)
-
-        match self.stock_strategy:
-            case StockStrategy.ON_DEMAND:
-                if signals == 0:
-                    # No demand - minor efficiency loss (idle resources)
-                    return base * 0.98
-                else:
-                    # More signals = better utilization of ON_DEMAND capabilities
-                    signal_boost = min(
-                        0.15, signals * 0.02
-                    )  # Up to 15% efficiency gain
-
-                    # Only physical constraints should limit efficiency
-                    if utilization > 0.95:  # Very close to physical limits
-                        strain = (utilization - 0.95) * 2.0  # Max 10% penalty at 100%
-                        return base * (1.0 + signal_boost) * (1.0 - strain)
-                    else:
-                        return base * (1.0 + signal_boost)
-
-            case StockStrategy.REORDER_90:
-                # 90% reorder with PULL - benefits from signals but maintains buffer
-                signal_bonus = min(0.1, signals * 0.02)  # Up to 10% bonus
-
-                if utilization > 0.5:
-                    buffer_bonus = 1.0  # Good buffer maintained
-                else:
-                    buffer_penalty = (0.5 - utilization) * 0.1  # Penalty for low buffer
-                    buffer_bonus = 1.0 - buffer_penalty
-
-                return base * (1.0 + signal_bonus) * buffer_bonus
-
-            case StockStrategy.REORDER_50:
-                # 50% reorder with PULL - balanced approach
-                if signals > 0 and 0.3 <= utilization <= 0.7:
-                    return base * 1.05  # Sweet spot
-                elif signals == 0:
-                    return base * 0.97  # Slight penalty for no demand signals
-                else:
-                    return base
-
-            case _:
-                return base
+        return self.inventory_policy_behavior.collector_efficiency(
+            self.stock_strategy_behavior, utilization, kanban_signals, base_degradation
+        )
 
     def _get_prioritized_generators(self) -> List:
         """Get generators with 80% volume allocation to same region, 20% to next closest region"""

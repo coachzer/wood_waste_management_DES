@@ -5,6 +5,7 @@ from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, S
 from models.data_classes import WasteStream, OperationalEntity
 from monitoring.waste_monitor import WasteMonitor
 from core.kanban_manager import KanbanManager
+from core.strategies import build_stock_strategy, build_inventory_policy
 from utils.capacity_utils import handle_storage_event
 
 class WasteGenerator(OperationalEntity):
@@ -23,6 +24,8 @@ class WasteGenerator(OperationalEntity):
         waste_monitor: Optional[WasteMonitor] = None,
         stock_strategy: StockStrategy = None,
         inventory_policy: InventoryPolicy = None,
+        stock_strategy_behavior = None,
+        inventory_policy_behavior = None,
         kanban_manager = None,
         state = None,
         failure_config = None,
@@ -39,6 +42,8 @@ class WasteGenerator(OperationalEntity):
         self.facility_type = "generator"
         self.stock_strategy = stock_strategy
         self.inventory_policy = inventory_policy
+        self.stock_strategy_behavior = stock_strategy_behavior or build_stock_strategy(stock_strategy)
+        self.inventory_policy_behavior = inventory_policy_behavior or build_inventory_policy(inventory_policy)
         if initial_stock:
             total_initial = sum(initial_stock.values())
             if total_initial > waste_storage_capacity:
@@ -161,28 +166,16 @@ class WasteGenerator(OperationalEntity):
     def _handle_inventory_signaling(self, current_time):
         """Signal for collection based on stock strategy and current inventory levels"""
 
-        match self.stock_strategy:
-            case StockStrategy.REORDER_90:
-                threshold = self.waste_storage_capacity * 0.9
-                if self.current_storage >= threshold:
-                    self._kanban_signal(current_time)
-
-            case StockStrategy.REORDER_50:
-                threshold = self.waste_storage_capacity * 0.5
-                if self.current_storage >= threshold:
-                    self._kanban_signal(current_time)
-
-            case StockStrategy.ON_DEMAND:
-                # For PULL ON_DEMAND: Only signal if we have waste AND there are active signals from downstream
-                if self.inventory_policy == InventoryPolicy.PULL:
-                    # Check if we have downstream demand signals
-                    active_signals = self.kanban_manager.get_signals(current_time)
-                    if active_signals and self.current_storage > 0:
-                        self._kanban_signal(current_time)
-                else:
-                    # For PUSH ON_DEMAND: Signal when we have substantial waste
-                    if self.current_storage > self.waste_storage_capacity * 0.1:
-                        self._kanban_signal(current_time)
+        # The downstream-signal read is wrapped in a callable because
+        # ``get_signals`` prunes stale signals as a side effect: only the
+        # PULL ON_DEMAND branch consulted it, so it must not fire on the others.
+        if self.stock_strategy_behavior.generator_should_signal(
+            current_storage=self.current_storage,
+            capacity=self.waste_storage_capacity,
+            inventory_policy=self.inventory_policy_behavior,
+            active_signals_fn=lambda: self.kanban_manager.get_signals(current_time),
+        ):
+            self._kanban_signal(current_time)
 
     def _kanban_signal(self, current_time):
         active_waste_types = [

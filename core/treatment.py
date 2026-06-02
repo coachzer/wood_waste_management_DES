@@ -7,14 +7,11 @@ from models.distances import get_distance
 from models.enums import OutputType, RegionType, StockStrategy, WasteType, EntityStatus
 from monitoring.waste_monitor import WasteMonitor
 from core.kanban_manager import KanbanManager
+from core.strategies import build_stock_strategy, build_inventory_policy
 from models.enums import InventoryPolicy
 from models.products import ProductDataManager
 from utils.capacity_utils import handle_storage_event, check_storage_capacity
-from config.constants import (
-    INITIAL_INVENTORY_FRACTION,
-    PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_50,
-    PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_90,
-)
+from config.constants import INITIAL_INVENTORY_FRACTION
 
 class TreatmentOperator(OperationalEntity):
     """Treatment operator that processes waste into products"""
@@ -40,6 +37,8 @@ class TreatmentOperator(OperationalEntity):
         scenario_config=None,
         stock_strategy: StockStrategy = None,
         inventory_policy: InventoryPolicy = None,
+        stock_strategy_behavior = None,
+        inventory_policy_behavior = None,
         transport_manager: Optional[PointToPointTransport] = None,
         state = None,
         abc_demand_config_path: str = "data/demand.json",
@@ -64,6 +63,9 @@ class TreatmentOperator(OperationalEntity):
             raise ValueError("inventory_policy must be provided")
         if self.stock_strategy is None:
             raise ValueError("stock_strategy must be provided")
+
+        self.stock_strategy_behavior = stock_strategy_behavior or build_stock_strategy(stock_strategy)
+        self.inventory_policy_behavior = inventory_policy_behavior or build_inventory_policy(inventory_policy)
 
         self.kanban_manager = kanban_manager or KanbanManager()
         self.transport_manager = transport_manager or PointToPointTransport()
@@ -205,26 +207,9 @@ class TreatmentOperator(OperationalEntity):
         Detached from the legacy ``unmet_demands`` ceiling.
         """
         current_total = sum(self.waste_storage.values())
-
-        match self.stock_strategy:
-            case StockStrategy.ON_DEMAND:
-                return current_total < self.waste_storage_capacity
-
-            case StockStrategy.REORDER_50:
-                reorder_point = (
-                    self.waste_storage_capacity
-                    * PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_50
-                )
-                return current_total < reorder_point
-
-            case StockStrategy.REORDER_90:
-                reorder_point = (
-                    self.waste_storage_capacity
-                    * PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_90
-                )
-                return current_total < reorder_point
-
-        return True
+        return self.stock_strategy_behavior.treatment_should_reorder(
+            current_total, self.waste_storage_capacity
+        )
 
     def _get_reorder_quantity(self) -> float:
         """Order quantity for PUSH collection: top up to full capacity.
@@ -239,53 +224,25 @@ class TreatmentOperator(OperationalEntity):
         return max(0.0, self.waste_storage_capacity - current_total)
 
     def schedule_collection_requests(self):
-        """Transport-safe PUSH vs PULL with startup protection"""
-        while True:
-            current_time = self.env.now
-
-            match self.inventory_policy:
-                case InventoryPolicy.PUSH:
-                    yield from self._push_collection_logic()
-                case InventoryPolicy.PULL:
-                    yield from self._pull_collection_logic(current_time)
-                case _:
-                    yield self.env.timeout(7)
-
-    def _push_collection_logic(self):
-        """PUSH: collect on waste-state polling, ordering up to full capacity.
+        """Strategy-aware (s, S) collection polling (ADR 0002, signal-volume rule).
 
         Triggers when waste storage drops below the strategy threshold ``s`` and
         orders the (s, S) signal volume (gap to full capacity), detached from the
-        legacy ``unmet_demands`` ceiling (ADR 0002, signal-volume rule). The
-        volume is passed explicitly to ``trigger_collection``.
+        legacy ``unmet_demands`` ceiling. PULL additionally cascades the demand
+        upstream through the kanban signals before collecting -- the one
+        behavioral difference between the policies, which the policy owns.
         """
-        if not self._should_trigger_collection_based_on_strategy():
+        while True:
+            current_time = self.env.now
+
+            if self._should_trigger_collection_based_on_strategy():
+                signal_volume = self._get_reorder_quantity()
+                if signal_volume > 0:
+                    if self.inventory_policy_behavior.propagates_reorder_signals_upstream():
+                        self._create_reorder_signals(signal_volume, current_time)
+                    self.trigger_collection(explicit_collection_volume=signal_volume)
+
             yield self.env.timeout(self.processing_time)
-            return
-
-        signal_volume = self._get_reorder_quantity()
-
-        if signal_volume > 0:
-            self.trigger_collection(explicit_collection_volume=signal_volume)
-
-        yield self.env.timeout(self.processing_time)
-
-    def _pull_collection_logic(self, current_time):
-        """PULL: strategy-aware (s, S) upstream replenishment (ADR 0002, Phase E).
-
-        Mirrors the PUSH (s, S) rule -- order up to full capacity when waste
-        storage drops below the strategy threshold -- but additionally
-        propagates the demand upstream through the kanban cascade, which PUSH
-        deliberately does not do. The ingest volume is passed explicitly so
-        collection is bounded by the (s, S) gap.
-        """
-        if self._should_trigger_collection_based_on_strategy():
-            signal_volume = self._get_reorder_quantity()
-            if signal_volume > 0:
-                self._create_reorder_signals(signal_volume, current_time)
-                self.trigger_collection(explicit_collection_volume=signal_volume)
-
-        yield self.env.timeout(self.processing_time)
 
     def _create_collection_signal(
         self, waste_type: WasteType, volume: float, timestamp: float
@@ -468,7 +425,7 @@ class TreatmentOperator(OperationalEntity):
             # PUSH produces autonomously from available waste (supply-driven);
             # PULL produces only in response to downstream consumption events
             # (demand-driven). ADR 0002, Phase E.
-            if self.inventory_policy == InventoryPolicy.PULL:
+            if self.inventory_policy_behavior.treatment_is_demand_driven():
                 self._produce_for_consumption_events(current_time)
             else:
                 self._process_available_waste()

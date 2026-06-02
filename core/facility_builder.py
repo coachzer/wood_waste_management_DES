@@ -6,6 +6,7 @@ from models.data_classes import OperationalEntity, WasteTransformation
 from core.generator import WasteGenerator
 from core.collector import CollectorCompany
 from core.treatment import TreatmentOperator
+from core.strategies import build_stock_strategy, build_inventory_policy
 from monitoring.waste_monitor import WasteMonitor
 from utils.unit_conversion import convert_generation_rates_to_volume
 from config.constants import (
@@ -68,7 +69,7 @@ class FacilityBuilder:
 
         if inventory_policy is None:
             raise SystemExit(f"Error: No inventory policy specified for generator {gen_data.id}")
-        
+
         facilities['WasteGenerator'] += 1
         [child_seed] = self.seed_sequence.spawn(1)
 
@@ -86,6 +87,8 @@ class FacilityBuilder:
             waste_monitor=self.waste_monitor,
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
+            stock_strategy_behavior=build_stock_strategy(stock_strategy),
+            inventory_policy_behavior=build_inventory_policy(inventory_policy),
             kanban_manager=self.kanban_manager,
             state=self.state,
             failure_config=self.uncertainty_set.generator_failure if self.uncertainty_set else None,
@@ -126,6 +129,8 @@ class FacilityBuilder:
             uncertainty_set=self.uncertainty_set,
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
+            stock_strategy_behavior=build_stock_strategy(stock_strategy),
+            inventory_policy_behavior=build_inventory_policy(inventory_policy),
             transport_manager=self.transport_manager,
             kanban_manager=self.kanban_manager,
             state=self.state,
@@ -178,6 +183,8 @@ class FacilityBuilder:
             scenario_config=self.uncertainty_set,
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
+            stock_strategy_behavior=build_stock_strategy(stock_strategy),
+            inventory_policy_behavior=build_inventory_policy(inventory_policy),
             transport_manager=self.transport_manager,
             kanban_manager=self.kanban_manager,
             state=self.state,
