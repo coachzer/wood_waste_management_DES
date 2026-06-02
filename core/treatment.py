@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from core.abc_analysis import BiogenicCarbonABCAnalyzer
 from core.transport_manager import PointToPointTransport, TransportPriority, TransportRequest
 from models.data_classes import WasteTransformation, OperationalEntity, ProductStorage
@@ -308,7 +308,9 @@ class TreatmentOperator(OperationalEntity):
         NOTE: `priority` is accepted but not yet propagated -- see
         .scratch/kanban-priority-wiring/. Do not delete the parameter.
         """
-        input_waste_types = {key[0] for key in self.transformations.keys()}
+        input_waste_types = sorted(
+            {key[0] for key in self.transformations.keys()}, key=lambda w: w.value
+        )
 
         if not input_waste_types:
             return
@@ -648,7 +650,7 @@ class TreatmentOperator(OperationalEntity):
         if len(self.utilization_history) > self.utilization_window:
             self.utilization_history.pop(0)
 
-    def request_waste_directly(self, required_waste: float, input_waste_types: set) -> Dict[WasteType, float]:
+    def request_waste_directly(self, required_waste: float, input_waste_types: List[WasteType]) -> Dict[WasteType, float]:
         """Request waste with local/cross-region routing split"""
         from config.constants import LOCAL_COLLECTION_RATIO
         collected_waste = {}
@@ -668,7 +670,7 @@ class TreatmentOperator(OperationalEntity):
 
         return collected_waste
 
-    def _collect_from_local(self, amount_to_collect: float, waste_types: set, collected_waste: dict) -> float:
+    def _collect_from_local(self, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
         """Collect waste from local collectors."""
         state = SimulationState.get_instance()
         local_collectors = [c for c in state.collectors if c.region_type == self.region_type and c.availability]
@@ -684,7 +686,7 @@ class TreatmentOperator(OperationalEntity):
                 remaining -= amount
         return remaining
 
-    def _collect_from_cross_region(self, amount_to_collect: float, waste_types: set, collected_waste: dict) -> float:
+    def _collect_from_cross_region(self, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
         """Collect waste from cross-region collectors via transport."""
         if amount_to_collect <= 0: return 0.0
 
@@ -702,7 +704,7 @@ class TreatmentOperator(OperationalEntity):
                 remaining -= amount
         return remaining
 
-    def _collect_with_fallback(self, amount_to_collect: float, waste_types: set, collected_waste: dict) -> float:
+    def _collect_with_fallback(self, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
         """Collect waste from any available collector as a fallback."""
         state = SimulationState.get_instance()
         all_collectors = [c for c in state.collectors if c.availability]
@@ -716,7 +718,7 @@ class TreatmentOperator(OperationalEntity):
                 remaining -= amount
         return remaining
 
-    def _request_via_transport(self, collector, amount: float, waste_types: set) -> Dict[WasteType, float]:
+    def _request_via_transport(self, collector, amount: float, waste_types: List[WasteType]) -> Dict[WasteType, float]:
         """Request waste via transport system"""
 
         available_waste = self._get_available_waste_from_collector(collector, amount, waste_types)
@@ -737,7 +739,7 @@ class TreatmentOperator(OperationalEntity):
 
         return transported_waste
 
-    def _get_available_waste_from_collector(self, collector, max_amount: float, waste_types: set) -> Dict[WasteType, float]:
+    def _get_available_waste_from_collector(self, collector, max_amount: float, waste_types: List[WasteType]) -> Dict[WasteType, float]:
         """Check what waste is available from a collector"""
         available_waste = {}
         remaining_capacity = max_amount
@@ -767,7 +769,9 @@ class TreatmentOperator(OperationalEntity):
         if required_waste <= 0:
             return 0, 0
 
-        input_waste_types = {key[0] for key in self.transformations.keys()}
+        input_waste_types = sorted(
+            {key[0] for key in self.transformations.keys()}, key=lambda w: w.value
+        )
 
         collected_waste = self.request_waste_directly(required_waste, input_waste_types)
 

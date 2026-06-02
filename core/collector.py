@@ -592,7 +592,7 @@ class CollectorCompany(OperationalEntity):
 
         return total_cost
 
-    def provide_waste_for_treatment(self, requested_amount: float, needed_types: set) -> Dict[WasteType, float]:
+    def provide_waste_for_treatment(self, requested_amount: float, needed_types: List[WasteType]) -> Dict[WasteType, float]:
 
         provided_waste = {}
         remaining_request = requested_amount

@@ -190,9 +190,10 @@ class FacilityBuilder:
         inventory, so priding them would be meaningless dead stock.
         """
         national_demand = self.facility_manager.demand
-        producible_outputs = {
-            transformation.output_type for transformation in transformations.values()
-        }
+        producible_outputs = sorted(
+            {transformation.output_type for transformation in transformations.values()},
+            key=lambda output_type: output_type.value,
+        )
         return {
             output_type: (
                 market_share
@@ -216,7 +217,10 @@ class FacilityBuilder:
         operator's transformations -- this only shapes the warm-up mix, which
         collection self-corrects within ~2 weeks, so precision is irrelevant.
         """
-        input_types = {transformation.input_type for transformation in transformations.values()}
+        input_types = sorted(
+            {transformation.input_type for transformation in transformations.values()},
+            key=lambda waste_type: waste_type.value,
+        )
         if not input_types:
             return {}
 

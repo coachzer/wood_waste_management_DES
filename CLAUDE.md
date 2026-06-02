@@ -56,7 +56,7 @@ Outputs: `outputs/baseline/{scenario}/{policy}__{strategy}/`. MFA visualizations
 ## Key Conventions
 
 - **Units**: Waste volumes in m³ (converted from tonnes via `utils/unit_conversion.py`). Simulation time in days (0–365).
-- **Seeding**: `random.seed(s)` + `np.random.seed(s)` in `run_single_simulation()`. Per-entity RNGs seeded via `np.random.SeedSequence` propagated `SimulationManager` → `FacilityBuilder` → each entity (deterministic child seed).
+- **Seeding**: `random.seed(s)` + `np.random.seed(s)` in `run_single_simulation()`. Per-entity RNGs seeded via `np.random.SeedSequence` propagated `SimulationManager` → `FacilityBuilder` → each entity (deterministic child seed). Results are reproducible across separate process invocations: a given seed yields byte-identical run JSONs run-to-run. This holds only because every iteration of a `set` of `WasteType`/`OutputType` members on a simulation-affecting path is `sorted(..., key=lambda e: e.value)` — enum members hash by `id()`, which `PYTHONHASHSEED` does not control, so an unsorted set-of-enums iterates in per-process memory order and silently breaks reproducibility. When iterating a set of enums on any path that drives ordered work (collection allocation, signal creation, storage priming), always sort by `.value` first; pass the result as an ordered `List`, never re-wrap it in a `set`.
 - **Waste types**: EWC codes as enum values (e.g., `WasteType.CONSTRUCTION_WOOD_17_02_01 = "17 02 01"`). Transformations keyed by `(WasteType, OutputType)`.
 - **Storage overflow**: Exceeding `waste_storage_capacity` → landfill, tracked in `WasteMonitor`. Treatment can expand (`EXPANSION_SIZE_M3 = 500`).
 - **Region data**: One JSON per region in `data/regions/`. Distances via `models/distances.py::get_distance()`.
