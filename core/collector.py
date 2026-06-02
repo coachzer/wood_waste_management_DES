@@ -8,7 +8,6 @@ from config.constants import (
 )
 from core.transport_manager import PointToPointTransport, TransportPriority, TransportRequest
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
-from models.state import SimulationState
 from monitoring.waste_monitor import WasteMonitor
 from models.data_classes import Vehicle, CollectionCenter, OperationalEntity
 from models.distances import REGION_COORDINATES, get_distance, get_closest_regions
@@ -56,6 +55,7 @@ class CollectorCompany(OperationalEntity):
         inventory_policy: InventoryPolicy = None,
         stock_strategy: StockStrategy = None,
         transport_manager: PointToPointTransport = None,
+        state = None,
         failure_config = None,
         seed = None
     ):
@@ -70,6 +70,7 @@ class CollectorCompany(OperationalEntity):
         self.expansion_count = 0    
         self.waste_types = set(waste_types) if waste_types else set()
         self.kanban_manager = kanban_manager or KanbanManager()
+        self.state = state
         self.inventory_policy = inventory_policy
         self.stock_strategy = stock_strategy
         self.transport_manager = transport_manager or PointToPointTransport()
@@ -244,11 +245,11 @@ class CollectorCompany(OperationalEntity):
             collected_waste[waste_type] = amount
             total_collected += amount
 
-            SimulationState.get_instance().track_remove_waste(
+            self.state.track_remove_waste(
                 generator.region, waste_type, amount
             )
 
-            SimulationState.get_instance().track_transport_flow(
+            self.state.track_transport_flow(
                 source_type="generator",
                 source_name=generator.name,
                 target_type="collector", 
@@ -439,7 +440,7 @@ class CollectorCompany(OperationalEntity):
         """Propagate demand signals upstream to generators"""
         waste_type_enum = signal['waste_type']
 
-        state = SimulationState.get_instance()
+        state = self.state
 
         local_generators = [
             g for g in state.generators
@@ -615,13 +616,13 @@ class CollectorCompany(OperationalEntity):
         target_collector = next(
             (
                 c
-                for c in SimulationState.get_instance().collectors
+                for c in self.state.collectors
                 if c.region_type == transport["vehicle"].current_region
             ),
             None,
         )
         if target_collector:
-            SimulationState.get_instance().track_add_waste(
+            self.state.track_add_waste(
                 target_collector.region,
                 transport["waste_type"],
                 transport["volume"],
@@ -825,7 +826,7 @@ class CollectorCompany(OperationalEntity):
     def _get_prioritized_generators(self) -> List:
         """Get generators with 80% volume allocation to same region, 20% to next closest region"""
 
-        state = SimulationState.get_instance()
+        state = self.state
 
         generators_with_waste = [g for g in state.generators if g.current_storage > 0]
 

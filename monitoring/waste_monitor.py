@@ -3,7 +3,6 @@ import json
 from typing import Dict, Any
 from models.enums import WasteType
 from config.constants import SIMULATION_DURATION
-from models.state import SimulationState
 
 class WasteMonitor:
     """Monitoring system for waste management operations"""

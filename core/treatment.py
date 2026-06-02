@@ -5,7 +5,6 @@ from core.transport_manager import PointToPointTransport, TransportPriority, Tra
 from models.data_classes import WasteTransformation, OperationalEntity, ProductStorage
 from models.distances import get_distance
 from models.enums import OutputType, RegionType, StockStrategy, WasteType, EntityStatus
-from models.state import SimulationState
 from monitoring.waste_monitor import WasteMonitor
 from core.kanban_manager import KanbanManager
 from models.enums import InventoryPolicy
@@ -42,6 +41,7 @@ class TreatmentOperator(OperationalEntity):
         stock_strategy: StockStrategy = None,
         inventory_policy: InventoryPolicy = None,
         transport_manager: Optional[PointToPointTransport] = None,
+        state = None,
         abc_demand_config_path: str = "data/demand.json",
         failure_config = None,
         seed = None
@@ -67,6 +67,7 @@ class TreatmentOperator(OperationalEntity):
 
         self.kanban_manager = kanban_manager or KanbanManager()
         self.transport_manager = transport_manager or PointToPointTransport()
+        self.state = state
         self.env = env
         self.name = name
         self.facility_type = "treatment"
@@ -309,7 +310,7 @@ class TreatmentOperator(OperationalEntity):
 
     def _propagate_signal_to_collectors(self, waste_type, needed_volume, current_time):
         """Propagate signals to collectors with availability checking"""
-        state = SimulationState.get_instance()
+        state = self.state
 
         local_collectors = [
             c for c in state.collectors 
@@ -433,7 +434,7 @@ class TreatmentOperator(OperationalEntity):
         # Ticks land on exact multiples of CONSUMPTION_INTERVAL_DAYS and each
         # signal shares its events' timestamp, so float equality is safe.
         signal_timestamps = {signal["timestamp"] for signal in market_signals}
-        state = SimulationState.get_instance()
+        state = self.state
         targets: Dict[str, float] = {}
         for event in state.consumption_events:
             if event["operator"] == self.name and event["timestamp"] in signal_timestamps:
@@ -626,7 +627,7 @@ class TreatmentOperator(OperationalEntity):
 
     def _collect_from_local(self, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
         """Collect waste from local collectors."""
-        state = SimulationState.get_instance()
+        state = self.state
         local_collectors = [c for c in state.collectors if c.region_type == self.region_type and c.availability]
 
         remaining = amount_to_collect
@@ -644,7 +645,7 @@ class TreatmentOperator(OperationalEntity):
         """Collect waste from cross-region collectors via transport."""
         if amount_to_collect <= 0: return 0.0
 
-        state = SimulationState.get_instance()
+        state = self.state
         remote_collectors = [c for c in state.collectors if c.region_type != self.region_type and c.availability]
         remote_collectors.sort(key=lambda c: get_distance(self.region_type, c.region_type))
 
@@ -660,7 +661,7 @@ class TreatmentOperator(OperationalEntity):
 
     def _collect_with_fallback(self, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
         """Collect waste from any available collector as a fallback."""
-        state = SimulationState.get_instance()
+        state = self.state
         all_collectors = [c for c in state.collectors if c.availability]
 
         remaining = amount_to_collect

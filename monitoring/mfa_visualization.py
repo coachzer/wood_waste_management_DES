@@ -1,6 +1,5 @@
 import plotly.graph_objects as go
 from typing import Dict
-from models.state import SimulationState
 
 
 def format_volume(volume: float) -> str:
@@ -40,14 +39,13 @@ def _get_treatment_volumes(processing_history: Dict) -> Dict:
         treatment_volumes[treatment] = processed[-1] if processed else 0
     return treatment_volumes
 
-def _get_product_volumes() -> Dict:
+def _get_product_volumes(state) -> Dict:
     """Sum true per-operator product output (m³) across treatment operators.
 
     Sourced from each operator's ``product_volumes`` -- the real cumulative
     output counters -- rather than the retired demand-ceiling state, so the
     Sankey reports actual production with no ceiling cap.
     """
-    state = SimulationState.get_instance()
     totals = {"MDF": 0.0, "Particle Board": 0.0, "OSB": 0.0}
     label_by_key = {"mdf": "MDF", "particle_board": "Particle Board", "osb": "OSB"}
     for operator in state.treatment_operators:
@@ -55,13 +53,13 @@ def _get_product_volumes() -> Dict:
             totals[label] += operator.product_volumes.get(key, 0.0)
     return totals
 
-def get_volumes(generation_history: Dict, collection_history: Dict, processing_history: Dict):
+def get_volumes(generation_history: Dict, collection_history: Dict, processing_history: Dict, state):
     """Calculate volumes for each stage - now includes all treatment storage types"""
     return (
         _get_generator_volumes(generation_history),
-        _get_collector_volumes(collection_history), 
+        _get_collector_volumes(collection_history),
         _get_treatment_volumes(processing_history),
-        _get_product_volumes()
+        _get_product_volumes(state)
     )
 
 def _filter_volumes(volumes: Dict, min_volume: float = 1.0) -> Dict:
@@ -138,8 +136,8 @@ def _create_flows(transport_flows: list, labels: list):
     
     return sources, targets, values
 
-def create_sankey(generator_volumes: Dict, collector_volumes: Dict, 
-                  treatment_volumes: Dict, product_volumes: Dict):
+def create_sankey(generator_volumes: Dict, collector_volumes: Dict,
+                  treatment_volumes: Dict, product_volumes: Dict, state):
     min_volume = 1.0
     generators = _filter_volumes(generator_volumes, min_volume)
     collectors = _filter_volumes(collector_volumes, min_volume)
@@ -155,7 +153,6 @@ def create_sankey(generator_volumes: Dict, collector_volumes: Dict,
         generators, collectors, treatments, products
     )
     
-    state = SimulationState.get_instance()
     transport_flows = state.transport_flows
     sources, targets, values = _create_flows(transport_flows, labels)
     
@@ -183,8 +180,9 @@ def create_sankey(generator_volumes: Dict, collector_volumes: Dict,
     
     return labels, node_colors, sources, targets, values, x, y
 
-def create_material_flow_analysis(generation_history: Dict, collection_history: Dict, 
-                                  processing_history: Dict, 
+def create_material_flow_analysis(generation_history: Dict, collection_history: Dict,
+                                  processing_history: Dict,
+                                  state,
                                   scenario_name: str = None,
                                   inventory_policy: str = None,
                                   stock_strategy: str = None,
@@ -198,11 +196,11 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
         save_path = f"plots/material_flow_analysis{suffix}.html"
 
     gen_vol, col_vol, treat_vol, prod_vol = get_volumes(
-        generation_history, collection_history, processing_history
+        generation_history, collection_history, processing_history, state
     )
 
     labels, node_colors, sources, targets, values, x, y = create_sankey(
-        gen_vol, col_vol, treat_vol, prod_vol
+        gen_vol, col_vol, treat_vol, prod_vol, state
     )
 
     fig = go.Figure(data=[go.Sankey(

@@ -31,6 +31,7 @@ class FacilityBuilder:
         uncertainty_set=None,
         transport_manager=None,
         kanban_manager=None,
+        state=None,
         seed=None
     ):
         self.env = env
@@ -39,6 +40,7 @@ class FacilityBuilder:
         self.uncertainty_set = uncertainty_set
         self.transport_manager = transport_manager
         self.kanban_manager = kanban_manager
+        self.state = state
         self.seed_sequence = np.random.SeedSequence(seed)
 
     def create_generator(self, gen_data, region: RegionType, stock_strategy=None, inventory_policy=None) -> WasteGenerator:
@@ -85,6 +87,7 @@ class FacilityBuilder:
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
             kanban_manager=self.kanban_manager,
+            state=self.state,
             failure_config=self.uncertainty_set.generator_failure if self.uncertainty_set else None,
             seed=child_seed
         )
@@ -125,6 +128,7 @@ class FacilityBuilder:
             inventory_policy=inventory_policy,
             transport_manager=self.transport_manager,
             kanban_manager=self.kanban_manager,
+            state=self.state,
             failure_config=self.uncertainty_set.collector_failure if self.uncertainty_set else None,
             seed=child_seed
         )
@@ -176,6 +180,7 @@ class FacilityBuilder:
             inventory_policy=inventory_policy,
             transport_manager=self.transport_manager,
             kanban_manager=self.kanban_manager,
+            state=self.state,
             failure_config=self.uncertainty_set.treatment_failure if self.uncertainty_set else None,
             seed=child_seed
         )

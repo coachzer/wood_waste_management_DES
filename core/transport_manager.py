@@ -4,7 +4,6 @@ from enum import Enum
 from config.constants import TRAVEL_SPEED_KMH
 from models.enums import RegionType, WasteType
 from models.distances import get_distance
-from models.state import SimulationState
 
 class TransportPriority(Enum):
     LOW = 1
@@ -23,7 +22,8 @@ class TransportRequest:
     requester_id: str  
 
 class PointToPointTransport:
-    def __init__(self):
+    def __init__(self, state=None):
+        self.state = state
         self.pending_requests: List[TransportRequest] = []
         self.active_transports: List[Dict] = []
         
@@ -33,7 +33,7 @@ class PointToPointTransport:
     
     def find_available_vehicle(self, origin: RegionType) -> Optional[Dict]:
         """Find an available vehicle at or near the origin"""
-        state = SimulationState.get_instance()
+        state = self.state
         # Look for vehicles in the origin region first
         for collector in state.collectors:
             for vehicle in collector.vehicles:
@@ -100,7 +100,7 @@ class PointToPointTransport:
         vehicle.estimated_arrival = arrival_time
         vehicle.current_load = request.volume
 
-        state = SimulationState.get_instance()
+        state = self.state
         # find the TreatmentOperator whose region matches the request
         treat_op = next(
             (t for t in state.treatment_operators 
@@ -109,7 +109,7 @@ class PointToPointTransport:
         )
         target_name = treat_op.name if treat_op else request.requester_id
 
-        SimulationState.get_instance().track_transport_flow(
+        self.state.track_transport_flow(
             source_type="collector",
             source_name=collector.name,
             target_type="treatment",

@@ -57,6 +57,7 @@ def run_single_simulation(
                 generation_history=monitor_data["generation_history"],
                 collection_history=monitor_data["collection_history"],
                 processing_history=monitor_data["processing_history"],
+                state=manager.state,
                 scenario_name=scenario_name,
                 inventory_policy=inventory_policy.value,
                 stock_strategy=stock_strategy.value,

@@ -3,36 +3,33 @@ from models import regional_tracker
 
 
 class SimulationState:
-    """Singleton class to store the state of the simulation environment."""
+    """Holds the state of one simulation run.
 
-    _instance = None
+    Injected through entity constructors (SimulationManager creates one
+    instance per run and passes it to FacilityBuilder, which threads it to
+    every entity). Not a singleton -- each run owns an independent instance, so
+    two runs can coexist in one process without cross-talk.
+    """
 
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance.generators = []
-            cls._instance.collectors = []
-            cls._instance.treatment_operators = []
-            # Initialize transport flows
-            cls._instance.transport_flows = []
-            # Initialize regional waste tracker
-            cls._instance.waste_tracker = regional_tracker.RegionalWasteTracker()
-            # Finished goods removed from inventory without consumption (mass-balance
-            # discard term, ADR 0002 Phase E.5). Zero by construction -- the
-            # partial-batch headroom clamp leaves no discard path; the counter
-            # exists so the mass-balance identity is explicit and as a guard.
-            cls._instance.production_discarded = {
-                'mdf': 0.0,
-                'particle_board': 0.0,
-                'osb': 0.0
-            }
-            # Market consumption event log (demand-as-consumption model, ADR 0002)
-            cls._instance.consumption_events = []
-        return cls._instance
-
-    @classmethod
-    def get_instance(cls):
-        return cls() if cls._instance is None else cls._instance
+    def __init__(self):
+        self.generators = []
+        self.collectors = []
+        self.treatment_operators = []
+        # Initialize transport flows
+        self.transport_flows = []
+        # Initialize regional waste tracker
+        self.waste_tracker = regional_tracker.RegionalWasteTracker()
+        # Finished goods removed from inventory without consumption (mass-balance
+        # discard term, ADR 0002 Phase E.5). Zero by construction -- the
+        # partial-batch headroom clamp leaves no discard path; the counter
+        # exists so the mass-balance identity is explicit and as a guard.
+        self.production_discarded = {
+            'mdf': 0.0,
+            'particle_board': 0.0,
+            'osb': 0.0
+        }
+        # Market consumption event log (demand-as-consumption model, ADR 0002)
+        self.consumption_events = []
 
     def initialize(self, generators, collectors, treatment_operators):
         self.generators = generators

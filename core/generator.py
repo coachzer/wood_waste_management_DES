@@ -3,7 +3,6 @@ from typing import Dict, Optional
 from config.constants import FAILED_ENTITY_EFFICIENCY, HISTORY_BUFFER_SIZE, SEASONAL_PERIODS, SIMULATION_DURATION
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
 from models.data_classes import WasteStream, OperationalEntity
-from models.state import SimulationState
 from monitoring.waste_monitor import WasteMonitor
 from core.kanban_manager import KanbanManager
 from utils.capacity_utils import handle_storage_event
@@ -25,6 +24,7 @@ class WasteGenerator(OperationalEntity):
         stock_strategy: StockStrategy = None,
         inventory_policy: InventoryPolicy = None,
         kanban_manager = None,
+        state = None,
         failure_config = None,
         seed = None
     ):
@@ -74,6 +74,7 @@ class WasteGenerator(OperationalEntity):
             raise ValueError("waste_monitor is required for WasteGenerator")
 
         self.kanban_manager = kanban_manager or KanbanManager()
+        self.state = state
 
         # Track total generation efficiently
         # Initialize total generated with initial stock
@@ -220,7 +221,7 @@ class WasteGenerator(OperationalEntity):
         self.current_storage += generated_volume
         self.total_generated[waste_type] += generated_volume
 
-        SimulationState.get_instance().track_add_waste(
+        self.state.track_add_waste(
             self.region, waste_type, generated_volume
         )
 
@@ -256,7 +257,7 @@ class WasteGenerator(OperationalEntity):
             if total_current > effective_capacity:
                 scaling_factor = effective_capacity / total_current
 
-                state = SimulationState.get_instance()
+                state = self.state
 
                 for waste_type, stream in self.waste_streams.items():
                     new_volume = stream.volume * scaling_factor

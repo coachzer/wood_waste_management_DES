@@ -30,8 +30,10 @@ class SimulationManager:
     """Manages complete simulation lifecycle - setup, execution, and monitoring"""
     
     def __init__(self, seed=None):
-        # Reset simulation state
-        SimulationState._instance = None
+        # Reset cross-run registries. The global state singleton is gone -- each
+        # run owns an independent SimulationState injected downstream -- but the
+        # OperationalEntity registries and the facility counters are still
+        # process-global and must be cleared per run.
         OperationalEntity._entity_registry.clear()
         OperationalEntity._failure_counts.clear()
         facility_builder_module.facilities = {
@@ -42,10 +44,14 @@ class SimulationManager:
 
         self.seed = seed
 
+        # Simulation state -- one fresh instance per run, injected into the
+        # transport manager, facility builder, and every entity it builds.
+        self.state = SimulationState()
+
         # Core simulation components
         self.env = simpy.Environment()
         self.waste_monitor = WasteMonitor(self.env)
-        self.transport_manager = PointToPointTransport()
+        self.transport_manager = PointToPointTransport(state=self.state)
 
         # Kanban
         self.kanban_manager = KanbanManager()
@@ -53,9 +59,6 @@ class SimulationManager:
         # Data and building components
         self.facility_manager = FacilityDataManager()
         self.facility_builder = None
-
-        # Simulation state
-        self.state = SimulationState.get_instance()
         
     def initialize_entities(self, scenario_config: ScenarioConfig) -> None:
         """Single point of entity initialization and setup"""
@@ -73,6 +76,7 @@ class SimulationManager:
                 uncertainty_set=uncertainty_set,
                 transport_manager=self.transport_manager,
                 kanban_manager=self.kanban_manager,
+                state=self.state,
                 seed=self.seed
             )
             
