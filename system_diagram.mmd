@@ -6,6 +6,11 @@ config:
 ---
 classDiagram
 direction TB
+    class SimulationManager {
+	    +initialize_entities()
+	    +setup_processes()
+	    +run()
+    }
     class FacilityBuilder {
 	    +create_generator()
 	    +create_collector()
@@ -14,18 +19,39 @@ direction TB
     class WasteGenerator {
 	    +waste_streams: Dict[WasteType, float]
 	    +current_storage: float
+	    +stock_strategy_behavior
+	    +inventory_policy_behavior
 	    +generate_waste()
     }
     class CollectorCompany {
 	    +collection_capacity: float
 	    +collection_frequency: float
+	    +stock_strategy_behavior
+	    +inventory_policy_behavior
 	    +collect_from_generator()
 	    +transfer_waste_to_region()
     }
     class TreatmentOperator {
 	    +processing_time: float
 	    +waste_storage_capacity: float
+	    +stock_strategy_behavior
+	    +inventory_policy_behavior
 	    +process_waste()
+    }
+    class StockStrategyProtocol {
+	    +collector_adaptive_threshold()
+	    +treatment_should_reorder()
+	    +generator_should_signal()
+    }
+    class InventoryPolicyProtocol {
+	    +collector_should_collect()
+	    +should_process_kanban_signals()
+	    +treatment_is_demand_driven()
+    }
+    class KanbanManager {
+	    +add_signal()
+	    +get_signals()
+	    +clean_old_signals()
     }
     class WasteType {
 	    SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05
@@ -43,10 +69,12 @@ direction TB
 	    PARTICLE_BOARD
     }
     class SimulationState {
+	    +initialize()
 	    +track_add_waste()
 	    +track_remove_waste()
       +track_waste_treatment()
       +track_production()
+      +record_consumption_event()
     }
     class WasteMonitor {
       +track_add_waste()
@@ -66,18 +94,40 @@ direction TB
 
 	<<enumeration>> WasteType
 	<<enumeration>> RegionType
+	<<enumeration>> OutputType
+	<<interface>> StockStrategyProtocol
+	<<interface>> InventoryPolicyProtocol
 
+	OnDemandStrategy ..|> StockStrategyProtocol
+	Reorder50Strategy ..|> StockStrategyProtocol
+	Reorder90Strategy ..|> StockStrategyProtocol
+	PushPolicy ..|> InventoryPolicyProtocol
+	PullPolicy ..|> InventoryPolicyProtocol
+
+    SimulationManager --> SimulationState : owns/injects
+    SimulationManager --> FacilityBuilder : drives
+    SimulationManager --> KanbanManager : owns
     FacilityBuilder --> WasteGenerator : creates
     FacilityBuilder --> CollectorCompany : creates
     FacilityBuilder --> TreatmentOperator : creates
+    FacilityBuilder --> StockStrategyProtocol : builds + injects
+    FacilityBuilder --> InventoryPolicyProtocol : builds + injects
     WasteGenerator --> WasteType : generates
     WasteGenerator --> RegionType : located_in
+    WasteGenerator --> StockStrategyProtocol : uses
+    WasteGenerator --> InventoryPolicyProtocol : uses
     CollectorCompany --> WasteGenerator : collects_from
     CollectorCompany --> TreatmentOperator : delivers_to
     CollectorCompany --> RegionType : operates_in
+    CollectorCompany --> StockStrategyProtocol : uses
+    CollectorCompany --> InventoryPolicyProtocol : uses
     TreatmentOperator --> WasteType : processes
     TreatmentOperator --> OutputType : produces
     TreatmentOperator --> RegionType : located_in
+    TreatmentOperator --> StockStrategyProtocol : uses
+    TreatmentOperator --> InventoryPolicyProtocol : uses
+    TreatmentOperator --> KanbanManager : signals (pull)
+    CollectorCompany --> KanbanManager : signals (pull)
     SimulationState --> WasteGenerator : tracks
     SimulationState --> CollectorCompany : tracks
     SimulationState --> TreatmentOperator : tracks
