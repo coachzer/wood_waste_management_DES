@@ -232,6 +232,11 @@ class SimulationManager:
             'environmental_history': self.waste_monitor.get_environmental_history,
             'event_history': self.waste_monitor.get_event_history,
             'entity_status_history': self.waste_monitor.get_entity_status_history,
+            # Raw run logs for post-hoc analysis (e.g. throughput bullwhip,
+            # ADR 0004). Not persisted to the per-run KPI JSON; consumed in
+            # process by extract_kpis.
+            'transport_flows': self.state.transport_flows,
+            'consumption_events': self.state.consumption_events,
             'final_summary': {
                 'simulation_time': self.env.now,
                 # Continuous market-consumption metrics (ADR 0002) -- the sole

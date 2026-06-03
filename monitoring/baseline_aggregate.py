@@ -1,6 +1,8 @@
 from __future__ import annotations
 from typing import Dict, Any
 
+from monitoring.bullwhip import treatment_anchored_bullwhip
+
 
 def _sum_last_nested(histories: Dict[str, Any], key: str) -> float:
     total = 0.0
@@ -112,6 +114,16 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         for product_name, value in (final_summary.get("consumption_service_by_product") or {}).items()
     }
 
+    # Throughput bullwhip (ADR 0004), post-hoc from the run logs. Reported under
+    # a `bullwhip` namespace so later slices (collector echelon, source floor,
+    # diagnostics) extend it without rewiring this dict.
+    bullwhip = {
+        "treatment_anchored": treatment_anchored_bullwhip(
+            monitor_data.get("transport_flows", []),
+            monitor_data.get("consumption_events", []),
+        ),
+    }
+
     return {
         "total_generated_m3": total_generated,
         "total_collected_m3": total_collected,
@@ -135,4 +147,5 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         "total_consumed_m3": float(final_summary.get("total_consumed") or 0.0),
         "no_capability_lost_m3": float(final_summary.get("no_capability_lost") or 0.0),
         "stockout_lost_m3": float(final_summary.get("stockout_lost") or 0.0),
+        "bullwhip": bullwhip,
     }

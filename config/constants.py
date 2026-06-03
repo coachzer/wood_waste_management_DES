@@ -31,3 +31,10 @@ CONSUMPTION_INTERVAL_DAYS = 7  # the market consumes finished goods weekly
 FINISHED_GOODS_BUFFER_WEEKS = 4  # weeks of expected demand held as finished-goods capacity
 INITIAL_INVENTORY_FRACTION = 0.5  # finished goods start half-full (2 weeks of the 4-week buffer)
 WASTE_STORAGE_PRIMING_WEEKS = 2  # weeks of producible throughput primed into waste storage
+
+# Throughput bullwhip metric (ADR 0004). Purely post-hoc: computed from already
+# persisted logs and never affects simulation behaviour. Flows and consumption
+# are bucketed into BULLWHIP_BIN_WIDTH_DAYS bins; the first BULLWHIP_WARMUP_WEEKS
+# weeks (the cold-start ramp) are dropped, so the metric spans weeks 5-52.
+BULLWHIP_BIN_WIDTH_DAYS = 7  # weekly bins, aligned with the consumption tick
+BULLWHIP_WARMUP_WEEKS = 4  # drop the cold-start ramp before computing CV^2
