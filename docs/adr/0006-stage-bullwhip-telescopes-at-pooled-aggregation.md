@@ -1,5 +1,10 @@
 # Stage-by-stage bullwhip telescopes at the pooled aggregation, not the per-node headline
 
+> Treatment-side numbers refined by ADR 0009: `treatment_stage`'s numerator and `collector_stage`'s
+> denominator read the old `collector -> treatment` series, which measured repositioning, not intake. The
+> telescoping identity below still holds (the repositioning term cancels in the product), but each stage
+> factor is invalid as published until re-run on the corrected flow (issue 12). Body left as written.
+
 ADR 0004 specified a "stage-by-stage diagnostic" alongside the anchored headline: Treatment stage =
 `CV²(treatment inbound)/CV²(consumption)`, Collector stage = `CV²(collector inbound)/CV²(treatment
 inbound)`, with the claim that "the stage ratios telescope to the anchored values." Implementing issue 04

@@ -1,5 +1,10 @@
 # Bullwhip measured as a CV²-normalized throughput-flow ratio, not order variance
 
+> Partially superseded by ADR 0009: the Treatment-echelon inbound flow is collector `provide_waste_for_treatment`
+> intake, NOT the `collector -> treatment` entries in `transport_flows` (those are cross-region repositioning).
+> The rest of this decision — CV² normalization, consumption-`attempted` anchor, two echelons, warm-up,
+> per-node-then-weighted aggregation — stands. Body left as written (append-only).
+
 The metrics roadmap (P2) calls for bullwhip quantification — `var(orders)/var(consumption)` per echelon — as the core PUSH-vs-PULL evidence. ADR 0002 already predicts the qualitative result (PULL-ON_DEMAND approaches the unit lower bound, REORDER_X amplifies via lot-sizing). This ADR fixes *how the number is actually computed*, because the textbook formula does not survive contact with this model: orders are not observable in PUSH, the commodity changes units mid-chain, and one of the three nominal echelons does not place orders at all. Every choice below was made to keep the metric well-defined and comparable across all six PUSH/PULL × strategy configurations.
 
 ## Decision

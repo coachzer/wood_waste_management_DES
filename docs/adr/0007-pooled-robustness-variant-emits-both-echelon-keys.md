@@ -1,5 +1,9 @@
 # Pooled robustness variant emits both echelon keys despite the Treatment identity
 
+> Treatment-side numbers refined by ADR 0009: `treatment_anchored_pooled` read the old `collector -> treatment`
+> repositioning series, so it (like `treatment_stage`, with which it coincides) is invalid as published until
+> re-run on the corrected flow (issue 12). `collector_anchored_pooled` is unaffected. Body left as written.
+
 ADR 0004 specified a "pooled robustness check": the anchored throughput-bullwhip ratios recomputed on a
 system-pooled per-echelon series (all nodes summed before CV²) as a conservative lower bound on the per-node
 volume-weighted headline. Issue 05 (`.scratch/bullwhip/issues/05-pooled-robustness-variant.md`) implements
