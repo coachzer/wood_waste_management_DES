@@ -114,6 +114,54 @@ def _analysis_weeks():
     return range(BULLWHIP_WARMUP_WEEKS, WEEKS_PER_YEAR - 1 + 1)
 
 
+def _make_reposition_flow(week_index, volume, target_name="collector-2"):
+    """A cross-region repositioning move: collector -> collector (ADR 0009)."""
+    flow = _make_inbound_flow(week_index, volume, target_name=target_name)
+    flow["target_type"] = "collector"
+    return flow
+
+
+def test_treatment_echelon_reads_intake_not_repositioning():
+    """The Treatment echelon reads the collector->treatment intake link only; the
+    collector->collector repositioning move is invisible to it (ADR 0009).
+
+    Pinned by contrast: counting the lumpy reposition would move the metric, so
+    if it were still mislabeled onto the treatment link (the pre-ADR-0009 bug)
+    the result would differ from the intake-only value.
+    """
+    consumption_events = []
+    intake_flows = []
+    reposition_flows = []
+    for offset, week_index in enumerate(_analysis_weeks()):
+        consumption_events.append(
+            _make_consumption_event(week_index, 100.0 if offset % 2 == 0 else 200.0, 50.0)
+        )
+        intake_flows.append(_make_inbound_flow(week_index, 30.0 if offset % 2 == 0 else 90.0))
+        # Lumpy reposition that would dominate the echelon if it were counted.
+        reposition_flows.append(
+            _make_reposition_flow(week_index, 0.0 if offset % 2 == 0 else 800.0)
+        )
+
+    intake_only = treatment_anchored_bullwhip(intake_flows, consumption_events)
+    with_reposition = treatment_anchored_bullwhip(
+        intake_flows + reposition_flows, consumption_events
+    )
+
+    assert intake_only is not None
+    # collector->collector is filtered out of the Treatment echelon entirely.
+    assert with_reposition == intake_only
+
+    # Mislabel the same reposition onto collector->treatment (the old bug): it
+    # now enters the echelon as a second node and shifts the metric.
+    mislabeled = []
+    for flow in reposition_flows:
+        polluting = dict(flow)
+        polluting["target_type"] = "treatment"
+        mislabeled.append(polluting)
+    polluted = treatment_anchored_bullwhip(intake_flows + mislabeled, consumption_events)
+    assert polluted != intake_only
+
+
 def test_denominator_uses_attempted_not_consumed():
     """The consumption anchor is ``attempted``; ``consumed`` is held flat so the
     two choices give provably different results.

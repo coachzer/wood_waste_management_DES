@@ -101,18 +101,22 @@ class PointToPointTransport:
         vehicle.current_load = request.volume
 
         state = self.state
-        # find the TreatmentOperator whose region matches the request
-        treat_op = next(
-            (t for t in state.treatment_operators 
-            if t.region_type == request.destination),
+        # Cross-region repositioning is physical movement between two collectors'
+        # collection centers (ADR 0009): the destination-region collector receives
+        # the volume in _handle_completed_transport. It is an intra-Collector-echelon
+        # move, logged collector -> collector so no bullwhip echelon reads it as
+        # treatment intake.
+        destination_collector = next(
+            (c for c in state.collectors
+             if c.region_type == request.destination),
             None
         )
-        target_name = treat_op.name if treat_op else request.requester_id
+        target_name = destination_collector.name if destination_collector else request.requester_id
 
         self.state.track_transport_flow(
             source_type="collector",
             source_name=collector.name,
-            target_type="treatment",
+            target_type="collector",
             target_name=target_name,
             waste_type=request.waste_type,
             volume=request.volume,

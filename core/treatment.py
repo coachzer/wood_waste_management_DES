@@ -591,7 +591,7 @@ class TreatmentOperator(OperationalEntity):
         for collector in local_collectors:
             if remaining <= 0: break
 
-            local_collected = collector.provide_waste_for_treatment(remaining, waste_types)
+            local_collected = collector.provide_waste_for_treatment(remaining, waste_types, treatment_name=self.name)
 
             for waste_type, amount in local_collected.items():
                 collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
@@ -624,7 +624,7 @@ class TreatmentOperator(OperationalEntity):
         remaining = amount_to_collect
         for collector in all_collectors:
             if remaining <= 0: break
-            fallback_collected = collector.provide_waste_for_treatment(remaining, waste_types)
+            fallback_collected = collector.provide_waste_for_treatment(remaining, waste_types, treatment_name=self.name)
             for waste_type, amount in fallback_collected.items():
                 collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
                 remaining -= amount

@@ -587,8 +587,18 @@ class CollectorCompany(OperationalEntity):
 
         return total_cost
 
-    def provide_waste_for_treatment(self, requested_amount: float, needed_types: List[WasteType]) -> Dict[WasteType, float]:
+    def provide_waste_for_treatment(self, requested_amount: float, needed_types: List[WasteType],
+                                     treatment_name: Optional[str] = None) -> Dict[WasteType, float]:
+        """Hand waste from this collector's collection center to a treatment operator.
 
+        This is the real Treatment-echelon inbound flow (ADR 0009): it decrements
+        collector storage and feeds the treatment process. Each transferred waste
+        type is logged as a ``collector -> treatment`` transport flow so the
+        bullwhip Treatment echelon reads actual replenishment rather than the
+        net-zero cross-region repositioning move. ``treatment_name`` names the
+        receiving operator (the flow target); callers pass it from the treatment
+        operator requesting the waste.
+        """
         provided_waste = {}
         remaining_request = requested_amount
 
@@ -603,6 +613,18 @@ class CollectorCompany(OperationalEntity):
                 self.collection_center.current_storage[waste_type] -= transfer_amount
                 provided_waste[waste_type] = provided_waste.get(waste_type, 0) + transfer_amount
                 remaining_request -= transfer_amount
+
+                if treatment_name is not None:
+                    self.state.track_transport_flow(
+                        source_type="collector",
+                        source_name=self.name,
+                        target_type="treatment",
+                        target_name=treatment_name,
+                        waste_type=waste_type,
+                        volume=transfer_amount,
+                        timestamp=self.env.now,
+                        transport_method="treatment_intake",
+                    )
 
         return provided_waste
 
