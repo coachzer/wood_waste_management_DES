@@ -8,10 +8,37 @@ SimPy discrete event simulation of wood waste management in Slovenia. Models 12 
 
 ## Documentation Map
 
-Each fact lives in one place; other docs point to it rather than restate it.
+Each fact lives in ONE place; other docs point to it rather than restate it. Every doc has a **tense**
+(present / past / future / reference) that fixes whether it may be edited to reflect new state. When in
+doubt where to read or write, start here.
 
-- **`CLAUDE.md`** (this file) — architecture, conventions, failure modes, standards. How the code is built.
-- **`CONTEXT.md`** — domain glossary (Finished Goods, Stock Strategy, PUSH/PULL, Consumption Event, …). Use these terms exactly.
+| Doc | Tense | Owns (single source of truth for…) |
+| --- | --- | --- |
+| `CLAUDE.md` (this file) | reference | architecture, conventions, failure modes, standards, this map |
+| `CONTEXT.md` | reference | domain glossary (Finished Goods, PUSH/PULL, Consumption Event, …) — use these terms exactly |
+| `README.md` | reference | repo entry point for a human first-timer |
+| `HANDOFF.md` | **present** | **where we are now** — the ONLY current-state narrative; refreshed each session |
+| `.scratch/ROADMAP.md` | **future** | **what's next** — the ONLY ordered TODO; cites issues/metrics-roadmap rather than duplicating |
+| `docs/adr/*` | **past** | one decision each, at a point in time — append-only |
+| `.scratch/done/*` | **past** | completed-work writeups + archived issues — append-only |
+| `.scratch/metrics-roadmap.md` | reference | metric *rationale* (P1–P4) the ROADMAP draws from — not a status list |
+| `.scratch/bullwhip/issues/*`, `.scratch/paper-draft-audit/*` | future | active issue specs; move to `.scratch/done/` when complete |
+| `.scratch/paper-draft-audit/DATASET-README.md` | reference | the current MC dataset's KPI inventory + provenance |
+| `.scratch/golden/` | **present** (live infra) | locked golden `baselines/` + `compare_baselines.py` for the freeze exit test |
+| `paper-draft/` (gitignored) | future | the paper being written — consumes finished numbers, never drives code |
+
+**Four rules that keep this readable:**
+
+1. **Past docs are append-only.** Never edit an ADR or `done/` writeup body to match new reality. If it
+   is overtaken, add a one-line `> Superseded by X` header and leave the body. (Editing a record toward an
+   aspirational future is what produced the ADR 0002 done-tense landmine — see Known Failure Modes.)
+2. **Current state lives in `HANDOFF.md` and nowhere else.** Other docs point to it; don't start a second
+   "what's done" narrative.
+3. **Next work lives in `.scratch/ROADMAP.md` and nowhere else.** It cites `metrics-roadmap.md` and the
+   issue dirs for detail; those are sources, not competing TODO lists.
+4. **Finished work leaves the active space.** When an issue/effort completes, move it under `.scratch/done/`
+   — don't leave stale `Status:` frontmatter in a live dir. Keep any still-referenced *tooling* (e.g.
+   `.scratch/golden/`) out of `done/`, since `done/` means "no longer used."
 
 ## Running Simulations
 
