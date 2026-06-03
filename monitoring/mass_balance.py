@@ -81,6 +81,13 @@ class MassBalanceMonitor:
             }
             for operator in registry.operators
         }
+        # Initial raw-waste on hand per collection center (collection centers start
+        # empty, but snapshotting keeps the waste invariant symmetric with the
+        # product one and robust to a primed start).
+        self._initial_collection_center = {
+            collector.name: sum(collector.collection_center.current_storage.values())
+            for collector in (registry.collectors or [])
+        }
 
     def check_continuous(self, timestamp: Optional[float] = None) -> None:
         """Scheduled per-tick check. Records telemetry and raises/warns on drift."""
@@ -122,6 +129,62 @@ class MassBalanceMonitor:
             return
         message = (
             f"Product mass-balance violated at t={timestamp}: " + "; ".join(violations)
+        )
+        if self.raise_on_violation:
+            raise MassBalanceViolation(message)
+        logging.warning(message)
+
+    def check_collection_centers(self, timestamp: Optional[float] = None) -> None:
+        """Check the per-collection-center raw-waste conservation identity.
+
+        For each collector:
+
+            initial_storage + inflow
+                == outflow + current_storage + landfilled
+
+        ``inflow`` is every transport flow targeting the collector (collection
+        from generators plus cross-region reposition-in); ``outflow`` is every
+        flow sourced from it (treatment intake plus reposition-out). The
+        expand-drop leak (issue 11, Finding A) makes inflow exceed the
+        accounted-for terms, so this trips on dropped collected waste.
+
+        Final-only by intent: cross-region reposition is logged at request time
+        but physically re-deposited at arrival, so an in-transit volume would
+        false-trip a mid-run check. Run on a drained simulation.
+        """
+        state = self.registry.state
+        violations = []
+        for collector in (self.registry.collectors or []):
+            name = collector.name
+            inflow = sum(
+                flow["volume"] for flow in state.transport_flows
+                if flow["target_name"] == name
+            )
+            outflow = sum(
+                flow["volume"] for flow in state.transport_flows
+                if flow["source_name"] == name
+            )
+            initial = self._initial_collection_center[name]
+            current = sum(collector.collection_center.current_storage.values())
+            landfilled = state.waste_landfilled.get(name, 0.0)
+
+            lhs = initial + inflow
+            rhs = outflow + current + landfilled
+            delta = lhs - rhs
+            self.telemetry.append((timestamp, name, "raw_waste", lhs, rhs, delta))
+
+            if not math.isclose(
+                lhs, rhs, rel_tol=RELATIVE_TOLERANCE, abs_tol=ABSOLUTE_TOLERANCE
+            ):
+                violations.append(
+                    f"{name}: in={lhs:.6f} out={rhs:.6f} delta={delta:.6f}"
+                )
+
+        if not violations:
+            return
+        message = (
+            f"Collection-center mass-balance violated at t={timestamp}: "
+            + "; ".join(violations)
         )
         if self.raise_on_violation:
             raise MassBalanceViolation(message)

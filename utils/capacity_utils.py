@@ -55,6 +55,12 @@ def handle_storage_event(entity, volume, region, force_landfill=False):
         entity.landfill_count = landfill_count + 1
         entity.landfill_costs = getattr(entity, 'landfill_costs', 0) + landfill_cost
 
+        # Attribute the landfilled raw waste to the dumping entity so the
+        # collection-center mass-balance invariant can account for it (ADR 0009).
+        state = getattr(entity, 'state', None)
+        if state is not None:
+            state.track_waste_landfilled(entity.name, volume)
+
         emissions = volume * LANDFILL_EMISSIONS_PER_M3_KG
         
         if hasattr(entity, 'waste_monitor') and entity.waste_monitor:

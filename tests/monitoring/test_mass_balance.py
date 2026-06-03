@@ -84,3 +84,72 @@ def test_valid_invariant_does_not_raise():
     )
 
     monitor.check_final()  # must not raise
+
+
+# --- collection-center raw-waste invariant (ADR 0009, issue 11) -------------
+#
+# Per collection center:
+#     initial_storage + inflow == outflow + current_storage + landfilled
+# inflow  = transport flows targeting the collector (collection + reposition-in)
+# outflow = transport flows sourced from the collector (treatment intake +
+#           reposition-out). The expand-drop leak makes inflow exceed the
+#           accounted-for terms, which this check catches.
+
+
+def make_collector(name, storage):
+    """A collector stand-in exposing the collection center the invariant reads."""
+    return SimpleNamespace(
+        name=name,
+        collection_center=SimpleNamespace(current_storage=dict(storage)),
+    )
+
+
+def make_waste_state():
+    """A SimulationState stand-in: a transport-flow log and a landfill counter."""
+    return SimpleNamespace(transport_flows=[], waste_landfilled={})
+
+
+def flow(source, target, volume):
+    return {"source_name": source, "target_name": target, "volume": volume}
+
+
+def test_balanced_collection_center_does_not_raise():
+    """Inflow accounted for by treatment outflow, on-hand storage, and landfill
+    -- the center conserves raw waste and must not raise."""
+    collector = make_collector("collector-1", {"17 02 01": 0.0})
+    state = make_waste_state()
+    monitor = MassBalanceMonitor(
+        EntityRegistry(state=state, operators=[], collectors=[collector])
+    )
+
+    # 1000 collected in; 700 drawn to treatment, 100 landfilled, 200 left on hand.
+    state.transport_flows.extend(
+        [flow("gen-1", "collector-1", 1000.0), flow("collector-1", "treatment-1", 700.0)]
+    )
+    state.waste_landfilled["collector-1"] = 100.0
+    collector.collection_center.current_storage["17 02 01"] = 200.0
+
+    monitor.check_collection_centers()  # must not raise
+
+
+def test_dropped_overflow_trips_collection_center_invariant():
+    """Mass collected but neither stored, sent to treatment, nor landfilled --
+    the expand-drop leak class -- must raise."""
+    collector = make_collector("collector-1", {"17 02 01": 0.0})
+    state = make_waste_state()
+    monitor = MassBalanceMonitor(
+        EntityRegistry(state=state, operators=[], collectors=[collector])
+    )
+
+    # 1000 collected in; 700 to treatment, 200 on hand, but the 100 overflow was
+    # silently dropped (not landfilled) -- mass vanishes.
+    state.transport_flows.extend(
+        [flow("gen-1", "collector-1", 1000.0), flow("collector-1", "treatment-1", 700.0)]
+    )
+    collector.collection_center.current_storage["17 02 01"] = 200.0
+
+    try:
+        monitor.check_collection_centers()
+    except MassBalanceViolation:
+        return
+    raise AssertionError("expected MassBalanceViolation for dropped collection-center waste")

@@ -30,6 +30,15 @@ class SimulationState:
         }
         # Market consumption event log (demand-as-consumption model, ADR 0002)
         self.consumption_events = []
+        # Raw waste landfilled per entity (mass-balance discard term for the
+        # collection-center waste invariant, ADR 0009 / issue 11). The waste-side
+        # analog of production_discarded: WasteMonitor.track_event keeps only a
+        # single entity-less bucket, so the invariant needs per-name attribution.
+        self.waste_landfilled = {}
+
+    def track_waste_landfilled(self, entity_name, volume):
+        """Accumulate raw waste landfilled by one entity (m³)."""
+        self.waste_landfilled[entity_name] = self.waste_landfilled.get(entity_name, 0.0) + volume
 
     def initialize(self, generators, collectors, treatment_operators):
         self.generators = generators
@@ -188,6 +197,7 @@ class SimulationState:
         }
         # Reset market consumption event log
         self.consumption_events = []
+        self.waste_landfilled = {}
 
     def get_transport_flow_summary(self):
         """Get summary of transport flows for debugging"""

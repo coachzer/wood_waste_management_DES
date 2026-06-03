@@ -282,18 +282,29 @@ class CollectorCompany(OperationalEntity):
             for waste_type, amount in collected_waste.items():
                 self.collection_center.current_storage[waste_type] += amount
         else:
-            scaling_factor = available_space / total_to_add if total_to_add > 0 else 0
             overflow_amount = total_to_add - available_space
 
-            for waste_type, amount in collected_waste.items():
-                scaled_amount = amount * scaling_factor
-                self.collection_center.current_storage[waste_type] += scaled_amount
+            # Let handle_storage_event decide expand vs landfill. On the expand
+            # branch capacity grows, so store as much of the overflow as now fits
+            # and landfill the true remainder; on the landfill branch the full
+            # overflow is already accounted for there. Either way every collected
+            # m3 is stored or landfilled -- none is silently dropped (ADR 0009).
+            _cost, action = handle_storage_event(self, overflow_amount, self.region)
 
-            handle_storage_event(
-                self,
-                overflow_amount,
-                self.region
-            )
+            if action == "expand_storage":
+                storable = min(
+                    total_to_add,
+                    self.collection_center.waste_storage_capacity - current_total,
+                )
+                handle_storage_event(
+                    self, total_to_add - storable, self.region, force_landfill=True
+                )
+            else:
+                storable = available_space
+
+            scaling_factor = storable / total_to_add if total_to_add > 0 else 0
+            for waste_type, amount in collected_waste.items():
+                self.collection_center.current_storage[waste_type] += amount * scaling_factor
 
     def manage_transport(self):
         """Transport management using point-to-point system"""
