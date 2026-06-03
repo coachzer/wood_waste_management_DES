@@ -81,10 +81,17 @@ def run_single_simulation(
 
 
 def run_monte_carlo_baseline(
-    replications: int = 100, scenario_filter: str | None = None
+    replications: int = 100,
+    scenario_filter: str | None = None,
+    out_root: Path | None = None,
 ) -> list[dict]:
     """
     Run baseline Monte Carlo: 100 replications per InventoryPolicy x StockStrategy.
+
+    ``out_root`` overrides where per-run artifacts are written (default
+    ``outputs/baseline``), letting a caller isolate a run into its own directory
+    so two invocations can be diffed without clobbering a working ``outputs/``
+    dataset.
     """
     start_time = time.time()
     results: list[dict] = []
@@ -99,7 +106,7 @@ def run_monte_carlo_baseline(
     print(f"Stock strategies: {[s.value for s in stock_strategies]}")
 
     base_seed = 123456  # deterministic seed series across runs
-    out_root = Path("outputs") / "baseline"
+    out_root = Path("outputs") / "baseline" if out_root is None else Path(out_root)
     out_root.mkdir(parents=True, exist_ok=True)
 
     for scenario_name in scenarios:
@@ -309,11 +316,20 @@ if __name__ == "__main__":
         default=None,
         help="Run only this scenario name (optional)",
     )
+    parser.add_argument(
+        "--out-root",
+        type=str,
+        default=None,
+        help="Override the baseline output root (default: outputs/baseline). "
+        "Isolates a run from a working outputs/ dataset.",
+    )
     args = parser.parse_args()
 
     if args.mode == "baseline":
         _ = run_monte_carlo_baseline(
-            replications=args.replications, scenario_filter=args.scenario
+            replications=args.replications,
+            scenario_filter=args.scenario,
+            out_root=args.out_root,
         )
     else:
         all_results = main()
