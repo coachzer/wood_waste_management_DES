@@ -99,6 +99,7 @@ class PointToPointTransport:
         vehicle.destination = request.destination
         vehicle.estimated_arrival = arrival_time
         vehicle.current_load = request.volume
+        vehicle.current_load_by_type = {request.waste_type: request.volume}
 
         state = self.state
         # Cross-region repositioning is physical movement between two collectors'

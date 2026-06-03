@@ -159,6 +159,7 @@ class CollectorCompany(OperationalEntity):
 
             volume_cost_factor = 0.1
             vehicle.current_load = collected_amount
+            vehicle.current_load_by_type = dict(collected_waste)
             yield self.env.timeout(travel_time)
 
             self._add_to_collection_center(collected_waste)
@@ -190,7 +191,8 @@ class CollectorCompany(OperationalEntity):
         # Vehicle is now available again
         vehicle.in_transit = False
         vehicle.current_load = 0
-        vehicle.destination = self.region_type  
+        vehicle.current_load_by_type = {}
+        vehicle.destination = self.region_type
 
         return collection_cost
 
@@ -667,6 +669,7 @@ class CollectorCompany(OperationalEntity):
                 vehicle = transport["vehicle"]
                 vehicle.in_transit = False
                 vehicle.current_load = 0
+                vehicle.current_load_by_type = {}
                 vehicle.current_region = vehicle.destination
                 vehicle.destination = None
                 vehicle.estimated_arrival = None

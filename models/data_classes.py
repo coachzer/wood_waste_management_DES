@@ -1,5 +1,5 @@
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Tuple, Optional
 from config.constants import RECOVERING_BASE_EFFICIENCY
 from monitoring.waste_monitor import WasteMonitor
@@ -131,7 +131,10 @@ class Vehicle:
     capacity: float  # Storage capacity in m³
     current_region: RegionType
     in_transit: bool = False
-    current_load: float = 0.0  # Current load in m³
+    current_load: float = 0.0  # Current load in m³ (total across waste types)
+    # Per-waste-type breakdown of current_load (m³). Lets a monitor sum waste in
+    # transit by type for the waste-side mass-balance invariant; sums to current_load.
+    current_load_by_type: Dict[WasteType, float] = field(default_factory=dict)
     destination: Optional[RegionType] = None
     estimated_arrival: Optional[float] = None
 

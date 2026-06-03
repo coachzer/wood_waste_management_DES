@@ -45,6 +45,18 @@ class SimulationState:
         self.collectors = collectors
         self.treatment_operators = treatment_operators
 
+    def iter_outbound_vehicles(self):
+        """Yield every in-transit vehicle across all collectors' fleets.
+
+        The single point that knows where all transport waste lives mid-flight,
+        so a monitor can sum waste in transit by type (each vehicle exposes
+        ``current_load_by_type``) for the waste-side mass-balance invariant.
+        """
+        for collector in self.collectors:
+            for vehicle in collector.vehicles:
+                if vehicle.in_transit:
+                    yield vehicle
+
     def track_add_waste(self, region, waste_type, amount):
         """Track waste generation in a specific region"""
         if not region:
