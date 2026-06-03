@@ -13,6 +13,11 @@ for one ordering echelon; ``treatment_anchored_bullwhip`` (collector->treatment)
 and ``collector_anchored_bullwhip`` (generator->collector) are thin wrappers that
 pick the flow link. Both anchor on the same exogenous consumption series.
 
+``stage_bullwhip`` is the diagnostic decomposition (ADR 0006): the same two
+echelons as composable stage ratios on the system-pooled per-echelon series, so
+they telescope exactly to the pooled anchored ratio and localize where
+amplification is injected.
+
 ``generation_floor_cv2`` is the companion reference value: the raw CV^2 of weekly
 waste generation, NOT an echelon ratio. Generators do not order, so it is
 policy-invariant -- it exists only to show the upstream source carries no policy
@@ -21,7 +26,7 @@ signal and to frame that amplification is injected mid-chain (ADR 0004,
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from config.constants import (
     BULLWHIP_BIN_WIDTH_DAYS,
@@ -242,3 +247,62 @@ def collector_anchored_bullwhip(
     return _echelon_anchored_bullwhip(
         transport_flows, consumption_events, "generator", "collector"
     )
+
+
+def _pooled_inbound_bins(
+    transport_flows: Sequence[Dict[str, Any]], source_type: str, target_type: str
+) -> List[float]:
+    """Weekly inbound-flow bins for one echelon, pooled across all of its nodes.
+
+    The stage-by-stage diagnostic (ADR 0006) needs each echelon reduced to a
+    single CV^2 scalar so the stage ratios telescope exactly. Pooling sums every
+    ``source_type -> target_type`` flow into one weekly series (rather than
+    grouping by ``target_name`` as the per-node anchored metric does), reusing
+    the same ``_weekly_bins`` window and warm-up cut -- no second binning scheme.
+    """
+    echelon_flows = [
+        flow
+        for flow in transport_flows
+        if flow.get("source_type") == source_type
+        and flow.get("target_type") == target_type
+    ]
+    return _weekly_bins(echelon_flows, "volume")
+
+
+def stage_bullwhip(
+    transport_flows: Sequence[Dict[str, Any]],
+    consumption_events: Sequence[Dict[str, Any]],
+) -> Tuple[Optional[float], Optional[float]]:
+    """Stage-by-stage throughput-bullwhip diagnostic (ADR 0004, refined ADR 0006).
+
+    Localizes WHERE amplification is injected by splitting the chain into two
+    composable stage ratios, each on the system-pooled per-echelon weekly series
+    (all nodes summed before CV^2) so each echelon is a single CV^2 value:
+
+    - ``treatment_stage`` = ``CV^2(pooled collector->treatment inbound) /
+      CV^2(consumption attempted)``
+    - ``collector_stage`` = ``CV^2(pooled generator->collector inbound) /
+      CV^2(pooled collector->treatment inbound)``
+
+    The pooled treatment-inbound CV^2 is the SAME scalar in ``treatment_stage``'s
+    numerator and ``collector_stage``'s denominator, so the two telescope exactly
+    to the pooled collector anchored ratio: ``treatment_stage * collector_stage
+    == CV^2(pooled collector inbound) / CV^2(consumption)``. This holds only at
+    the pooled aggregation, not the per-node volume-weighted headline, where a
+    product of weighted averages is not the weighted average of products (ADR
+    0006). So ``treatment_stage`` is NOT the per-node ``treatment_anchored``
+    headline; the gap between them is the per-node-vs-pooled spread.
+
+    Returns ``(treatment_stage, collector_stage)``; either is ``None`` when its
+    denominator CV^2 is undefined or zero (see ``bullwhip_ratio``).
+    """
+    consumption_bins = _weekly_bins(consumption_events, "attempted")
+    treatment_inbound_bins = _pooled_inbound_bins(
+        transport_flows, "collector", "treatment"
+    )
+    collector_inbound_bins = _pooled_inbound_bins(
+        transport_flows, "generator", "collector"
+    )
+    treatment_stage = bullwhip_ratio(treatment_inbound_bins, consumption_bins)
+    collector_stage = bullwhip_ratio(collector_inbound_bins, treatment_inbound_bins)
+    return treatment_stage, collector_stage

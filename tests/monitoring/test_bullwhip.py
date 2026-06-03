@@ -21,6 +21,7 @@ from monitoring.bullwhip import (
     collector_anchored_bullwhip,
     cv_squared,
     generation_floor_cv2,
+    stage_bullwhip,
     treatment_anchored_bullwhip,
 )
 
@@ -264,6 +265,97 @@ def test_collector_echelon_shares_the_core_amplified_case():
     assert math.isclose(result, expected, rel_tol=1e-12)
 
 
+# --- Stage-by-stage diagnostic ----------------------------------------------
+
+
+def test_stage_ratios_telescope_to_pooled_anchored():
+    """The two stage ratios must telescope exactly to the pooled collector
+    anchored ratio (ADR 0006): treatment_stage * collector_stage ==
+    CV^2(pooled collector inbound) / CV^2(consumption).
+
+    Two out-of-phase nodes per echelon, so pooling genuinely differs from any
+    single node -- if the implementation grouped by node the pooled identity
+    would not recompute cleanly here."""
+    consumption_events = []
+    transport_flows = []
+    pooled_treatment = []
+    pooled_collector = []
+    attempted_bins = []
+    for offset, week_index in enumerate(_analysis_weeks()):
+        attempted = 100.0 if offset % 2 == 0 else 120.0
+        consumption_events.append(_make_consumption_event(week_index, attempted, attempted))
+        attempted_bins.append(attempted)
+
+        # Two treatment nodes, out of phase -> pooled series is neither node's.
+        t_a = 10.0 if offset % 2 == 0 else 200.0
+        t_b = 50.0 if offset % 2 == 0 else 80.0
+        transport_flows.append(_make_inbound_flow(week_index, t_a, "treatment-a"))
+        transport_flows.append(_make_inbound_flow(week_index, t_b, "treatment-b"))
+        pooled_treatment.append(t_a + t_b)
+
+        # Two collector nodes, also out of phase.
+        c_a = 15.0 if offset % 2 == 0 else 180.0
+        c_b = 40.0 if offset % 2 == 0 else 60.0
+        transport_flows.append(_make_generator_flow(week_index, c_a, "collector-a"))
+        transport_flows.append(_make_generator_flow(week_index, c_b, "collector-b"))
+        pooled_collector.append(c_a + c_b)
+
+    treatment_stage, collector_stage = stage_bullwhip(transport_flows, consumption_events)
+
+    assert treatment_stage is not None and collector_stage is not None
+    # Each stage matches its pooled definition exactly.
+    assert math.isclose(
+        treatment_stage,
+        bullwhip_ratio(pooled_treatment, attempted_bins),
+        rel_tol=1e-12,
+    )
+    assert math.isclose(
+        collector_stage,
+        bullwhip_ratio(pooled_collector, pooled_treatment),
+        rel_tol=1e-12,
+    )
+    # The telescoping identity: the product is the pooled collector anchored ratio.
+    expected_pooled_anchored = bullwhip_ratio(pooled_collector, attempted_bins)
+    assert math.isclose(
+        treatment_stage * collector_stage, expected_pooled_anchored, rel_tol=1e-9
+    )
+
+
+def test_treatment_stage_is_pooled_not_per_node_headline():
+    """treatment_stage is the pooled ratio, NOT the per-node-weighted
+    treatment_anchored headline (ADR 0006). With out-of-phase nodes, pooling
+    smooths the spikes, so the pooled stage sits below the per-node headline --
+    the two are provably different numbers, not the same value reported twice."""
+    consumption_events = []
+    transport_flows = []
+    for offset, week_index in enumerate(_analysis_weeks()):
+        attempted = 100.0 if offset % 2 == 0 else 120.0
+        consumption_events.append(_make_consumption_event(week_index, attempted, attempted))
+        # Two strongly out-of-phase treatment nodes: each lumpy, pooled near-flat.
+        t_a = 10.0 if offset % 2 == 0 else 200.0
+        t_b = 180.0 if offset % 2 == 0 else 20.0
+        transport_flows.append(_make_inbound_flow(week_index, t_a, "treatment-a"))
+        transport_flows.append(_make_inbound_flow(week_index, t_b, "treatment-b"))
+
+    treatment_stage, _ = stage_bullwhip(transport_flows, consumption_events)
+    per_node_headline = treatment_anchored_bullwhip(transport_flows, consumption_events)
+
+    assert treatment_stage is not None and per_node_headline is not None
+    # Pooling understates the per-node amplification -> strictly smaller, and not
+    # merely a floating-point hair apart.
+    assert treatment_stage < per_node_headline
+    assert not math.isclose(treatment_stage, per_node_headline, rel_tol=1e-3)
+
+
+def test_stage_bullwhip_none_without_flows():
+    """No flow at all -> both stages undefined, no crash."""
+    consumption_events = [
+        _make_consumption_event(week_index, 100.0, 100.0)
+        for week_index in _analysis_weeks()
+    ]
+    assert stage_bullwhip([], consumption_events) == (None, None)
+
+
 # --- Generation source-variance floor ---------------------------------------
 
 
@@ -408,8 +500,13 @@ def test_extract_kpis_emits_bullwhip_namespace():
     kpis = extract_kpis(monitor_data)
 
     assert "bullwhip" in kpis
-    for echelon in ("treatment_anchored", "collector_anchored"):
-        value = kpis["bullwhip"][echelon]
+    for key in (
+        "treatment_anchored",
+        "collector_anchored",
+        "treatment_stage",
+        "collector_stage",
+    ):
+        value = kpis["bullwhip"][key]
         assert value is not None
         assert math.isfinite(value)
         assert value > 0.0
@@ -422,4 +519,6 @@ def test_extract_kpis_bullwhip_is_none_without_logs():
     kpis = extract_kpis({})
     assert kpis["bullwhip"]["treatment_anchored"] is None
     assert kpis["bullwhip"]["collector_anchored"] is None
+    assert kpis["bullwhip"]["treatment_stage"] is None
+    assert kpis["bullwhip"]["collector_stage"] is None
     assert kpis["bullwhip"]["generation_floor_cv2"] is None

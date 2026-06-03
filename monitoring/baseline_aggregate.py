@@ -4,6 +4,7 @@ from typing import Dict, Any
 from monitoring.bullwhip import (
     collector_anchored_bullwhip,
     generation_floor_cv2,
+    stage_bullwhip,
     treatment_anchored_bullwhip,
 )
 
@@ -123,15 +124,23 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
     # diagnostics) extend it without rewiring this dict. `generation_floor_cv2`
     # is a raw CV^2 reference (the exogenous source-variance floor), NOT an
     # echelon ratio -- it sits beside the two anchored ratios to frame them.
+    transport_flows = monitor_data.get("transport_flows", [])
+    consumption_events = monitor_data.get("consumption_events", [])
+    # Stage-by-stage diagnostic (ADR 0006): pooled per-echelon stage ratios that
+    # telescope to the pooled anchored ratio, localizing where amplification is
+    # injected. Distinct from the per-node-weighted anchored headline above.
+    treatment_stage, collector_stage = stage_bullwhip(
+        transport_flows, consumption_events
+    )
     bullwhip = {
         "treatment_anchored": treatment_anchored_bullwhip(
-            monitor_data.get("transport_flows", []),
-            monitor_data.get("consumption_events", []),
+            transport_flows, consumption_events
         ),
         "collector_anchored": collector_anchored_bullwhip(
-            monitor_data.get("transport_flows", []),
-            monitor_data.get("consumption_events", []),
+            transport_flows, consumption_events
         ),
+        "treatment_stage": treatment_stage,
+        "collector_stage": collector_stage,
         "generation_floor_cv2": generation_floor_cv2(gen_hist),
     }
 
