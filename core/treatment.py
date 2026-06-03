@@ -599,7 +599,20 @@ class TreatmentOperator(OperationalEntity):
         return remaining
 
     def _collect_from_cross_region(self, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
-        """Collect waste from cross-region collectors via transport."""
+        """Reposition waste from cross-region collectors via transport.
+
+        Cross-region transport is a collector-to-collector repositioning move
+        (ADR 0009): it removes waste from the remote collector and routes it to
+        a collector in this operator's region, where it lands in the collection
+        center and is later drawn into treatment through the local intake path
+        (``provide_waste_for_treatment``). It is therefore NOT added to
+        ``collected_waste`` here -- crediting treatment storage at request time
+        while the same volume is also deposited into the destination collector
+        would double-count it in the waste-side mass balance. The repositioned
+        volume still satisfies the cross-region portion of the request (so it is
+        deducted from ``remaining`` and does not fall through to fallback), but
+        it reaches treatment storage only on the later local pickup.
+        """
         if amount_to_collect <= 0: return 0.0
 
         state = self.state
@@ -612,7 +625,6 @@ class TreatmentOperator(OperationalEntity):
 
             transport_collected = self._request_via_transport(collector, remaining, waste_types)
             for waste_type, amount in transport_collected.items():
-                collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
                 remaining -= amount
         return remaining
 

@@ -50,6 +50,10 @@ drops, while the real intake is 5.2x-9.1x larger and invisible to the log. Full 
 
 ## No double-counting
 
+> Partially superseded by ADR 0010: this section is correct for the flow *log*, but the code also credited
+> the repositioned volume to treatment *storage* at request time, double-counting it in the physical stock.
+> Fixed in ADR 0010; the claim below holds only after that fix.
+
 The repositioned volume is removed from one collector's storage and added to another's (net-zero across the
 Collector echelon), and is only counted as Treatment inbound when it is later drawn by
 `provide_waste_for_treatment`. The three links are disjoint source/target pairs, so a unit of waste is
