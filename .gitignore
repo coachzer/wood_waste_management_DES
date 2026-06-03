@@ -80,3 +80,4 @@ mfa_visualization_added_treatment_storage_types.py
 # plotting file
 data/plotting.py
 monitoring/visualization/demand_visualization.py
+data/viz
