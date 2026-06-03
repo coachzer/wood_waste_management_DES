@@ -69,6 +69,7 @@ paper-draft/
 
 # Local working notes (plans, issues, handoffs)
 .scratch/
+HANDOFF.md
 
 # GEOJSON files
 *.geojson
