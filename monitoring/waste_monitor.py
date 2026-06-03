@@ -55,6 +55,7 @@ class WasteMonitor:
                 "volumes": {},
                 "efficiency": [],
                 "total_generated": {},
+                "total_potential_generated": {},
                 "storage_utilization": [],
                 "regions": [],
                 "status": [],
@@ -82,10 +83,14 @@ class WasteMonitor:
             if waste_type not in history["volumes"]:
                 history["volumes"][waste_type] = []
                 history["total_generated"][waste_type] = []
+                history["total_potential_generated"][waste_type] = []
 
             history["volumes"][waste_type].append(stream.volume)
             history["total_generated"][waste_type].append(
                 generator.total_generated[waste_type]
+            )
+            history["total_potential_generated"][waste_type].append(
+                generator.total_potential_generated[waste_type]
             )
 
         history["efficiency"].append(generator.efficiency)

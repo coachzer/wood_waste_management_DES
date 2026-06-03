@@ -88,6 +88,16 @@ class WasteGenerator(OperationalEntity):
             for waste_type in waste_streams.keys()
         }
 
+        # Potential (pre-saturation) generation: the volume the exogenous source
+        # process would have generated each tick before the storage-headroom cap
+        # in _generate_waste_for_period drops it. total_generated records the
+        # *committed* volume, which finite storage couples to downstream
+        # collection (and thus to policy); this records what the source offered,
+        # which is policy-invariant. It is the basis for the bullwhip
+        # source-variance floor (ADR 0004). Mirrors total_generated's keys and
+        # initial-stock baseline so the two series stay structurally parallel.
+        self.total_potential_generated = dict(self.total_generated)
+
         self.history_size = HISTORY_BUFFER_SIZE
         self.history_index = 0
         self.generation_history = {
@@ -278,6 +288,12 @@ class WasteGenerator(OperationalEntity):
             self.waste_generation_rates.items(), daily_factors
         ):
             potential_volume = base_rate * seasonal_factor * daily_factor * self.efficiency
+
+            # Record the source-offered volume before the storage cap (ADR 0004
+            # floor). Accumulated for every waste type regardless of whether the
+            # commit below fires, and consuming no RNG, so committed generation
+            # and the run's behaviour are unchanged.
+            self.total_potential_generated[waste_type] += potential_volume
 
             if potential_volume <= available_storage:
                 self._update_waste_stream(

@@ -12,6 +12,7 @@ catch the bug, because within one process the memory order is stable. The test i
 marked ``slow`` (two full baseline invocations) and is opt-in via ``--run-slow``;
 see ``tests/conftest.py``.
 """
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -74,3 +75,43 @@ def test_baseline_runs_are_byte_identical_across_processes(tmp_path):
         "non-deterministic output across processes (likely unsorted set-of-enum "
         f"iteration on an ordered-work path): {mismatched}"
     )
+
+
+@pytest.mark.slow
+def test_generation_floor_is_policy_invariant(tmp_path):
+    """The bullwhip source-variance floor (ADR 0004) must carry no policy signal.
+
+    The floor is the CV^2 of *potential* (pre-saturation) generation, which is
+    the exogenous source process: identical RNG draws and seasonal/efficiency
+    factors across PUSH/PULL x strategy at a fixed seed, so it is policy- and
+    strategy-invariant. (Committed generation is NOT -- finite-storage
+    backpressure couples it to collection and thus to policy, swinging its CV^2
+    ~0.9-1.3 across combos; that coupling is exactly what measuring potential
+    avoids.) So ``bullwhip.generation_floor_cv2`` must be effectively identical
+    across all six combos of one baseline run, while the echelon ratios differ.
+    Needs a real run because the floor is computed from live
+    ``generation_history`` inside ``extract_kpis``.
+    """
+    out_root = tmp_path / "run"
+    _run_baseline(out_root)
+
+    run_files = sorted(out_root.rglob("run_*.json"))
+    assert len(run_files) == 6, (
+        f"expected 6 policy x strategy run JSONs, got {len(run_files)}: "
+        f"{[p.relative_to(out_root).as_posix() for p in run_files]}"
+    )
+
+    floors = {}
+    for run_file in run_files:
+        record = json.loads(run_file.read_text())
+        combo = f"{record['inventory_policy']}__{record['stock_strategy']}"
+        floor = record["kpis"]["bullwhip"]["generation_floor_cv2"]
+        assert floor is not None and floor >= 0.0, f"{combo}: floor is {floor!r}"
+        floors[combo] = floor
+
+    reference_combo, reference_floor = next(iter(floors.items()))
+    for combo, floor in floors.items():
+        assert floor == pytest.approx(reference_floor, rel=1e-9), (
+            f"generation floor carries a policy signal: {combo}={floor} vs "
+            f"{reference_combo}={reference_floor}"
+        )

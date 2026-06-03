@@ -20,6 +20,7 @@ from monitoring.bullwhip import (
     bullwhip_ratio,
     collector_anchored_bullwhip,
     cv_squared,
+    generation_floor_cv2,
     treatment_anchored_bullwhip,
 )
 
@@ -263,6 +264,114 @@ def test_collector_echelon_shares_the_core_amplified_case():
     assert math.isclose(result, expected, rel_tol=1e-12)
 
 
+# --- Generation source-variance floor ---------------------------------------
+
+
+def _make_generation_node(weekly_increments_by_type, weeks=None):
+    """Build a ``WasteMonitor.generation_history`` node from weekly increments.
+
+    ``weekly_increments_by_type``: ``{waste_type: [per-week potential volume]}``,
+    aligned to ``weeks`` (defaulting to the analysis weeks).
+    ``total_potential_generated`` is stored as the running cumulative sum (as the
+    monitor records it), one tracking step per week timestamped inside that week
+    -- so differencing the cumulative recovers the per-week increment exactly.
+    """
+    weeks = list(weeks) if weeks is not None else list(_analysis_weeks())
+    timestamps = [_analysis_week_timestamp(week_index) for week_index in weeks]
+    total_potential_generated = {}
+    for waste_type, increments in weekly_increments_by_type.items():
+        cumulative_series = []
+        running_total = 0.0
+        for increment in increments:
+            running_total += increment
+            cumulative_series.append(running_total)
+        total_potential_generated[waste_type] = cumulative_series
+    return {
+        "timestamps": timestamps,
+        "total_potential_generated": total_potential_generated,
+    }
+
+
+def test_generation_floor_is_raw_cv_squared_of_weekly_generation():
+    """Single node, single waste type: the floor is the raw CV^2 of the weekly
+    generated volume -- a reference value, NOT a ratio against consumption (the
+    function takes no consumption series)."""
+    week_count = len(list(_analysis_weeks()))
+    increments = [100.0 if i % 2 == 0 else 200.0 for i in range(week_count)]
+    node = _make_generation_node({"17 02 01": increments})
+
+    result = generation_floor_cv2({"generator-1": node})
+
+    assert result is not None
+    assert math.isclose(result, cv_squared(increments), rel_tol=1e-12)
+
+
+def test_generation_floor_sums_waste_types_per_step():
+    """A node's weekly volume is the sum across its waste types before CV^2."""
+    week_count = len(list(_analysis_weeks()))
+    type_a = [100.0 if i % 2 == 0 else 200.0 for i in range(week_count)]
+    type_b = [10.0] * week_count
+    node = _make_generation_node({"17 02 01": type_a, "03 01 05": type_b})
+
+    result = generation_floor_cv2({"generator-1": node})
+
+    combined = [a + b for a, b in zip(type_a, type_b)]
+    assert math.isclose(result, cv_squared(combined), rel_tol=1e-12)
+
+
+def test_generation_floor_excludes_warmup_weeks():
+    """Wild generation inside the first BULLWHIP_WARMUP_WEEKS weeks must not move
+    the floor -- only weeks 5-52 are measured."""
+    analysis_weeks = list(_analysis_weeks())
+    increments = [100.0 if i % 2 == 0 else 200.0 for i in range(len(analysis_weeks))]
+    baseline = generation_floor_cv2(
+        {"generator-1": _make_generation_node({"17 02 01": increments})}
+    )
+
+    warmup_weeks = list(range(BULLWHIP_WARMUP_WEEKS))
+    all_weeks = warmup_weeks + analysis_weeks
+    spiked = [9999.0] * len(warmup_weeks) + increments
+    with_warmup = generation_floor_cv2(
+        {"generator-1": _make_generation_node({"17 02 01": spiked}, weeks=all_weeks)}
+    )
+
+    assert baseline is not None
+    assert math.isclose(baseline, with_warmup, rel_tol=1e-12)
+
+
+def test_generation_floor_volume_weights_nodes():
+    """Volume-weighting must collapse a tiny-volume node's influence to a small
+    fraction of what an unweighted (equal-weight) average would give -- for ANY
+    dominant node, not just one whose CV^2 happens to swamp the perturbation.
+
+    The dominant node is deliberately *steady* (low CV^2), the worst case for a
+    relative-tolerance check: the test instead measures the tiny node's pull
+    against the equal-weighted alternative, isolating the weighting mechanism."""
+    week_count = len(list(_analysis_weeks()))
+    big = [1000.0 if i % 2 == 0 else 1100.0 for i in range(week_count)]
+    tiny = [0.0 if i % 2 == 0 else 5.0 for i in range(week_count)]
+    big_node = _make_generation_node({"17 02 01": big})
+    tiny_node = _make_generation_node({"17 02 01": tiny})
+
+    big_only = generation_floor_cv2({"generator-big": big_node})
+    combined = generation_floor_cv2(
+        {"generator-big": big_node, "generator-tiny": tiny_node}
+    )
+    # The unweighted mean of the two node CV^2 values -- what we'd get if the
+    # tiny node carried equal weight despite its negligible volume.
+    equal_weighted = (cv_squared(big) + cv_squared(tiny)) / 2.0
+
+    assert big_only is not None and combined is not None
+    # Volume-weighting pulls the tiny node's contribution to under 1% of its
+    # equal-weight pull, so `combined` stays near `big_only` no matter how small
+    # `big_only` is.
+    assert abs(combined - big_only) < 0.01 * abs(equal_weighted - big_only)
+
+
+def test_generation_floor_empty_history_is_none():
+    assert generation_floor_cv2({}) is None
+
+
 # --- KPI wiring -------------------------------------------------------------
 
 
@@ -284,9 +393,16 @@ def _amplified_run_logs():
 
 def test_extract_kpis_emits_bullwhip_namespace():
     transport_flows, consumption_events = _amplified_run_logs()
+    week_count = len(list(_analysis_weeks()))
+    generation = {
+        "generator-1": _make_generation_node(
+            {"17 02 01": [100.0 if i % 2 == 0 else 200.0 for i in range(week_count)]}
+        )
+    }
     monitor_data = {
         "transport_flows": transport_flows,
         "consumption_events": consumption_events,
+        "generation_history": generation,
     }
 
     kpis = extract_kpis(monitor_data)
@@ -297,6 +413,8 @@ def test_extract_kpis_emits_bullwhip_namespace():
         assert value is not None
         assert math.isfinite(value)
         assert value > 0.0
+    floor = kpis["bullwhip"]["generation_floor_cv2"]
+    assert floor is not None and math.isfinite(floor) and floor >= 0.0
 
 
 def test_extract_kpis_bullwhip_is_none_without_logs():
@@ -304,3 +422,4 @@ def test_extract_kpis_bullwhip_is_none_without_logs():
     kpis = extract_kpis({})
     assert kpis["bullwhip"]["treatment_anchored"] is None
     assert kpis["bullwhip"]["collector_anchored"] is None
+    assert kpis["bullwhip"]["generation_floor_cv2"] is None

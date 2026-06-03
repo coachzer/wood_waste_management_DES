@@ -3,6 +3,7 @@ from typing import Dict, Any
 
 from monitoring.bullwhip import (
     collector_anchored_bullwhip,
+    generation_floor_cv2,
     treatment_anchored_bullwhip,
 )
 
@@ -119,7 +120,9 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
 
     # Throughput bullwhip (ADR 0004), post-hoc from the run logs. Reported under
     # a `bullwhip` namespace so later slices (collector echelon, source floor,
-    # diagnostics) extend it without rewiring this dict.
+    # diagnostics) extend it without rewiring this dict. `generation_floor_cv2`
+    # is a raw CV^2 reference (the exogenous source-variance floor), NOT an
+    # echelon ratio -- it sits beside the two anchored ratios to frame them.
     bullwhip = {
         "treatment_anchored": treatment_anchored_bullwhip(
             monitor_data.get("transport_flows", []),
@@ -129,6 +132,7 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
             monitor_data.get("transport_flows", []),
             monitor_data.get("consumption_events", []),
         ),
+        "generation_floor_cv2": generation_floor_cv2(gen_hist),
     }
 
     return {

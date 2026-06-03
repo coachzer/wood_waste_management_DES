@@ -12,6 +12,12 @@ sits on top, doing the weekly binning and per-node volume-weighted aggregation
 for one ordering echelon; ``treatment_anchored_bullwhip`` (collector->treatment)
 and ``collector_anchored_bullwhip`` (generator->collector) are thin wrappers that
 pick the flow link. Both anchor on the same exogenous consumption series.
+
+``generation_floor_cv2`` is the companion reference value: the raw CV^2 of weekly
+waste generation, NOT an echelon ratio. Generators do not order, so it is
+policy-invariant -- it exists only to show the upstream source carries no policy
+signal and to frame that amplification is injected mid-chain (ADR 0004,
+"two ordering echelons, not three").
 """
 from __future__ import annotations
 
@@ -85,6 +91,81 @@ def _weekly_bins(records: Sequence[Dict[str, Any]], value_key: str) -> List[floa
         if start_week <= week_index <= end_week:
             bins[week_index - start_week] += record.get(value_key, 0.0)
     return bins
+
+
+def _generation_increment_records(
+    node_history: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """Per-step generated-volume records for one generator node.
+
+    ``WasteMonitor.generation_history[node]`` stores ``total_potential_generated``
+    as a per-waste-type *cumulative* series running parallel to ``timestamps``.
+    Differencing each waste type's cumulative series gives the volume the source
+    offered in each tracking step; summing those increments across waste types
+    yields the node's total potential generation per step. Potential (not
+    committed ``total_generated``) is the right series for the floor: committed
+    generation is capped by storage headroom, which finite-storage backpressure
+    couples to policy, so its CV^2 would carry a policy signal; the potential
+    series is what the exogenous source offered, policy-invariant (ADR 0004).
+    Each waste type is differenced independently so a series shorter than
+    ``timestamps`` cannot inject a spurious negative increment.
+
+    Returns ``{"timestamp", "volume"}`` records ready for ``_weekly_bins`` --
+    the same weekly grid the echelons use.
+    """
+    timestamps = node_history.get("timestamps", [])
+    total_potential_generated = node_history.get("total_potential_generated", {})
+    increments_per_step = [0.0] * len(timestamps)
+    for cumulative_series in total_potential_generated.values():
+        previous_cumulative = 0.0
+        for step_index in range(min(len(timestamps), len(cumulative_series))):
+            increment = cumulative_series[step_index] - previous_cumulative
+            previous_cumulative = cumulative_series[step_index]
+            increments_per_step[step_index] += increment
+    return [
+        {"timestamp": timestamps[step_index], "volume": increments_per_step[step_index]}
+        for step_index in range(len(timestamps))
+    ]
+
+
+def generation_floor_cv2(
+    generation_history: Dict[str, Dict[str, Any]]
+) -> Optional[float]:
+    """Source-variance floor (ADR 0004): volume-weighted CV^2 of weekly waste
+    generation across generator nodes.
+
+    A reference value, NOT an echelon bullwhip ratio: it is a raw CV^2 (the
+    quantity the echelon ratios amplify *above*), not normalized against
+    consumption. Generators do not order, so this is policy-invariant; reporting
+    it shows the upstream source carries no policy signal. Per node: CV^2 of its
+    weekly potential generated volume (cumulative ``total_potential_generated``
+    differenced into weekly increments on the weeks 5-52 grid), summed across
+    waste types -- potential, not committed, so storage-saturation backpressure
+    cannot leak a policy signal into the floor (see ``_generation_increment_records``). Node
+    CV^2 values are averaged weighted by each node's mean weekly generation, so a
+    near-zero-volume node whose CV^2 blows up cannot dominate -- mirroring the
+    echelon aggregation.
+
+    Returns ``None`` when no node yields a defined, positive-volume CV^2.
+    """
+    weighted_cv_squared_sum = 0.0
+    weight_total = 0.0
+    for node_name in sorted(generation_history):
+        node_bins = _weekly_bins(
+            _generation_increment_records(generation_history[node_name]), "volume"
+        )
+        node_cv_squared = cv_squared(node_bins)
+        if node_cv_squared is None:
+            continue
+        mean_weekly_generation = sum(node_bins) / len(node_bins)
+        if mean_weekly_generation <= 0:
+            continue
+        weighted_cv_squared_sum += node_cv_squared * mean_weekly_generation
+        weight_total += mean_weekly_generation
+
+    if weight_total == 0:
+        return None
+    return weighted_cv_squared_sum / weight_total
 
 
 def _echelon_anchored_bullwhip(
