@@ -13,8 +13,9 @@ means mass appeared or vanished without a recorded reason.
 
 The monitor is the regression net for retiring the legacy demand-ceiling code:
 it construction-snapshots the primed inventory, then checks the identity every
-consumption tick and at end of run. Only the product invariant is implemented
-here; the waste-side invariant stays deferred (ADR 0002, P2).
+consumption tick and at end of run. The product invariant runs every tick; the
+per-collection-center and system-wide waste invariants are final-only (run on a
+drained simulation, see their docstrings).
 """
 
 import logging
@@ -88,6 +89,14 @@ class MassBalanceMonitor:
             collector.name: sum(collector.collection_center.current_storage.values())
             for collector in (registry.collectors or [])
         }
+        # Initial raw waste primed into treatment storage (system-wide). Generator
+        # initial stock is already folded into each generator's total_generated,
+        # so only the treatment side needs a snapshot for the waste-side identity.
+        # getattr-guarded so product-only operator stubs (no waste_storage) read 0.
+        self._initial_treatment_waste_storage = sum(
+            sum(getattr(operator, "waste_storage", {}).values())
+            for operator in registry.operators
+        )
 
     def check_continuous(self, timestamp: Optional[float] = None) -> None:
         """Scheduled per-tick check. Records telemetry and raises/warns on drift."""
@@ -185,6 +194,82 @@ class MassBalanceMonitor:
         message = (
             f"Collection-center mass-balance violated at t={timestamp}: "
             + "; ".join(violations)
+        )
+        if self.raise_on_violation:
+            raise MassBalanceViolation(message)
+        logging.warning(message)
+
+    def check_waste_system(self, timestamp: Optional[float] = None) -> None:
+        """Check the system-wide waste-side mass-balance identity (ADR 0002, P2).
+
+        Raw waste is conserved across the whole system: everything generated
+        (plus any raw waste primed into treatment at t=0) must equal the sum of
+        every fate -- raw waste still resident at each echelon, consumed by
+        treatment, or landfilled:
+
+            sum(generated) + initial_treatment_storage + initial_collection_center
+                == generator_storage + in_transit + collection_center_storage
+                 + treatment_storage + treated_intake + landfilled
+
+        The left side is everything that entered the waste system: all committed
+        generation (which already folds in primed generator stock) plus raw
+        waste primed elsewhere. The right side is every fate -- raw waste on hand
+        in generators, on vehicles in transit (C2's per-type accounting), in
+        collection centers, and in treatment storage; raw waste consumed by
+        treatment transformation (``processed_volumes``, the corrected intake of
+        ADR 0009 and a terminal sink); and raw waste landfilled on storage
+        overflow (``state.waste_landfilled``, the single funnel through
+        ``handle_storage_event``). A mismatch means raw waste appeared or
+        vanished without a recorded reason.
+
+        Final-only by intent: run on a drained simulation. The in-transit term
+        keeps cross-region repositioning accounted, so the identity holds at any
+        settled tick, but it is checked at end of run alongside the product
+        check rather than on a per-tick cadence.
+        """
+        state = self.registry.state
+        generators = self.registry.generators or []
+        collectors = self.registry.collectors or []
+        operators = self.registry.operators
+
+        generated = sum(
+            sum(generator.total_generated.values()) for generator in generators
+        )
+        generator_storage = sum(generator.current_storage for generator in generators)
+        in_transit = sum(
+            sum(vehicle.current_load_by_type.values())
+            for vehicle in state.iter_outbound_vehicles()
+        )
+        collection_center_storage = sum(
+            sum(collector.collection_center.current_storage.values())
+            for collector in collectors
+        )
+        treatment_storage = sum(
+            sum(operator.waste_storage.values()) for operator in operators
+        )
+        treated_intake = sum(
+            sum(operator.processed_volumes.values()) for operator in operators
+        )
+        landfilled = sum(state.waste_landfilled.values())
+        initial_collection_center = sum(self._initial_collection_center.values())
+
+        lhs = generated + self._initial_treatment_waste_storage + initial_collection_center
+        rhs = (
+            generator_storage
+            + in_transit
+            + collection_center_storage
+            + treatment_storage
+            + treated_intake
+            + landfilled
+        )
+        delta = lhs - rhs
+        self.telemetry.append((timestamp, "system", "raw_waste", lhs, rhs, delta))
+
+        if math.isclose(lhs, rhs, rel_tol=RELATIVE_TOLERANCE, abs_tol=ABSOLUTE_TOLERANCE):
+            return
+        message = (
+            f"Waste-side mass-balance violated at t={timestamp}: "
+            f"in={lhs:.6f} out={rhs:.6f} delta={delta:.6f}"
         )
         if self.raise_on_violation:
             raise MassBalanceViolation(message)

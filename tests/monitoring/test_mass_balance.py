@@ -12,7 +12,9 @@ clock. Lightweight stand-ins quack like the real entities the monitor reads.
 
 from types import SimpleNamespace
 
-from models.enums import OutputType
+import pytest
+
+from models.enums import InventoryPolicy, OutputType, StockStrategy
 from monitoring.mass_balance import (
     EntityRegistry,
     MassBalanceMonitor,
@@ -153,3 +155,129 @@ def test_dropped_overflow_trips_collection_center_invariant():
     except MassBalanceViolation:
         return
     raise AssertionError("expected MassBalanceViolation for dropped collection-center waste")
+
+
+# --- system-wide waste-side invariant (C3) ----------------------------------
+#
+# sum(generated) + initial_treatment_storage + initial_collection_center
+#     == generator_storage + in_transit + collection_center_storage
+#      + treatment_storage + treated_intake + landfilled
+#
+# generated folds in primed generator stock; the right side is every fate of a
+# unit of raw waste -- resident at an echelon, in transit, consumed by
+# treatment, or landfilled. The stubs are primed empty at construction, then
+# mutated to replay a run so the snapshot terms stay zero and the run terms
+# carry the whole balance.
+
+WT = "17 02 01"  # WasteType.CONSTRUCTION_WOOD_17_02_01 value
+
+
+def make_generator(name, generated, storage):
+    """A generator stub: cumulative generation per type + scalar on-hand storage."""
+    return SimpleNamespace(name=name, total_generated=dict(generated), current_storage=storage)
+
+
+def make_treatment_op(name, waste_storage, processed):
+    """A treatment-operator stub carrying both the product fields the monitor's
+    constructor snapshots (empty here) and the waste fields the waste check reads."""
+    return SimpleNamespace(
+        name=name,
+        product_volumes={},
+        finished_goods=SimpleNamespace(current_storage={}),
+        waste_storage=dict(waste_storage),
+        processed_volumes=dict(processed),
+    )
+
+
+def make_system_state(vehicles=(), landfilled=None):
+    """A SimulationState stub exposing the in-transit iterator and landfill log."""
+    moving = list(vehicles)
+    return SimpleNamespace(
+        iter_outbound_vehicles=lambda: iter(moving),
+        waste_landfilled=dict(landfilled or {}),
+    )
+
+
+def build_waste_monitor():
+    """Construct a monitor over empty-primed stubs and return (monitor, refs).
+
+    Everything is primed at zero so the construction snapshots are zero and a
+    replayed run is expressed entirely through the mutable run terms.
+    """
+    generator = make_generator("gen-1", {WT: 0.0}, 0.0)
+    collector = make_collector("col-1", {WT: 0.0})
+    operator = make_treatment_op("op-1", {WT: 0.0}, {WT: 0.0})
+    state = make_system_state()
+    monitor = MassBalanceMonitor(
+        EntityRegistry(
+            state=state,
+            operators=[operator],
+            generators=[generator],
+            collectors=[collector],
+        )
+    )
+    return monitor, state, generator, collector, operator
+
+
+def test_balanced_waste_system_does_not_raise():
+    """Every generated unit resolves to exactly one fate -- conserved, no raise."""
+    monitor, state, generator, collector, operator = build_waste_monitor()
+
+    # Generate 1000; fates: 300 still in generator, 200 in a collection center,
+    # 50 on a vehicle in transit, 100 in treatment storage, 150 consumed by
+    # treatment, 200 landfilled. 300+200+50+100+150+200 == 1000.
+    generator.total_generated[WT] = 1000.0
+    generator.current_storage = 300.0
+    collector.collection_center.current_storage[WT] = 200.0
+    operator.waste_storage[WT] = 100.0
+    operator.processed_volumes[WT] = 150.0
+    state.waste_landfilled["col-1"] = 200.0
+    vehicle = SimpleNamespace(current_load_by_type={WT: 50.0})
+    state.iter_outbound_vehicles = lambda: iter([vehicle])
+
+    monitor.check_waste_system()  # must not raise
+
+
+def test_leaking_waste_system_trips():
+    """A unit of generated waste with no recorded fate -- the leak class the
+    invariant exists to catch -- must raise."""
+    monitor, state, generator, collector, operator = build_waste_monitor()
+
+    # Same as the balanced case but 50 of the landfilled volume is dropped
+    # (150 recorded, not 200) -- mass vanishes with no fate.
+    generator.total_generated[WT] = 1000.0
+    generator.current_storage = 300.0
+    collector.collection_center.current_storage[WT] = 200.0
+    operator.waste_storage[WT] = 100.0
+    operator.processed_volumes[WT] = 150.0
+    state.waste_landfilled["col-1"] = 150.0
+    vehicle = SimpleNamespace(current_load_by_type={WT: 50.0})
+    state.iter_outbound_vehicles = lambda: iter([vehicle])
+
+    try:
+        monitor.check_waste_system()
+    except MassBalanceViolation:
+        return
+    raise AssertionError("expected MassBalanceViolation for unaccounted generated waste")
+
+
+@pytest.mark.slow
+def test_waste_system_invariant_holds_on_baseline_run():
+    """The armed waste-side invariant holds on a real drained baseline run.
+
+    ``run_single_simulation`` runs with ``raise_on_violation=True``, so the
+    end-of-run ``check_waste_system`` aborts (surfaced as ``SystemExit``) on any
+    leak; a clean return means raw waste is conserved system-wide. Slow: a full
+    365-day, 12-region simulation.
+    """
+    from main import run_single_simulation
+
+    result = run_single_simulation(
+        scenario_name="Baseline",
+        inventory_policy=InventoryPolicy.PUSH,
+        stock_strategy=StockStrategy.ON_DEMAND,
+        seed=123456,
+        create_mfa=False,
+        raise_on_violation=True,
+    )
+    assert result["scenario_name"]
