@@ -43,12 +43,33 @@ DEFAULT_METRICS = [
 ]
 
 
+def _flatten_bullwhip(kpis: dict) -> dict:
+    """Lift the nested ``bullwhip`` sub-dict to top-level ``bullwhip.{key}`` keys.
+
+    The paired machinery resolves metrics by flat key, but ``extract_kpis``
+    nests the bullwhip KPIs one level down. Lifting them here (issue 07) lets
+    every downstream function work on flat keys unchanged. Only the ``bullwhip``
+    namespace is flattened: other keys, including the nested
+    ``service_level_full_by_product_pct`` dict, pass through untouched. ``None``
+    values are preserved so the paired drop-on-``None`` semantics fire
+    identically on lifted keys.
+    """
+    nested = kpis.get("bullwhip")
+    if not isinstance(nested, dict):
+        return kpis
+    flattened = {key: value for key, value in kpis.items() if key != "bullwhip"}
+    for key, value in nested.items():
+        flattened[f"bullwhip.{key}"] = value
+    return flattened
+
+
 def load_combo_kpis(scenario_dir: Path) -> Dict[str, Dict[int, dict]]:
     """Load per-run KPIs grouped by combo label, keyed by seed.
 
     Returns ``{combo_label: {seed: kpis_dict}}`` where ``combo_label`` is
     ``"{inventory_policy}__{stock_strategy}"`` read from each run file (not the
-    directory name, so the grouping survives directory renames).
+    directory name, so the grouping survives directory renames). The nested
+    ``bullwhip`` namespace is flattened to ``bullwhip.{key}`` metrics on load.
     """
     combos: Dict[str, Dict[int, dict]] = {}
     for run_path in sorted(scenario_dir.glob("*/run_*.json")):
@@ -56,8 +77,25 @@ def load_combo_kpis(scenario_dir: Path) -> Dict[str, Dict[int, dict]]:
             run = json.load(f)
         label = f"{run['inventory_policy']}__{run['stock_strategy']}"
         seed = run["seed"]
-        combos.setdefault(label, {})[seed] = run["kpis"]
+        combos.setdefault(label, {})[seed] = _flatten_bullwhip(run["kpis"])
     return combos
+
+
+def _discovered_bullwhip_metrics(combos: Dict[str, Dict[int, dict]]) -> List[str]:
+    """Insertion-ordered union of lifted ``bullwhip.*`` metric keys across runs.
+
+    Mirrors issue 06's discovery: keys surface in the order ``extract_kpis``
+    authors them, so ``summary.csv`` and ``paired_comparison.csv`` list the
+    bullwhip metrics identically. Discovery is a union -- a run missing a key
+    still contributes the keys it has.
+    """
+    discovered: Dict[str, None] = {}
+    for runs in combos.values():
+        for kpis in runs.values():
+            for key in kpis:
+                if key.startswith("bullwhip."):
+                    discovered.setdefault(key, None)
+    return list(discovered)
 
 
 def paired_differences(
@@ -151,9 +189,14 @@ def build_paired_report(
     The Holm correction is applied *per metric* (the family is the set of
     combo-pair comparisons for that one metric), so the family-wise error rate
     is controlled at ``alpha`` for each metric's question independently.
+
+    When ``metrics`` is left at its default, the discovered ``bullwhip.*`` keys
+    are appended after the curated set so the namespace flows through without
+    wiring (issue 07). An explicit ``metrics`` list is honored verbatim.
     """
-    metrics = metrics or DEFAULT_METRICS
     combos = load_combo_kpis(scenario_dir)
+    if metrics is None:
+        metrics = DEFAULT_METRICS + _discovered_bullwhip_metrics(combos)
     combo_labels = sorted(combos)
 
     rows: List[dict] = []
