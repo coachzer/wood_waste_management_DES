@@ -3,9 +3,11 @@ from typing import Dict, Any
 
 from monitoring.bullwhip import (
     collector_anchored_bullwhip,
+    collector_anchored_pooled_bullwhip,
     generation_floor_cv2,
     stage_bullwhip,
     treatment_anchored_bullwhip,
+    treatment_anchored_pooled_bullwhip,
 )
 
 
@@ -132,6 +134,11 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
     treatment_stage, collector_stage = stage_bullwhip(
         transport_flows, consumption_events
     )
+    # Pooled (system-level) anchored variant (ADR 0004 robustness check, ADR
+    # 0007): the same anchored ratios on the pooled per-echelon series, a
+    # conservative lower bound that understates the per-node headline. The
+    # Treatment pooled value coincides with `treatment_stage` by construction;
+    # both keys are emitted so the results table reads in parallel (ADR 0007).
     bullwhip = {
         "treatment_anchored": treatment_anchored_bullwhip(
             transport_flows, consumption_events
@@ -141,6 +148,12 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         ),
         "treatment_stage": treatment_stage,
         "collector_stage": collector_stage,
+        "treatment_anchored_pooled": treatment_anchored_pooled_bullwhip(
+            transport_flows, consumption_events
+        ),
+        "collector_anchored_pooled": collector_anchored_pooled_bullwhip(
+            transport_flows, consumption_events
+        ),
         "generation_floor_cv2": generation_floor_cv2(gen_hist),
     }
 

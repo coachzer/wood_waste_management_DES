@@ -18,6 +18,13 @@ echelons as composable stage ratios on the system-pooled per-echelon series, so
 they telescope exactly to the pooled anchored ratio and localize where
 amplification is injected.
 
+``pooled_anchored_bullwhip`` (with ``treatment_anchored_pooled_bullwhip`` /
+``collector_anchored_pooled_bullwhip`` wrappers) is the conservative robustness
+variant (ADR 0004, 0007): the same anchored ratio computed on the system-pooled
+per-echelon series rather than per-node-then-volume-weighted, expected to
+understate the headline. The Treatment pooled value equals ``treatment_stage`` by
+construction; the Collector pooled value equals the telescoped stage product.
+
 ``generation_floor_cv2`` is the companion reference value: the raw CV^2 of weekly
 waste generation, NOT an echelon ratio. Generators do not order, so it is
 policy-invariant -- it exists only to show the upstream source carries no policy
@@ -306,3 +313,73 @@ def stage_bullwhip(
     treatment_stage = bullwhip_ratio(treatment_inbound_bins, consumption_bins)
     collector_stage = bullwhip_ratio(collector_inbound_bins, treatment_inbound_bins)
     return treatment_stage, collector_stage
+
+
+def pooled_anchored_bullwhip(
+    transport_flows: Sequence[Dict[str, Any]],
+    consumption_events: Sequence[Dict[str, Any]],
+    source_type: str,
+    target_type: str,
+) -> Optional[float]:
+    """System-pooled anchored throughput bullwhip for one echelon (ADR 0004,
+    "pooled robustness check").
+
+    The robustness variant of ``_echelon_anchored_bullwhip``: instead of CV^2 per
+    node then a volume-weighted average across the echelon's nodes, it sums every
+    ``source_type -> target_type`` flow into ONE system-pooled weekly series first
+    (``_pooled_inbound_bins`` -- the same series the stage diagnostic uses), then
+    takes the ratio of its CV^2 over the shared consumption-``attempted`` anchor.
+
+    Pooling smooths exactly the out-of-phase (s, S) reorder lumpiness that is the
+    PUSH bullwhip signal, so this is expected to UNDERSTATE the per-node
+    ``*_anchored`` headline -- a conservative lower bound: if pooled still shows
+    PUSH > PULL, the result is strong (ADR 0004).
+
+    Identity worth knowing: for the Treatment echelon this returns the SAME number
+    as ``stage_bullwhip``'s ``treatment_stage`` -- both are
+    ``CV^2(pooled collector->treatment inbound) / CV^2(consumption)`` (ADR 0006).
+    They are emitted under separate keys because they answer different questions
+    (robustness of the headline vs where amplification is injected) but coincide by
+    construction for this one echelon. The Collector echelon's pooled value matches
+    no single stage; it equals the telescoped product ``treatment_stage *
+    collector_stage``. See ADR 0007.
+
+    Returns ``None`` when the anchor is undefined or flat, or the pooled flow CV^2
+    is undefined (see ``bullwhip_ratio``).
+    """
+    consumption_bins = _weekly_bins(consumption_events, "attempted")
+    pooled_inbound_bins = _pooled_inbound_bins(
+        transport_flows, source_type, target_type
+    )
+    return bullwhip_ratio(pooled_inbound_bins, consumption_bins)
+
+
+def treatment_anchored_pooled_bullwhip(
+    transport_flows: Sequence[Dict[str, Any]],
+    consumption_events: Sequence[Dict[str, Any]],
+) -> Optional[float]:
+    """Pooled Treatment-echelon robustness variant: the ``collector->treatment``
+    link, all operators summed before CV^2.
+
+    Coincides by construction with ``stage_bullwhip``'s ``treatment_stage``
+    (ADR 0006, 0007). See ``pooled_anchored_bullwhip``.
+    """
+    return pooled_anchored_bullwhip(
+        transport_flows, consumption_events, "collector", "treatment"
+    )
+
+
+def collector_anchored_pooled_bullwhip(
+    transport_flows: Sequence[Dict[str, Any]],
+    consumption_events: Sequence[Dict[str, Any]],
+) -> Optional[float]:
+    """Pooled Collector-echelon robustness variant: the ``generator->collector``
+    link, all collectors summed before CV^2.
+
+    Unlike the Treatment pooled value, this matches no single stage ratio; it
+    equals the telescoped product ``treatment_stage * collector_stage`` (ADR 0007).
+    See ``pooled_anchored_bullwhip``.
+    """
+    return pooled_anchored_bullwhip(
+        transport_flows, consumption_events, "generator", "collector"
+    )
