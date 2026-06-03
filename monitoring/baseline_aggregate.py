@@ -1,7 +1,10 @@
 from __future__ import annotations
 from typing import Dict, Any
 
-from monitoring.bullwhip import treatment_anchored_bullwhip
+from monitoring.bullwhip import (
+    collector_anchored_bullwhip,
+    treatment_anchored_bullwhip,
+)
 
 
 def _sum_last_nested(histories: Dict[str, Any], key: str) -> float:
@@ -119,6 +122,10 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
     # diagnostics) extend it without rewiring this dict.
     bullwhip = {
         "treatment_anchored": treatment_anchored_bullwhip(
+            monitor_data.get("transport_flows", []),
+            monitor_data.get("consumption_events", []),
+        ),
+        "collector_anchored": collector_anchored_bullwhip(
             monitor_data.get("transport_flows", []),
             monitor_data.get("consumption_events", []),
         ),

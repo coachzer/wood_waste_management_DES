@@ -7,9 +7,11 @@ the golden byte-identical exit test valid.
 
 The module is layered so the arithmetic core (``cv_squared``,
 ``bullwhip_ratio``) has no simulation or I/O dependency -- it takes plain numeric
-sequences and is the natural unit-test seam. ``treatment_anchored_bullwhip``
+sequences and is the natural unit-test seam. ``_echelon_anchored_bullwhip``
 sits on top, doing the weekly binning and per-node volume-weighted aggregation
-for the Treatment echelon.
+for one ordering echelon; ``treatment_anchored_bullwhip`` (collector->treatment)
+and ``collector_anchored_bullwhip`` (generator->collector) are thin wrappers that
+pick the flow link. Both anchor on the same exogenous consumption series.
 """
 from __future__ import annotations
 
@@ -85,18 +87,22 @@ def _weekly_bins(records: Sequence[Dict[str, Any]], value_key: str) -> List[floa
     return bins
 
 
-def treatment_anchored_bullwhip(
+def _echelon_anchored_bullwhip(
     transport_flows: Sequence[Dict[str, Any]],
     consumption_events: Sequence[Dict[str, Any]],
+    source_type: str,
+    target_type: str,
 ) -> Optional[float]:
-    """Volume-weighted Treatment-echelon throughput bullwhip for one run.
+    """Volume-weighted throughput bullwhip for one ordering echelon, one run.
 
-    Per treatment operator: CV^2 of its weekly inbound collector->treatment flow
-    over the CV^2 of the shared weekly market-consumption anchor. The anchor is
-    consumption ``attempted`` (the exogenous demand presented to operators) --
-    never ``consumed``, which the system's own stockouts would deflate (ADR
-    0004). The per-node ratios are averaged weighted by each node's mean weekly
-    inbound flow, so a near-zero-flow node whose CV^2 blows up cannot dominate.
+    The echelon is the ``source_type -> target_type`` flow link; its ordering
+    node is the ``target_name`` (the entity pulling inbound flow). Per node:
+    CV^2 of its weekly inbound flow over the CV^2 of the shared weekly
+    market-consumption anchor. The anchor is consumption ``attempted`` (the
+    exogenous demand presented to operators) -- never ``consumed``, which the
+    system's own stockouts would deflate (ADR 0004). The per-node ratios are
+    averaged weighted by each node's mean weekly inbound flow, so a
+    near-zero-flow node whose CV^2 blows up cannot dominate.
 
     Returns ``None`` when the anchor is undefined or no node yields a defined,
     positive-flow ratio.
@@ -105,15 +111,15 @@ def treatment_anchored_bullwhip(
     if cv_squared(consumption_bins) in (None, 0):
         return None
 
-    inbound_flows_by_operator: Dict[str, List[Dict[str, Any]]] = {}
+    inbound_flows_by_node: Dict[str, List[Dict[str, Any]]] = {}
     for flow in transport_flows:
-        if flow.get("source_type") == "collector" and flow.get("target_type") == "treatment":
-            inbound_flows_by_operator.setdefault(flow["target_name"], []).append(flow)
+        if flow.get("source_type") == source_type and flow.get("target_type") == target_type:
+            inbound_flows_by_node.setdefault(flow["target_name"], []).append(flow)
 
     weighted_ratio_sum = 0.0
     weight_total = 0.0
-    for operator_name in sorted(inbound_flows_by_operator):
-        node_bins = _weekly_bins(inbound_flows_by_operator[operator_name], "volume")
+    for node_name in sorted(inbound_flows_by_node):
+        node_bins = _weekly_bins(inbound_flows_by_node[node_name], "volume")
         node_ratio = bullwhip_ratio(node_bins, consumption_bins)
         if node_ratio is None:
             continue
@@ -126,3 +132,32 @@ def treatment_anchored_bullwhip(
     if weight_total == 0:
         return None
     return weighted_ratio_sum / weight_total
+
+
+def treatment_anchored_bullwhip(
+    transport_flows: Sequence[Dict[str, Any]],
+    consumption_events: Sequence[Dict[str, Any]],
+) -> Optional[float]:
+    """Treatment-echelon throughput bullwhip: the ``collector->treatment`` link.
+
+    Each treatment operator's inbound waste flow against the consumption anchor.
+    See ``_echelon_anchored_bullwhip`` for the binning and weighting.
+    """
+    return _echelon_anchored_bullwhip(
+        transport_flows, consumption_events, "collector", "treatment"
+    )
+
+
+def collector_anchored_bullwhip(
+    transport_flows: Sequence[Dict[str, Any]],
+    consumption_events: Sequence[Dict[str, Any]],
+) -> Optional[float]:
+    """Collector-echelon throughput bullwhip: the ``generator->collector`` link.
+
+    The upstream ordering echelon -- each collector's inbound waste flow from
+    generators against the same exogenous consumption anchor as Treatment.
+    See ``_echelon_anchored_bullwhip`` for the binning and weighting.
+    """
+    return _echelon_anchored_bullwhip(
+        transport_flows, consumption_events, "generator", "collector"
+    )

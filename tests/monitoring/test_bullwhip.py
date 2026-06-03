@@ -18,6 +18,7 @@ from config.constants import (
 from monitoring.baseline_aggregate import extract_kpis
 from monitoring.bullwhip import (
     bullwhip_ratio,
+    collector_anchored_bullwhip,
     cv_squared,
     treatment_anchored_bullwhip,
 )
@@ -204,18 +205,80 @@ def test_no_inbound_flow_yields_none():
     assert treatment_anchored_bullwhip([], consumption_events) is None
 
 
+# --- Collector-echelon aggregation ------------------------------------------
+
+
+def _make_generator_flow(week_index, volume, target_name="collector-1"):
+    return {
+        "source_type": "generator",
+        "source_name": "generator-1",
+        "target_type": "collector",
+        "target_name": target_name,
+        "waste_type": "17 02 01",
+        "volume": volume,
+        "timestamp": _analysis_week_timestamp(week_index),
+        "transport_method": "collection_vehicle",
+    }
+
+
+def test_collector_uses_generator_to_collector_link_not_treatment():
+    """The collector echelon reads ``generator->collector`` flow. Feeding it only
+    ``collector->treatment`` flow (the Treatment echelon's link) yields None --
+    proving the two echelons key off distinct links, not the same records."""
+    consumption_events = []
+    treatment_only_flows = []
+    for offset, week_index in enumerate(_analysis_weeks()):
+        attempted = 100.0 if offset % 2 == 0 else 200.0
+        consumption_events.append(_make_consumption_event(week_index, attempted, attempted))
+        volume = 30.0 if offset % 2 == 0 else 90.0
+        treatment_only_flows.append(_make_inbound_flow(week_index, volume))
+
+    assert collector_anchored_bullwhip(treatment_only_flows, consumption_events) is None
+    # The same flows DO define the Treatment echelon -- so the input is valid,
+    # only the link differs.
+    assert treatment_anchored_bullwhip(treatment_only_flows, consumption_events) is not None
+
+
+def test_collector_echelon_shares_the_core_amplified_case():
+    """An amplified generator->collector series flows through the shared core to
+    a defined ratio > 1, matching a direct ``bullwhip_ratio`` recompute."""
+    consumption_events = []
+    generator_flows = []
+    for offset, week_index in enumerate(_analysis_weeks()):
+        attempted = 100.0 if offset % 2 == 0 else 200.0
+        consumption_events.append(_make_consumption_event(week_index, attempted, attempted))
+        volume = 10.0 if offset % 2 == 0 else 200.0
+        generator_flows.append(_make_generator_flow(week_index, volume))
+
+    result = collector_anchored_bullwhip(generator_flows, consumption_events)
+
+    attempted_bins = [
+        100.0 if offset % 2 == 0 else 200.0 for offset in range(len(consumption_events))
+    ]
+    volume_bins = [
+        10.0 if offset % 2 == 0 else 200.0 for offset in range(len(generator_flows))
+    ]
+    expected = bullwhip_ratio(volume_bins, attempted_bins)
+    assert result is not None and result > 1.0
+    assert math.isclose(result, expected, rel_tol=1e-12)
+
+
 # --- KPI wiring -------------------------------------------------------------
 
 
 def _amplified_run_logs():
-    """Synthetic single-run logs with a defined, amplified treatment bullwhip."""
+    """Synthetic single-run logs with defined, amplified bullwhip at both
+    echelons -- collector->treatment and generator->collector flow alongside the
+    consumption anchor."""
     consumption_events = []
     transport_flows = []
     for offset, week_index in enumerate(_analysis_weeks()):
         attempted = 100.0 if offset % 2 == 0 else 120.0
         consumption_events.append(_make_consumption_event(week_index, attempted, attempted))
-        volume = 10.0 if offset % 2 == 0 else 200.0
-        transport_flows.append(_make_inbound_flow(week_index, volume))
+        treatment_volume = 10.0 if offset % 2 == 0 else 200.0
+        transport_flows.append(_make_inbound_flow(week_index, treatment_volume))
+        collector_volume = 15.0 if offset % 2 == 0 else 180.0
+        transport_flows.append(_make_generator_flow(week_index, collector_volume))
     return transport_flows, consumption_events
 
 
@@ -229,13 +292,15 @@ def test_extract_kpis_emits_bullwhip_namespace():
     kpis = extract_kpis(monitor_data)
 
     assert "bullwhip" in kpis
-    treatment_anchored = kpis["bullwhip"]["treatment_anchored"]
-    assert treatment_anchored is not None
-    assert math.isfinite(treatment_anchored)
-    assert treatment_anchored > 0.0
+    for echelon in ("treatment_anchored", "collector_anchored"):
+        value = kpis["bullwhip"][echelon]
+        assert value is not None
+        assert math.isfinite(value)
+        assert value > 0.0
 
 
 def test_extract_kpis_bullwhip_is_none_without_logs():
     # Missing logs (e.g. a monitor_data without the raw flows) -> None, no crash.
     kpis = extract_kpis({})
     assert kpis["bullwhip"]["treatment_anchored"] is None
+    assert kpis["bullwhip"]["collector_anchored"] is None

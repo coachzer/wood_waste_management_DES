@@ -59,6 +59,10 @@ _Avoid_: consumption signal, market order
 A request from a **Treatment Operator** to collectors (and transitively to generators) for a specific waste type and volume. In PULL mode, triggered by **Consumption Events**. In PUSH mode, triggered by stock strategy thresholds detecting low inventory.
 _Avoid_: order, request
 
+**Throughput Bullwhip**:
+The variance amplification of *physical replenishment flow* relative to market demand, measured per ordering echelon as the cross-policy PUSH-vs-PULL evidence. Defined on **delivered flow** (from the transport-flow log), not on **Demand Signals** — those are not observable in PUSH (collectors ignore generator signals) and are not persisted, so flow is the only quantity logged identically under both policies. Normalized as a squared coefficient of variation ratio, `CV²(echelon weekly inbound flow) / CV²(weekly market consumption)`, so the value is unit-free across the waste-to-product commodity change and `> 1` means amplification. There are **two ordering echelons** — Treatment (`collector→treatment` flow) and Collector (`generator→collector` flow); waste **generation** is an exogenous *source-variance floor*, not a third echelon, because generators do not order. This is a doubly-exogenous chain — both market consumption and waste generation are exogenous — so amplification is injected in the middle, not grown toward the source. The denominator anchor is consumption `attempted` (the exogenous demand presented), never `consumed` (already shaped by stockouts). Method and rationale: ADR 0004.
+_Avoid_: order bullwhip (the metric is flow-based, not order-based), bullwhip ratio (unqualified — say which echelon and that it is CV²-normalized)
+
 **Seasonal Pattern**:
 A sinusoidal factor `1 + 0.2 * sin(2πt/T)` applied to both waste generation rates and market consumption rates. Peaks in summer (more construction activity), troughs in winter. Shared between generators and consumption so that supply and demand are driven by the same underlying seasonality.
 _Avoid_: seasonal index (ambiguous — could refer to the array index or the factor value)
