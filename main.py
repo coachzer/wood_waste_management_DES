@@ -5,14 +5,13 @@ from core.simulation_manager import SimulationManager
 from models.enums import InventoryPolicy, StockStrategy
 from monitoring.mfa_visualization import create_material_flow_analysis
 from monitoring.scenario_comparison import ScenarioComparison
-from monitoring.baseline_aggregate import extract_kpis
+from monitoring.baseline_aggregate import extract_kpis, summary_rows
 from monitoring.paired_comparison import write_paired_comparison_report
 import traceback
 import argparse
 import time
 import json
 import random
-import math
 import numpy as np
 from pathlib import Path
 
@@ -184,52 +183,9 @@ def run_monte_carlo_baseline(
 
 
 def _write_combo_summary(csv_path: Path, kpis_list: list[dict]) -> None:
-
-    metrics = [
-        "total_generated_m3",
-        "total_collected_m3",
-        "total_processed_m3",
-        "collection_rate_pct",
-        "processing_rate_pct",
-        "overall_efficiency_pct",
-        "landfill_volume_m3",
-        "total_emissions_kgco2e",
-        "collection_transport_cost",
-        "processing_cost",
-        "storage_overflow_cost",
-        "total_system_cost",
-        "max_collector_util_pct",
-        "max_processor_waste_util_pct",
-        "max_processor_finished_goods_util_pct",
-        "service_level_full_pct",
-        "service_level_operational_pct",
-        "total_attempted_m3",
-        "total_consumed_m3",
-        "no_capability_lost_m3",
-        "stockout_lost_m3",
-    ]
-    rows = ["metric,mean,stdev,ci95_low,ci95_high,count"]
-    n = len(kpis_list)
-    if n == 0:
-        csv_path.write_text("\n".join(rows), encoding="utf-8")
-        return
-    z = 1.96
-    for m in metrics:
-        vals = [float(v[m]) for v in kpis_list if v.get(m) is not None]
-        if not vals:
-            continue
-        mean = sum(vals) / len(vals)
-        if len(vals) > 1:
-            var = sum((x - mean) ** 2 for x in vals) / (len(vals) - 1)
-            stdev = math.sqrt(var)
-            moe = z * stdev / math.sqrt(len(vals))
-            lo = mean - moe
-            hi = mean + moe
-        else:
-            stdev = 0.0
-            lo = hi = mean
-        rows.append(f"{m},{mean:.6g},{stdev:.6g},{lo:.6g},{hi:.6g},{len(vals)}")
-    csv_path.write_text("\n".join(rows), encoding="utf-8")
+    # Thin writer over the pure `summary_rows` seam (issue 06): marginal KPIs
+    # plus the generic `bullwhip` namespace, each with a Student-t CI (ADR 0008).
+    csv_path.write_text("\n".join(summary_rows(kpis_list)), encoding="utf-8")
 
 
 def main():

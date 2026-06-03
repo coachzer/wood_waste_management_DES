@@ -1,5 +1,8 @@
 from __future__ import annotations
-from typing import Dict, Any
+import math
+from typing import Dict, Any, List
+
+from scipy import stats
 
 from monitoring.bullwhip import (
     collector_anchored_bullwhip,
@@ -9,6 +12,99 @@ from monitoring.bullwhip import (
     treatment_anchored_bullwhip,
     treatment_anchored_pooled_bullwhip,
 )
+
+
+# Marginal KPIs aggregated into summary.csv, in display order. The nested
+# `bullwhip` namespace is appended generically afterward (issue 06).
+_SUMMARY_METRICS = [
+    "total_generated_m3",
+    "total_collected_m3",
+    "total_processed_m3",
+    "collection_rate_pct",
+    "processing_rate_pct",
+    "overall_efficiency_pct",
+    "landfill_volume_m3",
+    "total_emissions_kgco2e",
+    "collection_transport_cost",
+    "processing_cost",
+    "storage_overflow_cost",
+    "total_system_cost",
+    "max_collector_util_pct",
+    "max_processor_waste_util_pct",
+    "max_processor_finished_goods_util_pct",
+    "service_level_full_pct",
+    "service_level_operational_pct",
+    "total_attempted_m3",
+    "total_consumed_m3",
+    "no_capability_lost_m3",
+    "stockout_lost_m3",
+]
+
+_SUMMARY_HEADER = "metric,mean,stdev,ci95_low,ci95_high,count"
+
+
+def _mean_ci(vals: List[float], alpha: float):
+    """Mean, sample stdev, and two-sided Student-t CI of ``vals``.
+
+    Variance is estimated from the sample, so the textbook small-n interval is
+    Student-t with ``n-1`` degrees of freedom (ADR 0008), matching the paired
+    comparison machinery. A single observation has no spread: stdev 0 and the
+    CI collapses to the mean (``t.ppf`` is undefined at zero df).
+    """
+    n = len(vals)
+    mean = sum(vals) / n
+    if n > 1:
+        var = sum((x - mean) ** 2 for x in vals) / (n - 1)
+        stdev = math.sqrt(var)
+        margin = float(stats.t.ppf(1 - alpha / 2, n - 1)) * stdev / math.sqrt(n)
+        return mean, stdev, mean - margin, mean + margin
+    return mean, 0.0, mean, mean
+
+
+def summary_rows(kpis_list: List[Dict[str, Any]], alpha: float = 0.05) -> List[str]:
+    """Build the ``summary.csv`` rows (header first) for one combo's replications.
+
+    Each marginal KPI in ``_SUMMARY_METRICS`` becomes a mean + Student-t CI row
+    over the replications that reported it (``None`` excluded; all-``None`` keys
+    skipped). Pure and free of I/O so it can be unit-tested without a run.
+    """
+    rows = [_SUMMARY_HEADER]
+    if not kpis_list:
+        return rows
+    for metric in _SUMMARY_METRICS:
+        vals = [float(k[metric]) for k in kpis_list if k.get(metric) is not None]
+        if not vals:
+            continue
+        mean, stdev, lo, hi = _mean_ci(vals, alpha)
+        rows.append(
+            f"{metric},{mean:.6g},{stdev:.6g},{lo:.6g},{hi:.6g},{len(vals)}"
+        )
+
+    # Generic pass over the `bullwhip` namespace: aggregate whatever keys exist
+    # so echelons / floor / stage / pooled variants flow through with no wiring
+    # here (issue 06). Keys are discovered structurally as an insertion-ordered
+    # union across replications, preserving the order `extract_kpis` authors them
+    # (headline -> stage -> pooled -> floor) and surviving a partial dict.
+    bullwhip_keys: Dict[str, None] = {}
+    for k in kpis_list:
+        for key in k.get("bullwhip", {}) or {}:
+            bullwhip_keys.setdefault(key, None)
+    for key in bullwhip_keys:
+        vals = [
+            float(k["bullwhip"][key])
+            for k in kpis_list
+            if (k.get("bullwhip") or {}).get(key) is not None
+        ]
+        if not vals:
+            # Degenerate across every replication: emit the row anyway with
+            # count 0 and blank stats so the namespace stays discoverable.
+            rows.append(f"bullwhip.{key},,,,,0")
+            continue
+        mean, stdev, lo, hi = _mean_ci(vals, alpha)
+        rows.append(
+            f"bullwhip.{key},{mean:.6g},{stdev:.6g},{lo:.6g},{hi:.6g},{len(vals)}"
+        )
+    return rows
 
 
 def _sum_last_nested(histories: Dict[str, Any], key: str) -> float:
