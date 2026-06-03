@@ -1,7 +1,7 @@
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Dict, Tuple, List
-from config.constants import SIMULATION_DURATION, DENSITY
+from config.constants import SIMULATION_DURATION, DENSITY, FINISHED_GOODS_BUFFER_WEEKS
 from models.enums import InventoryPolicy, StockStrategy
 from models.data_classes import FailureConfig
 from utils.helpers import (
@@ -20,6 +20,7 @@ class UncertaintySet:
     treatment_failure: FailureConfig
     waste_generation_mean: float = 1.0               # Scenario multiplier on base rates
     waste_generation_variability: float = 0.2      # ±20% variation on regional rates
+    finished_goods_buffer_weeks: int = FINISHED_GOODS_BUFFER_WEEKS  # weeks of demand sized into finished-goods capacity
 
 @dataclass
 class CostParams:
@@ -49,6 +50,7 @@ class ScenarioConfig:
     treatment_failure: FailureConfig
     inventory_policy: InventoryPolicy = InventoryPolicy.PUSH
     stock_strategy: StockStrategy = StockStrategy.REORDER_90
+    finished_goods_buffer_weeks: int = FINISHED_GOODS_BUFFER_WEEKS  # swept by the bucket-C sensitivity scenarios
 
     def to_uncertainty_set(self) -> UncertaintySet:
         """Convert scenario config to uncertainty set"""
@@ -62,7 +64,8 @@ class ScenarioConfig:
             collector_failure=self.collector_failure,
             treatment_failure=self.treatment_failure,
             waste_generation_mean=self.waste_gen[0],
-            waste_generation_variability=self.waste_gen[1]
+            waste_generation_variability=self.waste_gen[1],
+            finished_goods_buffer_weeks=self.finished_goods_buffer_weeks
         )
 
 TIME_PERIODS = {
@@ -135,6 +138,17 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
     # )
 }
 
+# Finished-goods buffer sensitivity sweep (bucket-C C1): the paper's sensitivity
+# section. Each scenario is Baseline with only the finished-goods buffer resized,
+# built from Baseline so the shared parameters cannot drift. Buffer4 is the
+# default buffer and must reproduce Baseline behaviour exactly.
+BUFFER_SWEEP_WEEKS: Tuple[int, ...] = (2, 4, 6, 8)
+for _buffer_weeks in BUFFER_SWEEP_WEEKS:
+    _scenario = deepcopy(SCENARIO_CONFIGS["Baseline"])
+    _scenario.name = f"Buffer{_buffer_weeks}"
+    _scenario.finished_goods_buffer_weeks = _buffer_weeks
+    SCENARIO_CONFIGS[_scenario.name] = _scenario
+
 def validate_tuple(mean_std_tuple: Tuple[float, float], name: str) -> None:
     """Validate a mean/std tuple"""
     config_dict = {
@@ -153,6 +167,8 @@ def validate_scenario_config(config: ScenarioConfig) -> None:
     validate_tuple(config.coll_eff, "Collection efficiency")
     validate_tuple(config.treat_conv, "Treatment conversion")
     validate_tuple(config.trans_time, "Transportation time")
+    if config.finished_goods_buffer_weeks <= 0:
+        raise ValueError("finished_goods_buffer_weeks must be positive")
 
 uncertainty_sets = {}
 
@@ -167,7 +183,8 @@ def _create_uncertainty_set(config: ScenarioConfig) -> UncertaintySet:
         collector_failure=config.collector_failure,
         treatment_failure=config.treatment_failure,
         waste_generation_mean=config.waste_gen[0],
-        waste_generation_variability=config.waste_gen[1]
+        waste_generation_variability=config.waste_gen[1],
+        finished_goods_buffer_weeks=config.finished_goods_buffer_weeks
     )
 
 def validate_time_periods() -> None:

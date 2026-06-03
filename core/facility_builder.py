@@ -196,11 +196,16 @@ class FacilityBuilder:
         """Per-product finished-goods capacity (ADR 0002, Phase C).
 
         ``capacity[product] = market_share * (annual_demand[product] /
-        WEEKS_PER_YEAR) * FINISHED_GOODS_BUFFER_WEEKS`` for every product the
-        operator can actually produce. Non-producible products are omitted: the
-        market records them as no-capability lost sales and never touches their
-        inventory, so priding them would be meaningless dead stock.
+        WEEKS_PER_YEAR) * buffer_weeks`` for every product the operator can
+        actually produce. ``buffer_weeks`` is per-scenario (the bucket-C
+        sensitivity sweep, default ``FINISHED_GOODS_BUFFER_WEEKS``).
+        Non-producible products are omitted: the market records them as
+        no-capability lost sales and never touches their inventory, so priming
+        them would be meaningless dead stock.
         """
+        buffer_weeks = getattr(
+            self.uncertainty_set, "finished_goods_buffer_weeks", FINISHED_GOODS_BUFFER_WEEKS
+        )
         national_demand = self.facility_manager.demand
         producible_outputs = sorted(
             {transformation.output_type for transformation in transformations.values()},
@@ -210,7 +215,7 @@ class FacilityBuilder:
             output_type: (
                 market_share
                 * (national_demand[output_type.value] / WEEKS_PER_YEAR)
-                * FINISHED_GOODS_BUFFER_WEEKS
+                * buffer_weeks
             )
             for output_type in producible_outputs
             if output_type.value in national_demand
