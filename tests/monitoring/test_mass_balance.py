@@ -385,3 +385,26 @@ def test_waste_system_invariant_holds_on_baseline_run():
         raise_on_violation=True,
     )
     assert result["scenario_name"]
+
+
+@pytest.mark.slow
+def test_collection_center_invariant_holds_on_baseline_run():
+    """The per-collection-center identity closes on a real drained baseline run.
+
+    Wired final-only in ``run_simulation`` alongside ``check_waste_system``. With
+    reposition outflow now sourced on the origin collector (not the borrowed
+    carrier), each center's books balance independently. ``raise_on_violation``
+    aborts (as ``SystemExit``) on any per-center leak; a clean return confirms
+    the localized identity holds. Slow: a full 365-day, 12-region simulation.
+    """
+    from main import run_single_simulation
+
+    result = run_single_simulation(
+        scenario_name="Baseline",
+        inventory_policy=InventoryPolicy.PUSH,
+        stock_strategy=StockStrategy.ON_DEMAND,
+        seed=123456,
+        create_mfa=False,
+        raise_on_violation=True,
+    )
+    assert result["scenario_name"]

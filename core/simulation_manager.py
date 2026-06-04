@@ -224,6 +224,9 @@ class SimulationManager:
         # System-wide waste-side conservation, on the drained run (final-only;
         # see MassBalanceMonitor.check_waste_system).
         self.mass_balance_monitor.check_waste_system(self.env.now)
+        # Per-collection-center waste conservation, localizing the system-wide
+        # check to each center (final-only; see check_collection_centers).
+        self.mass_balance_monitor.check_collection_centers(self.env.now)
         # Waste->product yield bridge: deposited output must match the intake x
         # efficiency expectation (final-only; see check_yield_bridge, G1).
         self.mass_balance_monitor.check_yield_bridge(self.env.now)
