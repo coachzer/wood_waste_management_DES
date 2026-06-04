@@ -240,6 +240,22 @@ class SimulationManager:
             # process by extract_kpis.
             'transport_flows': self.state.transport_flows,
             'consumption_events': self.state.consumption_events,
+            # Static per-entity waste-storage capacities, so residence-time KPIs
+            # (Little's Law, C4) can recover absolute generator/collector
+            # inventory from the monitors' utilization-percent series. Treatment
+            # capacity expands at runtime and is recorded in absolute m3 already,
+            # so it is not needed here. Pure post-run assembly -- no behaviour
+            # change.
+            'storage_capacities': {
+                'generators': {
+                    generator.name: generator.waste_storage_capacity
+                    for generator in self.state.generators
+                },
+                'collectors': {
+                    collector.name: collector.waste_storage_capacity
+                    for collector in self.state.collectors
+                },
+            },
             'final_summary': {
                 'simulation_time': self.env.now,
                 # Continuous market-consumption metrics (ADR 0002) -- the sole
