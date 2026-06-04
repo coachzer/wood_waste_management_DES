@@ -240,3 +240,16 @@ if __name__ == "__main__":
     report = write_pareto_report(target, root=args.root)
     print(f"Wrote {report}")
     _print_frontier_summary(report_rows)
+
+    # Companion parallel-coordinates HTML, when the project package is importable
+    # (e.g. run from the repo root). A pure bare-file invocation (sys.path[0] =
+    # monitoring/) cannot resolve `monitoring.*`, so the plot is skipped with a
+    # note and the CSV above still stands as the standalone artifact.
+    try:
+        from monitoring.visualization.pareto_visualization import write_pareto_plot
+
+        plot = write_pareto_plot(target, root=args.root)
+        if plot is not None:
+            print(f"Wrote {plot}")
+    except Exception as exc:
+        print(f"(skipped Pareto plot: {exc})")

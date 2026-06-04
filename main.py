@@ -8,6 +8,7 @@ from monitoring.scenario_comparison import ScenarioComparison
 from monitoring.baseline_aggregate import extract_kpis, summary_rows
 from monitoring.paired_comparison import write_paired_comparison_report
 from monitoring.pareto import write_pareto_report
+from monitoring.visualization.pareto_visualization import write_pareto_plot
 import traceback
 import argparse
 import time
@@ -186,6 +187,10 @@ def run_monte_carlo_baseline(
             pareto_path = write_pareto_report(scenario_dir)
             if pareto_path is not None:
                 print(f"Wrote Pareto frontier: {pareto_path}")
+                # Parallel-coordinates HTML of the same frontier, beside the CSV.
+                plot_path = write_pareto_plot(scenario_dir)
+                if plot_path is not None:
+                    print(f"Wrote Pareto frontier plot: {plot_path}")
         except Exception as e:
             print(f"Warning: failed to write Pareto frontier for {scenario_name}: {e}")
     elapsed = time.time() - start_time
