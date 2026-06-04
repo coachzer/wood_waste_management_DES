@@ -7,6 +7,7 @@ from monitoring.mfa_visualization import create_material_flow_analysis
 from monitoring.scenario_comparison import ScenarioComparison
 from monitoring.baseline_aggregate import extract_kpis, summary_rows
 from monitoring.paired_comparison import write_paired_comparison_report
+from monitoring.pareto import write_pareto_report
 import traceback
 import argparse
 import time
@@ -175,6 +176,18 @@ def run_monte_carlo_baseline(
                 print(f"Wrote paired comparison report: {report_path}")
         except Exception as e:
             print(f"Warning: failed to write paired comparison report for {scenario_name}: {e}")
+
+        # Pareto frontier across this scenario's combos over the multi-objective
+        # KPI vector (service, emissions, landfill, cost), reading the summary.csv
+        # means just written. Reports the non-dominated set so a combo that wins on
+        # one objective by losing on others cannot pass for a winner. The
+        # cross-scenario (--root) frontier is standalone-only. (monitoring/pareto.py)
+        try:
+            pareto_path = write_pareto_report(scenario_dir)
+            if pareto_path is not None:
+                print(f"Wrote Pareto frontier: {pareto_path}")
+        except Exception as e:
+            print(f"Warning: failed to write Pareto frontier for {scenario_name}: {e}")
     elapsed = time.time() - start_time
     print(
         f"\nBaseline Monte Carlo complete. Total runs: {len(results)} in {elapsed:.2f}s"
