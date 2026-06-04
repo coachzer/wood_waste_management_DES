@@ -22,20 +22,25 @@ from monitoring.mass_balance import (
 )
 
 
-def make_operator(name, produced, storage):
+def make_operator(name, produced, storage, expected_output=None):
     """A minimal treatment-operator stand-in the monitor can read.
 
     ``produced`` maps product strings to the uncapped output counter;
     ``storage`` maps product strings to current finished-goods volume.
+    ``expected_output`` is the yield-bridge accumulator (intake x efficiency);
+    left unset by tests that do not exercise ``check_yield_bridge``.
     """
     finished_goods = SimpleNamespace(
         current_storage={OutputType(product): volume for product, volume in storage.items()}
     )
-    return SimpleNamespace(
+    operator = SimpleNamespace(
         name=name,
         product_volumes=dict(produced),
         finished_goods=finished_goods,
     )
+    if expected_output is not None:
+        operator.expected_output_volume = expected_output
+    return operator
 
 
 def make_state(operator):
@@ -86,6 +91,49 @@ def test_valid_invariant_does_not_raise():
     )
 
     monitor.check_final()  # must not raise
+
+
+# --- waste->product yield-bridge invariant (G1) -----------------------------
+#
+# Per treatment operator, the bridge relates the two otherwise-independent
+# ledgers: the output expected from intake (intake x efficiency, accumulated
+# into expected_output_volume) must equal the finished-goods actually deposited
+# (sum of product_volumes). A wrong efficiency or mis-scaled yield breaks the
+# bridge without disturbing either single-ledger invariant.
+
+
+def test_yield_bridge_mismatch_trips():
+    """Deposited product mass below the intake x efficiency expectation -- a
+    mis-scaled yield, the gap the bridge exists to catch -- must raise."""
+    operator = make_operator(
+        name="op-1",
+        produced={"mdf": 50.0, "particle_board": 0.0, "osb": 0.0},
+        storage={"mdf": 50.0, "particle_board": 0.0, "osb": 0.0},
+        expected_output=100.0,
+    )
+    state = make_state(operator)
+    monitor = MassBalanceMonitor(EntityRegistry(state=state, operators=[operator]))
+
+    try:
+        monitor.check_yield_bridge()
+    except MassBalanceViolation:
+        return
+    raise AssertionError("expected MassBalanceViolation for yield-bridge mismatch")
+
+
+def test_yield_bridge_balanced_does_not_raise():
+    """Deposited product mass equal to the intake x efficiency expectation --
+    the bridge closes and must not raise."""
+    operator = make_operator(
+        name="op-1",
+        produced={"mdf": 100.0, "particle_board": 0.0, "osb": 0.0},
+        storage={"mdf": 100.0, "particle_board": 0.0, "osb": 0.0},
+        expected_output=100.0,
+    )
+    state = make_state(operator)
+    monitor = MassBalanceMonitor(EntityRegistry(state=state, operators=[operator]))
+
+    monitor.check_yield_bridge()  # must not raise
 
 
 # --- collection-center raw-waste invariant (ADR 0009, issue 11) -------------
@@ -259,6 +307,62 @@ def test_leaking_waste_system_trips():
     except MassBalanceViolation:
         return
     raise AssertionError("expected MassBalanceViolation for unaccounted generated waste")
+
+
+@pytest.mark.slow
+def test_yield_bridge_trips_on_halved_yield(monkeypatch):
+    """A mis-scaled yield is caught end-to-end (connection-audit Probe 4).
+
+    Monkeypatching ``_calculate_output_amounts`` to halve the deposited output
+    leaves intake (and thus ``expected_output_volume``) untouched, so the
+    finished goods diverge from the intake-derived expectation. Probe 4 showed
+    this slips past both single-ledger invariants; the armed yield bridge must
+    abort the run (surfaced as ``SystemExit`` whose cause is a
+    ``MassBalanceViolation``). Slow: a full 365-day, 12-region simulation.
+    """
+    from core.treatment import TreatmentOperator
+    from main import run_single_simulation
+
+    def halved_output(self, amount_to_process, efficiency):
+        return amount_to_process, amount_to_process * efficiency * 0.5
+
+    monkeypatch.setattr(TreatmentOperator, "_calculate_output_amounts", halved_output)
+
+    with pytest.raises(SystemExit) as excinfo:
+        run_single_simulation(
+            scenario_name="Baseline",
+            inventory_policy=InventoryPolicy.PUSH,
+            stock_strategy=StockStrategy.ON_DEMAND,
+            seed=123456,
+            create_mfa=False,
+            raise_on_violation=True,
+        )
+
+    cause = excinfo.value.__cause__
+    assert isinstance(cause, MassBalanceViolation)
+    assert "Yield-bridge" in str(cause)
+
+
+@pytest.mark.slow
+def test_yield_bridge_holds_on_baseline_run():
+    """The armed yield bridge closes on a real, unmutated baseline run.
+
+    ``run_single_simulation`` runs with ``raise_on_violation=True``, so the
+    end-of-run ``check_yield_bridge`` aborts (as ``SystemExit``) on any
+    intake/output divergence; a clean return means deposited finished goods
+    match the intake x efficiency expectation. Slow: a full baseline run.
+    """
+    from main import run_single_simulation
+
+    result = run_single_simulation(
+        scenario_name="Baseline",
+        inventory_policy=InventoryPolicy.PUSH,
+        stock_strategy=StockStrategy.ON_DEMAND,
+        seed=123456,
+        create_mfa=False,
+        raise_on_violation=True,
+    )
+    assert result["scenario_name"]
 
 
 @pytest.mark.slow

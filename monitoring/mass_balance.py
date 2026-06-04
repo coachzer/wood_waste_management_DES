@@ -274,3 +274,50 @@ class MassBalanceMonitor:
         if self.raise_on_violation:
             raise MassBalanceViolation(message)
         logging.warning(message)
+
+    def check_yield_bridge(self, timestamp: Optional[float] = None) -> None:
+        """Check the waste->product yield bridge, per treatment operator (G1).
+
+        The product and waste invariants each close independently; neither
+        relates intake to output. This check is the bridge between them:
+
+            expected_output_volume == sum(product_volumes.values())
+
+        ``expected_output_volume`` is accumulated on the operator as
+        ``intake x efficiency`` at each transformation -- an expectation derived
+        straight from the intake, independent of the path that deposits finished
+        goods (``_calculate_output_amounts``). The right side is the finished
+        goods actually produced. In correct code the two agree; a wrong
+        conversion efficiency or a mis-scaled yield makes the deposited output
+        diverge from the intake-derived expectation and trips here, where the
+        single-ledger invariants stay silent.
+
+        Final-only by intent: a single end-of-run reconciliation of the two
+        cumulative counters; there is no per-tick term to drift.
+        """
+        violations = []
+        for operator in self.registry.operators:
+            expected = getattr(operator, "expected_output_volume", 0.0)
+            produced = sum(operator.product_volumes.values())
+            delta = expected - produced
+            self.telemetry.append(
+                (timestamp, operator.name, "yield_bridge", expected, produced, delta)
+            )
+
+            if not math.isclose(
+                expected, produced, rel_tol=RELATIVE_TOLERANCE, abs_tol=ABSOLUTE_TOLERANCE
+            ):
+                violations.append(
+                    f"{operator.name}: expected={expected:.6f} "
+                    f"produced={produced:.6f} delta={delta:.6f}"
+                )
+
+        if not violations:
+            return
+        message = (
+            f"Yield-bridge mass-balance violated at t={timestamp}: "
+            + "; ".join(violations)
+        )
+        if self.raise_on_violation:
+            raise MassBalanceViolation(message)
+        logging.warning(message)

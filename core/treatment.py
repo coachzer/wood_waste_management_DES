@@ -103,6 +103,11 @@ class TreatmentOperator(OperationalEntity):
             "particle_board": 0.0,
             "osb": 0.0
         }
+        # Yield-bridge accumulator (G1): cumulative output expected from intake,
+        # summed as intake x efficiency at each transformation. Reconciled against
+        # the deposited product_volumes by MassBalanceMonitor.check_yield_bridge so
+        # a wrong efficiency or mis-scaled yield cannot pass silently.
+        self.expected_output_volume = 0.0
 
         # Initialize product data manager for accessing product specifications
         self.product_manager = ProductDataManager()
@@ -482,6 +487,10 @@ class TreatmentOperator(OperationalEntity):
 
         if output_type in final_products:
             self.finished_goods.current_storage[output_type] += output_amount
+
+            # Yield-bridge expectation (G1): derived from intake, independent of
+            # the output_amount path above, so the two diverge if a yield is wrong.
+            self.expected_output_volume += amount_to_process * efficiency
 
             if output_type == OutputType.MDF:
                 self.product_volumes["mdf"] += output_amount # m³
