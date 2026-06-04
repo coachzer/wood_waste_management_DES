@@ -127,3 +127,41 @@ def test_reposition_logs_collector_to_collector_not_treatment():
     assert flow["target_type"] == "collector"
     assert flow["target_name"] == "collector-dest"
     assert flow["volume"] == 120.0
+
+
+def test_reposition_logs_origin_collector_not_borrowed_vehicle_owner():
+    """The reposition source is the ORIGIN collector, not the carrier.
+
+    When the origin collector's own vehicles are busy, ``find_available_vehicle``
+    borrows a neighbouring collector's vehicle. The mass leaves the origin
+    collector's storage (``transfer_waste_to_region`` decremented it), so the
+    flow's ``source_name`` must be the origin collector -- identified by
+    ``request.requester_id`` -- not the borrowed vehicle's owner. Sourcing it on
+    the carrier mis-attributes the outflow and breaks the per-collection-center
+    mass-balance identity (``check_collection_centers``)."""
+    origin, destination = RegionType.KOROSKA, RegionType.PODRAVSKA
+    state = SimulationState()
+    state.collectors = [
+        SimpleNamespace(name="col-origin", region_type=origin),
+        SimpleNamespace(name="col-dest", region_type=destination),
+    ]
+
+    # The only available vehicle belongs to a DIFFERENT collector (borrowed).
+    vehicle = SimpleNamespace(
+        in_transit=False, destination=None, estimated_arrival=None,
+        current_load=0.0, current_region=origin,
+    )
+    vehicle_info = {"vehicle": vehicle, "collector": SimpleNamespace(name="col-vehicle-owner")}
+    request = TransportRequest(
+        origin=origin, destination=destination, waste_type=CONSTRUCTION,
+        volume=120.0, priority=TransportPriority.NORMAL, request_time=0.0,
+        requester_id="col-origin",
+    )
+
+    PointToPointTransport._create_transport(
+        make_transport_manager(state), request, vehicle_info, current_time=5.0
+    )
+
+    flow = state.transport_flows[0]
+    assert flow["source_name"] == "col-origin"
+    assert flow["target_name"] == "col-dest"

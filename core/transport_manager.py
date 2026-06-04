@@ -114,9 +114,14 @@ class PointToPointTransport:
         )
         target_name = destination_collector.name if destination_collector else request.requester_id
 
+        # The source is the ORIGIN collector that decremented its own storage
+        # (transfer_waste_to_region), named by requester_id -- not the carrier
+        # (vehicle owner), which find_available_vehicle may borrow from another
+        # region when the origin's vehicles are busy. Sourcing it on the carrier
+        # mis-attributes the outflow and breaks the per-collection-center identity.
         self.state.track_transport_flow(
             source_type="collector",
-            source_name=collector.name,
+            source_name=request.requester_id,
             target_type="collector",
             target_name=target_name,
             waste_type=request.waste_type,
