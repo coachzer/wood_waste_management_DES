@@ -715,13 +715,6 @@ class TreatmentOperator(OperationalEntity):
         self.waste_monitor.track_processing(self, self.env.now)
 
         actually_stored = self._add_to_storage(collected_waste)
-        if actually_stored < sum(collected_waste.values()):
-            overflow_amount = sum(collected_waste.values()) - actually_stored
-            handle_storage_event(
-                self, 
-                overflow_amount, 
-                self.region
-            )
 
         return actually_stored, sum(collected_waste.values())
 
