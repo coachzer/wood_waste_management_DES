@@ -8,6 +8,7 @@ from monitoring.scenario_comparison import ScenarioComparison
 from monitoring.baseline_aggregate import extract_kpis, summary_rows
 from monitoring.paired_comparison import write_paired_comparison_report
 from monitoring.pareto import write_pareto_report
+from monitoring.stochastic_dominance import write_dominance_report
 from monitoring.visualization.pareto_visualization import write_pareto_plot
 import traceback
 import argparse
@@ -177,6 +178,18 @@ def run_monte_carlo_baseline(
                 print(f"Wrote paired comparison report: {report_path}")
         except Exception as e:
             print(f"Warning: failed to write paired comparison report for {scenario_name}: {e}")
+
+        # Stochastic (FSD/SSD) dominance across this scenario's combos over the
+        # full run distribution of each KPI. A distribution-level claim that
+        # complements the paired mean-difference test above: it asks whether one
+        # combo's whole distribution sits above another's, not just its mean.
+        # (monitoring/stochastic_dominance.py)
+        try:
+            dominance_path = write_dominance_report(scenario_dir)
+            if dominance_path is not None:
+                print(f"Wrote stochastic dominance report: {dominance_path}")
+        except Exception as e:
+            print(f"Warning: failed to write stochastic dominance report for {scenario_name}: {e}")
 
         # Pareto frontier across this scenario's combos over the multi-objective
         # KPI vector (service, emissions, landfill, cost), reading the summary.csv
