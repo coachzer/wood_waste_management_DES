@@ -194,3 +194,22 @@ def test_constant_paired_difference_hits_zero_variance_branch(tmp_path):
     assert zero["sd_diff"] == 0.0
     assert zero["mean_diff"] == 0.0
     assert zero["significant_holm"] is False
+
+
+def test_residence_namespace_key_becomes_a_paired_comparison_metric(tmp_path):
+    # The second generic namespace (C4) is flattened and discovered just like
+    # bullwhip: a residence.* key rides the all-combo-pairs paired machinery.
+    for seed, (push_v, pull_v) in enumerate([(1.0, 2.0), (1.0, 3.0), (1.0, 4.0)]):
+        _write_run(tmp_path, "push", "on_demand", seed,
+                   {"residence": {"treatment_residence_days": push_v}})
+        _write_run(tmp_path, "pull", "on_demand", seed,
+                   {"residence": {"treatment_residence_days": pull_v}})
+
+    rows = build_paired_report(tmp_path)
+
+    row = _find(rows, "residence.treatment_residence_days",
+                "pull__on_demand", "push__on_demand")
+    assert row is not None, "residence key was not lifted to a comparable metric"
+    # Per-seed pull - push = [1.0, 2.0, 3.0], mean 2.0 over 3 paired seeds.
+    assert row["mean_diff"] == 2.0
+    assert row["n_pairs"] == 3

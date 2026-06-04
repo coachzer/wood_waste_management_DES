@@ -128,3 +128,30 @@ def test_arbitrary_new_bullwhip_key_flows_through_without_wiring():
     assert cells is not None
     assert float(cells[1]) == 2.0
     assert int(cells[5]) == 2
+
+
+def test_residence_namespace_flows_through_as_prefixed_rows():
+    # The second generic namespace (C4) rides the same pass: residence keys are
+    # emitted as `residence.{key}` rows with mean + Student-t CI, no extra wiring.
+    kpis = [
+        {"residence": {"treatment_residence_days": 2.0, "generator_wip_m3": 100.0}},
+        {"residence": {"treatment_residence_days": 4.0, "generator_wip_m3": 300.0}},
+    ]
+    rows = summary_rows(kpis)
+    residence = _row(rows, "residence.treatment_residence_days")
+    assert residence is not None
+    assert float(residence[1]) == 3.0 and int(residence[5]) == 2
+    wip = _row(rows, "residence.generator_wip_m3")
+    assert wip is not None and float(wip[1]) == 200.0
+
+
+def test_residence_none_across_replications_still_emits_discoverable_row():
+    # All-None across replications: the row still appears with count 0 so the
+    # namespace stays discoverable (mirrors the bullwhip degenerate handling).
+    kpis = [
+        {"residence": {"treatment_residence_days": None}},
+        {"residence": {"treatment_residence_days": None}},
+    ]
+    cells = _row(summary_rows(kpis), "residence.treatment_residence_days")
+    assert cells is not None
+    assert int(cells[5]) == 0

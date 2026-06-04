@@ -42,24 +42,38 @@ DEFAULT_METRICS = [
     "collection_rate_pct",
 ]
 
+# Nested KPI namespaces that extract_kpis emits as sub-dicts and that ride the
+# paired machinery as flat `{namespace}.{key}` metrics (issues 06/07; C4 for
+# `residence`). MUST mirror `_GENERIC_NAMESPACES` in baseline_aggregate.py. It is
+# duplicated rather than imported on purpose: this module imports no project
+# code so it stays runnable as a bare file (`python monitoring/paired_comparison.py`),
+# where sys.path[0] is monitoring/ and a `monitoring.*` import would not resolve.
+_GENERIC_NAMESPACES = ("bullwhip", "residence")
 
-def _flatten_bullwhip(kpis: dict) -> dict:
-    """Lift the nested ``bullwhip`` sub-dict to top-level ``bullwhip.{key}`` keys.
+
+def _flatten_namespaces(kpis: dict) -> dict:
+    """Lift each nested generic namespace sub-dict to top-level
+    ``{namespace}.{key}`` keys.
 
     The paired machinery resolves metrics by flat key, but ``extract_kpis``
-    nests the bullwhip KPIs one level down. Lifting them here (issue 07) lets
-    every downstream function work on flat keys unchanged. Only the ``bullwhip``
-    namespace is flattened: other keys, including the nested
-    ``service_level_full_by_product_pct`` dict, pass through untouched. ``None``
-    values are preserved so the paired drop-on-``None`` semantics fire
+    nests the ``bullwhip`` / ``residence`` KPIs one level down. Lifting them here
+    (issue 07; C4) lets every downstream function work on flat keys unchanged.
+    Only the registered namespaces are flattened: other keys, including the
+    nested ``service_level_full_by_product_pct`` dict, pass through untouched.
+    ``None`` values are preserved so the paired drop-on-``None`` semantics fire
     identically on lifted keys.
     """
-    nested = kpis.get("bullwhip")
-    if not isinstance(nested, dict):
-        return kpis
-    flattened = {key: value for key, value in kpis.items() if key != "bullwhip"}
-    for key, value in nested.items():
-        flattened[f"bullwhip.{key}"] = value
+    flattened = {
+        key: value
+        for key, value in kpis.items()
+        if key not in _GENERIC_NAMESPACES
+    }
+    for namespace in _GENERIC_NAMESPACES:
+        nested = kpis.get(namespace)
+        if not isinstance(nested, dict):
+            continue
+        for key, value in nested.items():
+            flattened[f"{namespace}.{key}"] = value
     return flattened
 
 
@@ -77,23 +91,24 @@ def load_combo_kpis(scenario_dir: Path) -> Dict[str, Dict[int, dict]]:
             run = json.load(f)
         label = f"{run['inventory_policy']}__{run['stock_strategy']}"
         seed = run["seed"]
-        combos.setdefault(label, {})[seed] = _flatten_bullwhip(run["kpis"])
+        combos.setdefault(label, {})[seed] = _flatten_namespaces(run["kpis"])
     return combos
 
 
-def _discovered_bullwhip_metrics(combos: Dict[str, Dict[int, dict]]) -> List[str]:
-    """Insertion-ordered union of lifted ``bullwhip.*`` metric keys across runs.
+def _discovered_namespace_metrics(combos: Dict[str, Dict[int, dict]]) -> List[str]:
+    """Insertion-ordered union of lifted ``{namespace}.*`` metric keys across runs.
 
     Mirrors issue 06's discovery: keys surface in the order ``extract_kpis``
     authors them, so ``summary.csv`` and ``paired_comparison.csv`` list the
-    bullwhip metrics identically. Discovery is a union -- a run missing a key
+    namespaced metrics identically. Discovery is a union -- a run missing a key
     still contributes the keys it has.
     """
+    prefixes = tuple(f"{namespace}." for namespace in _GENERIC_NAMESPACES)
     discovered: Dict[str, None] = {}
     for runs in combos.values():
         for kpis in runs.values():
             for key in kpis:
-                if key.startswith("bullwhip."):
+                if key.startswith(prefixes):
                     discovered.setdefault(key, None)
     return list(discovered)
 
@@ -196,7 +211,7 @@ def build_paired_report(
     """
     combos = load_combo_kpis(scenario_dir)
     if metrics is None:
-        metrics = DEFAULT_METRICS + _discovered_bullwhip_metrics(combos)
+        metrics = DEFAULT_METRICS + _discovered_namespace_metrics(combos)
     combo_labels = sorted(combos)
 
     rows: List[dict] = []

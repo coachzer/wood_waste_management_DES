@@ -12,6 +12,7 @@ from monitoring.bullwhip import (
     treatment_anchored_bullwhip,
     treatment_anchored_pooled_bullwhip,
 )
+from monitoring.flow_times import flow_time_metrics
 
 
 # Marginal KPIs aggregated into summary.csv, in display order. The nested
@@ -41,6 +42,13 @@ _SUMMARY_METRICS = [
 ]
 
 _SUMMARY_HEADER = "metric,mean,stdev,ci95_low,ci95_high,count"
+
+# Nested KPI sub-dicts aggregated generically: every key inside one is
+# discovered structurally and emitted as `{namespace}.{key}` with no per-key
+# wiring (issue 06). `bullwhip` is the throughput-amplification family (ADR
+# 0004); `residence` is the lead/residence-time family (Little's Law, C4). The
+# paired-comparison machinery mirrors this tuple (see paired_comparison.py).
+_GENERIC_NAMESPACES = ("bullwhip", "residence")
 
 
 def _mean_ci(vals: List[float], alpha: float):
@@ -80,30 +88,32 @@ def summary_rows(kpis_list: List[Dict[str, Any]], alpha: float = 0.05) -> List[s
             f"{metric},{mean:.6g},{stdev:.6g},{lo:.6g},{hi:.6g},{len(vals)}"
         )
 
-    # Generic pass over the `bullwhip` namespace: aggregate whatever keys exist
-    # so echelons / floor / stage / pooled variants flow through with no wiring
-    # here (issue 06). Keys are discovered structurally as an insertion-ordered
-    # union across replications, preserving the order `extract_kpis` authors them
-    # (headline -> stage -> pooled -> floor) and surviving a partial dict.
-    bullwhip_keys: Dict[str, None] = {}
-    for k in kpis_list:
-        for key in k.get("bullwhip", {}) or {}:
-            bullwhip_keys.setdefault(key, None)
-    for key in bullwhip_keys:
-        vals = [
-            float(k["bullwhip"][key])
-            for k in kpis_list
-            if (k.get("bullwhip") or {}).get(key) is not None
-        ]
-        if not vals:
-            # Degenerate across every replication: emit the row anyway with
-            # count 0 and blank stats so the namespace stays discoverable.
-            rows.append(f"bullwhip.{key},,,,,0")
-            continue
-        mean, stdev, lo, hi = _mean_ci(vals, alpha)
-        rows.append(
-            f"bullwhip.{key},{mean:.6g},{stdev:.6g},{lo:.6g},{hi:.6g},{len(vals)}"
-        )
+    # Generic pass over each nested namespace (`bullwhip`, `residence`):
+    # aggregate whatever keys exist so echelons / floor / stage / pooled variants
+    # and the per-stage residence metrics flow through with no wiring here (issue
+    # 06). Keys are discovered structurally as an insertion-ordered union across
+    # replications, preserving the order `extract_kpis` authors them and
+    # surviving a partial dict.
+    for namespace in _GENERIC_NAMESPACES:
+        namespace_keys: Dict[str, None] = {}
+        for k in kpis_list:
+            for key in k.get(namespace, {}) or {}:
+                namespace_keys.setdefault(key, None)
+        for key in namespace_keys:
+            vals = [
+                float(k[namespace][key])
+                for k in kpis_list
+                if (k.get(namespace) or {}).get(key) is not None
+            ]
+            if not vals:
+                # Degenerate across every replication: emit the row anyway with
+                # count 0 and blank stats so the namespace stays discoverable.
+                rows.append(f"{namespace}.{key},,,,,0")
+                continue
+            mean, stdev, lo, hi = _mean_ci(vals, alpha)
+            rows.append(
+                f"{namespace}.{key},{mean:.6g},{stdev:.6g},{lo:.6g},{hi:.6g},{len(vals)}"
+            )
     return rows
 
 
@@ -277,4 +287,8 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         "no_capability_lost_m3": float(final_summary.get("no_capability_lost") or 0.0),
         "stockout_lost_m3": float(final_summary.get("stockout_lost") or 0.0),
         "bullwhip": bullwhip,
+        # Lead and residence times (Little's Law, C4). A second generic
+        # namespace alongside `bullwhip`: per-stage WIP, throughput, and
+        # residence, computed post-hoc from monitor history.
+        "residence": flow_time_metrics(monitor_data),
     }
