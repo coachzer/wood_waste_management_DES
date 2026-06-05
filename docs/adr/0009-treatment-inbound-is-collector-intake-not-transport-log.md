@@ -25,7 +25,7 @@ fallback intake that decrements collector storage directly and feeds the treatme
 logged to `transport_flows`. A monkey-patch ledger over weeks 0-52, seed 123456, confirmed this across every
 PUSH and PULL combo: the logged series equals transferred-out equals re-deposited with zero net and zero
 drops, while the real intake is 5.2x-9.1x larger and invisible to the log. Full record:
-`.scratch/bullwhip/FINDING-B-VERIFICATION.md`.
+`docs/adr/0009-finding-b-verification.md`.
 
 ## Decision
 
@@ -84,6 +84,6 @@ holds at that echelon; that re-evaluation is issue 09's verdict on the issue-12 
 
 ## References
 
-- `.scratch/bullwhip/FINDING-B-VERIFICATION.md` — the static audit, runtime ledger sweep, and impact map.
+- `docs/adr/0009-finding-b-verification.md` — the static audit, runtime ledger sweep, and impact map.
 - Supersedes the Treatment-echelon flow identification in ADR 0004; refines the Treatment-side numbers in
   ADRs 0006 and 0007. ADR 0005 (source floor) and the Collector echelon are unaffected.
