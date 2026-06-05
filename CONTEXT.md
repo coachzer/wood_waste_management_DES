@@ -95,6 +95,10 @@ _Avoid_: run ID, job name
 All echelons are primed with 2 weeks of inventory at expected consumption rate before simulation starts. Treatment operators' `finished_goods` is initialized to `(annual_demand / 52) * 2 * market_share` per product type — 50% of `finished_goods_capacity` (which is sized for four weeks), giving symmetric headroom for over- and under-production phases. Waste storage is initialized to enough waste to produce 2 weeks of product (the 2-week product target divided by blended transformation efficiency), distributed across the operator's input waste types in proportion to the region's waste generation mix. Collectors and generators use existing `initial_stock` from region JSON. Same initial conditions for both PUSH and PULL — ensures fair comparison and avoids cold-start artifacts in early-simulation metrics.
 _Avoid_: warm-up stock, safety stock (different concept)
 
+**Avoided Emissions**:
+The greenhouse-gas emissions the system avoids by displacing **virgin-feedstock production** of the same wood-based product. Because every MDF / particle board / OSB unit is made from recovered wood waste, it stands in for a functionally identical panel that would otherwise have been manufactured from primary (virgin) wood — and that virgin production's footprint is avoided. Driven by recycled **produced volume** per product type, scaled by a per-product literature factor. A *recycling avoided-burden* (secondary vs primary production of the same good), **not** a material-substitution claim — the model does not represent the buyer choosing wood over concrete/steel/plastic, so no non-wood displacement is asserted. Reported as a benefit alongside, and on a different system boundary from, the operational emissions in `total_emissions_kgco2e`.
+_Avoid_: substitution effect (implies non-wood material displacement), displacement factor (that is the per-carbon-mass material-substitution metric, a different concept), carbon credit
+
 ## Example dialogue
 
 > **Dev**: "The simulation finishes at day 100 — all demands are met."
