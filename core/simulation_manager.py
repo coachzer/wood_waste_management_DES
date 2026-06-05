@@ -30,10 +30,8 @@ class SimulationManager:
     """Manages complete simulation lifecycle - setup, execution, and monitoring"""
     
     def __init__(self, seed=None):
-        # Reset cross-run registries. The global state singleton is gone -- each
-        # run owns an independent SimulationState injected downstream -- but the
-        # OperationalEntity registries and the facility counters are still
-        # process-global and must be cleared per run.
+        # Reset cross-run registries: the OperationalEntity registries and
+        # facility counters are process-global, so they must be cleared per run.
         OperationalEntity._entity_registry.clear()
         OperationalEntity._failure_counts.clear()
         facility_builder_module.facilities = {
@@ -101,9 +99,7 @@ class SimulationManager:
         processors = []
 
         # Total processing capacity across all regions, used to apportion each
-        # operator's market share of national demand (ADR 0002). Computed up
-        # front so market_share can be set at construction without disturbing
-        # the per-entity seed-spawn order.
+        # operator's market share of national demand (ADR 0002).
         total_processor_capacity = self._total_processor_capacity()
 
         for region in RegionType:
@@ -189,10 +185,9 @@ class SimulationManager:
         # Start weekly market consumption of finished goods
         self.env.process(self._market_consumption_process())
 
-        # Mass-balance safety net (ADR 0002, Phase E.5). Construct now, at t=0,
-        # so the snapshot captures the primed finished-goods inventory. Start
-        # the check process AFTER market consumption so same-tick events fire
-        # in insertion order -- the check runs once consumption has settled.
+        # Mass-balance safety net (ADR 0002, Phase E.5): construct now, at t=0, so
+        # the snapshot captures the primed finished-goods inventory. Started after
+        # market consumption so the same-tick check runs once consumption settles.
         self.mass_balance_monitor = MassBalanceMonitor(
             EntityRegistry(
                 state=self.state,
@@ -207,10 +202,8 @@ class SimulationManager:
     def _mass_balance_check_process(self):
         """Check the product mass-balance invariant every consumption tick.
 
-        Ticks on the same CONSUMPTION_INTERVAL_DAYS cadence as market
-        consumption; because this process is started after the consumption
-        process, its same-time event fires afterwards, so the check sees the
-        inventory state once the tick's consumption has settled.
+        Ticks on CONSUMPTION_INTERVAL_DAYS; started after the consumption process,
+        so its same-time event fires afterwards and the check sees settled state.
         """
         while True:
             yield self.env.timeout(CONSUMPTION_INTERVAL_DAYS)
@@ -221,14 +214,9 @@ class SimulationManager:
         print(f"Starting simulation for {SIMULATION_DURATION} time units...")
         self.env.run(until=SIMULATION_DURATION)
         self.mass_balance_monitor.check_final(self.env.now)
-        # System-wide waste-side conservation, on the drained run (final-only;
-        # see MassBalanceMonitor.check_waste_system).
+        # Final-only waste-side invariants on the drained run (see their docstrings).
         self.mass_balance_monitor.check_waste_system(self.env.now)
-        # Per-collection-center waste conservation, localizing the system-wide
-        # check to each center (final-only; see check_collection_centers).
         self.mass_balance_monitor.check_collection_centers(self.env.now)
-        # Waste->product yield bridge: deposited output must match the intake x
-        # efficiency expectation (final-only; see check_yield_bridge, G1).
         self.mass_balance_monitor.check_yield_bridge(self.env.now)
         self._print_final_status()
 
@@ -241,17 +229,13 @@ class SimulationManager:
             'environmental_history': self.waste_monitor.get_environmental_history,
             'event_history': self.waste_monitor.get_event_history,
             'entity_status_history': self.waste_monitor.get_entity_status_history,
-            # Raw run logs for post-hoc analysis (e.g. throughput bullwhip,
-            # ADR 0004). Not persisted to the per-run KPI JSON; consumed in
-            # process by extract_kpis.
+            # Raw run logs for post-hoc analysis (e.g. bullwhip, ADR 0004),
+            # consumed in process by extract_kpis.
             'transport_flows': self.state.transport_flows,
             'consumption_events': self.state.consumption_events,
-            # Static per-entity waste-storage capacities, so residence-time KPIs
-            # (Little's Law, C4) can recover absolute generator/collector
-            # inventory from the monitors' utilization-percent series. Treatment
-            # capacity expands at runtime and is recorded in absolute m3 already,
-            # so it is not needed here. Pure post-run assembly -- no behaviour
-            # change.
+            # Static per-entity waste-storage capacities, so residence KPIs
+            # (Little's Law, C4) recover absolute generator/collector inventory
+            # from the monitors' utilization-percent series.
             'storage_capacities': {
                 'generators': {
                     generator.name: generator.waste_storage_capacity
@@ -264,8 +248,7 @@ class SimulationManager:
             },
             'final_summary': {
                 'simulation_time': self.env.now,
-                # Continuous market-consumption metrics (ADR 0002) -- the sole
-                # service-level surface now that the demand ceiling is retired.
+                # Continuous market-consumption service-level metrics (ADR 0002).
                 'full_service_level': self.state.full_service_level,
                 'operational_service_level': self.state.operational_service_level,
                 'total_attempted_consumption': self.state.total_attempted_consumption,
@@ -282,10 +265,8 @@ class SimulationManager:
     def _seasonal_factor(self, current_time: float) -> float:
         """Seasonal demand multiplier, aligned with waste-generation seasonality.
 
-        Uses the same quarter-discretized sinusoid as WasteGenerator (see
-        core/generator.py) so consumption and generation share one seasonal
-        rhythm: SEASONAL_PERIODS periods over the run, amplitude
-        SEASONAL_AMPLITUDE about a unit mean.
+        Uses the same quarter-discretized sinusoid as WasteGenerator
+        (core/generator.py) so consumption and generation share one rhythm.
         """
         season_index = min(
             SEASONAL_PERIODS - 1,
@@ -296,24 +277,18 @@ class SimulationManager:
     def _market_consumption_process(self):
         """Weekly market consumption of finished goods (ADR 0002).
 
-        Models national demand as continuous market consumption rather than a
-        production ceiling. Every CONSUMPTION_INTERVAL_DAYS, for each treatment
-        operator and each product, the market attempts to consume
-        ``market_share * (annual_demand[product] / WEEKS_PER_YEAR) *
-        seasonal_factor`` from the operator's finished-goods inventory. The
-        attempt is presented to every operator for every product, uniform
-        across product types: an operator that cannot produce a product records
-        the whole attempt as ``no_capability`` lost sales, while a capable
-        operator with insufficient inventory records the shortfall as
-        ``stockout`` lost sales. Every attempt is logged via
-        ``SimulationState.record_consumption_event`` for service-level
-        accounting.
+        Models national demand as continuous **Market Consumption**, not a
+        production ceiling. Every CONSUMPTION_INTERVAL_DAYS, for each operator and
+        product, the market attempts ``market_share * (annual_demand[product] /
+        WEEKS_PER_YEAR) * seasonal_factor`` from finished-goods inventory. An
+        operator that cannot produce a product records the attempt as
+        ``no_capability`` lost sales; a capable one short on inventory records the
+        shortfall as ``stockout``. Every attempt is logged via
+        ``record_consumption_event``.
 
-        PULL operators additionally receive a market kanban signal carrying
-        their total producible attempted volume -- the upstream-cascade trigger
-        consumed by the PULL refactor (ADR 0002, Phase E). The signal carries
-        ``attempted`` (not ``consumed``) so an emptied inventory does not
-        starve future production.
+        PULL operators additionally receive a market kanban signal carrying their
+        producible attempted volume (ADR 0002, Phase E) -- ``attempted``, not
+        ``consumed``, so an emptied inventory does not starve future production.
         """
         national_demand = self.facility_manager.demand
         while True:

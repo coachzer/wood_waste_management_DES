@@ -1,22 +1,14 @@
 """Paired comparison of policy/strategy combinations under common random numbers.
 
-The baseline Monte Carlo (``main.run_monte_carlo_baseline``) reuses the same
-seed series (``base_seed + i``) for every InventoryPolicy x StockStrategy
-combination, so replication ``i`` of two combos faces the *same* waste arrivals
-and failure draws. That is Common Random Numbers (CRN): a variance-reduction
-design that removes "different luck" as a confound when comparing combos.
-
-``summary.csv`` reports only *marginal* per-combo confidence intervals, which
-do not exploit the pairing -- comparing combos by eyeballing overlapping
-marginal CIs is both under-powered and not the right statistic. This module
-reports the rigorous version: per-replication KPI **differences** paired by
-seed, a paired-t confidence interval on the mean difference, and a
-Holm-Bonferroni multiplicity correction across the family of pairwise
-comparisons for each metric (so the family-wise error rate is controlled at
-``alpha`` per metric).
-
+The baseline Monte Carlo reuses the same seed series (``base_seed + i``) across
+every InventoryPolicy x StockStrategy combo, so replication ``i`` of two combos
+faces identical draws -- Common Random Numbers (CRN; see CLAUDE.md "Seeding").
+``summary.csv`` reports only marginal per-combo CIs, which do not exploit the
+pairing. This module reports the paired version: per-replication KPI
+**differences** paired by seed, a paired-t CI on the mean difference, and a
+Holm-Bonferroni correction across each metric's family of pairwise comparisons.
 It consumes the persisted ``run_*.json`` files, so it runs post-hoc without
-re-simulating, and is independent of the demand-refactor phases.
+re-simulating.
 """
 
 import json
@@ -42,26 +34,21 @@ DEFAULT_METRICS = [
     "collection_rate_pct",
 ]
 
-# Nested KPI namespaces that extract_kpis emits as sub-dicts and that ride the
-# paired machinery as flat `{namespace}.{key}` metrics (issues 06/07; C4 for
-# `residence`). MUST mirror `_GENERIC_NAMESPACES` in baseline_aggregate.py. It is
-# duplicated rather than imported on purpose: this module imports no project
-# code so it stays runnable as a bare file (`python monitoring/paired_comparison.py`),
-# where sys.path[0] is monitoring/ and a `monitoring.*` import would not resolve.
+# Nested KPI namespaces extract_kpis emits as sub-dicts, ridden as flat
+# `{namespace}.{key}` metrics (issues 06/07). MUST mirror `_GENERIC_NAMESPACES`
+# in baseline_aggregate.py; duplicated rather than imported so this module imports
+# no project code and stays runnable as a bare file.
 _GENERIC_NAMESPACES = ("bullwhip", "residence", "carbon")
 
 
 def _flatten_namespaces(kpis: dict) -> dict:
     """Lift each nested generic namespace sub-dict to top-level
-    ``{namespace}.{key}`` keys.
+    ``{namespace}.{key}`` keys so downstream functions work on flat keys.
 
-    The paired machinery resolves metrics by flat key, but ``extract_kpis``
-    nests the ``bullwhip`` / ``residence`` KPIs one level down. Lifting them here
-    (issue 07; C4) lets every downstream function work on flat keys unchanged.
-    Only the registered namespaces are flattened: other keys, including the
-    nested ``service_level_full_by_product_pct`` dict, pass through untouched.
-    ``None`` values are preserved so the paired drop-on-``None`` semantics fire
-    identically on lifted keys.
+    Only the registered namespaces are flattened; other keys (including the nested
+    ``service_level_full_by_product_pct`` dict) pass through untouched. ``None``
+    values are preserved so the paired drop-on-``None`` semantics fire identically
+    on lifted keys.
     """
     flattened = {
         key: value

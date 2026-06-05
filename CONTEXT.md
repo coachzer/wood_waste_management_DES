@@ -398,6 +398,39 @@ reviewer question "did you consider cascading reuse?".
 _Avoid_: reuse count, recycling loops (plural — there is one
 cycle), number of lifecycles (the model has no product use phase)
 
+**Stochastic Dominance (FSD / SSD)**:
+A distribution-level comparison of two configurations over the
+Monte-Carlo **Run** distribution of a KPI, stronger than comparing
+means. **First-order (FSD)**: `F_A(x) <= F_B(x)` for all `x` (A's
+CDF lies entirely at or below B's), so A is stochastically larger
+and preferred by every decision maker with increasing utility,
+regardless of risk attitude. **Second-order (SSD)**: the
+integrated-CDF condition `∫F_A <= ∫F_B` for all `x`, preferred by
+every **risk-averse** (increasing, concave-utility) decision
+maker; FSD implies SSD, so the report names the strongest order
+that holds. The dominance math is **sense-free** — computed on raw
+KPI values as "which distribution is stochastically larger";
+whether _larger_ is _better_ is the per-KPI **sense** (service:
+larger better; emissions/landfill/cost: larger worse), carried as
+a separate annotation. Complements the CRN-paired mean-difference
+test (it reads the same `run_*.json` set but the marginal
+distributions, which seed pairing does not change).
+_Avoid_: significance test (dominance is not a p-value claim),
+"better distribution" (state the order and the sense separately)
+
+**Time-Weighted WIP (Little's Law)**:
+Average residence time recovered from inventory and throughput via
+Little's Law `L = λ·W` ⇒ `W = L/λ`, where `L` is the
+**time-averaged** work-in-process (not a point-in-time level) and
+`λ` is throughput. WIP is time-averaged by trapezoidal area over
+the inventory history then divided by the run horizon, so a level
+held for a long interval weighs more than a brief spike; partial
+coverage extrapolates flat and does not bias the mean. Applied per
+stage with stage-specific inventory sources (generator/collector
+storage, treatment buffer).
+_Avoid_: instantaneous WIP (the law needs the time-average),
+queue length (this is inventory, measured in m³)
+
 ## Example dialogue
 
 > **Dev**: "The simulation finishes at day 100 — all demands

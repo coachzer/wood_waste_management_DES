@@ -1,36 +1,17 @@
 """Biogenic carbon stored in produced panels (static credit, C10).
 
-A purely post-hoc accounting metric: each cubic metre of MDF / particle board /
-OSB the system produces locks up the biogenic carbon embodied in that panel for
-the product's lifetime. The metric rescales the already-recorded cumulative
-production volume per output type by that product's per-m3 biogenic carbon stock;
-it does not touch the simulation, so adding it keeps the golden additive exit test
-valid.
+A post-hoc accounting metric: rescales the already-recorded cumulative production
+volume per output type by that product's per-m3 biogenic carbon stock. It does
+not touch the simulation, so adding it keeps the golden additive exit test valid.
+The **Biogenic Carbon Stored** glossary term (CONTEXT.md) defines the static
+credit -- negative = sequestered, one of three orthogonal carbon lines reported
+beside, never netted with, the others (ADR 0011), and explicitly NOT the dynamic
+GWP-bio view. Emitted under the shared ``carbon`` namespace beside C11's avoided
+emissions so it rides the generic MC aggregation + CRN machinery (issues 06/07).
 
-This is the STATIC, production-weighted credit -- NOT the time-integrated /
-dynamic GWP-bio view (Levasseur dynamic LCA), which characterises biogenic CO2 by
-how long carbon is stored before release and so needs a product service-life +
-end-of-life release profile the model does not have (it stops at Market
-Consumption). That view is deferred (see the C10 ticket); a constant-rescaled
-static stock must not be called GWP-bio.
-
-Sign convention follows ``ProductSpecification.biogenic_carbon_stock``: NEGATIVE
-means carbon sequestered (held out of the atmosphere), so the stored credit reads
-negative beside the positive operational ``total_emissions_kgco2e``. The three
-carbon lines are orthogonal and reported beside each other, never netted (ADR
-0011): biogenic carbon is excluded from ``total_emissions_kgco2e`` and the C11
-avoided-emissions factors are biogenic-excluded too, so this credit does not
-double-count either.
-
-Reported under the shared ``carbon`` namespace so it rides the generic Monte Carlo
-aggregation + CRN paired machinery (issues 06/07) the same way ``bullwhip`` and
-``residence`` do -- the namespace is already wired, alongside C11's avoided
-emissions.
-
-Cumulative production per output type is read from
-``processing_history[name]["products"]["by_type"][product]`` -- the last sample is
-the end-of-run cumulative volume -- summed across all treatment operators (the
-shared reader in ``monitoring.avoided_emissions``).
+Cumulative production per output type is read via the shared reader in
+``monitoring.avoided_emissions`` (last sample = end-of-run cumulative volume),
+summed across all treatment operators.
 """
 from __future__ import annotations
 
@@ -49,10 +30,9 @@ _PRODUCTS = ("mdf", "particle_board", "osb")
 def _biogenic_stock_by_product() -> Dict[str, float]:
     """Per-m3 biogenic carbon stock per output type (negative = sequestered).
 
-    Read from the single ``ProductSpecification`` source (``models/products.py``),
-    not duplicated into ``constants.py`` -- the same literals already back
-    ``core.treatment.calculate_total_biogenic_carbon_stored``, and a second copy
-    would be a silent drift risk.
+    Read from the single ``ProductSpecification`` source (``models/products.py``)
+    rather than duplicated into ``constants.py`` -- the same literals already back
+    ``core.treatment.calculate_total_biogenic_carbon_stored``.
     """
     manager = ProductDataManager()
     stock: Dict[str, float] = {}

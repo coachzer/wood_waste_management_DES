@@ -81,21 +81,15 @@ class WasteGenerator(OperationalEntity):
         self.kanban_manager = kanban_manager or KanbanManager()
         self.state = state
 
-        # Track total generation efficiently
-        # Initialize total generated with initial stock
         self.total_generated = {
             waste_type: initial_stock.get(waste_type, 0.0) if initial_stock else 0.0
             for waste_type in waste_streams.keys()
         }
 
         # Potential (pre-saturation) generation: the volume the exogenous source
-        # process would have generated each tick before the storage-headroom cap
-        # in _generate_waste_for_period drops it. total_generated records the
-        # *committed* volume, which finite storage couples to downstream
-        # collection (and thus to policy); this records what the source offered,
-        # which is policy-invariant. It is the basis for the bullwhip
-        # source-variance floor (ADR 0004). Mirrors total_generated's keys and
-        # initial-stock baseline so the two series stay structurally parallel.
+        # offered each tick before the storage-headroom cap, policy-invariant and
+        # the basis for the bullwhip source-variance floor (ADR 0005). Mirrors
+        # total_generated's keys and initial-stock baseline.
         self.total_potential_generated = dict(self.total_generated)
 
         self.history_size = HISTORY_BUFFER_SIZE
@@ -163,14 +157,11 @@ class WasteGenerator(OperationalEntity):
     def _process_stock_strategy(self, current_time, seasonal_factor):
         """Unified strategy processing - always generate waste, manage inventory based on strategy"""
 
-        # STEP 1: Always generate waste
         self._generate_waste_for_period(seasonal_factor, current_time)
 
-        # STEP 2: Handle overflow if storage is exceeded
         if self.current_storage > self.waste_storage_capacity:
-            self._handle_overflow(force_landfill=False)  # Try expansion first
+            self._handle_overflow(force_landfill=False)  # try expansion first
 
-        # STEP 3: Strategy-based signaling for collection
         self._handle_inventory_signaling(current_time)
 
     def _handle_inventory_signaling(self, current_time):
@@ -289,10 +280,8 @@ class WasteGenerator(OperationalEntity):
         ):
             potential_volume = base_rate * seasonal_factor * daily_factor * self.efficiency
 
-            # Record the source-offered volume before the storage cap (ADR 0004
-            # floor). Accumulated for every waste type regardless of whether the
-            # commit below fires, and consuming no RNG, so committed generation
-            # and the run's behaviour are unchanged.
+            # Record the source-offered volume before the storage cap (ADR 0005
+            # floor), accumulated for every waste type and consuming no RNG.
             self.total_potential_generated[waste_type] += potential_volume
 
             if potential_volume <= available_storage:

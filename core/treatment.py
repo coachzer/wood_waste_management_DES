@@ -85,9 +85,8 @@ class TreatmentOperator(OperationalEntity):
         self.initial_processing_capacity = self.processing_capacity
         self.region = region
         self.region_type = RegionType[region.upper().replace('-', '_')]
-        # Share of national market demand this operator is presented each
-        # consumption tick, proportional to its processing capacity. Assigned
-        # at construction by SimulationManager (demand-as-consumption, ADR 0002).
+        # Share of national market demand presented each consumption tick,
+        # proportional to processing capacity; set by SimulationManager (ADR 0002).
         self.market_share = market_share
         self.demand_history = []
         self.minimum_required_waste = 0.1
@@ -103,19 +102,16 @@ class TreatmentOperator(OperationalEntity):
             "particle_board": 0.0,
             "osb": 0.0
         }
-        # Yield-bridge accumulator (G1): cumulative output expected from intake,
-        # summed as intake x efficiency at each transformation. Reconciled against
-        # the deposited product_volumes by MassBalanceMonitor.check_yield_bridge so
-        # a wrong efficiency or mis-scaled yield cannot pass silently.
+        # Yield-bridge accumulator (G1): cumulative intake x efficiency, reconciled
+        # against deposited product_volumes by MassBalanceMonitor.check_yield_bridge.
         self.expected_output_volume = 0.0
 
         # Initialize product data manager for accessing product specifications
         self.product_manager = ProductDataManager()
 
-        # Finished-goods inventory: per-product capacity sized to a fixed buffer
-        # of expected demand, primed to INITIAL_INVENTORY_FRACTION of capacity so
-        # the run starts warmed up rather than empty (ADR 0002, Phase C). Capacity
-        # covers only producible products; others stay at zero.
+        # Finished-goods inventory: per-product capacity sized to a fixed demand
+        # buffer, primed to INITIAL_INVENTORY_FRACTION of capacity (ADR 0002, Phase
+        # C). Capacity covers only producible products; others stay at zero.
         finished_goods_capacity = finished_goods_capacity or {}
         self.finished_goods = ProductStorage(
             capacity=finished_goods_capacity,
@@ -205,11 +201,10 @@ class TreatmentOperator(OperationalEntity):
     def _should_trigger_collection_based_on_strategy(self) -> bool:
         """Determine if collection should fire, based purely on waste-storage state.
 
-        Implements the reorder threshold ``s`` of the (s, S) signal-volume rule
-        (ADR 0002): collection triggers when total waste storage drops below the
-        strategy's threshold fraction of capacity. ON_DEMAND sets ``s`` to full
-        capacity (lot-for-lot top-off, firing whenever storage is not full).
-        Detached from the legacy ``unmet_demands`` ceiling.
+        The reorder threshold ``s`` of the (s, S) signal-volume rule (ADR 0002):
+        collection triggers when total waste storage drops below the strategy's
+        threshold fraction of capacity (ON_DEMAND sets ``s`` to full capacity,
+        firing whenever storage is not full).
         """
         current_total = sum(self.waste_storage.values())
         return self.stock_strategy_behavior.treatment_should_reorder(
@@ -219,11 +214,9 @@ class TreatmentOperator(OperationalEntity):
     def _get_reorder_quantity(self) -> float:
         """Order quantity for PUSH collection: top up to full capacity.
 
-        The (s, S) signal-volume rule (ADR 0002) sets the order-up-to level
-        ``S = waste_storage_capacity`` uniformly across all strategies, so the
-        quantity is the gap to full capacity. The strategy-specific threshold
-        ``s`` is enforced by ``_should_trigger_collection_based_on_strategy``,
-        which gates whether this runs at all.
+        The (s, S) order-up-to level ``S = waste_storage_capacity`` uniformly
+        across strategies (ADR 0002), so the quantity is the gap to full. The
+        threshold ``s`` is gated by ``_should_trigger_collection_based_on_strategy``.
         """
         current_total = sum(self.waste_storage.values())
         return max(0.0, self.waste_storage_capacity - current_total)
@@ -299,11 +292,9 @@ class TreatmentOperator(OperationalEntity):
         """Get transformations sorted by priority based on current system state.
 
         The demand component is a finished-goods shortfall term: the output type
-        whose finished-goods inventory is most depleted relative to its buffer
-        scores highest, steering production toward what most needs restocking
-        (ADR 0002, Phase F / Q8). It reuses the per-output headroom shape of the
-        production clamp and is naturally bounded to [0, 1]. The scoring is
-        symmetric across PUSH and PULL and no longer reads the demand ceiling.
+        whose inventory is most depleted relative to its buffer scores highest,
+        steering production toward what most needs restocking (ADR 0002, Phase F).
+        Symmetric across PUSH and PULL; bounded to [0, 1].
         """
         transformation_scores = []
 
@@ -441,12 +432,10 @@ class TreatmentOperator(OperationalEntity):
         """Process a single waste transformation.
 
         ``output_cap`` (PULL, ADR 0002 Phase E) bounds production to the
-        demand-driven target: when provided, ``output_cap / efficiency`` joins
-        the input-waste, processing-capacity and finished-goods-headroom clamps,
-        so the operator produces only what the consumption event pulled. PUSH
-        callers omit it and keep the supply-driven clamp unchanged. Returns the
-        output volume produced (0.0 when nothing was processed) so the PULL
-        caller can draw down its per-product target.
+        demand-driven target: when provided, ``output_cap / efficiency`` joins the
+        input-waste, processing-capacity and finished-goods-headroom clamps. PUSH
+        callers omit it. Returns the output volume produced (0.0 when nothing was
+        processed) so the PULL caller can draw down its per-product target.
         """
 
         final_products = {
@@ -610,17 +599,14 @@ class TreatmentOperator(OperationalEntity):
     def _collect_from_cross_region(self, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
         """Reposition waste from cross-region collectors via transport.
 
-        Cross-region transport is a collector-to-collector repositioning move
-        (ADR 0009): it removes waste from the remote collector and routes it to
-        a collector in this operator's region, where it lands in the collection
-        center and is later drawn into treatment through the local intake path
-        (``provide_waste_for_treatment``). It is therefore NOT added to
-        ``collected_waste`` here -- crediting treatment storage at request time
-        while the same volume is also deposited into the destination collector
-        would double-count it in the waste-side mass balance. The repositioned
-        volume still satisfies the cross-region portion of the request (so it is
-        deducted from ``remaining`` and does not fall through to fallback), but
-        it reaches treatment storage only on the later local pickup.
+        A collector-to-collector repositioning move (ADR 0009): waste is removed
+        from the remote collector and routed to a collector in this region, where
+        it lands in the collection center and later reaches treatment via the local
+        intake path (``provide_waste_for_treatment``). It is therefore NOT added to
+        ``collected_waste`` here -- doing so would double-count it in the waste-side
+        mass balance. The volume still satisfies the cross-region portion of the
+        request (deducted from ``remaining``) but reaches treatment only on the
+        later local pickup.
         """
         if amount_to_collect <= 0: return 0.0
 
@@ -692,10 +678,8 @@ class TreatmentOperator(OperationalEntity):
     def trigger_collection(self, explicit_collection_volume: float):
         """Request waste collection of an explicit order volume.
 
-        The order volume is the (s, S) signal volume computed by the caller
-        (the PUSH and PULL collection logic) and is used directly. There is no
-        ceiling-derived fallback -- the legacy ``calculate_realistic_demand``
-        path was retired with the demand-as-ceiling model (ADR 0002).
+        The order volume is the (s, S) signal volume computed by the caller and
+        used directly (no ceiling-derived fallback; ADR 0002).
         """
         required_waste = explicit_collection_volume
 

@@ -20,9 +20,8 @@ class SimulationState:
         # Initialize regional waste tracker
         self.waste_tracker = regional_tracker.RegionalWasteTracker()
         # Finished goods removed from inventory without consumption (mass-balance
-        # discard term, ADR 0002 Phase E.5). Zero by construction -- the
-        # partial-batch headroom clamp leaves no discard path; the counter
-        # exists so the mass-balance identity is explicit and as a guard.
+        # discard term, ADR 0002 Phase E.5). Zero by construction; the counter
+        # exists so the mass-balance identity is explicit.
         self.production_discarded = {
             'mdf': 0.0,
             'particle_board': 0.0,
@@ -30,10 +29,9 @@ class SimulationState:
         }
         # Market consumption event log (demand-as-consumption model, ADR 0002)
         self.consumption_events = []
-        # Raw waste landfilled per entity (mass-balance discard term for the
-        # collection-center waste invariant, ADR 0009 / issue 11). The waste-side
-        # analog of production_discarded: WasteMonitor.track_event keeps only a
-        # single entity-less bucket, so the invariant needs per-name attribution.
+        # Raw waste landfilled per entity (mass-balance discard term, ADR 0009).
+        # WasteMonitor.track_event keeps only a single entity-less bucket, so the
+        # collection-center invariant needs this per-name attribution.
         self.waste_landfilled = {}
 
     def track_waste_landfilled(self, entity_name, volume):
@@ -107,13 +105,11 @@ class SimulationState:
                                  reason: str = None, timestamp: float = None) -> None:
         """Record a single market consumption event for service-level accounting.
 
-        One event is one (operator, product) consumption attempt at a market
-        tick. ``attempted`` is the demand volume presented to the operator;
-        ``consumed`` is the portion fulfilled from finished-goods inventory.
-        The shortfall ``attempted - consumed`` is lost sales tagged by
-        ``reason`` -- ``"no_capability"`` when the operator cannot produce the
-        product at all, ``"stockout"`` when it can but inventory was
-        insufficient. ``reason`` is recorded only when a shortfall exists.
+        One event is one (operator, product) attempt at a market tick.
+        ``attempted`` is the demand presented; ``consumed`` the portion fulfilled.
+        The shortfall is lost sales tagged by ``reason`` -- ``"no_capability"`` (the
+        operator cannot produce the product) or ``"stockout"`` (it can but inventory
+        was short), recorded only when a shortfall exists.
         """
         lost = max(0.0, attempted - consumed)
         self.consumption_events.append({

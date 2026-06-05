@@ -132,8 +132,8 @@ class Vehicle:
     current_region: RegionType
     in_transit: bool = False
     current_load: float = 0.0  # Current load in m³ (total across waste types)
-    # Per-waste-type breakdown of current_load (m³). Lets a monitor sum waste in
-    # transit by type for the waste-side mass-balance invariant; sums to current_load.
+    # Per-waste-type breakdown of current_load (m³); sums to current_load. Read by
+    # the waste-side mass-balance invariant to total waste in transit by type.
     current_load_by_type: Dict[WasteType, float] = field(default_factory=dict)
     destination: Optional[RegionType] = None
     estimated_arrival: Optional[float] = None

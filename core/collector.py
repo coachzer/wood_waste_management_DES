@@ -166,7 +166,7 @@ class CollectorCompany(OperationalEntity):
             collection_cost = self.transport_cost + (distance * volume_cost_factor * collected_amount)
             self.last_collection_cost = collection_cost
 
-            # Calculate transport emissions (convert m³ to tonnes using density, then multiply by distance and emissions factor)
+            # Transport emissions: volume x distance x per-m3-km factor.
             emissions = collected_amount * distance * TRANSPORT_EMISSIONS_PER_M3_KM
 
             if hasattr(self, 'waste_monitor') and self.waste_monitor:
@@ -286,11 +286,9 @@ class CollectorCompany(OperationalEntity):
         else:
             overflow_amount = total_to_add - available_space
 
-            # Let handle_storage_event decide expand vs landfill. On the expand
-            # branch capacity grows, so store as much of the overflow as now fits
-            # and landfill the true remainder; on the landfill branch the full
-            # overflow is already accounted for there. Either way every collected
-            # m3 is stored or landfilled -- none is silently dropped (ADR 0009).
+            # handle_storage_event decides expand vs landfill; on the expand branch
+            # store what now fits and landfill the remainder, so every collected m3
+            # is stored or landfilled, none silently dropped (ADR 0009).
             _cost, action = handle_storage_event(self, overflow_amount, self.region)
 
             if action == "expand_storage":
@@ -396,10 +394,9 @@ class CollectorCompany(OperationalEntity):
         """Process signals with acknowledgment and cross-region support"""
         for signal in signals:
             # Market signals (source_type="market") are downstream demand for
-            # treatment production (ADR 0002, Phase E), not upstream waste-
-            # collection requests. Collectors must not consume or acknowledge
-            # them -- doing so starves the treatment operator's event-driven
-            # production loop, which is the sole consumer of these signals.
+            # treatment production (ADR 0002, Phase E), not waste-collection
+            # requests; collectors must not consume them or they starve the
+            # treatment operator's production loop (its sole consumer).
             if signal.get('source_type') == "market":
                 continue
 
@@ -604,13 +601,11 @@ class CollectorCompany(OperationalEntity):
                                      treatment_name: Optional[str] = None) -> Dict[WasteType, float]:
         """Hand waste from this collector's collection center to a treatment operator.
 
-        This is the real Treatment-echelon inbound flow (ADR 0009): it decrements
-        collector storage and feeds the treatment process. Each transferred waste
-        type is logged as a ``collector -> treatment`` transport flow so the
-        bullwhip Treatment echelon reads actual replenishment rather than the
-        net-zero cross-region repositioning move. ``treatment_name`` names the
-        receiving operator (the flow target); callers pass it from the treatment
-        operator requesting the waste.
+        The real Treatment-echelon inbound flow (ADR 0009): decrements collector
+        storage, feeds the treatment process, and logs each transferred type as a
+        ``collector -> treatment`` transport flow so the bullwhip Treatment echelon
+        reads actual replenishment, not the net-zero repositioning move.
+        ``treatment_name`` names the receiving operator (the flow target).
         """
         provided_waste = {}
         remaining_request = requested_amount

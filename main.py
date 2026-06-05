@@ -157,12 +157,10 @@ def run_monte_carlo_baseline(
                             )
                     except Exception as e:
                         print(f"Warning: failed to write {run_path}: {e}")
-                    # Additive raw sidecar: the six history dicts + two event
-                    # logs that extract_kpis consumes, persisted so a new KPI can
-                    # be computed post-hoc without re-running. Named raw_NNN.json
-                    # (NOT run_NNN.raw.json) so it stays clear of the run_*.json
-                    # glob the comparator and post-hoc scripts use. Enum keys are
-                    # rewritten via jsonify -- json's default= cannot do that.
+                    # Additive raw sidecar: the history dicts + event logs
+                    # extract_kpis consumes, persisted so a post-hoc KPI needs no
+                    # re-run. Named raw_NNN.json (NOT run_*) so it stays clear of
+                    # the run_*.json glob the comparator and post-hoc scripts use.
                     raw_path = combo_dir / f"raw_{i:03d}.json"
                     try:
                         with open(raw_path, "w", encoding="utf-8") as f:
@@ -186,9 +184,8 @@ def run_monte_carlo_baseline(
                         f"Warning: failed to write summary CSV for {policy.value}__{strategy.value}: {e}"
                     )
 
-        # Paired (CRN) comparison across all combos in this scenario. Exploits the
-        # shared seed series to compare combos by per-replication differences,
-        # which summary.csv's marginal CIs cannot. (monitoring/paired_comparison.py)
+        # Paired (CRN) comparison across this scenario's combos by per-replication
+        # differences, which summary.csv's marginal CIs cannot capture.
         try:
             report_path = write_paired_comparison_report(scenario_dir)
             if report_path is not None:
@@ -196,11 +193,8 @@ def run_monte_carlo_baseline(
         except Exception as e:
             print(f"Warning: failed to write paired comparison report for {scenario_name}: {e}")
 
-        # Stochastic (FSD/SSD) dominance across this scenario's combos over the
-        # full run distribution of each KPI. A distribution-level claim that
-        # complements the paired mean-difference test above: it asks whether one
-        # combo's whole distribution sits above another's, not just its mean.
-        # (monitoring/stochastic_dominance.py)
+        # Stochastic (FSD/SSD) dominance across this scenario's combos: a
+        # distribution-level claim complementing the paired mean-difference test.
         try:
             dominance_path = write_dominance_report(scenario_dir)
             if dominance_path is not None:
@@ -208,11 +202,9 @@ def run_monte_carlo_baseline(
         except Exception as e:
             print(f"Warning: failed to write stochastic dominance report for {scenario_name}: {e}")
 
-        # Pareto frontier across this scenario's combos over the multi-objective
-        # KPI vector (service, emissions, landfill, cost), reading the summary.csv
-        # means just written. Reports the non-dominated set so a combo that wins on
-        # one objective by losing on others cannot pass for a winner. The
-        # cross-scenario (--root) frontier is standalone-only. (monitoring/pareto.py)
+        # Pareto frontier over the multi-objective KPI vector (service, emissions,
+        # landfill, cost), reading the summary.csv just written. The cross-scenario
+        # (--root) frontier is standalone-only.
         try:
             pareto_path = write_pareto_report(scenario_dir)
             if pareto_path is not None:

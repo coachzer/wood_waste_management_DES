@@ -26,9 +26,9 @@ class UncertaintySet:
 class CostParams:
     """Cost parameters.
 
-    landfill_per_m3 = $46/t (Lebanon) x 0.6 t/m³ = $27.6/m³. Derived (not hard-coded) so it stays consistent if DENSITY changes — the old value (20.4) implied ~0.44 t/m³.
-
-    This anchors handle_storage_event's landfill-vs-expand decision: artificially cheap landfill biases toward dumping and understates the case for waste diversion.
+    landfill_per_m3 = $46/t (Lebanon) x 0.6 t/m³ = $27.6/m³, derived from DENSITY
+    so it stays consistent if DENSITY changes. Anchors handle_storage_event's
+    landfill-vs-expand decision.
     """
     landfill_per_m3: float = (
         46.0 * DENSITY
@@ -138,10 +138,9 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
     # )
 }
 
-# Finished-goods buffer sensitivity sweep (bucket-C C1): the paper's sensitivity
-# section. Each scenario is Baseline with only the finished-goods buffer resized,
-# built from Baseline so the shared parameters cannot drift. Buffer4 is the
-# default buffer and must reproduce Baseline behaviour exactly.
+# Finished-goods buffer sensitivity sweep (bucket-C C1): each scenario is Baseline
+# with only the finished-goods buffer resized, built from Baseline so shared
+# parameters cannot drift. Buffer4 is the default and must reproduce Baseline.
 BUFFER_SWEEP_WEEKS: Tuple[int, ...] = (2, 4, 6, 8)
 for _buffer_weeks in BUFFER_SWEEP_WEEKS:
     _scenario = deepcopy(SCENARIO_CONFIGS["Baseline"])

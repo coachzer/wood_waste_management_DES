@@ -1,35 +1,19 @@
-"""Throughput-bullwhip measurement (ADR 0004).
+"""Throughput-bullwhip measurement (ADR 0004): a post-hoc CV^2-normalized
+flow-amplification ratio read from a single run's persisted ``transport_flows``
+and ``consumption_events`` logs. It does not touch the simulation, so adding it
+keeps the golden byte-identical exit test valid.
 
-A purely post-hoc metric: it reads the already-persisted ``transport_flows`` and
-``consumption_events`` logs of a single run and computes a CV^2-normalized
-flow-amplification ratio. It does not touch the simulation, so adding it keeps
-the golden byte-identical exit test valid.
-
-The module is layered so the arithmetic core (``cv_squared``,
-``bullwhip_ratio``) has no simulation or I/O dependency -- it takes plain numeric
-sequences and is the natural unit-test seam. ``_echelon_anchored_bullwhip``
-sits on top, doing the weekly binning and per-node volume-weighted aggregation
-for one ordering echelon; ``treatment_anchored_bullwhip`` (collector->treatment)
-and ``collector_anchored_bullwhip`` (generator->collector) are thin wrappers that
-pick the flow link. Both anchor on the same exogenous consumption series.
-
-``stage_bullwhip`` is the diagnostic decomposition (ADR 0006): the same two
-echelons as composable stage ratios on the system-pooled per-echelon series, so
-they telescope exactly to the pooled anchored ratio and localize where
-amplification is injected.
-
-``pooled_anchored_bullwhip`` (with ``treatment_anchored_pooled_bullwhip`` /
-``collector_anchored_pooled_bullwhip`` wrappers) is the conservative robustness
-variant (ADR 0004, 0007): the same anchored ratio computed on the system-pooled
-per-echelon series rather than per-node-then-volume-weighted, expected to
-understate the headline. The Treatment pooled value equals ``treatment_stage`` by
-construction; the Collector pooled value equals the telescoped stage product.
-
-``generation_floor_cv2`` is the companion reference value: the raw CV^2 of weekly
-waste generation, NOT an echelon ratio. Generators do not order, so it is
-policy-invariant -- it exists only to show the upstream source carries no policy
-signal and to frame that amplification is injected mid-chain (ADR 0004,
-"two ordering echelons, not three").
+Layering keeps the arithmetic core a sim/IO-free unit-test seam:
+``cv_squared`` / ``bullwhip_ratio`` take plain numeric sequences;
+``_echelon_anchored_bullwhip`` adds weekly binning and per-node volume-weighted
+aggregation; ``treatment_anchored_bullwhip`` (collector->treatment) and
+``collector_anchored_bullwhip`` (generator->collector) are thin link-picking
+wrappers anchored on the same consumption series. ``stage_bullwhip`` is the
+pooled decomposition (ADR 0006), ``pooled_anchored_bullwhip`` the pooled
+robustness variant (ADR 0007), and ``generation_floor_cv2`` the policy-invariant
+source-variance reference (ADR 0005). See those ADRs for the rationale behind
+each choice; the **Throughput Bullwhip** glossary term in CONTEXT.md defines the
+measure.
 """
 from __future__ import annotations
 
@@ -46,10 +30,8 @@ def cv_squared(series: Sequence[float]) -> Optional[float]:
     """Squared coefficient of variation: ``var / mean**2`` (population variance).
 
     The unit-free dispersion measure underlying the throughput-bullwhip ratio
-    (ADR 0004): normalizing by the mean makes it comparable across the
-    waste->product commodity change and across the asymmetric regional volumes.
-    Returns ``None`` where it is undefined -- fewer than two bins (no dispersion
-    to measure) or a zero mean (the normalization explodes).
+    (ADR 0004). Returns ``None`` where it is undefined -- fewer than two bins or a
+    zero mean (the normalization explodes).
     """
     bin_count = len(series)
     if bin_count < 2:
@@ -85,12 +67,10 @@ def _weekly_bins(records: Sequence[Dict[str, Any]], value_key: str) -> List[floa
     """Sum ``value_key`` of each record into post-warm-up weekly bins.
 
     Records are bucketed by ``timestamp`` (days) into BULLWHIP_BIN_WIDTH_DAYS
-    bins. The window spans 0-based week indices BULLWHIP_WARMUP_WEEKS ..
-    WEEKS_PER_YEAR - 1 (i.e. weeks 5-52 after dropping the 4-week cold-start
-    ramp). Every week in the window gets a bin -- empty weeks stay 0.0 -- so a
-    lumpy reorder spike registers as dispersion against the quiet weeks around
-    it. Records outside the window (warm-up, or the trailing partial week) are
-    ignored.
+    bins over 0-based week indices BULLWHIP_WARMUP_WEEKS .. WEEKS_PER_YEAR - 1
+    (weeks 5-52, dropping the 4-week cold-start ramp; ADR 0004). Every week in the
+    window gets a bin -- empty weeks stay 0.0. Records outside the window
+    (warm-up, or the trailing partial week) are ignored.
     """
     start_week = BULLWHIP_WARMUP_WEEKS
     end_week = WEEKS_PER_YEAR - 1
@@ -110,20 +90,13 @@ def _generation_increment_records(
 ) -> List[Dict[str, Any]]:
     """Per-step generated-volume records for one generator node.
 
-    ``WasteMonitor.generation_history[node]`` stores ``total_potential_generated``
-    as a per-waste-type *cumulative* series running parallel to ``timestamps``.
-    Differencing each waste type's cumulative series gives the volume the source
-    offered in each tracking step; summing those increments across waste types
-    yields the node's total potential generation per step. Potential (not
-    committed ``total_generated``) is the right series for the floor: committed
-    generation is capped by storage headroom, which finite-storage backpressure
-    couples to policy, so its CV^2 would carry a policy signal; the potential
-    series is what the exogenous source offered, policy-invariant (ADR 0004).
-    Each waste type is differenced independently so a series shorter than
-    ``timestamps`` cannot inject a spurious negative increment.
-
-    Returns ``{"timestamp", "volume"}`` records ready for ``_weekly_bins`` --
-    the same weekly grid the echelons use.
+    Differences each waste type's cumulative ``total_potential_generated`` series
+    (stored parallel to ``timestamps``) into per-step increments and sums across
+    waste types. Uses *potential* generation, not committed ``total_generated``,
+    so the floor stays policy-invariant (ADR 0005). Each waste type is differenced
+    independently so a series shorter than ``timestamps`` cannot inject a spurious
+    negative increment. Returns ``{"timestamp", "volume"}`` records ready for
+    ``_weekly_bins``.
     """
     timestamps = node_history.get("timestamps", [])
     total_potential_generated = node_history.get("total_potential_generated", {})
@@ -143,22 +116,16 @@ def _generation_increment_records(
 def generation_floor_cv2(
     generation_history: Dict[str, Dict[str, Any]]
 ) -> Optional[float]:
-    """Source-variance floor (ADR 0004): volume-weighted CV^2 of weekly waste
+    """Source-variance floor (ADR 0005): volume-weighted CV^2 of weekly waste
     generation across generator nodes.
 
-    A reference value, NOT an echelon bullwhip ratio: it is a raw CV^2 (the
-    quantity the echelon ratios amplify *above*), not normalized against
-    consumption. Generators do not order, so this is policy-invariant; reporting
-    it shows the upstream source carries no policy signal. Per node: CV^2 of its
-    weekly potential generated volume (cumulative ``total_potential_generated``
-    differenced into weekly increments on the weeks 5-52 grid), summed across
-    waste types -- potential, not committed, so storage-saturation backpressure
-    cannot leak a policy signal into the floor (see ``_generation_increment_records``). Node
-    CV^2 values are averaged weighted by each node's mean weekly generation, so a
-    near-zero-volume node whose CV^2 blows up cannot dominate -- mirroring the
-    echelon aggregation.
-
-    Returns ``None`` when no node yields a defined, positive-volume CV^2.
+    A reference value, not an echelon ratio -- a raw CV^2 (not normalized against
+    consumption) that the echelon ratios amplify above; policy-invariant because
+    generators do not order. Per node: CV^2 of weekly potential generated volume
+    (cumulative ``total_potential_generated`` differenced into weekly increments),
+    averaged weighted by each node's mean weekly generation so a near-zero-volume
+    node cannot dominate. Returns ``None`` when no node yields a defined,
+    positive-volume CV^2.
     """
     weighted_cv_squared_sum = 0.0
     weight_total = 0.0
@@ -188,17 +155,12 @@ def _echelon_anchored_bullwhip(
 ) -> Optional[float]:
     """Volume-weighted throughput bullwhip for one ordering echelon, one run.
 
-    The echelon is the ``source_type -> target_type`` flow link; its ordering
-    node is the ``target_name`` (the entity pulling inbound flow). Per node:
-    CV^2 of its weekly inbound flow over the CV^2 of the shared weekly
-    market-consumption anchor. The anchor is consumption ``attempted`` (the
-    exogenous demand presented to operators) -- never ``consumed``, which the
-    system's own stockouts would deflate (ADR 0004). The per-node ratios are
-    averaged weighted by each node's mean weekly inbound flow, so a
-    near-zero-flow node whose CV^2 blows up cannot dominate.
-
-    Returns ``None`` when the anchor is undefined or no node yields a defined,
-    positive-flow ratio.
+    The echelon is the ``source_type -> target_type`` flow link, its ordering node
+    the ``target_name``. Per node: CV^2 of weekly inbound flow over CV^2 of the
+    shared weekly consumption-``attempted`` anchor (never ``consumed``; ADR 0004).
+    Per-node ratios are averaged weighted by mean weekly inbound flow so a
+    near-zero-flow node cannot dominate. Returns ``None`` when the anchor is
+    undefined or no node yields a defined, positive-flow ratio.
     """
     consumption_bins = _weekly_bins(consumption_events, "attempted")
     if cv_squared(consumption_bins) in (None, 0):
@@ -291,17 +253,12 @@ def stage_bullwhip(
     - ``collector_stage`` = ``CV^2(pooled generator->collector inbound) /
       CV^2(pooled collector->treatment inbound)``
 
-    The pooled treatment-inbound CV^2 is the SAME scalar in ``treatment_stage``'s
-    numerator and ``collector_stage``'s denominator, so the two telescope exactly
-    to the pooled collector anchored ratio: ``treatment_stage * collector_stage
-    == CV^2(pooled collector inbound) / CV^2(consumption)``. This holds only at
-    the pooled aggregation, not the per-node volume-weighted headline, where a
-    product of weighted averages is not the weighted average of products (ADR
-    0006). So ``treatment_stage`` is NOT the per-node ``treatment_anchored``
-    headline; the gap between them is the per-node-vs-pooled spread.
-
-    Returns ``(treatment_stage, collector_stage)``; either is ``None`` when its
-    denominator CV^2 is undefined or zero (see ``bullwhip_ratio``).
+    The stages telescope exactly to the pooled collector anchored ratio (the
+    pooled treatment-inbound CV^2 cancels) -- but only at this pooled aggregation,
+    not the per-node volume-weighted headline, so ``treatment_stage`` is NOT the
+    ``treatment_anchored`` headline (ADR 0006). Returns ``(treatment_stage,
+    collector_stage)``; either is ``None`` when its denominator CV^2 is undefined
+    or zero (see ``bullwhip_ratio``).
     """
     consumption_bins = _weekly_bins(consumption_events, "attempted")
     treatment_inbound_bins = _pooled_inbound_bins(
@@ -321,31 +278,17 @@ def pooled_anchored_bullwhip(
     source_type: str,
     target_type: str,
 ) -> Optional[float]:
-    """System-pooled anchored throughput bullwhip for one echelon (ADR 0004,
-    "pooled robustness check").
+    """System-pooled anchored throughput bullwhip for one echelon (ADR 0007).
 
-    The robustness variant of ``_echelon_anchored_bullwhip``: instead of CV^2 per
-    node then a volume-weighted average across the echelon's nodes, it sums every
-    ``source_type -> target_type`` flow into ONE system-pooled weekly series first
-    (``_pooled_inbound_bins`` -- the same series the stage diagnostic uses), then
-    takes the ratio of its CV^2 over the shared consumption-``attempted`` anchor.
-
-    Pooling smooths exactly the out-of-phase (s, S) reorder lumpiness that is the
-    PUSH bullwhip signal, so this is expected to UNDERSTATE the per-node
-    ``*_anchored`` headline -- a conservative lower bound: if pooled still shows
-    PUSH > PULL, the result is strong (ADR 0004).
-
-    Identity worth knowing: for the Treatment echelon this returns the SAME number
-    as ``stage_bullwhip``'s ``treatment_stage`` -- both are
-    ``CV^2(pooled collector->treatment inbound) / CV^2(consumption)`` (ADR 0006).
-    They are emitted under separate keys because they answer different questions
-    (robustness of the headline vs where amplification is injected) but coincide by
-    construction for this one echelon. The Collector echelon's pooled value matches
-    no single stage; it equals the telescoped product ``treatment_stage *
-    collector_stage``. See ADR 0007.
-
-    Returns ``None`` when the anchor is undefined or flat, or the pooled flow CV^2
-    is undefined (see ``bullwhip_ratio``).
+    The robustness variant of ``_echelon_anchored_bullwhip``: sums every
+    ``source_type -> target_type`` flow into one pooled weekly series
+    (``_pooled_inbound_bins``), then takes its CV^2 over the shared
+    consumption-``attempted`` anchor. Pooling understates the per-node headline, so
+    it is a conservative lower bound. For the Treatment echelon it equals
+    ``stage_bullwhip``'s ``treatment_stage`` by construction (ADR 0006); the
+    Collector value equals the telescoped stage product. Returns ``None`` when the
+    anchor is undefined or flat, or the pooled flow CV^2 is undefined (see
+    ``bullwhip_ratio``).
     """
     consumption_bins = _weekly_bins(consumption_events, "attempted")
     pooled_inbound_bins = _pooled_inbound_bins(

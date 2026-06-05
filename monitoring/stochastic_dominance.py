@@ -1,42 +1,21 @@
-"""Stochastic dominance over the Monte Carlo run distribution of each KPI.
+"""Stochastic dominance over the Monte-Carlo run distribution of each KPI.
 
-Comparing two configurations by their KPI *means* (with CIs) is a statement about
-one summary number. Stochastic dominance is a stronger, distribution-level claim:
-it asks whether one configuration's whole empirical distribution sits above the
-other's, so that *every* decision maker of a given risk attitude would prefer it.
+A distribution-level comparison stronger than comparing means: it asks whether
+one configuration's whole empirical CDF sits above the other's. First-order (FSD)
+and second-order (SSD) are defined in the **Stochastic Dominance** glossary term
+(CONTEXT.md); the report names the strongest order that holds and carries the
+per-KPI *sense* as a separate annotation (the dominance math is sense-free, so
+KPIs without a documented sense still get a factual direction with a blank
+sense). It reads the same CRN-paired ``run_*.json`` set as
+``paired_comparison.py`` and complements its mean-difference claim -- FSD/SSD are
+properties of the marginal distributions, which seed pairing does not change.
 
-- First-order (FSD): ``F_A(x) <= F_B(x)`` for all ``x`` (A's CDF lies entirely at
-  or below B's), so A is stochastically larger -- preferred by every decision
-  maker with increasing utility, regardless of risk attitude.
-- Second-order (SSD): the integrated-CDF condition ``integral F_A <= integral F_B``
-  for all ``x`` -- preferred by every *risk-averse* (increasing, concave-utility)
-  decision maker. FSD implies SSD, so the report names the strongest order that
-  holds.
-
-The dominance math here is sense-free: it is computed on the raw KPI values as
-"which distribution is stochastically larger". Whether *larger* is *better* is the
-per-KPI ``sense`` (service level: larger is better; emissions/landfill/cost:
-larger is worse), carried as an annotation column so the artifact reports the
-factual relation and its interpretation separately. KPIs without a documented
-sense (the discovered ``bullwhip``/``residence`` namespaces) still get a factual
-dominance direction with a blank sense.
-
-This module imports NO project code, for the same reason as
-``monitoring/paired_comparison.py`` and ``monitoring/pareto.py``: it must run as a
-bare file (``python monitoring/stochastic_dominance.py <dir>``) where
-``sys.path[0]`` is ``monitoring/`` and a ``monitoring.*`` / ``config.*`` import
-would not resolve (and would trip the ``monitoring/__init__`` circular import).
-The small run-file loader and namespace-flattening below are therefore duplicated
-from ``paired_comparison.py`` rather than imported -- the same deliberate
-duplication those two siblings already take. ``main.py`` imports
-``write_dominance_report`` by module path, beside ``write_paired_comparison_report``.
-
-On the Common Random Numbers (CRN) design: FSD and SSD are properties of the
-*marginal* run distributions, which the seed pairing does not change, so this
-module makes the distribution-level claim that *complements* the CRN-paired
-mean-difference claim of ``paired_comparison.py`` rather than re-deriving it. It
-reads the same CRN-paired ``run_*.json`` dataset; the pairing is exploited there,
-not here.
+Like ``paired_comparison.py`` and ``pareto.py``, this module imports NO project
+code so it stays runnable as a bare file (``python
+monitoring/stochastic_dominance.py <dir>``), where a ``monitoring.*`` /
+``config.*`` import would not resolve and would trip the ``monitoring/__init__``
+circular import. The run-file loader and namespace flattening below are
+deliberately duplicated from ``paired_comparison.py`` rather than imported.
 """
 
 import json
@@ -58,12 +37,10 @@ DEFAULT_METRICS = [
     "collection_rate_pct",
 ]
 
-# Per-KPI sense: "max" = larger is better, "min" = larger is worse. Used only to
-# annotate the report (the dominance math is sense-free). Discovered namespace
-# metrics are intentionally absent -- their sense is mixed (e.g. residence times
-# fall vs throughput rises), so the report leaves their sense blank rather than
-# assert a wrong one. Kept in-module rather than in config/constants.py for the
-# same project-import-free reason as DEFAULT_METRICS.
+# Per-KPI sense: "max" = larger is better, "min" = larger is worse. Annotation
+# only (the dominance math is sense-free). Discovered namespace metrics are
+# intentionally absent -- their sense is mixed, so the report leaves it blank.
+# In-module rather than in constants.py for the project-import-free reason above.
 KPI_SENSES: Dict[str, str] = {
     "service_level_full_pct": "max",
     "service_level_operational_pct": "max",
@@ -75,12 +52,10 @@ KPI_SENSES: Dict[str, str] = {
     "collection_rate_pct": "max",
 }
 
-# Relative tolerance for the second-order (integrated-CDF) comparison. The
-# empirical CDF values are exact multiples of ``1/n`` so the first-order
-# comparison needs no tolerance, but the integrated CDF multiplies them by
-# floating interval widths, so its accumulation carries ~1e-13 rounding noise.
-# The tolerance is scaled by the KPI's value range (the integrated CDF has the
-# KPI's units), so it stays a fixed *relative* slack regardless of KPI magnitude.
+# Relative tolerance for the second-order (integrated-CDF) comparison: its
+# accumulation carries ~1e-13 floating rounding noise (the first-order comparison
+# is exact multiples of 1/n and needs none). Scaled by the KPI's value range so
+# it stays a fixed relative slack regardless of magnitude.
 SSD_RELATIVE_TOLERANCE = 1e-9
 
 # Minimum replications per configuration to treat its KPI samples as a
@@ -165,13 +140,12 @@ def first_order_dominance(
 ) -> Optional[str]:
     """Return ``"a"`` if A FSD B, ``"b"`` if B FSD A, else ``None``.
 
-    A is stochastically larger (A FSD B) iff its empirical CDF lies entirely at or
-    below B's -- ``F_A(x) <= F_B(x)`` for every ``x`` with strict inequality
-    somewhere. The CDF difference is piecewise-constant, changing only at sample
-    points, so evaluating on the sorted union of both samples checks every region
-    exactly. ``F(x) = #{s <= x} / n`` is exact integer-over-``n`` arithmetic, so
-    no floating tolerance is needed (and identical distributions, having no strict
-    improvement, dominate in neither direction).
+    A FSD B iff ``F_A(x) <= F_B(x)`` for every ``x`` with strict inequality
+    somewhere (see the **Stochastic Dominance** glossary term). The CDF difference
+    changes only at sample points, so evaluating on the sorted union of both
+    samples is exact; ``F(x) = #{s <= x} / n`` is exact integer-over-``n``
+    arithmetic, so no floating tolerance is needed and identical distributions
+    dominate in neither direction.
     """
     grid = sorted(set(samples_a) | set(samples_b))
     n_a, n_b = len(samples_a), len(samples_b)
@@ -205,15 +179,13 @@ def second_order_dominance(
 ) -> Optional[str]:
     """Return ``"a"`` if A SSD B, ``"b"`` if B SSD A, else ``None``.
 
-    A second-order dominates B iff the integrated CDF of A stays at or below that
-    of B -- ``integral_{-inf}^{x} F_A <= integral F_B`` for every ``x`` with strict
-    inequality somewhere -- the condition every risk-averse increasing-utility
-    decision maker uses. The integrated CDF of an empirical step function is
-    piecewise-linear, so its difference is monotone between sample points and
-    checking the running integral at each grid point is exact in the limit. The
-    accumulation multiplies exact CDF values by floating interval widths, so a
-    comparison is called a tie within ``relative_tolerance`` scaled by the KPI's
-    value range (the integrated CDF carries the KPI's units).
+    A SSD B iff the integrated CDF of A stays at or below B's --
+    ``integral_{-inf}^{x} F_A <= integral F_B`` for every ``x`` with strict
+    inequality somewhere (see the **Stochastic Dominance** glossary term). The
+    integrated CDF of an empirical step function is piecewise-linear, so checking
+    the running integral at each grid point is exact; the accumulation carries
+    floating noise, so ties are called within ``relative_tolerance`` scaled by the
+    KPI's value range.
     """
     grid = sorted(set(samples_a) | set(samples_b))
     n_a, n_b = len(samples_a), len(samples_b)

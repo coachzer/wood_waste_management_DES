@@ -1,29 +1,17 @@
 """Avoided emissions from recycling avoided-burden (C11, ADR 0011).
 
-A purely post-hoc accounting metric: every cubic metre of MDF / particle board /
-OSB the system produces from recovered wood waste stands in for a functionally
-identical panel that would otherwise have been manufactured from virgin
-feedstock, so that panel's cradle-to-gate production footprint is avoided. The
-metric rescales the already-recorded cumulative production volume per output type
-by a fixed per-product factor; it does not touch the simulation, so adding it
-keeps the golden additive exit test valid.
-
-This is a recycling avoided-burden (secondary-vs-primary production of the *same*
-good), NOT material substitution (a wood panel displacing concrete/steel): the
-model has no non-wood counterfactual, so the latter claim is unsupported (ADR
-0011). The factors are Lao & Chang (2023) cradle-to-gate footprints with biogenic
-carbon EXCLUDED -- the exclusion is binding so the biogenic carbon C10 reports as
-its own stored-credit line is not double-counted.
-
-The avoided figure is a full cradle-to-gate LCA of the displaced virgin panel and
-is reported beside, never netted against, the narrower in-simulation
-``total_emissions_kgco2e`` (incommensurable boundaries, ADR 0011). Reported under
-a ``carbon`` namespace so it rides the generic Monte Carlo aggregation + CRN
-paired machinery (issues 06/07) the same way ``bullwhip`` and ``residence`` do.
+A post-hoc accounting metric: rescales the already-recorded cumulative production
+volume per output type by a fixed per-product Lao & Chang (2023) cradle-to-gate
+factor (biogenic-excluded). It does not touch the simulation, so adding it keeps
+the golden additive exit test valid. The **Avoided Emissions** glossary term
+(CONTEXT.md) defines the claim -- a recycling avoided-burden reported beside,
+never netted against, ``total_emissions_kgco2e`` -- and ADR 0011 records why.
+Emitted under a ``carbon`` namespace so it rides the generic MC aggregation + CRN
+machinery (issues 06/07).
 
 Cumulative production per output type is read from
-``processing_history[name]["products"]["by_type"][product]`` -- the last sample is
-the end-of-run cumulative volume -- summed across all treatment operators.
+``processing_history[name]["products"]["by_type"][product]`` (last sample = the
+end-of-run cumulative volume), summed across all treatment operators.
 """
 from __future__ import annotations
 

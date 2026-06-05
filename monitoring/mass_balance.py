@@ -6,13 +6,8 @@ conserved across a simulation run:
     initial_finished_goods + cumulative_produced
         == cumulative_consumed + current_finished_goods + production_discarded
 
-The left side is everything that has entered inventory (the primed initial
-stock plus all production); the right side is everything that is accounted for
-(consumed by the market, still in storage, or explicitly discarded). A mismatch
-means mass appeared or vanished without a recorded reason.
-
-The monitor is the regression net for retiring the legacy demand-ceiling code:
-it construction-snapshots the primed inventory, then checks the identity every
+A mismatch means mass appeared or vanished without a recorded reason. The monitor
+construction-snapshots the primed inventory, then checks the identity every
 consumption tick and at end of run. The product invariant runs every tick; the
 per-collection-center and system-wide waste invariants are final-only (run on a
 drained simulation, see their docstrings).
@@ -152,14 +147,11 @@ class MassBalanceMonitor:
                 == outflow + current_storage + landfilled
 
         ``inflow`` is every transport flow targeting the collector (collection
-        from generators plus cross-region reposition-in); ``outflow`` is every
-        flow sourced from it (treatment intake plus reposition-out). The
-        expand-drop leak (issue 11, Finding A) makes inflow exceed the
-        accounted-for terms, so this trips on dropped collected waste.
-
-        Final-only by intent: cross-region reposition is logged at request time
-        but physically re-deposited at arrival, so an in-transit volume would
-        false-trip a mid-run check. Run on a drained simulation.
+        plus cross-region reposition-in); ``outflow`` every flow sourced from it
+        (treatment intake plus reposition-out). Final-only by intent: cross-region
+        reposition is logged at request time but re-deposited at arrival, so an
+        in-transit volume would false-trip a mid-run check. Run on a drained
+        simulation.
         """
         state = self.registry.state
         violations = []
@@ -202,30 +194,19 @@ class MassBalanceMonitor:
     def check_waste_system(self, timestamp: Optional[float] = None) -> None:
         """Check the system-wide waste-side mass-balance identity (ADR 0002, P2).
 
-        Raw waste is conserved across the whole system: everything generated
-        (plus any raw waste primed into treatment at t=0) must equal the sum of
-        every fate -- raw waste still resident at each echelon, consumed by
-        treatment, or landfilled:
+        Raw waste is conserved across the whole system: everything generated (plus
+        any raw waste primed into treatment at t=0) equals the sum of every fate:
 
             sum(generated) + initial_treatment_storage + initial_collection_center
                 == generator_storage + in_transit + collection_center_storage
                  + treatment_storage + treated_intake + landfilled
 
-        The left side is everything that entered the waste system: all committed
-        generation (which already folds in primed generator stock) plus raw
-        waste primed elsewhere. The right side is every fate -- raw waste on hand
-        in generators, on vehicles in transit (C2's per-type accounting), in
-        collection centers, and in treatment storage; raw waste consumed by
-        treatment transformation (``processed_volumes``, the corrected intake of
-        ADR 0009 and a terminal sink); and raw waste landfilled on storage
-        overflow (``state.waste_landfilled``, the single funnel through
-        ``handle_storage_event``). A mismatch means raw waste appeared or
-        vanished without a recorded reason.
-
-        Final-only by intent: run on a drained simulation. The in-transit term
-        keeps cross-region repositioning accounted, so the identity holds at any
-        settled tick, but it is checked at end of run alongside the product
-        check rather than on a per-tick cadence.
+        ``treated_intake`` is ``processed_volumes`` (the corrected ADR 0009
+        intake); ``landfilled`` is the single funnel through
+        ``handle_storage_event``. A mismatch means raw waste appeared or vanished
+        without a recorded reason. Final-only by intent: the in-transit term keeps
+        cross-region repositioning accounted, but it is checked at end of run on a
+        drained simulation.
         """
         state = self.registry.state
         generators = self.registry.generators or []
@@ -283,14 +264,11 @@ class MassBalanceMonitor:
 
             expected_output_volume == sum(product_volumes.values())
 
-        ``expected_output_volume`` is accumulated on the operator as
-        ``intake x efficiency`` at each transformation -- an expectation derived
-        straight from the intake, independent of the path that deposits finished
-        goods (``_calculate_output_amounts``). The right side is the finished
-        goods actually produced. In correct code the two agree; a wrong
-        conversion efficiency or a mis-scaled yield makes the deposited output
-        diverge from the intake-derived expectation and trips here, where the
-        single-ledger invariants stay silent.
+        ``expected_output_volume`` accumulates ``intake x efficiency`` at each
+        transformation, independent of the deposit path. A wrong conversion
+        efficiency or mis-scaled yield makes deposited output diverge from this
+        intake-derived expectation and trips here, where the single-ledger
+        invariants stay silent.
 
         Final-only by intent: a single end-of-run reconciliation of the two
         cumulative counters; there is no per-tick term to drift.

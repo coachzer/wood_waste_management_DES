@@ -4,12 +4,9 @@ TRANSPORT_EMISSIONS_PER_TON_KM = 0.087  # kg eCO2 per ton-kilometer or 87 g CO2e
 DENSITY = 0.6
 TRANSPORT_EMISSIONS_PER_M3_KM = 0.087 * DENSITY
 
-# Avoided emissions (C11, ADR 0011): recycling avoided-burden. Each m3 of
-# recycled panel the system produces displaces the cradle-to-gate production
-# footprint of a functionally identical panel made from virgin feedstock.
-# Per-product factors from Lao & Chang (2023), biogenic carbon EXCLUDED -- the
-# exclusion is binding so the C10 biogenic-stored credit is not double-counted.
-# kg CO2eq / m3.
+# Avoided emissions (C11, ADR 0011): recycling avoided-burden, kg CO2eq / m3.
+# Per-product factors from Lao & Chang (2023), biogenic carbon EXCLUDED so the
+# C10 biogenic-stored credit is not double-counted.
 AVOIDED_EMISSIONS_PER_M3_BY_PRODUCT = {
     "mdf": 406.0,  # Lao 2023 FB (fibreboard class; MDF is the dominant member)
     "particle_board": 348.0,  # Lao 2023 PB

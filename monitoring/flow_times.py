@@ -1,30 +1,23 @@
 """Lead and residence times via Little's Law (C4).
 
-A purely post-hoc metric family: it reads the already-recorded monitor history of
-a single run and computes, for each waste-side storage stage (generator,
-collection center, treatment), the time-average work-in-process (WIP), the
-throughput rate, and the resulting average residence time. It does not touch the
-simulation, so adding it keeps the golden additive exit test valid.
-
-Little's Law: ``residence_time = WIP / throughput``. WIP is the time-average
-inventory held in a stage's storage over the run; throughput is the rate at which
-material departs the stage to the next echelon. Reported under a `residence`
-namespace so it rides the generic Monte Carlo aggregation + CRN paired machinery
-(issues 06/07) the same way the `bullwhip` namespace does.
-
-The module is layered so the arithmetic core (``time_weighted_average``,
-``residence_time``) has no simulation or I/O dependency -- it takes plain numeric
-sequences and is the natural unit-test seam. The ``_stage_*`` adapters sit on top,
-reading one stage's history out of ``monitor_data``; ``flow_time_metrics``
-assembles the namespace.
+A post-hoc metric family: for each waste-side storage stage (generator,
+collection center, treatment) it reads the run's monitor history and computes
+time-average WIP, throughput, and residence time. It does not touch the
+simulation, so adding it keeps the golden additive exit test valid. The
+**Time-Weighted WIP (Little's Law)** glossary term (CONTEXT.md) defines the
+measure. Reported under a ``residence`` namespace so it rides the generic MC
+aggregation + CRN machinery (issues 06/07). The arithmetic core
+(``time_weighted_average``, ``residence_time``) is a sim/IO-free unit-test seam;
+``_stage_*`` adapters read one stage's history and ``flow_time_metrics`` assembles
+the namespace.
 
 Inventory sources differ by stage. Treatment waste storage is recorded in
 absolute m3 (``processing_history[name]["storage"]["total"]``). Generators and
-collection centers are recorded only as utilization percent, so their absolute
-inventory is recovered as ``utilization% / 100 * capacity`` using the static
-per-entity capacities carried in ``monitor_data["storage_capacities"]`` (see
-``SimulationManager.get_monitor_data``). When those capacities are absent (e.g. a
-bare ``monitor_data`` in a unit test) the stage WIP and residence are ``None``.
+collection centers are recorded only as utilization percent, so absolute
+inventory is recovered as ``utilization% / 100 * capacity`` from the static
+per-entity capacities in ``monitor_data["storage_capacities"]``. When those are
+absent (e.g. a bare ``monitor_data`` in a unit test) stage WIP and residence are
+``None``.
 """
 from __future__ import annotations
 
@@ -38,13 +31,10 @@ def time_weighted_average(
 ) -> Optional[float]:
     """Time-average of an inventory level over ``[0, horizon]`` days.
 
-    The samples are treated as a piecewise-linear level trace (trapezoidal area),
-    which is the standard cumulative-flow reading of average inventory and is
-    correct for the non-uniformly sampled treatment series as well as the daily
-    generator/collector series. The first sample is held flat back to ``t=0`` and
-    the last sample flat forward to ``horizon``, so partial coverage does not bias
-    the mean toward zero. Returns ``None`` for a non-positive horizon or no
-    usable samples.
+    Treats the samples as a piecewise-linear level trace (trapezoidal area); the
+    first sample holds flat back to ``t=0`` and the last flat forward to
+    ``horizon`` so partial coverage does not bias the mean. Returns ``None`` for a
+    non-positive horizon or no usable samples.
     """
     if horizon <= 0:
         return None

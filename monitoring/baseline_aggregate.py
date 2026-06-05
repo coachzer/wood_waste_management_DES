@@ -45,11 +45,10 @@ _SUMMARY_METRICS = [
 
 _SUMMARY_HEADER = "metric,mean,stdev,ci95_low,ci95_high,count"
 
-# Nested KPI sub-dicts aggregated generically: every key inside one is
-# discovered structurally and emitted as `{namespace}.{key}` with no per-key
-# wiring (issue 06). `bullwhip` is the throughput-amplification family (ADR
-# 0004); `residence` is the lead/residence-time family (Little's Law, C4). The
-# paired-comparison machinery mirrors this tuple (see paired_comparison.py).
+# Nested KPI sub-dicts aggregated generically: every key inside one is discovered
+# structurally and emitted as `{namespace}.{key}` with no per-key wiring (issue
+# 06). `bullwhip` (ADR 0004), `residence` (Little's Law, C4), `carbon` (ADR 0011).
+# The paired-comparison machinery mirrors this tuple (see paired_comparison.py).
 _GENERIC_NAMESPACES = ("bullwhip", "residence", "carbon")
 
 
@@ -90,12 +89,9 @@ def summary_rows(kpis_list: List[Dict[str, Any]], alpha: float = 0.05) -> List[s
             f"{metric},{mean:.6g},{stdev:.6g},{lo:.6g},{hi:.6g},{len(vals)}"
         )
 
-    # Generic pass over each nested namespace (`bullwhip`, `residence`):
-    # aggregate whatever keys exist so echelons / floor / stage / pooled variants
-    # and the per-stage residence metrics flow through with no wiring here (issue
-    # 06). Keys are discovered structurally as an insertion-ordered union across
-    # replications, preserving the order `extract_kpis` authors them and
-    # surviving a partial dict.
+    # Generic pass: aggregate whatever keys exist in each nested namespace so new
+    # variants flow through with no wiring here (issue 06). Keys are discovered as
+    # an insertion-ordered union across replications, surviving a partial dict.
     for namespace in _GENERIC_NAMESPACES:
         namespace_keys: Dict[str, None] = {}
         for k in kpis_list:
@@ -229,24 +225,14 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         for product_name, value in (final_summary.get("consumption_service_by_product") or {}).items()
     }
 
-    # Throughput bullwhip (ADR 0004), post-hoc from the run logs. Reported under
-    # a `bullwhip` namespace so later slices (collector echelon, source floor,
-    # diagnostics) extend it without rewiring this dict. `generation_floor_cv2`
-    # is a raw CV^2 reference (the exogenous source-variance floor), NOT an
-    # echelon ratio -- it sits beside the two anchored ratios to frame them.
+    # Throughput bullwhip (ADR 0004-0007), post-hoc from the run logs, under a
+    # `bullwhip` namespace so later slices extend it without rewiring this dict.
+    # See monitoring/bullwhip.py for what each key measures.
     transport_flows = monitor_data.get("transport_flows", [])
     consumption_events = monitor_data.get("consumption_events", [])
-    # Stage-by-stage diagnostic (ADR 0006): pooled per-echelon stage ratios that
-    # telescope to the pooled anchored ratio, localizing where amplification is
-    # injected. Distinct from the per-node-weighted anchored headline above.
     treatment_stage, collector_stage = stage_bullwhip(
         transport_flows, consumption_events
     )
-    # Pooled (system-level) anchored variant (ADR 0004 robustness check, ADR
-    # 0007): the same anchored ratios on the pooled per-echelon series, a
-    # conservative lower bound that understates the per-node headline. The
-    # Treatment pooled value coincides with `treatment_stage` by construction;
-    # both keys are emitted so the results table reads in parallel (ADR 0007).
     bullwhip = {
         "treatment_anchored": treatment_anchored_bullwhip(
             transport_flows, consumption_events
@@ -289,18 +275,12 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         "no_capability_lost_m3": float(final_summary.get("no_capability_lost") or 0.0),
         "stockout_lost_m3": float(final_summary.get("stockout_lost") or 0.0),
         "bullwhip": bullwhip,
-        # Lead and residence times (Little's Law, C4). A second generic
-        # namespace alongside `bullwhip`: per-stage WIP, throughput, and
-        # residence, computed post-hoc from monitor history.
+        # Lead and residence times (Little's Law, C4): per-stage WIP, throughput,
+        # and residence, post-hoc from monitor history.
         "residence": flow_time_metrics(monitor_data),
-        # Carbon credits (a third generic namespace), all production-weighted and
-        # reported beside total_emissions_kgco2e, never netted (ADR 0011):
-        #   - avoided emissions (recycling avoided-burden, C11): produced volume
-        #     rescaled by fixed Lao 2023 biogenic-excluded factors.
-        #   - biogenic carbon stored (static credit, C10): produced volume
-        #     rescaled by per-product ProductSpecification.biogenic_carbon_stock
-        #     (negative = sequestered).
-        # Both ride the same `carbon` dict; their key prefixes keep them distinct.
+        # Carbon credits (ADR 0011), production-weighted, reported beside
+        # total_emissions_kgco2e and never netted: avoided emissions (C11) and
+        # biogenic carbon stored (C10). Distinct key prefixes keep them apart.
         "carbon": {
             **avoided_emissions_metrics(monitor_data),
             **biogenic_carbon_metrics(monitor_data),
