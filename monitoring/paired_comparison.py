@@ -48,7 +48,7 @@ DEFAULT_METRICS = [
 # duplicated rather than imported on purpose: this module imports no project
 # code so it stays runnable as a bare file (`python monitoring/paired_comparison.py`),
 # where sys.path[0] is monitoring/ and a `monitoring.*` import would not resolve.
-_GENERIC_NAMESPACES = ("bullwhip", "residence")
+_GENERIC_NAMESPACES = ("bullwhip", "residence", "carbon")
 
 
 def _flatten_namespaces(kpis: dict) -> dict:

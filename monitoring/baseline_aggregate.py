@@ -13,6 +13,7 @@ from monitoring.bullwhip import (
     treatment_anchored_pooled_bullwhip,
 )
 from monitoring.flow_times import flow_time_metrics
+from monitoring.avoided_emissions import avoided_emissions_metrics
 
 
 # Marginal KPIs aggregated into summary.csv, in display order. The nested
@@ -48,7 +49,7 @@ _SUMMARY_HEADER = "metric,mean,stdev,ci95_low,ci95_high,count"
 # wiring (issue 06). `bullwhip` is the throughput-amplification family (ADR
 # 0004); `residence` is the lead/residence-time family (Little's Law, C4). The
 # paired-comparison machinery mirrors this tuple (see paired_comparison.py).
-_GENERIC_NAMESPACES = ("bullwhip", "residence")
+_GENERIC_NAMESPACES = ("bullwhip", "residence", "carbon")
 
 
 def _mean_ci(vals: List[float], alpha: float):
@@ -291,4 +292,8 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         # namespace alongside `bullwhip`: per-stage WIP, throughput, and
         # residence, computed post-hoc from monitor history.
         "residence": flow_time_metrics(monitor_data),
+        # Avoided emissions (recycling avoided-burden, C11/ADR 0011). A third
+        # generic namespace: produced volume per output type rescaled by fixed
+        # Lao 2023 factors. Reported beside total_emissions_kgco2e, never netted.
+        "carbon": avoided_emissions_metrics(monitor_data),
     }

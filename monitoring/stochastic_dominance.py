@@ -90,7 +90,7 @@ MINIMUM_SAMPLES = 2
 # Nested KPI namespaces extract_kpis emits as sub-dicts; lifted to flat
 # ``{namespace}.{key}`` metrics. MUST mirror paired_comparison._GENERIC_NAMESPACES
 # (duplicated, not imported, to keep this file bare-runnable).
-_GENERIC_NAMESPACES = ("bullwhip", "residence")
+_GENERIC_NAMESPACES = ("bullwhip", "residence", "carbon")
 
 
 def _flatten_namespaces(kpis: dict) -> dict:

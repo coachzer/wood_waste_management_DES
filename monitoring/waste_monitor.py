@@ -204,6 +204,7 @@ class WasteMonitor:
             },
             "products": {
                 "total": [],
+                "by_type": {ptype: [] for ptype in product_types},
                 "quality": [],
             },
             "operational": {
@@ -437,10 +438,17 @@ class WasteMonitor:
     def _track_product_metrics(self, treatment, history, timestamp):
         """Track product-related metrics"""
         product_types = self._get_product_types()
-        total_products = 0
-        if hasattr(treatment, 'product_volumes'):
-            total_products = sum(treatment.product_volumes.get(ptype, 0) for ptype in product_types)
+        product_volumes = getattr(treatment, 'product_volumes', {})
+        total_products = sum(product_volumes.get(ptype, 0) for ptype in product_types)
         history["products"]["total"].append(total_products)
+
+        # Cumulative produced volume per output type (C11 avoided-emissions
+        # driver). Mirrors processed["by_type"]; a write-only series consumed
+        # post-hoc by monitoring.avoided_emissions.
+        for ptype in product_types:
+            history["products"]["by_type"].setdefault(ptype, []).append(
+                product_volumes.get(ptype, 0)
+            )
 
         quality = getattr(treatment, 'product_quality', 1.0)
         history["products"]["quality"].append(quality)
