@@ -100,41 +100,51 @@ def _create_nodes(generators: Dict, collectors: Dict, treatments: Dict, products
     
     return labels, node_colors, gen_start, col_start, treat_start, prod_start
 
+# Sankey link colors keyed by transport method. inter_region_transport is the
+# treatment-pulled cross-region repositioning hop (collector -> collector); it gets a
+# distinct orange so it reads as a separate flow from ordinary collection and intake.
+LINK_COLORS = {
+    "collection_vehicle": "rgba(46, 204, 113, 0.4)",      # generator -> collector (green)
+    "inter_region_transport": "rgba(230, 126, 34, 0.7)",  # collector -> collector (orange)
+    "treatment_intake": "rgba(155, 89, 182, 0.4)",        # collector -> treatment (purple)
+}
+PRODUCT_LINK_COLOR = "rgba(128, 128, 128, 0.4)"           # treatment -> product (neutral grey)
+
+
 def _create_flows(transport_flows: list, labels: list):
-    """Create flows based on actual transport data"""
-    sources, targets, values = [], [], []
-    
+    """Create Sankey links from logged transport flows.
+
+    Resolves each flow's entity name to its node index by EXACT name, not substring
+    containment. Node labels are "<name>\n<volume>", so the name is the first line.
+    Substring matching mis-routes flows when entity names share a prefix (e.g.
+    col_x_1 is a substring of col_x_10), which breaks once a region holds more than
+    one node of a type. Also returns a per-link color array so each transport method
+    renders in its own colour.
+    """
+    sources, targets, values, link_colors = [], [], [], []
+
+    name_to_index = {label.split("\n", 1)[0]: i for i, label in enumerate(labels)}
+
     flow_matrix = {}
-    
     for flow in transport_flows:
-        source_name = flow['source_name']
-        target_name = flow['target_name']
-        volume = flow['volume']
-        
-        source_idx = None
-        target_idx = None
-        
-        for i, label in enumerate(labels):
-            if source_name in label:
-                source_idx = i
-                break
-        
-        for i, label in enumerate(labels):
-            if target_name in label:
-                target_idx = i
-                break
-        
-        if source_idx is not None and target_idx is not None:
-            key = (source_idx, target_idx)
-            flow_matrix[key] = flow_matrix.get(key, 0) + volume
-    
-    for (source_idx, target_idx), total_volume in flow_matrix.items():
-        if total_volume >= 0.1 and source_idx != target_idx: 
-            sources.append(source_idx)
-            targets.append(target_idx)
-            values.append(total_volume)
-    
-    return sources, targets, values
+        source_index = name_to_index.get(flow["source_name"])
+        target_index = name_to_index.get(flow["target_name"])
+        if source_index is None or target_index is None:
+            continue
+        key = (source_index, target_index)
+        entry = flow_matrix.setdefault(
+            key, {"volume": 0.0, "method": flow.get("transport_method")}
+        )
+        entry["volume"] += flow["volume"]
+
+    for (source_index, target_index), entry in flow_matrix.items():
+        if entry["volume"] >= 0.1 and source_index != target_index:
+            sources.append(source_index)
+            targets.append(target_index)
+            values.append(entry["volume"])
+            link_colors.append(LINK_COLORS.get(entry["method"], PRODUCT_LINK_COLOR))
+
+    return sources, targets, values, link_colors
 
 def create_sankey(generator_volumes: Dict, collector_volumes: Dict,
                   treatment_volumes: Dict, product_volumes: Dict, state):
@@ -154,8 +164,8 @@ def create_sankey(generator_volumes: Dict, collector_volumes: Dict,
     )
     
     transport_flows = state.transport_flows
-    sources, targets, values = _create_flows(transport_flows, labels)
-    
+    sources, targets, values, link_colors = _create_flows(transport_flows, labels)
+
     for t_idx, treat_name in enumerate(treatments.keys()):
         op = next((o for o in state.treatment_operators if o.name == treat_name), None)
         if not op:
@@ -167,6 +177,7 @@ def create_sankey(generator_volumes: Dict, collector_volumes: Dict,
                 sources.append(treat_start + t_idx)
                 targets.append(prod_start + p_idx)
                 values.append(vol)
+                link_colors.append(PRODUCT_LINK_COLOR)
     
     n_gen = len(generators)
     n_col = len(collectors)
@@ -178,7 +189,7 @@ def create_sankey(generator_volumes: Dict, collector_volumes: Dict,
     for count in (n_gen, n_col, n_treat, n_prod):
         y += [(i+1)/(count+1) for i in range(count)]
     
-    return labels, node_colors, sources, targets, values, x, y
+    return labels, node_colors, sources, targets, values, link_colors, x, y
 
 def create_material_flow_analysis(generation_history: Dict, collection_history: Dict,
                                   processing_history: Dict,
@@ -199,7 +210,7 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
         generation_history, collection_history, processing_history, state
     )
 
-    labels, node_colors, sources, targets, values, x, y = create_sankey(
+    labels, node_colors, sources, targets, values, link_colors, x, y = create_sankey(
         gen_vol, col_vol, treat_vol, prod_vol, state
     )
 
@@ -217,7 +228,7 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
             "source": sources,
             "target": targets,
             "value": values,
-            "color": "rgba(128, 128, 128, 0.4)"
+            "color": link_colors
         }
     )])
 
@@ -231,7 +242,19 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
         title=title,
         font_size=12,
         height=600,
-        margin={"l": 50, "r": 50, "t": 50, "b": 50}
+        margin={"l": 50, "r": 50, "t": 50, "b": 90}
+    )
+
+    fig.add_annotation(
+        text=(
+            "Flow type: "
+            "<span style='color:#2ecc71'>&#9632;</span> collection&nbsp;&nbsp;&nbsp;"
+            "<span style='color:#e67e22'>&#9632;</span> inter-region transit&nbsp;&nbsp;&nbsp;"
+            "<span style='color:#9b59b6'>&#9632;</span> treatment intake&nbsp;&nbsp;&nbsp;"
+            "<span style='color:#808080'>&#9632;</span> production"
+        ),
+        xref="paper", yref="paper", x=0.0, y=-0.1,
+        xanchor="left", showarrow=False, font={"size": 10}
     )
 
     if inventory_policy and stock_strategy:
