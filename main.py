@@ -6,6 +6,7 @@ from models.enums import InventoryPolicy, StockStrategy
 from monitoring.mfa_visualization import create_material_flow_analysis
 from monitoring.scenario_comparison import ScenarioComparison
 from monitoring.baseline_aggregate import extract_kpis, summary_rows
+from monitoring.serialization import build_raw_payload, jsonify
 from monitoring.paired_comparison import write_paired_comparison_report
 from monitoring.pareto import write_pareto_report
 from monitoring.stochastic_dominance import write_dominance_report
@@ -156,6 +157,22 @@ def run_monte_carlo_baseline(
                             )
                     except Exception as e:
                         print(f"Warning: failed to write {run_path}: {e}")
+                    # Additive raw sidecar: the six history dicts + two event
+                    # logs that extract_kpis consumes, persisted so a new KPI can
+                    # be computed post-hoc without re-running. Named raw_NNN.json
+                    # (NOT run_NNN.raw.json) so it stays clear of the run_*.json
+                    # glob the comparator and post-hoc scripts use. Enum keys are
+                    # rewritten via jsonify -- json's default= cannot do that.
+                    raw_path = combo_dir / f"raw_{i:03d}.json"
+                    try:
+                        with open(raw_path, "w", encoding="utf-8") as f:
+                            json.dump(
+                                jsonify(build_raw_payload(res["monitor_data"])),
+                                f,
+                                separators=(",", ":"),
+                            )
+                    except Exception as e:
+                        print(f"Warning: failed to write {raw_path}: {e}")
 
                 print(
                     f"Completed {replications} reps for {policy.value} x {strategy.value}"
