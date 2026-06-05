@@ -27,16 +27,22 @@ the end-of-run cumulative volume -- summed across all treatment operators.
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Iterable
 
 from config.constants import AVOIDED_EMISSIONS_PER_M3_BY_PRODUCT
 
 
-def _total_produced_by_product(monitor_data: Dict[str, Any]) -> Dict[str, float]:
-    """Sum end-of-run cumulative production per output type across operators."""
-    totals: Dict[str, float] = {
-        product: 0.0 for product in AVOIDED_EMISSIONS_PER_M3_BY_PRODUCT
-    }
+def total_produced_by_product(
+    monitor_data: Dict[str, Any], product_types: Iterable[str]
+) -> Dict[str, float]:
+    """Sum end-of-run cumulative production per output type across operators.
+
+    Shared by the two production-weighted carbon credits (avoided emissions here,
+    biogenic-stored in ``monitoring.biogenic_carbon``): both read the same
+    ``products.by_type`` driver, so the reader lives once. ``product_types`` is
+    the set of output types to total; any other key in the history is ignored.
+    """
+    totals: Dict[str, float] = {product: 0.0 for product in product_types}
     proc_hist = monitor_data.get("processing_history", {})
     for hist in proc_hist.values():
         by_type = hist.get("products", {}).get("by_type", {})
@@ -52,7 +58,9 @@ def avoided_emissions_metrics(monitor_data: Dict[str, Any]) -> Dict[str, float]:
     Keys are ``avoided_emissions_{product}_kgco2e`` for each output type in
     insertion order, then ``avoided_emissions_total_kgco2e``.
     """
-    produced = _total_produced_by_product(monitor_data)
+    produced = total_produced_by_product(
+        monitor_data, AVOIDED_EMISSIONS_PER_M3_BY_PRODUCT
+    )
     metrics: Dict[str, float] = {}
     total = 0.0
     for product, factor in AVOIDED_EMISSIONS_PER_M3_BY_PRODUCT.items():

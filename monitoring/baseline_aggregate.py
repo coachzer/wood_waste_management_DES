@@ -14,6 +14,7 @@ from monitoring.bullwhip import (
 )
 from monitoring.flow_times import flow_time_metrics
 from monitoring.avoided_emissions import avoided_emissions_metrics
+from monitoring.biogenic_carbon import biogenic_carbon_metrics
 
 
 # Marginal KPIs aggregated into summary.csv, in display order. The nested
@@ -292,8 +293,16 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         # namespace alongside `bullwhip`: per-stage WIP, throughput, and
         # residence, computed post-hoc from monitor history.
         "residence": flow_time_metrics(monitor_data),
-        # Avoided emissions (recycling avoided-burden, C11/ADR 0011). A third
-        # generic namespace: produced volume per output type rescaled by fixed
-        # Lao 2023 factors. Reported beside total_emissions_kgco2e, never netted.
-        "carbon": avoided_emissions_metrics(monitor_data),
+        # Carbon credits (a third generic namespace), all production-weighted and
+        # reported beside total_emissions_kgco2e, never netted (ADR 0011):
+        #   - avoided emissions (recycling avoided-burden, C11): produced volume
+        #     rescaled by fixed Lao 2023 biogenic-excluded factors.
+        #   - biogenic carbon stored (static credit, C10): produced volume
+        #     rescaled by per-product ProductSpecification.biogenic_carbon_stock
+        #     (negative = sequestered).
+        # Both ride the same `carbon` dict; their key prefixes keep them distinct.
+        "carbon": {
+            **avoided_emissions_metrics(monitor_data),
+            **biogenic_carbon_metrics(monitor_data),
+        },
     }

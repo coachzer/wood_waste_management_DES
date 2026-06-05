@@ -353,6 +353,51 @@ _Avoid_: substitution effect (implies non-wood material
 displacement), displacement factor (that is the per-carbon-mass
 material-substitution metric, a different concept), carbon credit
 
+**Biogenic Carbon Stored**:
+The biogenic carbon locked into the panels the system produces,
+reported as a static, production-weighted credit:
+`Σ_product (produced_volume_p × biogenic_carbon_stock_p)`, summed
+across **Treatment Operators**, where the per-m³ stock lives on
+`ProductSpecification.biogenic_carbon_stock`
+(`models/products.py`). Sign convention is **negative =
+sequestered** (carbon held out of the atmosphere), so the credit
+reads negative beside the positive operational
+`total_emissions_kgco2e`. It is the **static** stock view, _not_
+the time-integrated / dynamic GWP-bio (Levasseur) view — that
+needs a product service-life and end-of-life release profile the
+model does not have (it stops at **Market Consumption**), so it
+is named as future work, not computed. One of three orthogonal
+carbon lines reported **side by side, never netted** (ADR 0011):
+biogenic-stored (this), **Avoided Emissions**, and operational
+`total_emissions_kgco2e`. Orthogonality is binding — biogenic
+carbon is excluded from `total_emissions_kgco2e`, and the
+avoided-emissions factors are biogenic-excluded too — so the
+three never double-count.
+_Avoid_: GWP-bio / dynamic-LCA (this is the static stock, not the
+time-integrated view), carbon sequestration credit (overclaims a
+permanence the single-cycle model does not assert), net carbon
+(the lines are not netted)
+
+**Cascading Depth**:
+The number of successive use-cycles a material passes through
+before final disposal. In this model it is **1**: each unit of
+wood waste is transformed exactly once — by a
+**Treatment Operator** into a finished good (MDF / particle board
+/ OSB) that leaves the system boundary at **Market Consumption**.
+There is no path that returns a manufactured product to the waste
+stream for re-treatment, so the mass ledgers close on a single
+waste-to-product cycle. Multi-cycle cascading — product reuse, a
+recovered panel re-entering as feedstock, sequential
+down-gauging across product grades — is named as **future work**,
+not modelled. Reported as a documented modelling assumption
+(depth = 1), deliberately **not** as a per-run KPI: a constant
+carries no Monte-Carlo or paired-statistics signal, so surfacing
+it as a column of `1.0`s would be hollow plumbing. The honest
+deliverable is the stated assumption, which pre-empts the
+reviewer question "did you consider cascading reuse?".
+_Avoid_: reuse count, recycling loops (plural — there is one
+cycle), number of lifecycles (the model has no product use phase)
+
 ## Example dialogue
 
 > **Dev**: "The simulation finishes at day 100 — all demands
