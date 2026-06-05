@@ -31,8 +31,7 @@ def _biogenic_stock_by_product() -> Dict[str, float]:
     """Per-m3 biogenic carbon stock per output type (negative = sequestered).
 
     Read from the single ``ProductSpecification`` source (``models/products.py``)
-    rather than duplicated into ``constants.py`` -- the same literals already back
-    ``core.treatment.calculate_total_biogenic_carbon_stored``.
+    rather than duplicated into ``constants.py``.
     """
     manager = ProductDataManager()
     stock: Dict[str, float] = {}
