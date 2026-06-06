@@ -3,54 +3,22 @@ import json
 from typing import Dict, Any
 from models.enums import WasteType
 from config.constants import SIMULATION_DURATION
+from instrumentation.history_store import HistoryStore
 
 class WasteMonitor:
     """Monitoring system for waste management operations"""
 
     def __init__(self, env=None):
         self.env = env
-        self.generation_history = {}
-        self.collection_history = {}
-        self.processing_history = {}
-        self.environmental_history = {}
-        self.event_history = {}
-        self.entity_status_history = {
-            "generators": {},
-            "collectors": {}, 
-            "treatments": {}
-        }
+        self.store = HistoryStore()
 
         if not os.path.exists("plots"):
             os.makedirs("plots")
 
-    @property
-    def get_generation_history(self):
-        return dict(self.generation_history)
-
-    @property
-    def get_collection_history(self):
-        return dict(self.collection_history)
-
-    @property
-    def get_processing_history(self):
-        return dict(self.processing_history)
-
-    @property
-    def get_environmental_history(self):
-        return dict(self.environmental_history)
-
-    @property
-    def get_event_history(self):
-        return dict(self.event_history)
-
-    @property
-    def get_entity_status_history(self):
-        return dict(self.entity_status_history)
-
     def track_generation(self, generator, timestamp, region=None):
         """Track waste generation events with timestamps, region info, and costs"""
-        if generator.name not in self.generation_history:
-            self.generation_history[generator.name] = {
+        if generator.name not in self.store.generation_history:
+            self.store.generation_history[generator.name] = {
                 "timestamps": [],
                 "volumes": {},
                 "efficiency": [],
@@ -65,16 +33,16 @@ class WasteMonitor:
             }
 
         # Initialize entity_status_history entry if it doesn't exist
-        if generator.name not in self.entity_status_history["generators"]:
-            self.entity_status_history["generators"][generator.name] = {
+        if generator.name not in self.store.entity_status_history["generators"]:
+            self.store.entity_status_history["generators"][generator.name] = {
                 "timestamps": [], 
                 "status": []
             }
 
-        self.entity_status_history["generators"][generator.name]["timestamps"].append(timestamp)
-        self.entity_status_history["generators"][generator.name]["status"].append(generator.status.value)
+        self.store.entity_status_history["generators"][generator.name]["timestamps"].append(timestamp)
+        self.store.entity_status_history["generators"][generator.name]["status"].append(generator.status.value)
 
-        history = self.generation_history[generator.name]
+        history = self.store.generation_history[generator.name]
         history["timestamps"].append(timestamp)
         history["status"].append(generator.status.value) 
         history["regions"].append(region if region is not None else getattr(generator, "region", None))
@@ -103,8 +71,8 @@ class WasteMonitor:
 
     def track_collection(self, collector, timestamp: float, region=None):
         """Track waste collection events with region info and costs"""
-        if collector.name not in self.collection_history:
-            self.collection_history[collector.name] = {
+        if collector.name not in self.store.collection_history:
+            self.store.collection_history[collector.name] = {
                 "timestamps": [],
                 "collected_volumes": {},
                 "efficiency": [],
@@ -119,16 +87,16 @@ class WasteMonitor:
             }
 
         # Initialize entity_status_history entry if it doesn't exist
-        if collector.name not in self.entity_status_history["collectors"]:
-            self.entity_status_history["collectors"][collector.name] = {
+        if collector.name not in self.store.entity_status_history["collectors"]:
+            self.store.entity_status_history["collectors"][collector.name] = {
                 "timestamps": [], 
                 "status": []
             }
 
-        self.entity_status_history["collectors"][collector.name]["timestamps"].append(timestamp)
-        self.entity_status_history["collectors"][collector.name]["status"].append(collector.status.value)
+        self.store.entity_status_history["collectors"][collector.name]["timestamps"].append(timestamp)
+        self.store.entity_status_history["collectors"][collector.name]["status"].append(collector.status.value)
 
-        history = self.collection_history[collector.name]
+        history = self.store.collection_history[collector.name]
         history["timestamps"].append(timestamp)
         history["status"].append(collector.status.value)
         history["regions"].append(region if region is not None else getattr(collector, "region", None))
@@ -157,20 +125,20 @@ class WasteMonitor:
 
     def track_processing(self, treatment, timestamp: float):
         """Track treatment facility metrics with embedded costs"""
-        if treatment.name not in self.processing_history:
+        if treatment.name not in self.store.processing_history:
             self._initialize_treatment_history(treatment.name)
 
         # Initialize entity_status_history entry if it doesn't exist
-        if treatment.name not in self.entity_status_history["treatments"]:
-            self.entity_status_history["treatments"][treatment.name] = {
+        if treatment.name not in self.store.entity_status_history["treatments"]:
+            self.store.entity_status_history["treatments"][treatment.name] = {
                 "timestamps": [], 
                 "status": []
             }
 
-        self.entity_status_history["treatments"][treatment.name]["timestamps"].append(timestamp)
-        self.entity_status_history["treatments"][treatment.name]["status"].append(treatment.status.value)
+        self.store.entity_status_history["treatments"][treatment.name]["timestamps"].append(timestamp)
+        self.store.entity_status_history["treatments"][treatment.name]["status"].append(treatment.status.value)
 
-        history = self.processing_history[treatment.name]
+        history = self.store.processing_history[treatment.name]
         if not history["timestamps"] or timestamp > history["timestamps"][-1]:
             history["timestamps"].append(timestamp)
             history["status"].append(treatment.status.value)
@@ -188,7 +156,7 @@ class WasteMonitor:
     def _initialize_treatment_history(self, treatment_name):
         """Initialize the treatment history structure"""
         product_types = self._get_product_types()
-        self.processing_history[treatment_name] = {
+        self.store.processing_history[treatment_name] = {
             "timestamps": [],
             "storage": {
                 "total": [],
@@ -222,23 +190,23 @@ class WasteMonitor:
                        transport_cost: float = 0.0):
         """Update costs in the most recent tracking entry for an entity"""
 
-        if entity_type == "generator" and entity_name in self.generation_history:
-            history = self.generation_history[entity_name]
+        if entity_type == "generator" and entity_name in self.store.generation_history:
+            history = self.store.generation_history[entity_name]
             if history["timestamps"]:
                 history["energy_costs"][-1] += energy_cost
                 history["operational_costs"][-1] += processing_cost
                 history["total_costs"][-1] += energy_cost + processing_cost
 
-        elif entity_type == "collector" and entity_name in self.collection_history:
-            history = self.collection_history[entity_name]
+        elif entity_type == "collector" and entity_name in self.store.collection_history:
+            history = self.store.collection_history[entity_name]
             if history["timestamps"]:
                 history["energy_costs"][-1] += energy_cost
                 history["operational_costs"][-1] += processing_cost
                 history["transport_costs"][-1] += transport_cost
                 history["total_costs"][-1] += energy_cost + processing_cost + transport_cost
 
-        elif entity_type == "treatment" and entity_name in self.processing_history:
-            history = self.processing_history[entity_name]
+        elif entity_type == "treatment" and entity_name in self.store.processing_history:
+            history = self.store.processing_history[entity_name]
             if history["timestamps"]:
                 history["operational"]["energy_costs"][-1] += energy_cost
                 history["operational"]["processing_costs"][-1] += processing_cost
@@ -259,8 +227,8 @@ class WasteMonitor:
 
         event_key = "system_events"
 
-        if event_key not in self.event_history:
-            self.event_history[event_key] = {
+        if event_key not in self.store.event_history:
+            self.store.event_history[event_key] = {
                 "timestamps": [],
                 "overflow_events": [],
                 "landfill_usage": [],
@@ -270,7 +238,7 @@ class WasteMonitor:
                 "total_costs": []
             }
 
-        history = self.event_history[event_key]
+        history = self.store.event_history[event_key]
         history["timestamps"].append(timestamp)
         history["overflow_events"].append(0.0)
         history["landfill_usage"].append(0.0)
@@ -296,8 +264,8 @@ class WasteMonitor:
                                 impact_category: str = "carbon_emissions"):
         """Environmental impact tracking - emissions only (kg CO₂e)"""
 
-        if entity_name not in self.environmental_history:
-            self.environmental_history[entity_name] = {
+        if entity_name not in self.store.environmental_history:
+            self.store.environmental_history[entity_name] = {
                 "timestamps": [],
                 "carbon_emissions": [],
                 "transport_emissions": [],
@@ -306,7 +274,7 @@ class WasteMonitor:
                 "entity_type": entity_type
             }
 
-        history = self.environmental_history[entity_name]
+        history = self.store.environmental_history[entity_name]
 
         if not history["timestamps"] or timestamp > history["timestamps"][-1]:
             history["timestamps"].append(timestamp)
@@ -323,11 +291,11 @@ class WasteMonitor:
 
     def calculate_efficiency_metrics(self) -> Dict[str, float]:
         """Calculate system-wide efficiency metrics"""
-        total_generated = self._sum_totals(self.generation_history, "total_generated")
-        total_collected = self._sum_totals(self.collection_history, "collected_volumes")
+        total_generated = self._sum_totals(self.store.generation_history, "total_generated")
+        total_collected = self._sum_totals(self.store.collection_history, "collected_volumes")
 
         total_processed = 0
-        for history in self.processing_history.values():
+        for history in self.store.processing_history.values():
             if history["processed"]["total"]:
                 total_processed += history["processed"]["total"][-1]
 
@@ -355,13 +323,13 @@ class WasteMonitor:
 
         entity_name = getattr(entity, 'name', str(entity))
 
-        if entity_name not in self.entity_status_history[history_category]:
-            self.entity_status_history[history_category][entity_name] = {
+        if entity_name not in self.store.entity_status_history[history_category]:
+            self.store.entity_status_history[history_category][entity_name] = {
                 "timestamps": [],
                 "status": []
             }
 
-        entity_history = self.entity_status_history[history_category][entity_name]
+        entity_history = self.store.entity_status_history[history_category][entity_name]
 
         if (not entity_history["timestamps"] or 
             timestamp > entity_history["timestamps"][-1] or
@@ -480,7 +448,7 @@ class WasteMonitor:
     def _add_generation_summary(self, report: list) -> None:
         """Add generation summary to the report"""
         report.append("Generation Summary:")
-        for generator_name, history in self.generation_history.items():
+        for generator_name, history in self.store.generation_history.items():
             report.append(f"\n{generator_name}:")
             for waste_type in history["total_generated"]:
                 if history["total_generated"][waste_type]:
@@ -492,7 +460,7 @@ class WasteMonitor:
     def _add_collection_summary(self, report: list) -> None:
         """Add collection summary to the report"""
         report.append("\nCollection Summary:")
-        for collector_name, history in self.collection_history.items():
+        for collector_name, history in self.store.collection_history.items():
             report.append(f"\n{collector_name}:")
             for waste_type in history["collected_volumes"]:
                 if history["collected_volumes"][waste_type]:
@@ -504,7 +472,7 @@ class WasteMonitor:
     def _add_processing_summary(self, report: list) -> None:
         """Add processing summary to the report"""
         report.append("\nProcessing Summary:")
-        for facility_name, history in self.processing_history.items():
+        for facility_name, history in self.store.processing_history.items():
             report.append(f"\n{facility_name}:")
             if history["processed"]["total"]:
                 total_processed = history["processed"]["total"][-1]

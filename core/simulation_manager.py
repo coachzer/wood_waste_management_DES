@@ -223,12 +223,12 @@ class SimulationManager:
     def get_monitor_data(self) -> Dict[str, Any]:
         """Extract all relevant monitoring data"""
         return {
-            'generation_history': self.waste_monitor.get_generation_history,
-            'collection_history': self.waste_monitor.get_collection_history,
-            'processing_history': self.waste_monitor.get_processing_history,
-            'environmental_history': self.waste_monitor.get_environmental_history,
-            'event_history': self.waste_monitor.get_event_history,
-            'entity_status_history': self.waste_monitor.get_entity_status_history,
+            'generation_history': self.waste_monitor.store.get_generation_history,
+            'collection_history': self.waste_monitor.store.get_collection_history,
+            'processing_history': self.waste_monitor.store.get_processing_history,
+            'environmental_history': self.waste_monitor.store.get_environmental_history,
+            'event_history': self.waste_monitor.store.get_event_history,
+            'entity_status_history': self.waste_monitor.store.get_entity_status_history,
             # Raw run logs for post-hoc analysis (e.g. bullwhip, ADR 0004),
             # consumed in process by extract_kpis.
             'transport_flows': self.state.transport_flows,
