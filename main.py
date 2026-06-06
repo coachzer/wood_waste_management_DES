@@ -5,11 +5,11 @@ from core.simulation_manager import SimulationManager
 from models.enums import InventoryPolicy, StockStrategy
 from monitoring.mfa_visualization import create_material_flow_analysis
 from monitoring.scenario_comparison import ScenarioComparison
-from monitoring.baseline_aggregate import extract_kpis, summary_rows
+from analysis.baseline_aggregate import extract_kpis, summary_rows
 from monitoring.serialization import build_raw_payload, jsonify
-from monitoring.paired_comparison import write_paired_comparison_report
-from monitoring.pareto import write_pareto_report
-from monitoring.stochastic_dominance import write_dominance_report
+from analysis.paired_comparison import write_paired_comparison_report
+from analysis.pareto import write_pareto_report
+from analysis.stochastic_dominance import write_dominance_report
 from monitoring.visualization.pareto_visualization import write_pareto_plot
 import traceback
 import argparse

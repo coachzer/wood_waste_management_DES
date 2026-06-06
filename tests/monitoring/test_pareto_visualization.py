@@ -5,7 +5,7 @@ produces an ``pareto_frontier.html`` beside a tmp dataset. Plot aesthetics are
 not asserted -- only that the artifact is written and non-trivial.
 """
 
-from monitoring.pareto import build_pareto_report
+from analysis.pareto import build_pareto_report
 from monitoring.visualization.pareto_visualization import (
     build_pareto_figure,
     write_pareto_plot,

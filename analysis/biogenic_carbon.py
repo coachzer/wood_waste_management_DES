@@ -10,7 +10,7 @@ GWP-bio view. Emitted under the shared ``carbon`` namespace beside C11's avoided
 emissions so it rides the generic MC aggregation + CRN machinery (issues 06/07).
 
 Cumulative production per output type is read via the shared reader in
-``monitoring.avoided_emissions`` (last sample = end-of-run cumulative volume),
+``analysis.avoided_emissions`` (last sample = end-of-run cumulative volume),
 summed across all treatment operators.
 """
 from __future__ import annotations
@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from models.products import ProductDataManager
-from monitoring.avoided_emissions import total_produced_by_product
+from .avoided_emissions import total_produced_by_product
 
 
 # Output products carrying a biogenic-carbon stored credit, in display order.

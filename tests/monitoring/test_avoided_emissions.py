@@ -1,6 +1,6 @@
 """Tests for avoided-emissions metrics (recycling avoided-burden, C11, ADR 0011).
 
-Exercises monitoring.avoided_emissions against a synthetic monitor_data whose
+Exercises analysis.avoided_emissions against a synthetic monitor_data whose
 per-operator cumulative production is chosen so the avoided figures are round
 multiples of the Lao 2023 factors. Mirrors the inline-synthetic-dict style of
 test_flow_times.py / test_bullwhip.py -- no simulation run.
@@ -9,7 +9,7 @@ test_flow_times.py / test_bullwhip.py -- no simulation run.
 import pytest
 
 from config.constants import AVOIDED_EMISSIONS_PER_M3_BY_PRODUCT
-from monitoring.avoided_emissions import avoided_emissions_metrics
+from analysis.avoided_emissions import avoided_emissions_metrics
 
 
 def _monitor_data(per_operator):

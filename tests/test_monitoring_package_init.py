@@ -8,10 +8,10 @@ eagerly imported ``waste_monitor``, ``scenario_comparison`` and
 heavy plotly-backed visualization stack and re-armed the import cycle that forced
 the "run by file path, not ``-m``" workaround.
 
-These tests pin two failure modes:
+These tests pin three failure modes:
   1. submodule imports creeping back into the package ``__init__`` (static AST guard);
-  2. importing the package eagerly loading a heavy submodule, and the ``-m``
-     entry points failing to import (behavioral, in a clean subprocess).
+  2. importing the package eagerly loading a heavy submodule (behavioral, clean subprocess);
+  3. an analysis ``-m`` entry point failing to import after the space move (behavioral).
 
 The behavioral checks run in a fresh interpreter so an unrelated earlier import
 in this test session cannot mask a regression. Each assertion is mutation-verified
@@ -30,13 +30,15 @@ INIT_PATH = REPO_ROOT / "monitoring" / "__init__.py"
 # the eager-import regression is back.
 HEAVY_CANARY = "monitoring.mfa_visualization"
 
-# The four entry points that issue 03 must let resolve via ``-m`` without the
-# circular-import error.
+# The four post-hoc analysis entry points are the ``-m`` targets. They moved to the
+# ``analysis`` space (issue 05); importing each in a clean process is the regression
+# guard that every relative import inside ``analysis/`` still resolves. The monitoring
+# import cycle itself is prevented elsewhere -- see test 3's docstring.
 DASH_M_MODULES = (
-    "monitoring.paired_comparison",
-    "monitoring.stochastic_dominance",
-    "monitoring.pareto",
-    "monitoring.baseline_aggregate",
+    "analysis.paired_comparison",
+    "analysis.stochastic_dominance",
+    "analysis.pareto",
+    "analysis.baseline_aggregate",
 )
 
 
@@ -90,14 +92,22 @@ def test_importing_package_does_not_load_heavy_submodule():
 
 
 def test_dash_m_entry_points_import_without_cycle():
-    """Each ``-m`` entry point must import in a clean process without a cycle.
+    """Each analysis ``-m`` entry point must import cleanly in a fresh process.
 
-    Mutation check (red): restore BOTH the eager ``from .waste_monitor import
-    WasteMonitor`` in ``monitoring/__init__.py`` AND the ``models -> monitoring``
-    edge in ``models/data_classes.py`` (the pre-02 + pre-03 state) -> importing
-    ``monitoring.paired_comparison`` raises "cannot import name 'WasteMonitor'
-    from partially initialized module", the subprocess exits non-zero, and this
-    test fails. Either half alone no longer cycles, which is exactly the point.
+    These are the ``python -m analysis.<module>`` targets. Importing each in a clean
+    interpreter proves its now-relative (issue 05) intra-``analysis`` imports all
+    resolve and no import error -- cycle or otherwise -- bites.
+
+    Mutation check (red): change a sibling import in ``analysis/baseline_aggregate.py``
+    back to the pre-move ``from monitoring.bullwhip import ...`` -> ``monitoring.bullwhip``
+    no longer exists, so ``import analysis.baseline_aggregate`` raises ModuleNotFoundError,
+    the subprocess exits non-zero, and this test fails.
+
+    The monitoring import cycle is double-guarded elsewhere, so it is not re-checked
+    here: ``test_package_init_imports_no_submodules`` (no eager submodule imports in
+    ``monitoring/__init__``) and ``tests/test_recorder_injection.py`` (the domain layer
+    does not import ``monitoring``) -- restoring either half of the cycle turns one of
+    those red.
     """
     for module in DASH_M_MODULES:
         result = subprocess.run(
@@ -107,5 +117,5 @@ def test_dash_m_entry_points_import_without_cycle():
             text=True,
         )
         assert result.returncode == 0, (
-            f"importing {module} failed -- the import cycle is back:\n{result.stderr}"
+            f"importing {module} failed in a clean process:\n{result.stderr}"
         )

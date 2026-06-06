@@ -10,7 +10,7 @@ inline-synthetic-dict style of ``test_bullwhip.py`` -- no simulation run.
 import pytest
 
 from config.constants import SIMULATION_DURATION
-from monitoring.flow_times import (
+from analysis.flow_times import (
     flow_time_metrics,
     residence_time,
     time_weighted_average,

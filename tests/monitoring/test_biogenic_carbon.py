@@ -1,6 +1,6 @@
 """Tests for the biogenic-carbon stored credit (static, C10).
 
-Exercises monitoring.biogenic_carbon against a synthetic monitor_data whose
+Exercises analysis.biogenic_carbon against a synthetic monitor_data whose
 per-operator cumulative production is chosen so the stored figures are round
 multiples of the per-product ProductSpecification.biogenic_carbon_stock. Mirrors
 the inline-synthetic-dict style of test_avoided_emissions.py -- no simulation run.
@@ -13,7 +13,7 @@ revised; they pin the wiring (driver, summation, sign), not the magnitudes.
 import pytest
 
 from models.products import ProductDataManager
-from monitoring.biogenic_carbon import biogenic_carbon_metrics
+from analysis.biogenic_carbon import biogenic_carbon_metrics
 
 
 _STOCK = {

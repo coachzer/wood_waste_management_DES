@@ -444,7 +444,7 @@ class WasteMonitor:
 
         # Cumulative produced volume per output type (C11 avoided-emissions
         # driver). Mirrors processed["by_type"]; a write-only series consumed
-        # post-hoc by monitoring.avoided_emissions.
+        # post-hoc by analysis.avoided_emissions.
         for ptype in product_types:
             history["products"]["by_type"].setdefault(ptype, []).append(
                 product_volumes.get(ptype, 0)

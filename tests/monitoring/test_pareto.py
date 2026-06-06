@@ -7,7 +7,7 @@ against tmp ``summary.csv`` files in both scenario and ``--root`` layouts. No
 simulation run -- mirrors the synthetic-fixture style of ``test_bullwhip.py``.
 """
 
-from monitoring.pareto import (
+from analysis.pareto import (
     OBJECTIVES,
     build_pareto_report,
     dominates,

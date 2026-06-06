@@ -10,7 +10,7 @@ filter), generic over the namespace like issue 06.
 
 import json
 
-from monitoring.paired_comparison import build_paired_report
+from analysis.paired_comparison import build_paired_report
 
 
 def _write_run(scenario_dir, inventory_policy, stock_strategy, seed, kpis):

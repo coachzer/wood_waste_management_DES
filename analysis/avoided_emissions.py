@@ -26,7 +26,7 @@ def total_produced_by_product(
     """Sum end-of-run cumulative production per output type across operators.
 
     Shared by the two production-weighted carbon credits (avoided emissions here,
-    biogenic-stored in ``monitoring.biogenic_carbon``): both read the same
+    biogenic-stored in ``analysis.biogenic_carbon``): both read the same
     ``products.by_type`` driver, so the reader lives once. ``product_types`` is
     the set of output types to total; any other key in the history is ignored.
     """

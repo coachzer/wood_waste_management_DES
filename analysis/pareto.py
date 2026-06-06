@@ -12,11 +12,10 @@ combo's already-written ``summary.csv`` ``mean`` column (one point per
 configuration) and computes domination. There is no simulation change and no new
 per-run KPI, so the golden additive gate is unaffected.
 
-Like ``monitoring/paired_comparison.py``, this module imports NO project code so
-it runs as a bare file (``python monitoring/pareto.py <dir>``), where
-``sys.path[0]`` is ``monitoring/`` and a ``monitoring.*`` / ``config.*`` import
-would not resolve (and would trip the ``monitoring/__init__`` circular import).
-``main.py`` imports ``write_pareto_report`` by module path, the same way it imports
+Like ``paired_comparison.py``, this module imports no project code at load time,
+so it runs standalone via ``python -m analysis.pareto <dir>`` (the Plotly
+companion plot is imported lazily inside ``__main__`` only). ``main.py`` imports
+``write_pareto_report`` by module path, the same way it imports
 ``write_paired_comparison_report``.
 """
 
@@ -243,8 +242,8 @@ if __name__ == "__main__":
 
     # Companion parallel-coordinates HTML, when the project package is importable
     # (e.g. run from the repo root). A pure bare-file invocation (sys.path[0] =
-    # monitoring/) cannot resolve `monitoring.*`, so the plot is skipped with a
-    # note and the CSV above still stands as the standalone artifact.
+    # analysis/) cannot resolve the sibling packages, so the plot is skipped with
+    # a note and the CSV above still stands as the standalone artifact.
     try:
         from monitoring.visualization.pareto_visualization import write_pareto_plot
 

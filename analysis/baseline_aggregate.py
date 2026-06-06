@@ -4,7 +4,7 @@ from typing import Dict, Any, List
 
 from scipy import stats
 
-from monitoring.bullwhip import (
+from .bullwhip import (
     collector_anchored_bullwhip,
     collector_anchored_pooled_bullwhip,
     generation_floor_cv2,
@@ -12,9 +12,9 @@ from monitoring.bullwhip import (
     treatment_anchored_bullwhip,
     treatment_anchored_pooled_bullwhip,
 )
-from monitoring.flow_times import flow_time_metrics
-from monitoring.avoided_emissions import avoided_emissions_metrics
-from monitoring.biogenic_carbon import biogenic_carbon_metrics
+from .flow_times import flow_time_metrics
+from .avoided_emissions import avoided_emissions_metrics
+from .biogenic_carbon import biogenic_carbon_metrics
 
 
 # Marginal KPIs aggregated into summary.csv, in display order. The nested
@@ -227,7 +227,7 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
 
     # Throughput bullwhip (ADR 0004-0007), post-hoc from the run logs, under a
     # `bullwhip` namespace so later slices extend it without rewiring this dict.
-    # See monitoring/bullwhip.py for what each key measures.
+    # See analysis/bullwhip.py for what each key measures.
     transport_flows = monitor_data.get("transport_flows", [])
     consumption_events = monitor_data.get("consumption_events", [])
     treatment_stage, collector_stage = stage_bullwhip(

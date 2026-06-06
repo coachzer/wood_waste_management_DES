@@ -10,12 +10,11 @@ sense). It reads the same CRN-paired ``run_*.json`` set as
 ``paired_comparison.py`` and complements its mean-difference claim -- FSD/SSD are
 properties of the marginal distributions, which seed pairing does not change.
 
-Like ``paired_comparison.py`` and ``pareto.py``, this module imports NO project
-code so it stays runnable as a bare file (``python
-monitoring/stochastic_dominance.py <dir>``), where a ``monitoring.*`` /
-``config.*`` import would not resolve and would trip the ``monitoring/__init__``
-circular import. The run-file loader and namespace flattening below are
-deliberately duplicated from ``paired_comparison.py`` rather than imported.
+Like ``paired_comparison.py`` and ``pareto.py``, this module imports no project
+code, so it stays runnable standalone via ``python -m analysis.stochastic_dominance
+<dir>``. The run-file loader and namespace flattening below are deliberately
+duplicated from ``paired_comparison.py`` rather than imported -- a duplication the
+clean-monitoring refactor de-duplicates now that the import cycle is gone.
 """
 
 import json
