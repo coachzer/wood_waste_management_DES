@@ -1,13 +1,14 @@
 """Recording interface the domain layer depends on.
 
-``models/`` must not import the ``monitoring`` package. A domain model importing
+``models/`` must not import the recording layer (the ``monitoring`` package or the
+``instrumentation`` space the concrete recorders moved to). A domain model importing
 the concrete ``WasteMonitor`` inverts the layer dependency and closes the
 circular import that forces the "run by file path, not ``-m``" workaround and the
 conftest import-priming (see HANDOFF.md / CLAUDE.md).
 
-This Protocol is the only monitoring-facing contract the domain layer sees. The
+This Protocol is the only recording-facing contract the domain layer sees. The
 composition root (``SimulationManager`` -> ``FacilityBuilder``) injects a concrete
-recorder satisfying it -- in production ``monitoring.waste_monitor.WasteMonitor``
+recorder satisfying it -- in production ``instrumentation.waste_monitor.WasteMonitor``
 -- into each ``OperationalEntity``. The domain layer calls only the methods
 declared here; keep this surface minimal.
 """

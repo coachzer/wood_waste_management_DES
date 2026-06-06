@@ -7,7 +7,7 @@ from core.generator import WasteGenerator
 from core.collector import CollectorCompany
 from core.treatment import TreatmentOperator
 from core.strategies import build_stock_strategy, build_inventory_policy
-from monitoring.waste_monitor import WasteMonitor
+from instrumentation.waste_monitor import WasteMonitor
 from utils.unit_conversion import convert_generation_rates_to_volume
 from config.constants import (
     WEEKS_PER_YEAR,

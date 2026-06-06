@@ -16,8 +16,8 @@ from core.transport_manager import PointToPointTransport
 from models.data_classes import OperationalEntity
 from models.enums import RegionType, OutputType, InventoryPolicy
 from models.state import SimulationState
-from monitoring.waste_monitor import WasteMonitor
-from monitoring.mass_balance import EntityRegistry, MassBalanceMonitor
+from instrumentation.waste_monitor import WasteMonitor
+from instrumentation.mass_balance import EntityRegistry, MassBalanceMonitor
 from models.facility_data import FacilityDataManager
 from core import facility_builder as facility_builder_module
 from core.facility_builder import FacilityBuilder

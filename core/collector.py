@@ -8,7 +8,7 @@ from config.constants import (
 )
 from core.transport_manager import PointToPointTransport, TransportPriority, TransportRequest
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
-from monitoring.waste_monitor import WasteMonitor
+from instrumentation.waste_monitor import WasteMonitor
 from models.data_classes import Vehicle, CollectionCenter, OperationalEntity
 from models.distances import REGION_COORDINATES, get_distance, get_closest_regions
 from utils.capacity_utils import handle_storage_event, check_storage_capacity

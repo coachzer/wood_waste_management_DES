@@ -1,8 +1,10 @@
 """Import-inversion contract for the monitoring refactor (clean-monitoring issue 02).
 
-The domain layer (``models/``) must NOT import the ``monitoring`` package. A
-domain model importing the concrete ``WasteMonitor`` is the inverted edge that
-closes the circular import forcing the "run by file path, not ``-m``" workaround
+The domain layer (``models/``) must NOT import the recording layer -- the
+``monitoring`` package or the ``instrumentation`` space the concrete recorders
+moved to (clean-monitoring issue 07). A domain model importing the concrete
+``WasteMonitor`` is the inverted edge that closes the circular import forcing the
+"run by file path, not ``-m``" workaround
 (HANDOFF.md / CLAUDE.md). The fix: ``OperationalEntity`` depends on the
 ``EntityStatusRecorder`` Protocol and receives a concrete recorder by injection
 from the composition root, never constructing one itself.
@@ -26,40 +28,52 @@ from models.recording import EntityStatusRecorder
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MODELS_DIR = REPO_ROOT / "models"
 
+# The recording layer the domain must never import: the ``monitoring`` package and
+# the ``instrumentation`` space the concrete recorders moved to (issue 07). Importing
+# either concretely from ``models/`` re-closes the inverted circular import.
+RECORDING_LAYER_ROOTS = ("monitoring", "instrumentation")
 
-def _monitoring_imports_in(path: Path) -> list[str]:
-    """Return 'file:line' for every import of the ``monitoring`` package in ``path``."""
+
+def _names_recording_root(name: str) -> bool:
+    """True if a dotted import name targets a recording-layer package or submodule."""
+    return any(name == root or name.startswith(root + ".") for root in RECORDING_LAYER_ROOTS)
+
+
+def _recording_layer_imports_in(path: Path) -> list[str]:
+    """Return 'file:line' for every import of a recording-layer package in ``path``."""
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     rel = path.relative_to(REPO_ROOT).as_posix()
     found: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name == "monitoring" or alias.name.startswith("monitoring."):
+                if _names_recording_root(alias.name):
                     found.append(f"{rel}:{node.lineno}")
         elif isinstance(node, ast.ImportFrom):
             module = node.module or ""
-            # level>0 is a relative import within models/, which can never reach
-            # the top-level monitoring package, so only absolute imports matter.
-            if node.level == 0 and (module == "monitoring" or module.startswith("monitoring.")):
+            # level>0 is a relative import within models/, which can never reach a
+            # top-level recording-layer package, so only absolute imports matter.
+            if node.level == 0 and _names_recording_root(module):
                 found.append(f"{rel}:{node.lineno}")
     return found
 
 
-def test_models_layer_does_not_import_monitoring():
-    """The domain layer must not name the monitoring package on any import.
+def test_models_layer_does_not_import_the_recording_layer():
+    """The domain layer must not name a recording-layer package on any import.
 
-    Mutation check (red): add ``from monitoring.waste_monitor import WasteMonitor``
-    back to ``models/data_classes.py`` -> this test reports that line and fails.
+    Mutation check (red): add ``from instrumentation.waste_monitor import WasteMonitor``
+    to ``models/data_classes.py`` -> this test reports that line and fails. The
+    ``monitoring`` root stays live too (``monitoring.serialization`` still exists), so
+    both forbidden roots are real, not vacuous.
     """
     violations = sorted(
-        v for path in MODELS_DIR.rglob("*.py") for v in _monitoring_imports_in(path)
+        v for path in MODELS_DIR.rglob("*.py") for v in _recording_layer_imports_in(path)
     )
     assert not violations, (
-        "models/ imports the monitoring package -- this is the inverted edge that "
-        "closes the circular import. Depend on models.recording.EntityStatusRecorder "
-        "and inject the concrete recorder from the composition root instead:\n  "
-        + "\n  ".join(violations)
+        "models/ imports the recording layer (monitoring/ or instrumentation/) -- this is "
+        "the inverted edge that closes the circular import. Depend on "
+        "models.recording.EntityStatusRecorder and inject the concrete recorder from the "
+        "composition root instead:\n  " + "\n  ".join(violations)
     )
 
 
@@ -122,6 +136,6 @@ def test_waste_monitor_satisfies_the_recorder_contract():
     Mutation check (red): rename ``WasteMonitor.record_entity_status`` -> the
     runtime-checkable Protocol no longer matches and this isinstance check fails.
     """
-    from monitoring.waste_monitor import WasteMonitor
+    from instrumentation.waste_monitor import WasteMonitor
 
     assert isinstance(WasteMonitor(), EntityStatusRecorder)

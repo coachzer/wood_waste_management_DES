@@ -15,7 +15,7 @@ from types import SimpleNamespace
 import pytest
 
 from models.enums import InventoryPolicy, OutputType, StockStrategy
-from monitoring.mass_balance import (
+from instrumentation.mass_balance import (
     EntityRegistry,
     MassBalanceMonitor,
     MassBalanceViolation,
