@@ -2,7 +2,7 @@ import numpy as np
 from dataclasses import dataclass, field
 from typing import Dict, Tuple, Optional
 from config.constants import RECOVERING_BASE_EFFICIENCY
-from monitoring.waste_monitor import WasteMonitor
+from .recording import EntityStatusRecorder
 from .enums import WasteType, RegionType, EntityStatus, OutputType
 
 @dataclass
@@ -21,17 +21,23 @@ class OperationalEntity:
     status: EntityStatus
     failure_time: Optional[float]
     recovery_time: Optional[float]
-    waste_monitor: WasteMonitor
-    failure_config: Optional[FailureConfig] 
+    waste_monitor: Optional[EntityStatusRecorder]
+    failure_config: Optional[FailureConfig]
     downtime_duration: float
-    rng: np.random.Generator  
+    rng: np.random.Generator
 
-    def __init__(self, failure_config: Optional[FailureConfig] = None, seed=None):
-        """Initialize operational entity with default values"""
+    def __init__(self, failure_config: Optional[FailureConfig] = None, seed=None,
+                 waste_monitor: Optional[EntityStatusRecorder] = None):
+        """Initialize operational entity with default values.
+
+        The recorder is injected from the composition root, never constructed here:
+        the domain layer depends on the ``EntityStatusRecorder`` interface, not on
+        the concrete ``monitoring.WasteMonitor`` (closes the circular import).
+        """
         self.status = EntityStatus.OPERATIONAL
         self.failure_time = None
         self.recovery_time = None
-        self.waste_monitor = WasteMonitor()
+        self.waste_monitor = waste_monitor
         self.failure_config = failure_config
         self.downtime_duration = 1.0
         self.rng = np.random.default_rng(seed)
