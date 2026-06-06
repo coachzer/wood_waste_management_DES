@@ -3,14 +3,14 @@ from config.base_config import get_scenario_with_strategies, list_available_scen
 from core.facility_builder import print_failure_analysis
 from core.simulation_manager import SimulationManager
 from models.enums import InventoryPolicy, StockStrategy
-from monitoring.mfa_visualization import create_material_flow_analysis
-from monitoring.scenario_comparison import ScenarioComparison
+from visualization.mfa_visualization import create_material_flow_analysis
+from visualization.scenario_comparison import ScenarioComparison
 from analysis.baseline_aggregate import extract_kpis, summary_rows
 from monitoring.serialization import build_raw_payload, jsonify
 from analysis.paired_comparison import write_paired_comparison_report
 from analysis.pareto import write_pareto_report
 from analysis.stochastic_dominance import write_dominance_report
-from monitoring.visualization.pareto_visualization import write_pareto_plot
+from visualization.pareto_visualization import write_pareto_plot
 import traceback
 import argparse
 import time

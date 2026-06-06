@@ -245,7 +245,7 @@ if __name__ == "__main__":
     # analysis/) cannot resolve the sibling packages, so the plot is skipped with
     # a note and the CSV above still stands as the standalone artifact.
     try:
-        from monitoring.visualization.pareto_visualization import write_pareto_plot
+        from visualization.pareto_visualization import write_pareto_plot
 
         plot = write_pareto_plot(target, root=args.root)
         if plot is not None:

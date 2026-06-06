@@ -1,8 +1,8 @@
 import os
 from typing import Dict, List
-from .visualization.storage_visualization import create_storage_heatmaps
-from .visualization.temporal_comparison import create_temporal_comparisons
-from .visualization.summary_visualization import (
+from .storage_visualization import create_storage_heatmaps
+from .temporal_comparison import create_temporal_comparisons
+from .summary_visualization import (
     create_cost_impact_comparison,
     create_summary_dashboard
 )

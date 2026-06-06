@@ -26,9 +26,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 INIT_PATH = REPO_ROOT / "monitoring" / "__init__.py"
 
 # The visualization module is the canary: it pulls in plotly and is the heaviest
-# thing the old re-exports forced to load. If importing the bare package loads it,
-# the eager-import regression is back.
-HEAVY_CANARY = "monitoring.mfa_visualization"
+# thing the old re-exports forced to load. It moved to the ``visualization`` space
+# in issue 06; if importing the bare ``monitoring`` package loads it across that
+# space boundary, the eager-import regression is back.
+HEAVY_CANARY = "visualization.mfa_visualization"
 
 # The four post-hoc analysis entry points are the ``-m`` targets. They moved to the
 # ``analysis`` space (issue 05); importing each in a clean process is the regression
@@ -70,8 +71,8 @@ def test_package_init_imports_no_submodules():
 def test_importing_package_does_not_load_heavy_submodule():
     """``import monitoring`` must not transitively load the plotly-backed canary.
 
-    Mutation check (red): restore ``from .mfa_visualization import ...`` in
-    ``monitoring/__init__.py`` -> the canary appears in ``sys.modules`` and this
+    Mutation check (red): add ``from visualization.mfa_visualization import ...``
+    to ``monitoring/__init__.py`` -> the canary appears in ``sys.modules`` and this
     subprocess prints LOADED, failing the assertion.
     """
     probe = (
