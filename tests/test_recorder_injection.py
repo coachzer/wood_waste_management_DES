@@ -63,8 +63,9 @@ def test_models_layer_does_not_import_the_recording_layer():
 
     Mutation check (red): add ``from instrumentation.waste_monitor import WasteMonitor``
     to ``models/data_classes.py`` -> this test reports that line and fails. The
-    ``monitoring`` root stays live too (``monitoring.serialization`` still exists), so
-    both forbidden roots are real, not vacuous.
+    ``monitoring`` root stays live too (the ``monitoring`` package still exists, so a
+    bare ``import monitoring`` in ``models/`` would trip the guard), so both forbidden
+    roots are real, not vacuous.
     """
     violations = sorted(
         v for path in MODELS_DIR.rglob("*.py") for v in _recording_layer_imports_in(path)

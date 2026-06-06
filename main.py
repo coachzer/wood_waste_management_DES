@@ -6,7 +6,7 @@ from models.enums import InventoryPolicy, StockStrategy
 from visualization.mfa_visualization import create_material_flow_analysis
 from visualization.scenario_comparison import ScenarioComparison
 from analysis.baseline_aggregate import extract_kpis, summary_rows
-from monitoring.serialization import build_raw_payload, jsonify
+from persistence.serialization import build_raw_payload, jsonify
 from analysis.paired_comparison import write_paired_comparison_report
 from analysis.pareto import write_pareto_report
 from analysis.stochastic_dominance import write_dominance_report
