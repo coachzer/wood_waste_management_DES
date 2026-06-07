@@ -134,16 +134,7 @@ class WasteMonitor:
                 history["operational"]["processing_costs"][-1] += processing_cost
                 history["operational"]["total_costs"][-1] += energy_cost + processing_cost
 
-    def _get_entity_category(self, entity_type: str) -> str:
-        """Standardize entity type mapping"""
-        mapping = {
-            "generator": "generators",
-            "collector": "collectors", 
-            "treatment": "treatments"
-        }
-        return mapping.get(entity_type, entity_type)
-
-    def track_event(self, facility_type: str, volume: float, strategy: str, 
+    def track_event(self, facility_type: str, volume: float, strategy: str,
                     cost_incurred: float, timestamp: float):
         """Event tracking"""
 
