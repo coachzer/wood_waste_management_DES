@@ -1,5 +1,4 @@
 import os
-import json
 from typing import Dict, Any
 from models.enums import WasteType
 from config.constants import SIMULATION_DURATION
@@ -17,27 +16,8 @@ class WasteMonitor:
 
     def track_generation(self, generator, timestamp, region=None):
         """Track waste generation events with timestamps, region info, and costs"""
-        if generator.name not in self.store.generation_history:
-            self.store.generation_history[generator.name] = {
-                "timestamps": [],
-                "volumes": {},
-                "efficiency": [],
-                "total_generated": {},
-                "total_potential_generated": {},
-                "storage_utilization": [],
-                "regions": [],
-                "status": [],
-                "energy_costs": [],
-                "operational_costs": [],
-                "total_costs": []
-            }
-
-        # Initialize entity_status_history entry if it doesn't exist
-        if generator.name not in self.store.entity_status_history["generators"]:
-            self.store.entity_status_history["generators"][generator.name] = {
-                "timestamps": [], 
-                "status": []
-            }
+        self.store.ensure_generation(generator.name)
+        self.store.ensure_entity_status("generators", generator.name)
 
         self.store.entity_status_history["generators"][generator.name]["timestamps"].append(timestamp)
         self.store.entity_status_history["generators"][generator.name]["status"].append(generator.status.value)
@@ -71,27 +51,8 @@ class WasteMonitor:
 
     def track_collection(self, collector, timestamp: float, region=None):
         """Track waste collection events with region info and costs"""
-        if collector.name not in self.store.collection_history:
-            self.store.collection_history[collector.name] = {
-                "timestamps": [],
-                "collected_volumes": {},
-                "efficiency": [],
-                "transport_costs": [],
-                "storage_utilization": [],
-                "utilization_rate": [],
-                "regions": [],
-                "status": [],
-                "energy_costs": [],
-                "operational_costs": [],
-                "total_costs": []
-            }
-
-        # Initialize entity_status_history entry if it doesn't exist
-        if collector.name not in self.store.entity_status_history["collectors"]:
-            self.store.entity_status_history["collectors"][collector.name] = {
-                "timestamps": [], 
-                "status": []
-            }
+        self.store.ensure_collection(collector.name)
+        self.store.ensure_entity_status("collectors", collector.name)
 
         self.store.entity_status_history["collectors"][collector.name]["timestamps"].append(timestamp)
         self.store.entity_status_history["collectors"][collector.name]["status"].append(collector.status.value)
@@ -125,15 +86,8 @@ class WasteMonitor:
 
     def track_processing(self, treatment, timestamp: float):
         """Track treatment facility metrics with embedded costs"""
-        if treatment.name not in self.store.processing_history:
-            self._initialize_treatment_history(treatment.name)
-
-        # Initialize entity_status_history entry if it doesn't exist
-        if treatment.name not in self.store.entity_status_history["treatments"]:
-            self.store.entity_status_history["treatments"][treatment.name] = {
-                "timestamps": [], 
-                "status": []
-            }
+        self.store.ensure_processing(treatment.name)
+        self.store.ensure_entity_status("treatments", treatment.name)
 
         self.store.entity_status_history["treatments"][treatment.name]["timestamps"].append(timestamp)
         self.store.entity_status_history["treatments"][treatment.name]["status"].append(treatment.status.value)
@@ -153,39 +107,7 @@ class WasteMonitor:
             history["operational"]["processing_costs"].append(0.0)
             history["operational"]["total_costs"].append(0.0)
 
-    def _initialize_treatment_history(self, treatment_name):
-        """Initialize the treatment history structure"""
-        product_types = self._get_product_types()
-        self.store.processing_history[treatment_name] = {
-            "timestamps": [],
-            "storage": {
-                "total": [],
-                "by_type": {waste_type: [] for waste_type in WasteType},
-                "utilization": [],
-                "waste_utilization": [],
-                "finished_goods_utilization": [],
-                "finished_goods_by_type": {ptype: [] for ptype in product_types},
-            },
-            "processed": {
-                "total": [],
-                "by_type": {waste_type: [] for waste_type in WasteType},
-            },
-            "products": {
-                "total": [],
-                "by_type": {ptype: [] for ptype in product_types},
-                "quality": [],
-            },
-            "operational": {
-                "energy_consumption": [],
-                "conversion_rate": [],
-                "energy_costs": [],
-                "processing_costs": [],
-                "total_costs": [],
-            },
-            "status": [],
-        }
-
-    def update_entity_costs(self, entity_name: str, entity_type: str, 
+    def update_entity_costs(self, entity_name: str, entity_type: str,
                        energy_cost: float = 0.0, processing_cost: float = 0.0, 
                        transport_cost: float = 0.0):
         """Update costs in the most recent tracking entry for an entity"""
@@ -227,16 +149,7 @@ class WasteMonitor:
 
         event_key = "system_events"
 
-        if event_key not in self.store.event_history:
-            self.store.event_history[event_key] = {
-                "timestamps": [],
-                "overflow_events": [],
-                "landfill_usage": [],
-                "storage_expansions": [],
-                "landfill_costs": [],
-                "expansion_costs": [],
-                "total_costs": []
-            }
+        self.store.ensure_event(event_key)
 
         history = self.store.event_history[event_key]
         history["timestamps"].append(timestamp)
@@ -264,15 +177,7 @@ class WasteMonitor:
                                 impact_category: str = "carbon_emissions"):
         """Environmental impact tracking - emissions only (kg CO₂e)"""
 
-        if entity_name not in self.store.environmental_history:
-            self.store.environmental_history[entity_name] = {
-                "timestamps": [],
-                "carbon_emissions": [],
-                "transport_emissions": [],
-                "landfill_emissions": [],
-                "total_impact": [],
-                "entity_type": entity_type
-            }
+        self.store.ensure_environmental(entity_name, entity_type)
 
         history = self.store.environmental_history[entity_name]
 
@@ -323,11 +228,7 @@ class WasteMonitor:
 
         entity_name = getattr(entity, 'name', str(entity))
 
-        if entity_name not in self.store.entity_status_history[history_category]:
-            self.store.entity_status_history[history_category][entity_name] = {
-                "timestamps": [],
-                "status": []
-            }
+        self.store.ensure_entity_status(history_category, entity_name)
 
         entity_history = self.store.entity_status_history[history_category][entity_name]
 
@@ -405,7 +306,7 @@ class WasteMonitor:
 
     def _track_product_metrics(self, treatment, history, timestamp):
         """Track product-related metrics"""
-        product_types = self._get_product_types()
+        product_types = self.store.product_types
         product_volumes = getattr(treatment, 'product_volumes', {})
         total_products = sum(product_volumes.get(ptype, 0) for ptype in product_types)
         history["products"]["total"].append(total_products)
@@ -420,16 +321,6 @@ class WasteMonitor:
 
         quality = getattr(treatment, 'product_quality', 1.0)
         history["products"]["quality"].append(quality)
-
-    def _get_product_types(self):
-        """Load product types from demand.json"""
-        demand_path = os.path.join(os.path.dirname(__file__), '../data/demand.json')
-        try:
-            with open(demand_path, 'r') as f:
-                data = json.load(f)
-            return list(data.get('national_demand', {}).keys())
-        except Exception:
-            return []
 
     def _sum_totals(self, history_dict: Dict[str, Any], key: str) -> float:
         """Helper function to sum totals across all entities"""
