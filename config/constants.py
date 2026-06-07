@@ -48,3 +48,13 @@ WASTE_STORAGE_PRIMING_WEEKS = 2  # weeks of producible throughput primed into wa
 # weeks (the cold-start ramp) are dropped, so the metric spans weeks 5-52.
 BULLWHIP_BIN_WIDTH_DAYS = 7  # weekly bins, aligned with the consumption tick
 BULLWHIP_WARMUP_WEEKS = 4  # drop the cold-start ramp before computing CV^2
+
+# Output artifact roots (clean-monitoring issue 12). Single source of truth for
+# where the simulation writes run data and plots, so relocating an artifact tree
+# touches one place instead of ~5 scattered string literals. Forward slashes are
+# portable across platforms for the append-only paths the writers build from these.
+OUTPUT_ROOT = "outputs"
+PLOTS_ROOT = "plots"
+BASELINE_OUTPUT_ROOT = f"{OUTPUT_ROOT}/baseline"
+BASELINE_SCENARIO_DEFAULT = f"{BASELINE_OUTPUT_ROOT}/Baseline"
+SCENARIO_COMPARISON_PLOTS_DIR = f"{PLOTS_ROOT}/scenario_comparison"
