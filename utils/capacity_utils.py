@@ -27,7 +27,34 @@ def check_storage_capacity(
     overflow = addition_total - available_capacity
     return scaled_additions, overflow
     
-def handle_storage_event(entity, volume, region, force_landfill=False):
+def handle_storage_event(entity, volume, force_landfill=False):
+    """Resolve a storage overflow by either expanding capacity or landfilling.
+
+    Called when an entity's storage would exceed waste_storage_capacity. Compares
+    the cost of one fixed expansion (EXPANSION_SIZE_M3 of new capacity) against the
+    cost of landfilling the whole overflow volume and takes the cheaper option;
+    force_landfill=True skips the comparison and always landfills (used to dump a
+    remainder when expanding is not worthwhile, e.g. after a prior expansion).
+
+    Both unit costs escalate with prior use of that option on this entity:
+    expansion by (1 + expansion_count * 0.5) and landfill by
+    (1 + landfill_count * 0.3), so repeatedly overflowing the same entity becomes
+    progressively more expensive.
+
+    Mutates the entity in place on whichever branch is taken: bumps expansion_count
+    / landfill_count, accumulates expansion_costs / landfill_costs, and on the
+    expand branch grows waste_storage_capacity by EXPANSION_SIZE_M3. On the landfill
+    branch it also attributes the landfilled volume to the entity via
+    state.track_waste_landfilled (the mass-balance discard term, ADR 0009) when the
+    entity carries a state.
+
+    Monitoring is best-effort: if the entity has a truthy waste_monitor, the chosen
+    action and (on landfill) its emissions are recorded; a monitor-less entity is
+    handled identically minus the recording.
+
+    Returns (cost_incurred, action) where action is "no_action" (volume below
+    tolerance), "expand_storage", or "landfill".
+    """
     if entity is None:
         raise ValueError("Entity cannot be None for overflow handling")
     if volume is None or volume < 0:
@@ -35,9 +62,7 @@ def handle_storage_event(entity, volume, region, force_landfill=False):
     TOLERANCE = 1e-10
     if volume < TOLERANCE:
         return 0.0, "no_action"
-    if region is None:
-        raise ValueError("Region cannot be None")
-    
+
     config = get_cost_params()
     expansion_count = getattr(entity, 'expansion_count', 0)
     landfill_count = getattr(entity, 'landfill_count', 0)  
@@ -65,20 +90,20 @@ def handle_storage_event(entity, volume, region, force_landfill=False):
         
         if hasattr(entity, 'waste_monitor') and entity.waste_monitor:
             entity.waste_monitor.track_event(
-            facility_type=entity.facility_type,
-            volume=volume,
-            strategy="landfill",
-            cost_incurred=landfill_cost,
-            timestamp=entity.env.now,
-        )
+                facility_type=entity.facility_type,
+                volume=volume,
+                strategy="landfill",
+                cost_incurred=landfill_cost,
+                timestamp=entity.env.now,
+            )
 
-        entity.waste_monitor.track_environmental_impact(
-            entity_name=entity.name,
-            entity_type=entity.facility_type,
-            environmental_impact=emissions,
-            timestamp=entity.env.now,
-            impact_category="landfill_emissions"
-        )
+            entity.waste_monitor.track_environmental_impact(
+                entity_name=entity.name,
+                entity_type=entity.facility_type,
+                environmental_impact=emissions,
+                timestamp=entity.env.now,
+                impact_category="landfill_emissions"
+            )
 
         return landfill_cost, "landfill"
     else:

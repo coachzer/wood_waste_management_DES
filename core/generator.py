@@ -241,7 +241,6 @@ class WasteGenerator(OperationalEntity):
             handle_storage_event(
                 self,
                 overflow_amount,
-                self.region,
                 force_landfill=force_landfill
             )
 

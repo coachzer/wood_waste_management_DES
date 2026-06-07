@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from models.enums import RegionType, WasteType
+from models.enums import WasteType
 from models.state import SimulationState
 from utils.capacity_utils import check_storage_capacity, handle_storage_event
 
@@ -22,8 +22,8 @@ PAPER = WasteType.PAPER_PACKAGING_15_01_01
 def make_entity(state, capacity=1000.0, name="collector-1"):
     """A storage-bearing entity stand-in handle_storage_event can act on.
 
-    A no-op monitor stub stands in for WasteMonitor: the landfill branch calls
-    track_environmental_impact unconditionally, so the attribute must exist.
+    A no-op monitor stub stands in for WasteMonitor so the recording calls have
+    somewhere to go; the monitor-less case is covered separately below.
     """
     monitor = SimpleNamespace(
         track_event=lambda **kwargs: None,
@@ -45,9 +45,7 @@ def test_landfill_branch_attributes_volume_to_entity():
     state = SimulationState()
     entity = make_entity(state)
 
-    _cost, action = handle_storage_event(
-        entity, 100.0, RegionType.PODRAVSKA, force_landfill=True
-    )
+    _cost, action = handle_storage_event(entity, 100.0, force_landfill=True)
 
     assert action == "landfill"
     assert state.waste_landfilled == {"collector-1": 100.0}
@@ -59,7 +57,7 @@ def test_expand_branch_records_no_landfill():
 
     # Overflow > ~1812 m³ makes expansion cheaper than landfill, so the expand
     # branch is taken; no raw waste is landfilled there.
-    _cost, action = handle_storage_event(entity, 2000.0, RegionType.PODRAVSKA)
+    _cost, action = handle_storage_event(entity, 2000.0)
 
     assert action == "expand_storage"
     assert state.waste_landfilled == {}
@@ -110,17 +108,17 @@ def test_check_storage_capacity_partial_scales_proportionally():
     assert overflow == pytest.approx(60.0)
 
 
-# --- Guard-asymmetry regression (RED until utils-cleanup issue 05) -----------
+# --- Guard-asymmetry regression (fixed by utils-cleanup issue 05) ------------
 
 
 def make_monitorless_entity(name="collector-nomon"):
     """A storage-bearing entity with NO waste_monitor attribute at all.
 
     Real entities always inject a monitor, but handle_storage_event's landfill
-    branch calls track_environmental_impact outside the hasattr(waste_monitor)
-    guard that wraps track_event, so a monitor-less entity reaching that branch
-    raises AttributeError. state=None keeps track_waste_landfilled out of the way
-    so the crash is isolated to the unguarded monitor call.
+    branch used to call track_environmental_impact outside the
+    hasattr(waste_monitor) guard that wraps track_event, so a monitor-less entity
+    reaching that branch raised AttributeError. state=None keeps
+    track_waste_landfilled out of the way so the test isolates the monitor guard.
     """
     return SimpleNamespace(
         name=name,
@@ -133,19 +131,13 @@ def make_monitorless_entity(name="collector-nomon"):
     )
 
 
-@pytest.mark.xfail(
-    raises=AttributeError,
-    strict=True,
-    reason="guard asymmetry: track_environmental_impact is unguarded; fixed by utils-cleanup issue 05",
-)
 def test_landfill_branch_survives_missing_monitor():
-    """A monitor-less entity forced down the landfill branch must NOT crash.
-    Today the unguarded track_environmental_impact call raises AttributeError;
-    issue 05 brings it under the same guard as track_event and this passes."""
+    """A monitor-less entity forced down the landfill branch must NOT crash. The
+    fix brings track_environmental_impact under the same waste_monitor guard as
+    track_event, so the landfill resolves (action == "landfill") without raising.
+    Pre-fix this raised AttributeError on the unguarded call."""
     entity = make_monitorless_entity()
 
-    _cost, action = handle_storage_event(
-        entity, 100.0, RegionType.PODRAVSKA, force_landfill=True
-    )
+    _cost, action = handle_storage_event(entity, 100.0, force_landfill=True)
 
     assert action == "landfill"
