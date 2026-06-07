@@ -46,12 +46,12 @@ doubt where to read or write, start here.
 python main.py                                        # Grid mode: 1 run per policy×strategy combo
 python main.py --mode baseline --replications 100     # Monte Carlo: 100 seeds per combo
 python main.py --mode baseline --scenario Baseline --replications 50  # Single scenario
-python monitoring/paired_comparison.py outputs/baseline/Baseline      # Post-hoc paired (CRN) stats
+python -m analysis.paired_comparison outputs/baseline/Baseline        # Post-hoc paired (CRN) stats
 ```
 
 Outputs: `outputs/baseline/{scenario}/{policy}__{strategy}/`. MFA visualizations (Plotly HTML) to `plots/`.
 
-**Seeding is Common Random Numbers (CRN)**: baseline replication `i` uses `seed = base_seed + i` reused across every policy×strategy combo, so combos face identical waste/failure draws. `summary.csv` reports marginal per-combo CIs; `monitoring/paired_comparison.py` exploits the pairing — per-replication KPI differences with paired-t CIs and a per-metric Holm-Bonferroni correction — and is auto-written as `{scenario}/paired_comparison.csv` after each baseline run (run it standalone via a file path, not `-m`, to avoid the `monitoring/__init__` circular import).
+**Seeding is Common Random Numbers (CRN)**: baseline replication `i` uses `seed = base_seed + i` reused across every policy×strategy combo, so combos face identical waste/failure draws. `summary.csv` reports marginal per-combo CIs; `analysis/paired_comparison.py` exploits the pairing — per-replication KPI differences with paired-t CIs and a per-metric Holm-Bonferroni correction — and is auto-written as `{scenario}/paired_comparison.csv` after each baseline run (run it standalone via `python -m analysis.paired_comparison <scenario_dir>`; the `monitoring/__init__` circular import that once forced file-path-only execution was removed in the clean-monitoring refactor).
 
 ## Architecture
 
@@ -78,7 +78,7 @@ Outputs: `outputs/baseline/{scenario}/{policy}__{strategy}/`. MFA visualizations
 - **Singleton reset**: `SimulationState._instance = None` in `SimulationManager.__init__()` gives each run fresh state. Stale entity references mean this reset was skipped.
 - **Pull policy deadlock**: Pull requires treatment to trigger collection; if treatment never requests waste, collectors stall. Verify `TreatmentOperator.demand` is set via `_apply_stock_strategy_to_demand_calculation()`.
 - **Unused artifact**: The standalone-generated `demand_with_abc.json` at repo root is NOT consumed by the simulation — don't wire logic to it.
-- **KPIs**: Extracted via `monitoring/baseline_aggregate.py::extract_kpis()` from monitor history dicts.
+- **KPIs**: Extracted via `analysis/baseline_aggregate.py::extract_kpis()` from monitor history dicts.
 
 ## Key Conventions
 

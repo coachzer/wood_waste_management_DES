@@ -10,9 +10,9 @@ Every axis is oriented "best at the top" (maximize objectives ascending,
 minimize objectives reversed), so a frontier configuration reads as a line that
 stays high somewhere no other line beats.
 
-Unlike ``monitoring/pareto.py`` (the pure, project-import-free CSV layer), this
+Unlike ``analysis/pareto.py`` (the pure, project-import-free CSV layer), this
 module is a normal project module: it imports the frontier logic from
-``monitoring.pareto`` and depends on Plotly, like the other
+``analysis.pareto`` and depends on Plotly, like the other
 ``monitoring/visualization/*`` modules. It is HTML-only -- no static export, so
 no kaleido dependency.
 """
@@ -22,7 +22,7 @@ from typing import List, Tuple
 
 import plotly.graph_objects as go
 
-from monitoring.pareto import OBJECTIVES, build_pareto_report
+from analysis.pareto import OBJECTIVES, build_pareto_report
 
 # Human-readable axis names; the direction arrow is derived from the objective
 # sense in OBJECTIVES so this stays a pure presentation map.

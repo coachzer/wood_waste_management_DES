@@ -15,8 +15,8 @@ from config.constants import (
     BULLWHIP_WARMUP_WEEKS,
     WEEKS_PER_YEAR,
 )
-from monitoring.baseline_aggregate import extract_kpis
-from monitoring.bullwhip import (
+from analysis.baseline_aggregate import extract_kpis
+from analysis.bullwhip import (
     bullwhip_ratio,
     collector_anchored_bullwhip,
     collector_anchored_pooled_bullwhip,

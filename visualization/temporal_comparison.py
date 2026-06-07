@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import plotly.subplots as sp
 import numpy as np
 from typing import Dict, List
-from ..utils.visualization_utils import (
+from .visualization_utils import (
     aggregate_collection_data,
     aggregate_generation_data,
     calculate_average_efficiency,

@@ -12,12 +12,11 @@ combo's already-written ``summary.csv`` ``mean`` column (one point per
 configuration) and computes domination. There is no simulation change and no new
 per-run KPI, so the golden additive gate is unaffected.
 
-Like ``monitoring/paired_comparison.py``, this module imports NO project code so
-it runs as a bare file (``python monitoring/pareto.py <dir>``), where
-``sys.path[0]`` is ``monitoring/`` and a ``monitoring.*`` / ``config.*`` import
-would not resolve (and would trip the ``monitoring/__init__`` circular import).
-``main.py`` imports ``write_pareto_report`` by module path, the same way it imports
-``write_paired_comparison_report``.
+This module reads only ``summary.csv`` files and runs via
+``python -m analysis.pareto <dir>`` (the Plotly companion plot is imported lazily
+inside ``__main__`` only, so a missing visualization dependency does not break the
+CSV artifact). ``main.py`` imports ``write_pareto_report`` by module path, the same
+way it imports ``write_paired_comparison_report``.
 """
 
 import csv
@@ -27,8 +26,8 @@ from typing import Dict, Iterable, List, Tuple
 # The objective vector: each entry is ``(summary.csv metric key, sense)`` where
 # sense is "max" (higher is better, e.g. service level) or "min" (lower is
 # better, e.g. emissions/landfill/cost). Kept in-module rather than in
-# config/constants.py for the same reason paired_comparison.DEFAULT_METRICS is:
-# this module must stay project-import-free to run as a bare file.
+# config/constants.py: it is this report's objective definition, not a
+# project-wide constant.
 OBJECTIVES: List[Tuple[str, str]] = [
     ("service_level_full_pct", "max"),
     ("total_emissions_kgco2e", "min"),
@@ -217,13 +216,15 @@ def _print_frontier_summary(rows: List[dict]) -> None:
 if __name__ == "__main__":
     import argparse
 
+    from config.constants import BASELINE_SCENARIO_DEFAULT
+
     parser = argparse.ArgumentParser(
         description="Pareto frontier over (service, emissions, landfill, cost) across configurations."
     )
     parser.add_argument(
         "path",
         nargs="?",
-        default="outputs/baseline/Baseline",
+        default=BASELINE_SCENARIO_DEFAULT,
         help="Scenario dir holding {combo}/summary.csv (default), or a dataset root with --root.",
     )
     parser.add_argument(
@@ -241,12 +242,11 @@ if __name__ == "__main__":
     print(f"Wrote {report}")
     _print_frontier_summary(report_rows)
 
-    # Companion parallel-coordinates HTML, when the project package is importable
-    # (e.g. run from the repo root). A pure bare-file invocation (sys.path[0] =
-    # monitoring/) cannot resolve `monitoring.*`, so the plot is skipped with a
-    # note and the CSV above still stands as the standalone artifact.
+    # Companion parallel-coordinates HTML. Imported lazily so a missing optional
+    # plotting dependency only skips the plot with a note -- the CSV above still
+    # stands as the analysis artifact.
     try:
-        from monitoring.visualization.pareto_visualization import write_pareto_plot
+        from visualization.pareto_visualization import write_pareto_plot
 
         plot = write_pareto_plot(target, root=args.root)
         if plot is not None:

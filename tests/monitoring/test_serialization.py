@@ -1,4 +1,4 @@
-"""Tests for the raw-monitor JSON encoder (monitoring/serialization.py).
+"""Tests for the raw-monitor JSON encoder (persistence/serialization.py).
 
 Locks in the property that makes the raw_NNN.json sidecar possible: Enum
 members are rewritten to their ``.value`` wherever they appear, INCLUDING as
@@ -9,7 +9,7 @@ import json
 import pytest
 
 from models.enums import OutputType, WasteType
-from monitoring.serialization import RAW_PAYLOAD_KEYS, build_raw_payload, jsonify
+from persistence.serialization import RAW_PAYLOAD_KEYS, build_raw_payload, jsonify
 
 
 def test_enum_dict_keys_rewritten_to_value():

@@ -1,8 +1,9 @@
 import os
 from typing import Dict, List
-from .visualization.storage_visualization import create_storage_heatmaps
-from .visualization.temporal_comparison import create_temporal_comparisons
-from .visualization.summary_visualization import (
+from config.constants import SCENARIO_COMPARISON_PLOTS_DIR
+from .storage_visualization import create_storage_heatmaps
+from .temporal_comparison import create_temporal_comparisons
+from .summary_visualization import (
     create_cost_impact_comparison,
     create_summary_dashboard
 )
@@ -10,7 +11,7 @@ from .visualization.summary_visualization import (
 class ScenarioComparison:
     def __init__(self, results: List[Dict]):
         self.results = results
-        self.output_dir = "plots/scenario_comparison"
+        self.output_dir = SCENARIO_COMPARISON_PLOTS_DIR
         os.makedirs(self.output_dir, exist_ok=True)
 
     def create_storage_heatmaps(self):

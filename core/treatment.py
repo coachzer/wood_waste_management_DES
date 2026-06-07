@@ -5,7 +5,7 @@ from core.transport_manager import PointToPointTransport, TransportPriority, Tra
 from models.data_classes import WasteTransformation, OperationalEntity, ProductStorage
 from models.distances import get_distance
 from models.enums import OutputType, RegionType, StockStrategy, WasteType, EntityStatus
-from monitoring.waste_monitor import WasteMonitor
+from instrumentation.waste_monitor import WasteMonitor
 from core.kanban_manager import KanbanManager
 from core.strategies import build_stock_strategy, build_inventory_policy
 from models.enums import InventoryPolicy

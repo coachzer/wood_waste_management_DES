@@ -2,7 +2,7 @@ import plotly.graph_objects as go
 import plotly.subplots as sp
 import os
 from typing import Dict, List
-from ..utils.visualization_utils import (
+from .visualization_utils import (
     extract_storage_data,
     extract_collection_storage_data,
     extract_processing_storage_data,

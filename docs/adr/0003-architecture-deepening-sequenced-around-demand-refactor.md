@@ -1,5 +1,14 @@
 # Architecture deepening, sequenced around the demand refactor
 
+> NOTE (2026-06-07): this ADR records a *plan* in present/future tense; it is now mostly history. Candidate 1
+> (inline the `*_utils.py` modules) and the demand refactor (ADR 0002) landed. **Candidate 2 (replace the
+> `SimulationState` singleton with injected state) was NOT adopted** — the singleton plus its
+> `_instance = None` reset in `SimulationManager.__init__()` remains the live mechanism (see CLAUDE.md
+> "Known Failure Modes"). The "optional-before / deferred" status of Candidates 2 and 4-6 is therefore
+> resolved, not pending. Referenced scratch artifacts (`.scratch/NEXT-SESSION-demand-refactor.md`,
+> `.scratch/architecture-deepening/PRD.md`) may since have been archived or moved. **Trust the code and git
+> history over this prose where they disagree.** Body left intact per the append-only doc rule.
+
 An architecture review (2026-05-22, archived as `Architecture review — wood_waste_management_DES.htm`; captured in `.scratch/architecture-deepening/PRD.md`) applied Ousterhout's *A Philosophy of Software Design* to the codebase (~5,600 LOC, 35 files) and found six structural weaknesses: three shallow `*_utils.py` modules that displace complexity rather than reduce it, a `SimulationState` singleton coupling 20+ call sites to global mutable state, stock-strategy logic scattered across 5 locations with duplicated thresholds, two parallel entity hierarchies requiring manual field mapping, five thin initialization modules, and pure decision logic embedded inside SimPy generators that cannot be tested without a full simulation. None are bugs — they are testability and extensibility costs.
 
 The complication is that the other large open work item — the demand-model refactor (ADR 0002) — rewrites many of the same files (`state.py`, `treatment.py`, `simulation_manager.py`) and deliberately changes behavior. So the decision is not just *what* to refactor but *in what order relative to the demand refactor*, because the wrong order means doing the same work twice.

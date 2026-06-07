@@ -1,9 +1,8 @@
-from .waste_monitor import WasteMonitor
-from .scenario_comparison import ScenarioComparison
-from .mfa_visualization import create_material_flow_analysis
+"""Monitoring, analysis, and visualization package.
 
-__all__ = [
-    "WasteMonitor",
-    "ScenarioComparison",
-    "create_material_flow_analysis",
-]
+Intentionally empty of re-exports: importers must reach for the concrete
+submodule (``from persistence.serialization import jsonify``) rather than
+the package root. Keeping ``__init__`` free of eager submodule imports is what
+lets ``python -m monitoring.<module>`` resolve without dragging in the heavy
+(plotly-backed) visualization modules and reopening the import cycle.
+"""

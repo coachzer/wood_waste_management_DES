@@ -9,7 +9,7 @@ import math
 
 from scipy import stats
 
-from monitoring.baseline_aggregate import summary_rows
+from analysis.baseline_aggregate import summary_rows
 
 
 def _row(rows, metric):

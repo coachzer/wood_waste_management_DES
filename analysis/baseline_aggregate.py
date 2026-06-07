@@ -4,7 +4,7 @@ from typing import Dict, Any, List
 
 from scipy import stats
 
-from monitoring.bullwhip import (
+from .bullwhip import (
     collector_anchored_bullwhip,
     collector_anchored_pooled_bullwhip,
     generation_floor_cv2,
@@ -12,9 +12,10 @@ from monitoring.bullwhip import (
     treatment_anchored_bullwhip,
     treatment_anchored_pooled_bullwhip,
 )
-from monitoring.flow_times import flow_time_metrics
-from monitoring.avoided_emissions import avoided_emissions_metrics
-from monitoring.biogenic_carbon import biogenic_carbon_metrics
+from .flow_times import flow_time_metrics
+from .avoided_emissions import avoided_emissions_metrics
+from .biogenic_carbon import biogenic_carbon_metrics
+from ._kpi_shared import _GENERIC_NAMESPACES
 
 
 # Marginal KPIs aggregated into summary.csv, in display order. The nested
@@ -44,12 +45,6 @@ _SUMMARY_METRICS = [
 ]
 
 _SUMMARY_HEADER = "metric,mean,stdev,ci95_low,ci95_high,count"
-
-# Nested KPI sub-dicts aggregated generically: every key inside one is discovered
-# structurally and emitted as `{namespace}.{key}` with no per-key wiring (issue
-# 06). `bullwhip` (ADR 0004), `residence` (Little's Law, C4), `carbon` (ADR 0011).
-# The paired-comparison machinery mirrors this tuple (see paired_comparison.py).
-_GENERIC_NAMESPACES = ("bullwhip", "residence", "carbon")
 
 
 def _mean_ci(vals: List[float], alpha: float):
@@ -227,7 +222,7 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
 
     # Throughput bullwhip (ADR 0004-0007), post-hoc from the run logs, under a
     # `bullwhip` namespace so later slices extend it without rewiring this dict.
-    # See monitoring/bullwhip.py for what each key measures.
+    # See analysis/bullwhip.py for what each key measures.
     transport_flows = monitor_data.get("transport_flows", [])
     consumption_events = monitor_data.get("consumption_events", [])
     treatment_stage, collector_stage = stage_bullwhip(
