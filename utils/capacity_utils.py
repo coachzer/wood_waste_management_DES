@@ -1,6 +1,10 @@
 from config.base_config import get_cost_params
 from typing import Dict, Tuple
-from config.constants import LANDFILL_EMISSIONS_PER_M3_KG, EXPANSION_SIZE_M3
+from config.constants import (
+    LANDFILL_EMISSIONS_PER_M3_KG,
+    EXPANSION_SIZE_M3,
+    OVERFLOW_VOLUME_TOLERANCE_M3,
+)
 from models.enums import WasteType
 
 def check_storage_capacity(
@@ -59,19 +63,22 @@ def handle_storage_event(entity, volume, force_landfill=False):
         raise ValueError("Entity cannot be None for overflow handling")
     if volume is None or volume < 0:
         raise ValueError("Volume must be a non-negative number")
-    TOLERANCE = 1e-10
-    if volume < TOLERANCE:
+    if volume < OVERFLOW_VOLUME_TOLERANCE_M3:
         return 0.0, "no_action"
 
     config = get_cost_params()
     expansion_count = getattr(entity, 'expansion_count', 0)
-    landfill_count = getattr(entity, 'landfill_count', 0)  
-    
+    landfill_count = getattr(entity, 'landfill_count', 0)
+
     base_expansion_cost_per_m3 = config.expansion_cost_per_m3
-    expansion_cost_per_m3 = base_expansion_cost_per_m3 * (1 + expansion_count * 0.5)
+    expansion_cost_per_m3 = base_expansion_cost_per_m3 * (
+        1 + expansion_count * config.expansion_cost_escalation_per_prior
+    )
 
     base_landfill_cost_per_m3 = config.landfill_per_m3
-    landfill_cost_per_m3 = base_landfill_cost_per_m3 * (1 + landfill_count * 0.3) 
+    landfill_cost_per_m3 = base_landfill_cost_per_m3 * (
+        1 + landfill_count * config.landfill_cost_escalation_per_prior
+    )
 
     expansion_cost = EXPANSION_SIZE_M3 * expansion_cost_per_m3
     landfill_cost = volume * landfill_cost_per_m3

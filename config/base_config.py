@@ -1,7 +1,12 @@
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Tuple, List
-from config.constants import SIMULATION_DURATION, DENSITY, FINISHED_GOODS_BUFFER_WEEKS
+from config.constants import (
+    SIMULATION_DURATION,
+    DENSITY,
+    FINISHED_GOODS_BUFFER_WEEKS,
+    LANDFILL_COST_PER_TONNE_USD,
+)
 from models.enums import InventoryPolicy, StockStrategy
 from models.data_classes import FailureConfig
 
@@ -25,12 +30,16 @@ class CostParams:
 
     landfill_per_m3 = $46/t (Lebanon) x 0.6 t/m³ = $27.6/m³, derived from DENSITY
     so it stays consistent if DENSITY changes. Anchors handle_storage_event's
-    landfill-vs-expand decision.
+    landfill-vs-expand decision. The two escalation factors make each repeated
+    overflow on an entity progressively more expensive (penalty grows with the
+    count of prior expansions / landfills).
     """
     landfill_per_m3: float = (
-        46.0 * DENSITY
+        LANDFILL_COST_PER_TONNE_USD * DENSITY
     )  # $46/tonne (lebanon paper) x DENSITY = 27.6 $/m³
     expansion_cost_per_m3: float = 100.0  # Cost to expand storage by 1m³
+    expansion_cost_escalation_per_prior: float = 0.5  # per prior expansion on the entity
+    landfill_cost_escalation_per_prior: float = 0.3  # per prior landfill on the entity
 
 DEFAULT_COSTS = CostParams()
 

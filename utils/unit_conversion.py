@@ -1,4 +1,5 @@
 from typing import Dict, Optional
+from config.constants import KILOGRAMS_PER_TONNE
 from models.enums import WasteType
 
 # Standard waste densities in kg/m³ based on EWC codes and industry data
@@ -29,7 +30,7 @@ def _tonnes_to_cubic_meters(tonnes: float, waste_type: WasteType) -> float:
         density_kg_m3 = WASTE_DENSITIES[waste_type]
 
     # Convert tonnes to kg, then to m³
-    kg = tonnes * 1000.0
+    kg = tonnes * KILOGRAMS_PER_TONNE
     cubic_meters = kg / density_kg_m3
 
     return cubic_meters
