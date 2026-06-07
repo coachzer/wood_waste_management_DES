@@ -1,12 +1,9 @@
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Dict, Tuple, List
+from typing import Any, Callable, Dict, Tuple, List
 from config.constants import SIMULATION_DURATION, DENSITY, FINISHED_GOODS_BUFFER_WEEKS
 from models.enums import InventoryPolicy, StockStrategy
 from models.data_classes import FailureConfig
-from utils.helpers import (
-    validate_config, validate_all_numeric_positive
-)
 
 @dataclass
 class UncertaintySet:
@@ -148,17 +145,53 @@ for _buffer_weeks in BUFFER_SWEEP_WEEKS:
     _scenario.finished_goods_buffer_weeks = _buffer_weeks
     SCENARIO_CONFIGS[_scenario.name] = _scenario
 
+def validate_config(config: Any, validator: Callable[[Any], None], name: str) -> None:
+    """Generic configuration validation helper
+
+    Args:
+        config: Configuration object to validate
+        validator: Validation function to apply
+        name: Name of the configuration (for error messages)
+    """
+    try:
+        validator(config)
+    except Exception as e:
+        raise ValueError(f"Invalid {name} configuration: {str(e)}")
+
+def validate_all_numeric_positive(
+    config_dict: Dict[str, float],
+    allow_zero: bool = False
+) -> None:
+    """Validate that all numeric values in a dictionary are positive
+
+    Args:
+        config_dict: Dictionary of configuration values
+        allow_zero: Whether to allow zero values
+    """
+    for key, value in config_dict.items():
+        if not isinstance(value, (int, float)):
+            raise ValueError(f"{key} must be a number")
+        if allow_zero:
+            if value < 0:
+                raise ValueError(f"{key} must be non-negative")
+        else:
+            if value <= 0:
+                raise ValueError(f"{key} must be positive")
+
 def validate_tuple(mean_std_tuple: Tuple[float, float], name: str) -> None:
-    """Validate a mean/std tuple"""
+    """Validate a mean/std tuple
+
+    Both mean and std are validated as non-negative via allow_zero=True. The std
+    field previously carried a manual re-check after being excluded through an
+    `exceptions` argument; that exclusion-then-recheck applied the identical
+    `value < 0` rule, so it was redundant and has been removed.
+    """
     config_dict = {
         f"{name}_mean": mean_std_tuple[0],
         f"{name}_std": mean_std_tuple[1]
     }
 
-    validate_all_numeric_positive(config_dict, allow_zero=True, exceptions=[f"{name}_std"])
-
-    if mean_std_tuple[1] < 0:
-        raise ValueError(f"{name} standard deviation must be non-negative")
+    validate_all_numeric_positive(config_dict, allow_zero=True)
 
 def validate_scenario_config(config: ScenarioConfig) -> None:
     """Validate a scenario configuration"""
