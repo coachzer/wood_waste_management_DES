@@ -1,5 +1,15 @@
 # Demand as continuous market consumption, not a production ceiling
 
+> NOTE (2026-06-07): this ADR records the demand-refactor design as it was planned across Phases A-F, so
+> parts narrate in deferred/future tense items that have since landed. In particular: the **waste-side
+> mass-balance invariant** described here as "deferred to a follow-up phase (P2)" was implemented and, in
+> the process, surfaced + fixed a cross-region intake double-count (see ADR 0010); the per-waste-type
+> `Vehicle.current_load` + system-wide outbound-vehicle iterator called "outside Phase A scope" landed as
+> `Vehicle.current_load_by_type` + `SimulationState.iter_outbound_vehicles` (bucket-C C2). Module paths
+> below (`monitoring/mass_balance.py`, `monitoring/waste_monitor.py`, `monitoring/visualization/...`) were
+> relocated to `instrumentation/` and `analysis/` by the clean-monitoring refactor. **Trust the code and
+> git history over this prose where they disagree.** Body left intact per the append-only doc rule.
+
 The original model treated national demand (100k m3/year across MDF, particle board, OSB) as a one-shot ceiling: once cumulative production crossed the target, `get_unmet_demands()` returned zero and all processors idled for the remainder of the 365-day run. Adding more waste types with transformation pathways caused the ceiling to be hit by day ~100, making the simulation useless for the remaining 265 days.
 
 We replaced this with a market consumption process: a SimPy process that fires weekly, removes products from treatment operators' `product_to_sell` storage at a seasonally-modulated rate, and records fulfilled vs unfulfilled consumption. The annual demand envelope is the same 100k m3 — what changed is that it's consumed continuously over the year rather than checked as a cumulative ceiling.
