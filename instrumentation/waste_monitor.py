@@ -1,7 +1,7 @@
 import os
 from typing import Dict, Any
 from models.enums import WasteType
-from config.constants import SIMULATION_DURATION
+from config.constants import SIMULATION_DURATION, PLOTS_ROOT
 from instrumentation.history_store import HistoryStore
 
 class WasteMonitor:
@@ -11,8 +11,8 @@ class WasteMonitor:
         self.env = env
         self.store = HistoryStore()
 
-        if not os.path.exists("plots"):
-            os.makedirs("plots")
+        if not os.path.exists(PLOTS_ROOT):
+            os.makedirs(PLOTS_ROOT)
 
     def track_generation(self, generator, timestamp, region=None):
         """Track waste generation events with timestamps, region info, and costs"""

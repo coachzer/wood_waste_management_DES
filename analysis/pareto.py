@@ -216,13 +216,15 @@ def _print_frontier_summary(rows: List[dict]) -> None:
 if __name__ == "__main__":
     import argparse
 
+    from config.constants import BASELINE_SCENARIO_DEFAULT
+
     parser = argparse.ArgumentParser(
         description="Pareto frontier over (service, emissions, landfill, cost) across configurations."
     )
     parser.add_argument(
         "path",
         nargs="?",
-        default="outputs/baseline/Baseline",
+        default=BASELINE_SCENARIO_DEFAULT,
         help="Scenario dir holding {combo}/summary.csv (default), or a dataset root with --root.",
     )
     parser.add_argument(

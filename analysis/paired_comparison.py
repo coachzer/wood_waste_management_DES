@@ -201,14 +201,16 @@ def _print_significant_summary(rows: List[dict], alpha: float) -> None:
 if __name__ == "__main__":
     import argparse
 
+    from config.constants import BASELINE_SCENARIO_DEFAULT
+
     parser = argparse.ArgumentParser(
         description="Paired (CRN) comparison of policy/strategy combos from baseline run files."
     )
     parser.add_argument(
         "scenario_dir",
         nargs="?",
-        default="outputs/baseline/Baseline",
-        help="Directory holding {combo}/run_*.json files (default: outputs/baseline/Baseline)",
+        default=BASELINE_SCENARIO_DEFAULT,
+        help=f"Directory holding {{combo}}/run_*.json files (default: {BASELINE_SCENARIO_DEFAULT})",
     )
     parser.add_argument("--alpha", type=float, default=0.05, help="Family-wise significance level")
     args = parser.parse_args()

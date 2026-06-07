@@ -288,6 +288,8 @@ def _print_dominance_summary(rows: List[dict]) -> None:
 if __name__ == "__main__":
     import argparse
 
+    from config.constants import BASELINE_SCENARIO_DEFAULT
+
     parser = argparse.ArgumentParser(
         description="Stochastic (FSD/SSD) dominance between policy/strategy combos "
         "over the Monte Carlo run distribution of each KPI."
@@ -295,8 +297,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "scenario_dir",
         nargs="?",
-        default="outputs/baseline/Baseline",
-        help="Directory holding {combo}/run_*.json files (default: outputs/baseline/Baseline)",
+        default=BASELINE_SCENARIO_DEFAULT,
+        help=f"Directory holding {{combo}}/run_*.json files (default: {BASELINE_SCENARIO_DEFAULT})",
     )
     args = parser.parse_args()
 

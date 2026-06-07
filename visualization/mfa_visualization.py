@@ -1,6 +1,8 @@
 import plotly.graph_objects as go
 from typing import Dict
 
+from config.constants import PLOTS_ROOT
+
 
 def format_volume(volume: float) -> str:
     """Format volume with appropriate units"""
@@ -204,7 +206,7 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
         suffix = ""
         if scenario_name and inventory_policy and stock_strategy:
             suffix = f"_{scenario_name}_{inventory_policy}_{stock_strategy}"
-        save_path = f"plots/material_flow_analysis{suffix}.html"
+        save_path = f"{PLOTS_ROOT}/material_flow_analysis{suffix}.html"
 
     gen_vol, col_vol, treat_vol, prod_vol = get_volumes(
         generation_history, collection_history, processing_history, state

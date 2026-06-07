@@ -1,5 +1,6 @@
 from datetime import time
 from config.base_config import get_scenario_with_strategies, list_available_scenarios
+from config.constants import BASELINE_OUTPUT_ROOT, SCENARIO_COMPARISON_PLOTS_DIR
 from core.facility_builder import print_failure_analysis
 from core.simulation_manager import SimulationManager
 from models.enums import InventoryPolicy, StockStrategy
@@ -109,7 +110,7 @@ def run_monte_carlo_baseline(
     print(f"Stock strategies: {[s.value for s in stock_strategies]}")
 
     base_seed = 123456  # deterministic seed series across runs
-    out_root = Path("outputs") / "baseline" if out_root is None else Path(out_root)
+    out_root = Path(BASELINE_OUTPUT_ROOT) if out_root is None else Path(out_root)
     out_root.mkdir(parents=True, exist_ok=True)
 
     for scenario_name in scenarios:
@@ -268,7 +269,7 @@ def main():
     comparison.create_temporal_comparison()
     comparison.create_cost_impact_comparison()
     comparison.create_summary_dashboard()
-    print("Scenario comparison visualizations saved to plots/scenario_comparison/")
+    print(f"Scenario comparison visualizations saved to {SCENARIO_COMPARISON_PLOTS_DIR}/")
 
     # Print summary
     print(f"\n{'='*60}")
@@ -316,7 +317,7 @@ if __name__ == "__main__":
         "--out-root",
         type=str,
         default=None,
-        help="Override the baseline output root (default: outputs/baseline). "
+        help=f"Override the baseline output root (default: {BASELINE_OUTPUT_ROOT}). "
         "Isolates a run from a working outputs/ dataset.",
     )
     args = parser.parse_args()
