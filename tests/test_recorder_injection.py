@@ -1,10 +1,10 @@
 """Import-inversion contract for the monitoring refactor (clean-monitoring issue 02).
 
 The domain layer (``models/``) must NOT import the recording layer -- the
-``monitoring`` package or the ``instrumentation`` space the concrete recorders
-moved to (clean-monitoring issue 07). A domain model importing the concrete
-``WasteMonitor`` is the inverted edge that closes the circular import forcing the
-"run by file path, not ``-m``" workaround
+``instrumentation`` space the concrete recorders live in (clean-monitoring issue 07;
+the legacy ``monitoring`` package was deleted once it held nothing). A domain model
+importing the concrete ``WasteMonitor`` is the inverted edge that closes the circular
+import forcing the "run by file path, not ``-m``" workaround
 (HANDOFF.md / CLAUDE.md). The fix: ``OperationalEntity`` depends on the
 ``EntityStatusRecorder`` Protocol and receives a concrete recorder by injection
 from the composition root, never constructing one itself.
@@ -28,10 +28,10 @@ from models.recording import EntityStatusRecorder
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MODELS_DIR = REPO_ROOT / "models"
 
-# The recording layer the domain must never import: the ``monitoring`` package and
-# the ``instrumentation`` space the concrete recorders moved to (issue 07). Importing
-# either concretely from ``models/`` re-closes the inverted circular import.
-RECORDING_LAYER_ROOTS = ("monitoring", "instrumentation")
+# The recording layer the domain must never import: the ``instrumentation`` space the
+# concrete recorders moved to (issue 07). Importing it concretely from ``models/``
+# re-closes the inverted circular import.
+RECORDING_LAYER_ROOTS = ("instrumentation",)
 
 
 def _names_recording_root(name: str) -> bool:
@@ -62,16 +62,14 @@ def test_models_layer_does_not_import_the_recording_layer():
     """The domain layer must not name a recording-layer package on any import.
 
     Mutation check (red): add ``from instrumentation.waste_monitor import WasteMonitor``
-    to ``models/data_classes.py`` -> this test reports that line and fails. The
-    ``monitoring`` root stays live too (the ``monitoring`` package still exists, so a
-    bare ``import monitoring`` in ``models/`` would trip the guard), so both forbidden
-    roots are real, not vacuous.
+    to ``models/data_classes.py`` -> this test reports that line and fails, so the
+    guarded ``instrumentation`` root is real, not vacuous.
     """
     violations = sorted(
         v for path in MODELS_DIR.rglob("*.py") for v in _recording_layer_imports_in(path)
     )
     assert not violations, (
-        "models/ imports the recording layer (monitoring/ or instrumentation/) -- this is "
+        "models/ imports the recording layer (instrumentation/) -- this is "
         "the inverted edge that closes the circular import. Depend on "
         "models.recording.EntityStatusRecorder and inject the concrete recorder from the "
         "composition root instead:\n  " + "\n  ".join(violations)

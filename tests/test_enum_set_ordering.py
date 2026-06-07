@@ -24,8 +24,17 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-# Simulation-affecting source trees. Tests and scratch infra are excluded.
-SCANNED_DIRS = ("core", "models", "monitoring")
+# Simulation-affecting source trees. Tests and scratch infra are excluded. The
+# former ``monitoring`` tree was split by the clean-monitoring refactor into the
+# instrumentation/persistence/analysis/visualization spaces, all scanned here.
+SCANNED_DIRS = (
+    "core",
+    "models",
+    "instrumentation",
+    "persistence",
+    "analysis",
+    "visualization",
+)
 
 
 def _is_direct_set_iterable(node: ast.AST) -> bool:

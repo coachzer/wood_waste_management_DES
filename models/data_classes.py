@@ -28,11 +28,9 @@ class OperationalEntity:
 
     def __init__(self, failure_config: Optional[FailureConfig] = None, seed=None,
                  waste_monitor: Optional[EntityStatusRecorder] = None):
-        """Initialize operational entity with default values.
-
-        The recorder is injected from the composition root, never constructed here:
-        the domain layer depends on the ``EntityStatusRecorder`` interface, not on
-        the concrete ``monitoring.WasteMonitor`` (closes the circular import).
+        """Initialize defaults; the recorder is injected, not constructed here, so
+        the domain layer depends on ``EntityStatusRecorder``, not the concrete
+        recorder (closes the circular import).
         """
         self.status = EntityStatus.OPERATIONAL
         self.failure_time = None
