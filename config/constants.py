@@ -4,6 +4,9 @@ TRANSPORT_EMISSIONS_PER_TON_KM = 0.087  # kg eCO2 per ton-kilometer or 87 g CO2e
 DENSITY = 0.6
 TRANSPORT_EMISSIONS_PER_M3_KM = 0.087 * DENSITY
 
+KILOGRAMS_PER_TONNE = 1000.0  # unit conversion factor, kg per tonne
+LANDFILL_COST_PER_TONNE_USD = 46.0  # $/tonne landfill gate fee (Lebanon paper); x DENSITY -> $/m³
+
 # Avoided emissions (C11, ADR 0011): recycling avoided-burden, kg CO2eq / m3.
 # Per-product factors from Lao & Chang (2023), biogenic carbon EXCLUDED so the
 # C10 biogenic-stored credit is not double-counted.
@@ -15,6 +18,7 @@ AVOIDED_EMISSIONS_PER_M3_BY_PRODUCT = {
 
 SIMULATION_DURATION = 365  # days in simulation (one full year)
 EXPANSION_SIZE_M3 = 500  # 500m³ expansion size
+OVERFLOW_VOLUME_TOLERANCE_M3 = 1e-10  # overflow volumes below this are treated as zero (no_action)
 
 LOCAL_COLLECTION_RATIO = 0.8
 

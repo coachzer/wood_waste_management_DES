@@ -165,9 +165,8 @@ class TreatmentOperator(OperationalEntity):
         if total_new > self.waste_storage_capacity:
             overflow_amount = total_new - self.waste_storage_capacity
             handle_storage_event(
-                self, 
-                overflow_amount, 
-                self.region
+                self,
+                overflow_amount
             )
 
             scaling_factor = self.waste_storage_capacity / total_new
@@ -778,9 +777,8 @@ class TreatmentOperator(OperationalEntity):
 
         if overflow_amount > 0:
             handle_storage_event(
-                self, 
-                overflow_amount, 
-                self.region
+                self,
+                overflow_amount
             )
 
         total_added = 0.0

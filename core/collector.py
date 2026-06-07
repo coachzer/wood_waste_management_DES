@@ -232,8 +232,7 @@ class CollectorCompany(OperationalEntity):
         if overflow > 0:
             handle_storage_event(
                 generator,
-                overflow,
-                generator.region
+                overflow
             )
 
         # Process the actual collections
@@ -289,7 +288,7 @@ class CollectorCompany(OperationalEntity):
             # handle_storage_event decides expand vs landfill; on the expand branch
             # store what now fits and landfill the remainder, so every collected m3
             # is stored or landfilled, none silently dropped (ADR 0009).
-            _cost, action = handle_storage_event(self, overflow_amount, self.region)
+            _cost, action = handle_storage_event(self, overflow_amount)
 
             if action == "expand_storage":
                 storable = min(
@@ -297,7 +296,7 @@ class CollectorCompany(OperationalEntity):
                     self.collection_center.waste_storage_capacity - current_total,
                 )
                 handle_storage_event(
-                    self, total_to_add - storable, self.region, force_landfill=True
+                    self, total_to_add - storable, force_landfill=True
                 )
             else:
                 storable = available_space
