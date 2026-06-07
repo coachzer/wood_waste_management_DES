@@ -19,7 +19,7 @@ WASTE_DENSITIES = {
     WasteType.BULKY_WASTE_20_03_07: 300.0
 }
 
-def tonnes_to_cubic_meters(tonnes: float, waste_type: WasteType) -> float:
+def _tonnes_to_cubic_meters(tonnes: float, waste_type: WasteType) -> float:
     """
     Convert tonnes to cubic meters for a specific waste type
     """
@@ -27,35 +27,12 @@ def tonnes_to_cubic_meters(tonnes: float, waste_type: WasteType) -> float:
         raise ValueError(f"Unknown waste type {waste_type}, cannot determine density for conversion.")
     else:
         density_kg_m3 = WASTE_DENSITIES[waste_type]
-    
+
     # Convert tonnes to kg, then to m³
     kg = tonnes * 1000.0
     cubic_meters = kg / density_kg_m3
-    
+
     return cubic_meters
-
-def cubic_meters_to_tonnes(cubic_meters: float, waste_type: WasteType) -> float:
-    """
-    Convert cubic meters to tonnes for a specific waste type
-    """
-    if waste_type not in WASTE_DENSITIES:
-        # Default density for unknown waste types
-        density_kg_m3 = 400.0
-        print(f"Warning: Unknown waste type {waste_type}, using default density {density_kg_m3} kg/m³")
-    else:
-        density_kg_m3 = WASTE_DENSITIES[waste_type]
-    
-    # Convert m³ to kg, then to tonnes
-    kg = cubic_meters * density_kg_m3
-    tonnes = kg / 1000.0
-    
-    return tonnes
-
-def get_waste_density(waste_type: WasteType) -> float:
-    """
-    Get density for a waste type in kg/m³
-    """
-    return WASTE_DENSITIES.get(waste_type, 400.0)
 
 def _create_waste_type_mapping(generation_rates_tonnes: Dict[str, float]) -> Dict[str, WasteType]:
     """Helper to create waste type mapping from EWC codes."""
@@ -89,7 +66,7 @@ def convert_generation_rates_to_volume(
     for ewc_code, tonnes_per_day in generation_rates_tonnes.items():
         if ewc_code in waste_type_mapping:
             waste_type = waste_type_mapping[ewc_code]
-            volume_per_day = tonnes_to_cubic_meters(tonnes_per_day, waste_type)
+            volume_per_day = _tonnes_to_cubic_meters(tonnes_per_day, waste_type)
             volume_rates[waste_type] = volume_per_day
         else:
             print(f"Warning: EWC code {ewc_code} not found in waste type mapping")
