@@ -15,6 +15,7 @@ from .bullwhip import (
 from .flow_times import flow_time_metrics
 from .avoided_emissions import avoided_emissions_metrics
 from .biogenic_carbon import biogenic_carbon_metrics
+from ._kpi_shared import _GENERIC_NAMESPACES
 
 
 # Marginal KPIs aggregated into summary.csv, in display order. The nested
@@ -44,12 +45,6 @@ _SUMMARY_METRICS = [
 ]
 
 _SUMMARY_HEADER = "metric,mean,stdev,ci95_low,ci95_high,count"
-
-# Nested KPI sub-dicts aggregated generically: every key inside one is discovered
-# structurally and emitted as `{namespace}.{key}` with no per-key wiring (issue
-# 06). `bullwhip` (ADR 0004), `residence` (Little's Law, C4), `carbon` (ADR 0011).
-# The paired-comparison machinery mirrors this tuple (see paired_comparison.py).
-_GENERIC_NAMESPACES = ("bullwhip", "residence", "carbon")
 
 
 def _mean_ci(vals: List[float], alpha: float):

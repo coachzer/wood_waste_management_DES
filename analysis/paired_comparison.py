@@ -11,7 +11,6 @@ It consumes the persisted ``run_*.json`` files, so it runs post-hoc without
 re-simulating.
 """
 
-import json
 import math
 from itertools import combinations
 from pathlib import Path
@@ -20,84 +19,11 @@ from typing import Dict, List, Optional
 import numpy as np
 from scipy import stats
 
-# Decision-relevant KPIs compared by default. Restricting the set keeps each
-# metric's comparison family small (C(combos, 2) pairs) so the Holm correction
-# stays powerful. Pass an explicit list to override.
-DEFAULT_METRICS = [
-    "service_level_full_pct",
-    "service_level_operational_pct",
-    "stockout_lost_m3",
-    "total_consumed_m3",
-    "landfill_volume_m3",
-    "total_emissions_kgco2e",
-    "overall_efficiency_pct",
-    "collection_rate_pct",
-]
-
-# Nested KPI namespaces extract_kpis emits as sub-dicts, ridden as flat
-# `{namespace}.{key}` metrics (issues 06/07). MUST mirror `_GENERIC_NAMESPACES`
-# in baseline_aggregate.py; duplicated rather than imported so this module imports
-# no project code and stays runnable as a bare file.
-_GENERIC_NAMESPACES = ("bullwhip", "residence", "carbon")
-
-
-def _flatten_namespaces(kpis: dict) -> dict:
-    """Lift each nested generic namespace sub-dict to top-level
-    ``{namespace}.{key}`` keys so downstream functions work on flat keys.
-
-    Only the registered namespaces are flattened; other keys (including the nested
-    ``service_level_full_by_product_pct`` dict) pass through untouched. ``None``
-    values are preserved so the paired drop-on-``None`` semantics fire identically
-    on lifted keys.
-    """
-    flattened = {
-        key: value
-        for key, value in kpis.items()
-        if key not in _GENERIC_NAMESPACES
-    }
-    for namespace in _GENERIC_NAMESPACES:
-        nested = kpis.get(namespace)
-        if not isinstance(nested, dict):
-            continue
-        for key, value in nested.items():
-            flattened[f"{namespace}.{key}"] = value
-    return flattened
-
-
-def load_combo_kpis(scenario_dir: Path) -> Dict[str, Dict[int, dict]]:
-    """Load per-run KPIs grouped by combo label, keyed by seed.
-
-    Returns ``{combo_label: {seed: kpis_dict}}`` where ``combo_label`` is
-    ``"{inventory_policy}__{stock_strategy}"`` read from each run file (not the
-    directory name, so the grouping survives directory renames). The nested
-    ``bullwhip`` namespace is flattened to ``bullwhip.{key}`` metrics on load.
-    """
-    combos: Dict[str, Dict[int, dict]] = {}
-    for run_path in sorted(scenario_dir.glob("*/run_*.json")):
-        with open(run_path, "r", encoding="utf-8") as f:
-            run = json.load(f)
-        label = f"{run['inventory_policy']}__{run['stock_strategy']}"
-        seed = run["seed"]
-        combos.setdefault(label, {})[seed] = _flatten_namespaces(run["kpis"])
-    return combos
-
-
-def _discovered_namespace_metrics(combos: Dict[str, Dict[int, dict]]) -> List[str]:
-    """Insertion-ordered union of lifted ``{namespace}.*`` metric keys across runs.
-
-    Mirrors issue 06's discovery: keys surface in the order ``extract_kpis``
-    authors them, so ``summary.csv`` and ``paired_comparison.csv`` list the
-    namespaced metrics identically. Discovery is a union -- a run missing a key
-    still contributes the keys it has.
-    """
-    prefixes = tuple(f"{namespace}." for namespace in _GENERIC_NAMESPACES)
-    discovered: Dict[str, None] = {}
-    for runs in combos.values():
-        for kpis in runs.values():
-            for key in kpis:
-                if key.startswith(prefixes):
-                    discovered.setdefault(key, None)
-    return list(discovered)
+from ._kpi_shared import (
+    DEFAULT_METRICS,
+    _discovered_namespace_metrics,
+    load_combo_kpis,
+)
 
 
 def paired_differences(

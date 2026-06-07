@@ -10,36 +10,27 @@ sense). It reads the same CRN-paired ``run_*.json`` set as
 ``paired_comparison.py`` and complements its mean-difference claim -- FSD/SSD are
 properties of the marginal distributions, which seed pairing does not change.
 
-Like ``paired_comparison.py`` and ``pareto.py``, this module imports no project
-code, so it stays runnable standalone via ``python -m analysis.stochastic_dominance
-<dir>``. The run-file loader and namespace flattening below are deliberately
-duplicated from ``paired_comparison.py`` rather than imported -- a duplication the
-clean-monitoring refactor de-duplicates now that the import cycle is gone.
+It reads the run-file loader, namespace flattening, and ``DEFAULT_METRICS`` from
+``analysis._kpi_shared`` (the single source of truth shared with
+``paired_comparison.py`` and ``baseline_aggregate.py``), and runs via
+``python -m analysis.stochastic_dominance <dir>``.
 """
 
-import json
 from itertools import combinations
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-# Curated headline KPIs compared by default, mirroring
-# paired_comparison.DEFAULT_METRICS so the dominance artifact lines up one-to-one
-# with the paired-mean artifact it complements.
-DEFAULT_METRICS = [
-    "service_level_full_pct",
-    "service_level_operational_pct",
-    "stockout_lost_m3",
-    "total_consumed_m3",
-    "landfill_volume_m3",
-    "total_emissions_kgco2e",
-    "overall_efficiency_pct",
-    "collection_rate_pct",
-]
+from ._kpi_shared import (
+    DEFAULT_METRICS,
+    _discovered_namespace_metrics,
+    load_combo_kpis,
+)
 
 # Per-KPI sense: "max" = larger is better, "min" = larger is worse. Annotation
 # only (the dominance math is sense-free). Discovered namespace metrics are
 # intentionally absent -- their sense is mixed, so the report leaves it blank.
-# In-module rather than in constants.py for the project-import-free reason above.
+# In-module rather than in constants.py: this is dominance-report presentation,
+# not a project-wide constant.
 KPI_SENSES: Dict[str, str] = {
     "service_level_full_pct": "max",
     "service_level_operational_pct": "max",
@@ -60,63 +51,6 @@ SSD_RELATIVE_TOLERANCE = 1e-9
 # Minimum replications per configuration to treat its KPI samples as a
 # distribution. One value is a point mass, not a distribution to dominate.
 MINIMUM_SAMPLES = 2
-
-# Nested KPI namespaces extract_kpis emits as sub-dicts; lifted to flat
-# ``{namespace}.{key}`` metrics. MUST mirror paired_comparison._GENERIC_NAMESPACES
-# (duplicated, not imported, to keep this file bare-runnable).
-_GENERIC_NAMESPACES = ("bullwhip", "residence", "carbon")
-
-
-def _flatten_namespaces(kpis: dict) -> dict:
-    """Lift each nested generic namespace sub-dict to top-level ``{namespace}.{key}``.
-
-    Duplicated from ``paired_comparison._flatten_namespaces`` (see module
-    docstring). ``None`` values are preserved so the drop-on-``None`` sampling
-    below fires identically on lifted keys.
-    """
-    flattened = {
-        key: value for key, value in kpis.items() if key not in _GENERIC_NAMESPACES
-    }
-    for namespace in _GENERIC_NAMESPACES:
-        nested = kpis.get(namespace)
-        if not isinstance(nested, dict):
-            continue
-        for key, value in nested.items():
-            flattened[f"{namespace}.{key}"] = value
-    return flattened
-
-
-def load_combo_kpis(scenario_dir: Path) -> Dict[str, Dict[int, dict]]:
-    """Load per-run KPIs grouped by combo label, keyed by seed.
-
-    Returns ``{combo_label: {seed: kpis_dict}}`` with ``combo_label`` read from
-    each run file (``"{inventory_policy}__{stock_strategy}"``), not the directory
-    name, so the grouping survives directory renames. Duplicated from
-    ``paired_comparison.load_combo_kpis`` (see module docstring).
-    """
-    combos: Dict[str, Dict[int, dict]] = {}
-    for run_path in sorted(scenario_dir.glob("*/run_*.json")):
-        with open(run_path, "r", encoding="utf-8") as handle:
-            run = json.load(handle)
-        label = f"{run['inventory_policy']}__{run['stock_strategy']}"
-        combos.setdefault(label, {})[run["seed"]] = _flatten_namespaces(run["kpis"])
-    return combos
-
-
-def _discovered_namespace_metrics(combos: Dict[str, Dict[int, dict]]) -> List[str]:
-    """Insertion-ordered union of lifted ``{namespace}.*`` metric keys across runs.
-
-    Mirrors ``paired_comparison._discovered_namespace_metrics`` so the dominance
-    artifact lists the namespaced metrics in the same order as the paired one.
-    """
-    prefixes = tuple(f"{namespace}." for namespace in _GENERIC_NAMESPACES)
-    discovered: Dict[str, None] = {}
-    for runs in combos.values():
-        for kpis in runs.values():
-            for key in kpis:
-                if key.startswith(prefixes):
-                    discovered.setdefault(key, None)
-    return list(discovered)
 
 
 def _metric_samples(runs: Dict[int, dict], metric: str) -> List[float]:
