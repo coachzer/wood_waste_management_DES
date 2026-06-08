@@ -1,7 +1,6 @@
 import numpy as np
 from dataclasses import dataclass, field
 from typing import Dict, Tuple, Optional
-from config.constants import RECOVERING_BASE_EFFICIENCY
 from .recording import EntityStatusRecorder
 from .enums import WasteType, RegionType, EntityStatus, OutputType
 
@@ -99,6 +98,9 @@ class OperationalEntity:
         if self.status == EntityStatus.OPERATIONAL:
             return 1.0
         elif self.status == EntityStatus.RECOVERING:
+            # Imported function-locally to avoid a config<->data_classes
+            # bootstrap cycle. See tests/test_import_isolation.py.
+            from config.constants import RECOVERING_BASE_EFFICIENCY
             return RECOVERING_BASE_EFFICIENCY + ((1.0 - RECOVERING_BASE_EFFICIENCY) * self.recovery_progress)
         else: 
             return 0.0
