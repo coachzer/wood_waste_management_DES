@@ -67,6 +67,51 @@ def _combo_run(rel_path: str) -> str:
 # verify -- candidate sidecars vs the committed manifest                        #
 # --------------------------------------------------------------------------- #
 
+def _combo_counts(rels: Iterator[str]) -> dict[str, int]:
+    """Map each combo dir ('.../<combo>') to its number of raw sidecar paths."""
+    counts: dict[str, int] = {}
+    for rel in rels:
+        combo = rel.rsplit("/", 1)[0]
+        counts[combo] = counts.get(combo, 0) + 1
+    return counts
+
+
+def _replication_shortfall_hint(
+    entries: list[tuple[str, str]], missing: list[str]
+) -> str | None:
+    """Explain a uniform rep-count shortfall, the inverse of the additive footgun.
+
+    The frozen-oracle manifest is a 100-rep capture (600 raw sidecars); verifying
+    a 10-rep regeneration against it leaves 540 sidecars missing, which reads like
+    data loss when the real cause is the wrong ``--replications``. When every combo
+    is short by the same factor (a clean fraction), return a one-line actionable
+    hint mirroring the additive comparator's ``_replication_mismatch_hint``.
+    Returns None when nothing is missing or the shortfall is not uniform (a genuine
+    partial loss, which should NOT be explained away as a rep-count slip).
+    """
+    if not missing:
+        return None
+    expected_counts = _combo_counts(rel for _, rel in entries)
+    missing_counts = _combo_counts(iter(missing))
+    present_per_combo = {
+        combo: expected_counts[combo] - missing_counts.get(combo, 0)
+        for combo in expected_counts
+    }
+    present_values = set(present_per_combo.values())
+    if len(present_values) != 1:
+        return None
+    present_reps = present_values.pop()
+    expected_reps = max(expected_counts.values())
+    if not 0 < present_reps < expected_reps:
+        return None
+    return (
+        f"HINT: rep-count shortfall -- manifest expects {expected_reps} reps/combo "
+        f"({len(entries)} sidecars), you regenerated {present_reps} "
+        f"({len(entries) - len(missing)}). Regenerate with --replications "
+        f"{expected_reps}, or you are verifying against the wrong oracle."
+    )
+
+
 def _sha256(path: Path) -> str:
     """Streaming SHA256 of a file (the raw sidecars run to gigabytes)."""
     digest = hashlib.sha256()
@@ -128,6 +173,9 @@ def run_verify(root: Path, manifest: Path) -> int:
         f"checked={checked}  missing={len(missing)}  mismatched={len(mismatched)}"
     )
     print("RESULT:", "MATCH" if ok else "MISMATCH")
+    hint = _replication_shortfall_hint(entries, missing)
+    if hint:
+        print(hint)
     return 0 if ok else 1
 
 

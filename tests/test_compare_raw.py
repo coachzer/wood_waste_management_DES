@@ -225,3 +225,82 @@ def test_verify_ignores_run_files(tmp_path):
     )
     entries = compare_raw._parse_manifest(manifest)
     assert entries == []
+
+
+# --------------------------------------------------------------------------- #
+# verify -- rep-count shortfall hint (HANDOFF landmine #1 inverse)              #
+# --------------------------------------------------------------------------- #
+
+def _write_shortfall_fixture(tmp_path, combos, expected_reps, present_reps):
+    """Build a root + manifest for `combos` combos at `expected_reps` reps/combo,
+    with only the first `present_reps` sidecars per combo actually on disk.
+
+    Returns (root, manifest). Present sidecars hash-match their manifest entry, so
+    the only failure is the uniform shortfall the hint must explain.
+    """
+    root = tmp_path / "root"
+    entries = []
+    for combo in range(combos):
+        for rep in range(expected_reps):
+            rel = f"outputs/baseline/Baseline/combo_{combo}/raw_{rep:03d}.json"
+            body = json.dumps({"rep": rep}).encode("utf-8")
+            if rep < present_reps:
+                target = root / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(body)
+            entries.append((rel, hashlib.sha256(body).hexdigest()))
+    return root, _write_manifest(tmp_path, entries)
+
+
+def test_verify_prints_rep_shortfall_hint(tmp_path, capsys):
+    """A uniform rep-shortfall (10-vs-100 footgun) must read as wrong-rep-count,
+    not data loss: verify prints an actionable hint naming both rep counts."""
+    # Manifest expects 3 reps across 2 combos (6 sidecars); only 1 rep/combo present.
+    root, manifest = _write_shortfall_fixture(
+        tmp_path, combos=2, expected_reps=3, present_reps=1
+    )
+
+    code = compare_raw.run_verify(root, manifest)
+    out = capsys.readouterr().out
+
+    assert code == 1  # a genuine shortfall is still a verify failure
+    assert "HINT: rep-count shortfall" in out
+    assert "expects 3 reps/combo" in out
+    assert "you regenerated 1" in out
+
+
+def test_verify_no_hint_when_counts_match(tmp_path, capsys):
+    """No shortfall -> no hint (the hint must not fire on a clean MATCH)."""
+    root, manifest = _write_shortfall_fixture(
+        tmp_path, combos=2, expected_reps=3, present_reps=3
+    )
+
+    code = compare_raw.run_verify(root, manifest)
+    out = capsys.readouterr().out
+
+    assert code == 0
+    assert "RESULT: MATCH" in out
+    assert "rep-count shortfall" not in out
+
+
+def test_verify_no_hint_on_nonuniform_loss(tmp_path, capsys):
+    """A ragged partial loss is real data loss, not a rep slip -> no misleading hint."""
+    # combo_0 keeps all 3 reps, combo_1 only 1 -> present counts differ -> not uniform.
+    root = tmp_path / "root"
+    entries = []
+    for combo, present in ((0, 3), (1, 1)):
+        for rep in range(3):
+            rel = f"outputs/baseline/Baseline/combo_{combo}/raw_{rep:03d}.json"
+            body = json.dumps({"rep": rep}).encode("utf-8")
+            if rep < present:
+                target = root / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(body)
+            entries.append((rel, hashlib.sha256(body).hexdigest()))
+    manifest = _write_manifest(tmp_path, entries)
+
+    code = compare_raw.run_verify(root, manifest)
+    out = capsys.readouterr().out
+
+    assert code == 1
+    assert "rep-count shortfall" not in out
