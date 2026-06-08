@@ -59,8 +59,8 @@ class PointToPointTransport:
         if not self.pending_requests:
             return []
         
-        # Sort by priority and time
-        self.pending_requests.sort(key=lambda r: (r.priority.value, r.request_time), reverse=True)
+        # Sort by priority (highest first), then request time (oldest first, FIFO)
+        self.pending_requests.sort(key=lambda r: (-r.priority.value, r.request_time))
         
         scheduled_transports = []
         processed_requests = []
