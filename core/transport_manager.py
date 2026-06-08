@@ -1,15 +1,8 @@
 from dataclasses import dataclass
 from typing import List, Dict, Optional
-from enum import Enum
 from config.constants import TRAVEL_SPEED_KMH
 from models.enums import RegionType, WasteType
 from models.distances import get_distance
-
-class TransportPriority(Enum):
-    LOW = 1
-    NORMAL = 2
-    HIGH = 3
-    URGENT = 4
 
 @dataclass
 class TransportRequest:
@@ -17,9 +10,8 @@ class TransportRequest:
     destination: RegionType
     waste_type: WasteType
     volume: float
-    priority: TransportPriority
     request_time: float
-    requester_id: str  
+    requester_id: str
 
 class PointToPointTransport:
     def __init__(self, state=None):
@@ -59,8 +51,8 @@ class PointToPointTransport:
         if not self.pending_requests:
             return []
         
-        # Sort by priority (highest first), then request time (oldest first, FIFO)
-        self.pending_requests.sort(key=lambda r: (-r.priority.value, r.request_time))
+        # Serve oldest request first (FIFO on request time)
+        self.pending_requests.sort(key=lambda r: r.request_time)
         
         scheduled_transports = []
         processed_requests = []
@@ -136,7 +128,6 @@ class PointToPointTransport:
             "destination": request.destination,
             "pickup_time": pickup_time,
             "arrival_time": arrival_time,
-            "priority": request.priority,
             "requester_id": request.requester_id
         }
         return transport

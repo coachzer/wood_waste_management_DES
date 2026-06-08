@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Dict, List, Optional
 from core.abc_analysis import BiogenicCarbonABCAnalyzer
-from core.transport_manager import PointToPointTransport, TransportPriority, TransportRequest
+from core.transport_manager import PointToPointTransport
 from models.data_classes import WasteTransformation, OperationalEntity, ProductStorage
 from models.distances import get_distance
 from models.enums import OutputType, RegionType, StockStrategy, WasteType, EntityStatus
@@ -320,20 +320,6 @@ class TreatmentOperator(OperationalEntity):
 
         transformation_scores.sort(key=lambda x: x[2], reverse=True)
         return [(key, transform) for key, transform, _ in transformation_scores]
-
-    def request_waste_delivery(self, waste_type: WasteType, volume: float, 
-                             from_region: RegionType, priority: TransportPriority = TransportPriority.NORMAL):
-        """Request waste delivery from a specific region"""
-        request = TransportRequest(
-            origin=from_region,
-            destination=self.region_type,
-            waste_type=waste_type,
-            volume=volume,
-            priority=priority,
-            request_time=self.env.now,
-            requester_id=self.name
-        )
-        return self.transport_manager.request_transport(request)
 
     def _handle_failures(self, current_time: float):
         """Checks for and handles facility failures, updating processing capacity."""

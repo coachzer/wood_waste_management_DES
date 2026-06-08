@@ -6,7 +6,7 @@ from config.constants import (
     TRAVEL_SPEED_KMH,
     LOCAL_COLLECTION_RATIO,
 )
-from core.transport_manager import PointToPointTransport, TransportPriority, TransportRequest
+from core.transport_manager import PointToPointTransport, TransportRequest
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
 from instrumentation.waste_monitor import WasteMonitor
 from models.data_classes import Vehicle, CollectionCenter, OperationalEntity
@@ -503,7 +503,6 @@ class CollectorCompany(OperationalEntity):
             destination=destination,
             waste_type=waste_type,
             volume=volume,
-            priority=TransportPriority.NORMAL,
             request_time=self.env.now,
             requester_id=self.name
         )

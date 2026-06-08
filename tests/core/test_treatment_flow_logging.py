@@ -21,7 +21,6 @@ from types import SimpleNamespace
 from core.collector import CollectorCompany
 from core.transport_manager import (
     PointToPointTransport,
-    TransportPriority,
     TransportRequest,
 )
 from models.enums import RegionType, WasteType
@@ -111,7 +110,7 @@ def test_reposition_logs_collector_to_collector_not_treatment():
     vehicle_info = {"vehicle": vehicle, "collector": SimpleNamespace(name="collector-src")}
     request = TransportRequest(
         origin=origin, destination=destination, waste_type=CONSTRUCTION,
-        volume=120.0, priority=TransportPriority.NORMAL, request_time=0.0,
+        volume=120.0, request_time=0.0,
         requester_id="collector-src",
     )
 
@@ -154,7 +153,7 @@ def test_reposition_logs_origin_collector_not_borrowed_vehicle_owner():
     vehicle_info = {"vehicle": vehicle, "collector": SimpleNamespace(name="col-vehicle-owner")}
     request = TransportRequest(
         origin=origin, destination=destination, waste_type=CONSTRUCTION,
-        volume=120.0, priority=TransportPriority.NORMAL, request_time=0.0,
+        volume=120.0, request_time=0.0,
         requester_id="col-origin",
     )
 
