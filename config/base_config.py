@@ -28,15 +28,17 @@ class UncertaintySet:
 class CostParams:
     """Cost parameters.
 
-    landfill_per_m3 = $46/t (Lebanon) x 0.6 t/m³ = $27.6/m³, derived from DENSITY
-    so it stays consistent if DENSITY changes. Anchors handle_storage_event's
+    landfill_per_m3 = $46/t x 0.6 t/m³ = $27.6/m³, derived from DENSITY so it
+    stays consistent if DENSITY changes. The $46/t is a deterrent gate cost at
+    par with the EU-27 landfill range (~EUR 39-46/t, CEWEP 2021 / EEA 2023), not
+    a Slovenian disposal tariff. Anchors handle_storage_event's
     landfill-vs-expand decision. The two escalation factors make each repeated
     overflow on an entity progressively more expensive (penalty grows with the
     count of prior expansions / landfills).
     """
     landfill_per_m3: float = (
         LANDFILL_COST_PER_TONNE_USD * DENSITY
-    )  # $46/tonne (lebanon paper) x DENSITY = 27.6 $/m³
+    )  # $46/tonne (deterrent; CEWEP/EEA EU-27 range) x DENSITY = 27.6 $/m³
     expansion_cost_per_m3: float = 100.0  # Cost to expand storage by 1m³
     expansion_cost_escalation_per_prior: float = 0.5  # per prior expansion on the entity
     landfill_cost_escalation_per_prior: float = 0.3  # per prior landfill on the entity

@@ -5,7 +5,7 @@ DENSITY = 0.6
 TRANSPORT_EMISSIONS_PER_M3_KM = 0.087 * DENSITY
 
 KILOGRAMS_PER_TONNE = 1000.0  # unit conversion factor, kg per tonne
-LANDFILL_COST_PER_TONNE_USD = 46.0  # $/tonne landfill gate fee (Lebanon paper); x DENSITY -> $/m³
+LANDFILL_COST_PER_TONNE_USD = 46.0  # $/tonne deterrent gate cost, at par with EU-27 landfill range ~EUR 39-46/t (CEWEP 2021 / EEA 2023); x DENSITY -> $/m³
 
 # Avoided emissions (C11, ADR 0011): recycling avoided-burden, kg CO2eq / m3.
 # Per-product factors from Lao & Chang (2023), biogenic carbon EXCLUDED so the
