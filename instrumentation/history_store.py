@@ -68,6 +68,24 @@ class HistoryStore:
     def get_entity_status_history(self):
         return dict(self.entity_status_history)
 
+    @staticmethod
+    def _base_entity_history():
+        """Series shared by the per-generator and per-collector schemas.
+
+        Only the trailing shared keys live here: ``timestamps`` and
+        ``efficiency`` are also shared but stay inline at each call site
+        because entity-specific keys sit between them, and the persisted
+        key order must not change.
+        """
+        return {
+            "storage_utilization": [],
+            "regions": [],
+            "status": [],
+            "energy_costs": [],
+            "operational_costs": [],
+            "total_costs": []
+        }
+
     def ensure_generation(self, generator_name):
         """Initialize the per-generator history entry if it does not yet exist."""
         if generator_name not in self.generation_history:
@@ -77,12 +95,7 @@ class HistoryStore:
                 "efficiency": [],
                 "total_generated": {},
                 "total_potential_generated": {},
-                "storage_utilization": [],
-                "regions": [],
-                "status": [],
-                "energy_costs": [],
-                "operational_costs": [],
-                "total_costs": []
+                **self._base_entity_history()
             }
 
     def ensure_collection(self, collector_name):
@@ -93,12 +106,7 @@ class HistoryStore:
                 "collected_volumes": {},
                 "efficiency": [],
                 "transport_costs": [],
-                "storage_utilization": [],
-                "regions": [],
-                "status": [],
-                "energy_costs": [],
-                "operational_costs": [],
-                "total_costs": []
+                **self._base_entity_history()
             }
 
     def ensure_processing(self, treatment_name):
