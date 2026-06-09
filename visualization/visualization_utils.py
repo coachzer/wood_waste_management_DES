@@ -72,43 +72,6 @@ def extract_collection_storage_data(history: Dict) -> Dict:
         'y_values': collectors
     }
 
-def extract_processing_storage_data(history: Dict) -> Dict:
-    """Extract processing facility storage data"""
-    entities = list(history.keys())
-    if not entities:
-        return {'x_values': [], 'y_values': [], 'z_values': []}
-    
-    all_timestamps = []
-    for entity_data in history.values():
-        if 'timestamps' in entity_data:
-            all_timestamps.extend(entity_data['timestamps'])
-    
-    if not all_timestamps:
-        return {'x_values': [], 'y_values': [], 'z_values': []}
-    
-    time_range = np.linspace(min(all_timestamps), max(all_timestamps), 50)
-    z_matrix = []
-    
-    for entity in entities:
-        entity_data = history[entity]
-        if 'storage' in entity_data and 'utilization' in entity_data['storage']:
-            timestamps = entity_data['timestamps']
-            utilization = entity_data['storage']['utilization']
-            
-            if utilization:
-                interpolated = np.interp(time_range, timestamps, utilization)
-                z_matrix.append(interpolated)
-            else:
-                z_matrix.append(np.zeros(len(time_range)))
-        else:
-            z_matrix.append(np.zeros(len(time_range)))
-    
-    return {
-        'x_values': time_range,
-        'y_values': entities,
-        'z_values': z_matrix
-    }
-
 def extract_processor_waste_storage_data(history: Dict) -> Dict:
     """Extract waste storage utilization for processors"""
     return _extract_processor_storage_data(history, 'waste_utilization')

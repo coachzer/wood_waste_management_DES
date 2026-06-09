@@ -5,7 +5,6 @@ from typing import Dict, List
 from .visualization_utils import (
     extract_storage_data,
     extract_collection_storage_data,
-    extract_processing_storage_data,
     extract_processor_waste_storage_data,
     extract_processor_finished_goods_storage_data,
     safe_write_image,
@@ -208,13 +207,10 @@ def _create_entity_storage_heatmaps_grouped(grouped_results: Dict, entity_type: 
             elif entity_type == 'collection':
                 if 'collection_history' not in monitor_data:
                     raise KeyError("monitor_data missing 'collection_history' key")
-                history = monitor_data['collection_history']    
+                history = monitor_data['collection_history']
                 heatmap_data = extract_collection_storage_data(history)
-            else:  # processing
-                if 'processing_history' not in monitor_data:
-                    raise KeyError("monitor_data missing 'processing_history' key")
-                history = monitor_data['processing_history']
-                heatmap_data = extract_processing_storage_data(history)
+            else:
+                raise ValueError(f"Unknown entity_type: {entity_type}")
 
             if not heatmap_data:
                 raise ValueError(f"No heatmap_data returned for {entity_type}")
