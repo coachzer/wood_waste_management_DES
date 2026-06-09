@@ -1,3 +1,4 @@
+import logging
 import os
 import plotly.graph_objects as go
 import plotly.subplots as sp
@@ -49,9 +50,9 @@ def save_plot_files(fig: go.Figure, output_dir: str, filename: str, print_messag
     safe_write_image(fig, f"{output_dir}/{filename}.pdf", scale=PDF_EXPORT_SCALE)
 
     if print_message:
-        print(print_message)
+        logging.info(print_message)
     else:
-        print(f"Plot saved: {filename}")
+        logging.info(f"Plot saved: {filename}")
 
 def extract_total_costs_from_monitor_data(monitor_data: Dict) -> Dict[str, float]:
     """Extract and aggregate total costs from all history sources in monitor data"""
@@ -389,7 +390,7 @@ def _create_environmental_breakdown_comparison(results: List[Dict], output_dir: 
 
     fig.write_html(f"{output_dir}/environmental_breakdown_comparison.html")
     safe_write_image(fig, f"{output_dir}/environmental_breakdown_comparison.pdf", scale=PDF_EXPORT_SCALE)
-    print("Environmental breakdown comparison saved")
+    logging.info("Environmental breakdown comparison saved")
 
 def _create_efficiency_frontier_analysis(results: List[Dict], output_dir: str):
     """Create efficiency frontier analysis"""
@@ -826,4 +827,4 @@ def _create_entity_status_view(results: List[Dict], output_dir: str):
 
             pdf_path = filename.replace(".html", ".pdf")
             if safe_write_image(fig, f"{entity_status_dir}/{pdf_path}", scale=PDF_EXPORT_SCALE):
-                print(f"PDF version saved to {pdf_path}")
+                logging.info(f"PDF version saved to {pdf_path}")

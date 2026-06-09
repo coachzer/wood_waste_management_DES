@@ -411,9 +411,7 @@ class CollectorCompany(OperationalEntity):
                 self._process_kanban_signals(kanban_signals)
             else:
                 # Regular collection based on policy
-                collection_cost = self._unified_collection_strategy()
-                if collection_cost > 0:
-                    print(f"{self.env.now}: {self.name} collection cost: {collection_cost:.8f}")
+                self._unified_collection_strategy()
 
     def _process_kanban_signals(self, signals):
         """Process signals with acknowledgment and cross-region support"""

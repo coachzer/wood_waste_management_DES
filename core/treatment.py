@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 from typing import Dict, List, Optional
 from core.abc_analysis import BiogenicCarbonABCAnalyzer
@@ -185,7 +187,6 @@ class TreatmentOperator(OperationalEntity):
             }
 
         except Exception as e:
-            import logging
             logging.warning(f"[{self.name}] ABC initialization failed: {e}, using default priorities")
             self.abc_priority_map = {
                 "osb": 1.0,
@@ -467,7 +468,7 @@ class TreatmentOperator(OperationalEntity):
             elif output_type == OutputType.OSB:
                 self.product_volumes["osb"] += output_amount # m³
         else:
-            print(f"[{self.name}] Unclassified output: {output_amount:.2f} m³ of {output_type.value} from {input_type.value}")
+            logging.warning(f"[{self.name}] Unclassified output: {output_amount:.2f} m³ of {output_type.value} from {input_type.value}")
 
         self._track_treatment_properties(amount_to_process, transformation)
         self._update_utilization_metrics(amount_to_process)

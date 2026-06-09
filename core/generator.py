@@ -265,8 +265,6 @@ class WasteGenerator(OperationalEntity):
         if self.uncertainty_set:
             if self.status == EntityStatus.FAILED:
                 return
-            elif self.status == EntityStatus.RECOVERING:
-                print(f"{current_time}: Generator {self.name} is recovering (efficiency: {self.efficiency:.2f})")
 
         available_storage = self.waste_storage_capacity - self.current_storage
         daily_factors = self._calculate_daily_factors()

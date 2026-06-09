@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Dict, Any
 from models.enums import WasteType
@@ -179,7 +180,7 @@ class WasteMonitor:
             history[impact_category][-1] += environmental_impact
             history["total_impact"][-1] += environmental_impact
         else:
-            print(f"Warning: Unrecognized environmental impact category: {impact_category}")
+            logging.warning(f"Unrecognized environmental impact category: {impact_category}")
 
     def calculate_efficiency_metrics(self) -> Dict[str, float]:
         """Calculate system-wide efficiency metrics"""
@@ -210,7 +211,7 @@ class WasteMonitor:
 
         history_category = type_mapping.get(entity_type_name)
         if not history_category:
-            print(f"Warning: Unknown entity type {entity_type_name}")
+            logging.warning(f"Unknown entity type {entity_type_name}")
             return
 
         entity_name = getattr(entity, 'name', str(entity))

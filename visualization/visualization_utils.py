@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 from typing import Dict
 from config.constants import HEATMAP_TIME_GRID_POINTS
@@ -8,7 +10,10 @@ def safe_write_image(fig, path, **kwargs):
         fig.write_image(path, **kwargs)
         return True
     except Exception:
-        print(f"PDF export skipped ({path}) -- set BROWSER_PATH to a Chromium executable to enable it")
+        logging.warning(
+            f"PDF export skipped ({path}) -- Kaleido needs a Chromium runtime; "
+            "run kaleido.get_chrome_sync() once to install it"
+        )
         return False
 
 def extract_storage_data(history: Dict, metric: str) -> Dict:

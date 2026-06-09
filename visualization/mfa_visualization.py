@@ -1,3 +1,5 @@
+import logging
+
 import plotly.graph_objects as go
 from typing import Dict
 
@@ -277,10 +279,10 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
         )
 
     fig.write_html(save_path)
-    print(f"Material flow analysis saved to {save_path}")
+    logging.info(f"Material flow analysis saved to {save_path}")
 
     pdf_path = save_path.replace(".html", ".pdf")
     if safe_write_image(fig, pdf_path, height=SANKEY_HEIGHT_PX, width=WIDE_EXPORT_WIDTH_PX):
-        print(f"PDF version saved to {pdf_path}")
+        logging.info(f"PDF version saved to {pdf_path}")
 
     return save_path
