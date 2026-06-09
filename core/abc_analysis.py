@@ -24,19 +24,14 @@ class BiogenicCarbonABCAnalyzer:
         self.demand_data = self._load_demand_data()
         
     def _load_demand_data(self) -> Dict:
-        """Load demand configuration from JSON file"""
-        try:
-            with open(self.demand_config_path, 'r') as f:
-                return json.load(f)
-        except FileNotFoundError:
-            print(f"Warning: {self.demand_config_path} not found, using default values")
-            return {
-                "national_demand": {
-                    "particle_board": 40000,
-                    "osb": 30000,
-                    "mdf": 30000
-                }
-            }
+        """Load demand configuration from JSON file.
+
+        A missing or unreadable file raises: the demand config drives the ABC
+        priority weights, so a moved or renamed file must fail loudly instead
+        of silently degrading every run to baked-in defaults.
+        """
+        with open(self.demand_config_path, 'r') as f:
+            return json.load(f)
     
     def calculate_biogenic_impact_analysis(self) -> List[ABCClassification]:
         """Calculate total biogenic carbon impact for each product"""

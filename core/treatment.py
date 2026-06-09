@@ -173,23 +173,19 @@ class TreatmentOperator(OperationalEntity):
             self._waste_storage = dict(new_storage)
 
     def _initialize_abc_priorities(self, config_path: str):
-        """Initialize ABC priorities - reuse existing ABCAnalyzer"""
-        try:
-            analyzer = BiogenicCarbonABCAnalyzer(config_path)
-            classifications = analyzer.perform_abc_classification()
+        """Initialize ABC priorities - reuse existing ABCAnalyzer.
 
-            self.abc_priority_map = {
-                item.product_type: item.priority_weight
-                for item in classifications
-            }
+        Raises on a missing or malformed demand config rather than falling
+        back to hardcoded weights: the fallback would silently change what
+        every operator produces while looking like a configured run.
+        """
+        analyzer = BiogenicCarbonABCAnalyzer(config_path)
+        classifications = analyzer.perform_abc_classification()
 
-        except Exception as e:
-            logging.warning(f"[{self.name}] ABC initialization failed: {e}, using default priorities")
-            self.abc_priority_map = {
-                "osb": 1.0,
-                "particle_board": 0.7,
-                "mdf": 0.4
-            }
+        self.abc_priority_map = {
+            item.product_type: item.priority_weight
+            for item in classifications
+        }
 
     def _should_trigger_collection_based_on_strategy(self) -> bool:
         """Determine if collection should fire, based purely on waste-storage state.
