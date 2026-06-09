@@ -20,11 +20,11 @@ class WasteMonitor:
         self.store.ensure_entity_status("generators", generator.name)
 
         self.store.entity_status_history["generators"][generator.name]["timestamps"].append(timestamp)
-        self.store.entity_status_history["generators"][generator.name]["status"].append(generator.status.value)
+        self.store.entity_status_history["generators"][generator.name]["status"].append(generator.status.name)
 
         history = self.store.generation_history[generator.name]
         history["timestamps"].append(timestamp)
-        history["status"].append(generator.status.value) 
+        history["status"].append(generator.status.name) 
         history["regions"].append(region if region is not None else getattr(generator, "region", None))
 
         for waste_type, stream in generator.waste_streams.items():
@@ -55,11 +55,11 @@ class WasteMonitor:
         self.store.ensure_entity_status("collectors", collector.name)
 
         self.store.entity_status_history["collectors"][collector.name]["timestamps"].append(timestamp)
-        self.store.entity_status_history["collectors"][collector.name]["status"].append(collector.status.value)
+        self.store.entity_status_history["collectors"][collector.name]["status"].append(collector.status.name)
 
         history = self.store.collection_history[collector.name]
         history["timestamps"].append(timestamp)
-        history["status"].append(collector.status.value)
+        history["status"].append(collector.status.name)
         history["regions"].append(region if region is not None else getattr(collector, "region", None))
 
         for waste_type, amount in collector.collected_waste.items():
@@ -86,12 +86,12 @@ class WasteMonitor:
         self.store.ensure_entity_status("treatments", treatment.name)
 
         self.store.entity_status_history["treatments"][treatment.name]["timestamps"].append(timestamp)
-        self.store.entity_status_history["treatments"][treatment.name]["status"].append(treatment.status.value)
+        self.store.entity_status_history["treatments"][treatment.name]["status"].append(treatment.status.name)
 
         history = self.store.processing_history[treatment.name]
         if not history["timestamps"] or timestamp > history["timestamps"][-1]:
             history["timestamps"].append(timestamp)
-            history["status"].append(treatment.status.value)
+            history["status"].append(treatment.status.name)
 
             self._track_storage_metrics(treatment, history)
             self._track_processing_metrics(treatment, history)
@@ -221,10 +221,10 @@ class WasteMonitor:
 
         if (not entity_history["timestamps"] or 
             timestamp > entity_history["timestamps"][-1] or
-            entity.status.value != entity_history["status"][-1]):
+            entity.status.name != entity_history["status"][-1]):
 
             entity_history["timestamps"].append(timestamp)
-            entity_history["status"].append(entity.status.value)
+            entity_history["status"].append(entity.status.name)
 
     def generate_summary_report(self) -> str:
         """Generate a comprehensive summary report"""

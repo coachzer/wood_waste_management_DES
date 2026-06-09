@@ -75,7 +75,7 @@ def test_recorder_writes_status_into_the_store():
     """
 
     class _Status:
-        value = "OPERATIONAL"
+        name = "OPERATIONAL"
 
     class WasteGenerator:
         """Named to match the recorder's type-name -> 'generators' mapping."""

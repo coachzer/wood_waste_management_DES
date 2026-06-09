@@ -905,16 +905,13 @@ def _create_entity_status_view(results: List[Dict], output_dir: str):
     def get_status_color(status):
         color_map = {
             'OPERATIONAL': 'green', 'FAILED': 'red', 'RECOVERING': 'orange',
-            1: 'green', 2: 'red', 3: 'orange'
         }
         return color_map.get(status, 'gray')
 
     def get_status_label(status):
-        label_map = {
-            'OPERATIONAL': 'OPERATIONAL', 'FAILED': 'FAILED', 'RECOVERING': 'RECOVERING',
-            1: 'OPERATIONAL', 2: 'FAILED', 3: 'RECOVERING',
-        }
-        return label_map.get(status, f'UNKNOWN_{status}')
+        if status in ('OPERATIONAL', 'FAILED', 'RECOVERING'):
+            return status
+        return f'UNKNOWN_{status}'
 
     grouped_results = {}
     for result in results:
