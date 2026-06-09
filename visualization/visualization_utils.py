@@ -1,5 +1,6 @@
 import numpy as np
 from typing import Dict
+from config.constants import HEATMAP_TIME_GRID_POINTS
 
 
 def safe_write_image(fig, path, **kwargs):
@@ -24,7 +25,7 @@ def extract_storage_data(history: Dict, metric: str) -> Dict:
     if not all_timestamps:
         return {'x_values': [], 'y_values': [], 'z_values': []}
     
-    time_range = np.linspace(min(all_timestamps), max(all_timestamps), 50)
+    time_range = np.linspace(min(all_timestamps), max(all_timestamps), HEATMAP_TIME_GRID_POINTS)
     z_matrix = []
     
     for entity in entities:
@@ -94,7 +95,7 @@ def _extract_processor_storage_data(history: Dict, metric: str) -> Dict:
     if not all_timestamps:
         return {'x_values': [], 'y_values': [], 'z_values': []}
     
-    time_range = np.linspace(min(all_timestamps), max(all_timestamps), 50)
+    time_range = np.linspace(min(all_timestamps), max(all_timestamps), HEATMAP_TIME_GRID_POINTS)
     z_matrix = []
     
     for entity in entities:

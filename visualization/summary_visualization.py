@@ -3,6 +3,7 @@ import plotly.subplots as sp
 import pandas as pd
 import numpy as np
 from typing import Dict, List
+from config.constants import CHART_PALETTE, DASHBOARD_HEIGHT_PX
 
 def create_cost_impact_comparison(results: List[Dict], output_dir: str):
     """Create bar charts comparing cost and environmental impact breakdowns"""
@@ -123,7 +124,7 @@ def create_summary_dashboard(results: List[Dict], output_dir: str):
         ('Event Cost', 2, 3)
     ]
 
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+    colors = CHART_PALETTE
 
     for i, (metric, row, col) in enumerate(metrics):
         fig.add_trace(
@@ -141,7 +142,7 @@ def create_summary_dashboard(results: List[Dict], output_dir: str):
 
     fig.update_layout(
         title="Scenario Comparison Dashboard - Key Performance Metrics",
-        height=800,
+        height=DASHBOARD_HEIGHT_PX,
         showlegend=False
     )
 

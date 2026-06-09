@@ -3,6 +3,13 @@ import plotly.graph_objects as go
 import plotly.subplots as sp
 import numpy as np
 from typing import Dict, List
+from config.constants import (
+    FRONTIER_FIGURE_HEIGHT_PX,
+    FRONTIER_FIGURE_WIDTH_PX,
+    PDF_EXPORT_SCALE,
+    POLICY_COLORS,
+    STRATEGY_SYMBOLS,
+)
 from .visualization_utils import (
     aggregate_collection_data,
     aggregate_generation_data,
@@ -39,7 +46,7 @@ def save_plot_files(fig: go.Figure, output_dir: str, filename: str, print_messag
 
     fig.write_html(f"{output_dir}/{filename}.html")
 
-    safe_write_image(fig, f"{output_dir}/{filename}.pdf", scale=2)
+    safe_write_image(fig, f"{output_dir}/{filename}.pdf", scale=PDF_EXPORT_SCALE)
 
     if print_message:
         print(print_message)
@@ -139,19 +146,8 @@ def calculate_total_environmental_impact(monitor_data: Dict) -> float:
     return total_impact
 
 def get_scenario_colors_and_symbols():
-    """Return standard color and symbol mappings for scenarios"""
-    colors = {
-        'push': '#1f77b4',  # Blue
-        'pull': '#ff7f0e'   # Orange
-    }
-    
-    symbols = {
-        'on_demand': 'circle',
-        'reorder_50': 'square', 
-        'reorder_90': 'diamond'
-    }
-    
-    return colors, symbols
+    """Return the shared theme mappings: color per policy, symbol per strategy"""
+    return POLICY_COLORS, STRATEGY_SYMBOLS
 
 def create_scenario_label(result: Dict) -> str:
     """Create a standardized scenario label from result data"""
@@ -392,7 +388,7 @@ def _create_environmental_breakdown_comparison(results: List[Dict], output_dir: 
     )
 
     fig.write_html(f"{output_dir}/environmental_breakdown_comparison.html")
-    safe_write_image(fig, f"{output_dir}/environmental_breakdown_comparison.pdf", scale=2)
+    safe_write_image(fig, f"{output_dir}/environmental_breakdown_comparison.pdf", scale=PDF_EXPORT_SCALE)
     print("Environmental breakdown comparison saved")
 
 def _create_efficiency_frontier_analysis(results: List[Dict], output_dir: str):
@@ -405,8 +401,8 @@ def _create_efficiency_frontier_analysis(results: List[Dict], output_dir: str):
     _add_cost_efficiency_bar_chart(fig, scenario_data)
 
     fig.update_layout(
-        height=800,
-        width=1000,
+        height=FRONTIER_FIGURE_HEIGHT_PX,
+        width=FRONTIER_FIGURE_WIDTH_PX,
         plot_bgcolor="white",
         paper_bgcolor="white",
         showlegend=True,
@@ -829,5 +825,5 @@ def _create_entity_status_view(results: List[Dict], output_dir: str):
             fig.write_html(f"{entity_status_dir}/{filename}")
 
             pdf_path = filename.replace(".html", ".pdf")
-            if safe_write_image(fig, f"{entity_status_dir}/{pdf_path}", scale=2):
+            if safe_write_image(fig, f"{entity_status_dir}/{pdf_path}", scale=PDF_EXPORT_SCALE):
                 print(f"PDF version saved to {pdf_path}")

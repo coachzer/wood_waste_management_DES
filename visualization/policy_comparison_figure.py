@@ -53,6 +53,9 @@ STRATEGY_LABELS = {
     "reorder_90": "REORDER_90",
 }
 
+# Single-column journal figure size in inches.
+FIGURE_SIZE_INCHES = (7, 5)
+
 
 def read_metric_intervals(
     summary_csv_path: Path, metrics: List[str]
@@ -158,7 +161,7 @@ def _build_legend_handles(points: List[dict]) -> List[Line2D]:
 
 def render_figure(points: List[dict]):
     """Build the Matplotlib figure for ``points`` and return it (does not save)."""
-    fig, ax = plt.subplots(figsize=(7, 5))
+    fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
     for point in points:
         ax.errorbar(
             point["service"],

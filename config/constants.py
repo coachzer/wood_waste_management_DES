@@ -94,3 +94,33 @@ PLOTS_ROOT = "plots"
 BASELINE_OUTPUT_ROOT = f"{OUTPUT_ROOT}/baseline"
 BASELINE_SCENARIO_DEFAULT = f"{BASELINE_OUTPUT_ROOT}/Baseline"
 SCENARIO_COMPARISON_PLOTS_DIR = f"{PLOTS_ROOT}/scenario_comparison"
+
+# Visualization theme. Encoding convention for the Plotly comparison suite:
+# color encodes the inventory policy, marker symbol encodes the stock strategy.
+# (The Matplotlib paper figure in policy_comparison_figure.py keeps its own
+# documented caption convention: marker per policy, colour per strategy.)
+POLICY_COLORS = {"push": "#1f77b4", "pull": "#ff7f0e"}
+STRATEGY_SYMBOLS = {"on_demand": "circle", "reorder_50": "square", "reorder_90": "diamond"}
+# Positional palette for multi-panel bar charts (Plotly default category colors).
+CHART_PALETTE = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"]
+
+# Storage-utilization heatmaps: entity timestamps are resampled onto this many
+# interpolation points; all utilization heatmaps share one fixed percent scale.
+HEATMAP_TIME_GRID_POINTS = 50
+HEATMAP_COLORSCALE = "RdYlBu_r"
+UTILIZATION_PCT_MIN = 0
+UTILIZATION_PCT_MAX = 100
+HEATMAP_SUBPLOT_HEIGHT_PX = 300  # per-strategy subplot height in grouped heatmaps
+HEATMAP_HEIGHT_PADDING_PX = 100  # title/margin allowance added once per grouped heatmap
+
+# Figure export dimensions.
+WIDE_EXPORT_WIDTH_PX = 1600  # PDF export width for grouped heatmaps and the Sankey
+PDF_EXPORT_SCALE = 2  # raster scale multiplier for PDF exports
+DASHBOARD_HEIGHT_PX = 800
+SANKEY_HEIGHT_PX = 600
+FRONTIER_FIGURE_WIDTH_PX = 1000
+FRONTIER_FIGURE_HEIGHT_PX = 800
+
+# Sankey noise thresholds: nodes/links below these volumes are dropped.
+MFA_MIN_NODE_VOLUME_M3 = 1.0
+MFA_MIN_FLOW_VOLUME_M3 = 0.1

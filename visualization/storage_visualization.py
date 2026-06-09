@@ -2,6 +2,14 @@ import plotly.graph_objects as go
 import plotly.subplots as sp
 import os
 from typing import Dict, List
+from config.constants import (
+    HEATMAP_COLORSCALE,
+    HEATMAP_HEIGHT_PADDING_PX,
+    HEATMAP_SUBPLOT_HEIGHT_PX,
+    UTILIZATION_PCT_MAX,
+    UTILIZATION_PCT_MIN,
+    WIDE_EXPORT_WIDTH_PX,
+)
 from .visualization_utils import (
     extract_storage_data,
     extract_collection_storage_data,
@@ -125,8 +133,8 @@ def _create_processing_storage_heatmaps_grouped(grouped_results: Dict, storage_t
                             z=heatmap_data['z_values'],
                             x=heatmap_data['x_values'],
                             y=heatmap_data['y_values'],
-                            colorscale='RdYlBu_r',
-                            zmin=0, zmax=100,
+                            colorscale=HEATMAP_COLORSCALE,
+                            zmin=UTILIZATION_PCT_MIN, zmax=UTILIZATION_PCT_MAX,
                             showscale=(i == 1),
                             colorbar={"title": title_suffix} if i == 1 else None
                         ),
@@ -138,7 +146,7 @@ def _create_processing_storage_heatmaps_grouped(grouped_results: Dict, storage_t
         try:
             fig.update_layout(
                 title=f"Processing {title_suffix} - {base_scenario}<br>Inventory Policy: {inventory_policy}",
-                height=300 * num_strategies + 100,
+                height=HEATMAP_SUBPLOT_HEIGHT_PX * num_strategies + HEATMAP_HEIGHT_PADDING_PX,
                 showlegend=False
             )
 
@@ -159,8 +167,8 @@ def _create_processing_storage_heatmaps_grouped(grouped_results: Dict, storage_t
         safe_write_image(
             fig,
             f"{output_dir}/{pdf_path}",
-            height=300 * num_strategies + 100,
-            width=1600,
+            height=HEATMAP_SUBPLOT_HEIGHT_PX * num_strategies + HEATMAP_HEIGHT_PADDING_PX,
+            width=WIDE_EXPORT_WIDTH_PX,
         )
 
 def _create_entity_storage_heatmaps_grouped(grouped_results: Dict, entity_type: str, output_dir: str):
@@ -225,8 +233,8 @@ def _create_entity_storage_heatmaps_grouped(grouped_results: Dict, entity_type: 
                             z=heatmap_data['z_values'],
                             x=heatmap_data['x_values'],
                             y=heatmap_data['y_values'],
-                            colorscale='RdYlBu_r',
-                            zmin=0, zmax=100,
+                            colorscale=HEATMAP_COLORSCALE,
+                            zmin=UTILIZATION_PCT_MIN, zmax=UTILIZATION_PCT_MAX,
                             showscale=(i == 1),
                             colorbar={"title": "Storage Utilization (%)"} if i == 1 else None
                         ),
@@ -238,7 +246,7 @@ def _create_entity_storage_heatmaps_grouped(grouped_results: Dict, entity_type: 
         try:
             fig.update_layout(
                 title=f"{entity_type.title()} Storage Utilization - {base_scenario}<br>Inventory Policy: {inventory_policy}",
-                height=300 * num_strategies + 100,
+                height=HEATMAP_SUBPLOT_HEIGHT_PX * num_strategies + HEATMAP_HEIGHT_PADDING_PX,
                 showlegend=False
             )
 
@@ -259,6 +267,6 @@ def _create_entity_storage_heatmaps_grouped(grouped_results: Dict, entity_type: 
         safe_write_image(
             fig,
             f"{output_dir}/{pdf_path}",
-            height=300 * num_strategies + 100,
-            width=1600,
+            height=HEATMAP_SUBPLOT_HEIGHT_PX * num_strategies + HEATMAP_HEIGHT_PADDING_PX,
+            width=WIDE_EXPORT_WIDTH_PX,
         )

@@ -1,8 +1,22 @@
 import plotly.graph_objects as go
 from typing import Dict
 
-from config.constants import PLOTS_ROOT
+from config.constants import (
+    MFA_MIN_FLOW_VOLUME_M3,
+    MFA_MIN_NODE_VOLUME_M3,
+    PLOTS_ROOT,
+    SANKEY_HEIGHT_PX,
+    WIDE_EXPORT_WIDTH_PX,
+)
 from visualization.visualization_utils import safe_write_image
+
+# Sankey node colors keyed by pipeline stage.
+NODE_COLORS = {
+    'generator': '#2ecc71',    # Green
+    'collector': '#3498db',    # Blue
+    'treatment': '#9b59b6',    # Purple
+    'product': '#e67e22'       # Orange
+}
 
 
 def format_volume(volume: float) -> str:
@@ -65,7 +79,7 @@ def get_volumes(generation_history: Dict, collection_history: Dict, processing_h
         _get_product_volumes(state)
     )
 
-def _filter_volumes(volumes: Dict, min_volume: float = 1.0) -> Dict:
+def _filter_volumes(volumes: Dict, min_volume: float = MFA_MIN_NODE_VOLUME_M3) -> Dict:
     """Filter out entities with minimal volumes"""
     return {k: v for k, v in volumes.items() if v >= min_volume}
 
@@ -73,33 +87,26 @@ def _create_nodes(generators: Dict, collectors: Dict, treatments: Dict, products
     """Create node labels and colors"""
     labels = []
     node_colors = []
-    
-    COLORS = {
-        'generator': '#2ecc71',    # Green
-        'collector': '#3498db',    # Blue  
-        'treatment': '#9b59b6',    # Purple
-        'product': '#e67e22'       # Orange
-    }
 
     gen_start = len(labels)
     for name, volume in generators.items():
         labels.append(f"{name}\n{format_volume(volume)}")
-        node_colors.append(COLORS['generator'])
-    
+        node_colors.append(NODE_COLORS['generator'])
+
     col_start = len(labels)
     for name, volume in collectors.items():
         labels.append(f"{name}\n{format_volume(volume)}")
-        node_colors.append(COLORS['collector'])
-    
+        node_colors.append(NODE_COLORS['collector'])
+
     treat_start = len(labels)
     for name, volume in treatments.items():
         labels.append(f"{name}\n{format_volume(volume)}")
-        node_colors.append(COLORS['treatment'])
-    
+        node_colors.append(NODE_COLORS['treatment'])
+
     prod_start = len(labels)
     for name, volume in products.items():
         labels.append(f"{name}\n{format_volume(volume)}")
-        node_colors.append(COLORS['product'])
+        node_colors.append(NODE_COLORS['product'])
     
     return labels, node_colors, gen_start, col_start, treat_start, prod_start
 
@@ -141,7 +148,7 @@ def _create_flows(transport_flows: list, labels: list):
         entry["volume"] += flow["volume"]
 
     for (source_index, target_index), entry in flow_matrix.items():
-        if entry["volume"] >= 0.1 and source_index != target_index:
+        if entry["volume"] >= MFA_MIN_FLOW_VOLUME_M3 and source_index != target_index:
             sources.append(source_index)
             targets.append(target_index)
             values.append(entry["volume"])
@@ -151,7 +158,7 @@ def _create_flows(transport_flows: list, labels: list):
 
 def create_sankey(generator_volumes: Dict, collector_volumes: Dict,
                   treatment_volumes: Dict, product_volumes: Dict, state):
-    min_volume = 1.0
+    min_volume = MFA_MIN_NODE_VOLUME_M3
     generators = _filter_volumes(generator_volumes, min_volume)
     collectors = _filter_volumes(collector_volumes, min_volume)
     treatments = _filter_volumes(treatment_volumes, min_volume)
@@ -244,7 +251,7 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
     fig.update_layout(
         title=title,
         font_size=12,
-        height=600,
+        height=SANKEY_HEIGHT_PX,
         margin={"l": 50, "r": 50, "t": 50, "b": 90}
     )
 
@@ -273,7 +280,7 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
     print(f"Material flow analysis saved to {save_path}")
 
     pdf_path = save_path.replace(".html", ".pdf")
-    if safe_write_image(fig, pdf_path, height=600, width=1600):
+    if safe_write_image(fig, pdf_path, height=SANKEY_HEIGHT_PX, width=WIDE_EXPORT_WIDTH_PX):
         print(f"PDF version saved to {pdf_path}")
 
     return save_path
