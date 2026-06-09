@@ -15,12 +15,6 @@ from config.constants import (
     WASTE_STORAGE_PRIMING_WEEKS,
 )
 
-facilities = {
-    'WasteGenerator': 0,
-    'CollectorCompany': 0, 
-    'TreatmentOperator': 0
-}
-
 class FacilityBuilder:
     """Focused on building individual facilities - no orchestration logic"""
     
@@ -43,6 +37,13 @@ class FacilityBuilder:
         self.kanban_manager = kanban_manager
         self.state = state
         self.seed_sequence = np.random.SeedSequence(seed)
+        # Built-entity counts per type, read by print_failure_analysis. Instance
+        # state so a fresh builder starts at zero -- no cross-run reset needed.
+        self.facility_counts = {
+            'WasteGenerator': 0,
+            'CollectorCompany': 0,
+            'TreatmentOperator': 0
+        }
 
     def create_generator(self, gen_data, region: RegionType, stock_strategy=None, inventory_policy=None) -> WasteGenerator:
         """Create a single waste generator"""
@@ -70,7 +71,7 @@ class FacilityBuilder:
         if inventory_policy is None:
             raise SystemExit(f"Error: No inventory policy specified for generator {gen_data.id}")
 
-        facilities['WasteGenerator'] += 1
+        self.facility_counts['WasteGenerator'] += 1
         [child_seed] = self.seed_sequence.spawn(1)
 
         return WasteGenerator(
@@ -111,7 +112,7 @@ class FacilityBuilder:
 
         waste_types_enum = [WasteType(wtype) if not isinstance(wtype, WasteType) else wtype for wtype in col_data.waste_types]
 
-        facilities['CollectorCompany'] += 1
+        self.facility_counts['CollectorCompany'] += 1
         [child_seed] = self.seed_sequence.spawn(1)
 
         return CollectorCompany(
@@ -161,7 +162,7 @@ class FacilityBuilder:
         if inventory_policy is None:
             raise SystemExit(f"Error: No inventory policy specified for processor {proc_data.id}")
         
-        facilities['TreatmentOperator'] += 1
+        self.facility_counts['TreatmentOperator'] += 1
         [child_seed] = self.seed_sequence.spawn(1)
 
         return TreatmentOperator(
@@ -361,17 +362,17 @@ class FacilityBuilder:
                 )
                 
         return transformations
-    
-def print_failure_analysis():
-    stats = OperationalEntity.get_failure_stats()
-    print("\n=== FAILURE ANALYSIS ===")
-    for entity_type, total_failures in stats.items():
-        count = facilities.get(entity_type, 0)
-        if count > 0:
-            rate = total_failures / count
-            print(f"{entity_type}:")
-            print(f"  Total entities: {count}")
-            print(f"  Total failures: {total_failures}")
-            print(f"  Failures per entity: {rate:.3f}")
-        else:
-            print(f"{entity_type}: No entities found")
+
+    def print_failure_analysis(self):
+        stats = OperationalEntity.get_failure_stats()
+        print("\n=== FAILURE ANALYSIS ===")
+        for entity_type, total_failures in stats.items():
+            count = self.facility_counts.get(entity_type, 0)
+            if count > 0:
+                rate = total_failures / count
+                print(f"{entity_type}:")
+                print(f"  Total entities: {count}")
+                print(f"  Total failures: {total_failures}")
+                print(f"  Failures per entity: {rate:.3f}")
+            else:
+                print(f"{entity_type}: No entities found")

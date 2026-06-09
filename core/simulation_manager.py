@@ -20,7 +20,6 @@ from models.state import SimulationState
 from instrumentation.waste_monitor import WasteMonitor
 from instrumentation.mass_balance import EntityRegistry, MassBalanceMonitor
 from models.facility_data import FacilityDataManager
-from core import facility_builder as facility_builder_module
 from core.facility_builder import FacilityBuilder
 from core.kanban_manager import KanbanManager
 from core.generator import WasteGenerator
@@ -31,14 +30,9 @@ class SimulationManager:
     """Manages complete simulation lifecycle - setup, execution, and monitoring"""
     
     def __init__(self, seed=None):
-        # Reset cross-run state: the OperationalEntity failure counts and
-        # facility counters are process-global, so they must be cleared per run.
+        # Reset cross-run state: the OperationalEntity failure counts are
+        # process-global, so they must be cleared per run.
         OperationalEntity._failure_counts.clear()
-        facility_builder_module.facilities = {
-            'WasteGenerator': 0,
-            'CollectorCompany': 0,
-            'TreatmentOperator': 0
-        }
 
         self.seed = seed
 

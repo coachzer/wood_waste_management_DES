@@ -1,6 +1,5 @@
 from config.base_config import get_scenario_with_strategies, list_available_scenarios
 from config.constants import BASELINE_OUTPUT_ROOT, SCENARIO_COMPARISON_PLOTS_DIR
-from core.facility_builder import print_failure_analysis
 from core.simulation_manager import SimulationManager
 from models.enums import InventoryPolicy, StockStrategy
 from visualization.mfa_visualization import create_material_flow_analysis
@@ -66,7 +65,7 @@ def run_single_simulation(
                 stock_strategy=stock_strategy.value,
             )
 
-        print_failure_analysis()
+        manager.facility_builder.print_failure_analysis()
 
         return {
             "base_scenario": scenario_name,
