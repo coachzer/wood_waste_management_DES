@@ -42,7 +42,7 @@ class OperationalEntity:
     def get_failure_stats(cls):
         """Get failure statistics"""
         return cls._failure_counts.copy()
-    
+
     def check_failure(self, current_time, failure_probability):
         """Enhanced failure checking with recovery state management"""
 
@@ -52,7 +52,7 @@ class OperationalEntity:
                 if entity_type not in self._failure_counts:
                     self._failure_counts[entity_type] = 0
                 self._failure_counts[entity_type] += 1
-                
+
                 self.status = EntityStatus.FAILED
                 self.failure_start_time = current_time
 
@@ -61,7 +61,7 @@ class OperationalEntity:
 
                 print(f"FAILURE: {entity_type} {getattr(self, 'name', 'unknown')} failed at time {current_time}")
                 return True
-                
+
         elif self.status == EntityStatus.FAILED:
             if current_time - self.failure_start_time >= self.downtime_duration:
                 self.status = EntityStatus.RECOVERING
@@ -71,11 +71,11 @@ class OperationalEntity:
 
                 if hasattr(self, 'waste_monitor') and self.waste_monitor:
                     self.waste_monitor.record_entity_status(self, current_time)
-                
+
         elif self.status == EntityStatus.RECOVERING:
             elapsed = current_time - self.recovery_start_time
             self.recovery_progress = min(1.0, elapsed / self.recovery_duration)
-            
+
             if self.recovery_progress >= 1.0:
                 self.status = EntityStatus.OPERATIONAL
                 if hasattr(self, 'waste_monitor') and self.waste_monitor:
@@ -83,9 +83,9 @@ class OperationalEntity:
                 self.recovery_start_time = None
                 self.recovery_duration = None
                 self.recovery_progress = 0.0
-                
+
         return self.status == EntityStatus.FAILED
-    
+
     def get_operational_efficiency(self) -> float:
         """Get current operational efficiency based on status"""
         if self.status == EntityStatus.OPERATIONAL:
@@ -95,7 +95,7 @@ class OperationalEntity:
             # bootstrap cycle. See tests/test_import_isolation.py.
             from config.constants import RECOVERING_BASE_EFFICIENCY
             return RECOVERING_BASE_EFFICIENCY + ((1.0 - RECOVERING_BASE_EFFICIENCY) * self.recovery_progress)
-        else: 
+        else:
             return 0.0
 
     def _get_recovery_duration(self):
@@ -106,7 +106,7 @@ class OperationalEntity:
                 self.failure_config.max_duration
             )
         return 1.0
-    
+
 @dataclass
 class WasteStream:
     """Data class to represent a waste stream"""
@@ -145,7 +145,7 @@ class CollectionCenter(OperationalEntity):
     current_storage: Dict[WasteType, float] # Current storage in m³ per waste type
     coordinates: Tuple[float, float]
 
-    def __init__(self, region: RegionType, waste_storage_capacity: float, 
+    def __init__(self, region: RegionType, waste_storage_capacity: float,
                  current_storage: Dict[WasteType, float], coordinates: Tuple[float, float]):
         """Initialize collection center with custom downtime duration"""
         super().__init__()

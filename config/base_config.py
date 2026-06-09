@@ -113,31 +113,7 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
         treatment_failure=HIGH_FAILURE,
         inventory_policy=InventoryPolicy.PUSH,
         stock_strategy=StockStrategy.REORDER_90
-    )# ,
-    # "Disrupted": ScenarioConfig(
-    #     name="Disrupted",
-    #     waste_gen=(0.7, 0.5),    # Much lower, highly variable generation
-    #     coll_eff=(0.5, 0.3),     # Poor, highly variable collection
-    #     treat_conv=(0.6, 0.2),   # Poor, highly variable conversion
-    #     trans_time=(5.0, 2.0),   # Slow, unpredictable transport
-    #     generator_failure=LOW_FAILURE,
-    #     collector_failure=HIGH_FAILURE,
-    #     treatment_failure=HIGH_FAILURE,
-    #     inventory_policy=InventoryPolicy.PUSH,
-    #     stock_strategy=StockStrategy.ON_DEMAND
-    # ),
-    # "Boom": ScenarioConfig(
-    #     name="Boom",
-    #     waste_gen=(2.0, 0.2),    # Double generation, moderate variability
-    #     coll_eff=(0.98, 0.02),   # Excellent, stable collection
-    #     treat_conv=(0.98, 0.01), # Excellent, stable conversion
-    #     trans_time=(1.0, 0.1),   # Very fast, predictable transport
-    #     generator_failure=LOW_FAILURE,
-    #     collector_failure=MEDIUM_FAILURE,
-    #     treatment_failure=MEDIUM_FAILURE,
-    #     inventory_policy=InventoryPolicy.PULL,
-    #     stock_strategy=StockStrategy.REORDER_90
-    # )
+    )
 }
 
 # Finished-goods buffer sensitivity sweep (bucket-C C1): each scenario is Baseline

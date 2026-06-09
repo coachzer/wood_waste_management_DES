@@ -39,7 +39,7 @@ class CollectorCompany(OperationalEntity):
         """Map status to availability for backward compatibility"""
         return self.status == EntityStatus.OPERATIONAL
 
-    @availability.setter  
+    @availability.setter
     def availability(self, value):
         """Allow setting availability for backward compatibility"""
         self.status = EntityStatus.OPERATIONAL if value else EntityStatus.FAILED
@@ -78,7 +78,7 @@ class CollectorCompany(OperationalEntity):
         self.env = env
         self.name = name
         self.facility_type = "collector"
-        self.expansion_count = 0    
+        self.expansion_count = 0
         self.waste_types = set(waste_types) if waste_types else set()
         self.kanban_manager = kanban_manager or KanbanManager()
         self.state = state
@@ -100,7 +100,7 @@ class CollectorCompany(OperationalEntity):
         self.region_type = RegionType[region.upper().replace('-', '_')] if region else None
 
         self.collection_center = CollectionCenter(
-            region=self.region_type, 
+            region=self.region_type,
             waste_storage_capacity=collection_capacity * 2,  # Double the collection capacity
             current_storage=dict.fromkeys(WasteType, 0.0),
             coordinates=(
@@ -146,7 +146,7 @@ class CollectorCompany(OperationalEntity):
             distance = get_distance(self.region_type, generator.region_type)
 
         travel_time_hours = distance / TRAVEL_SPEED_KMH
-        travel_time_days = travel_time_hours / 24.0 
+        travel_time_days = travel_time_hours / 24.0
         return travel_time_days, distance
 
     def _dispatch_vehicle_for_collection(self, vehicle, generator, target_volume):
@@ -201,7 +201,7 @@ class CollectorCompany(OperationalEntity):
                 )
         else:
             yield self.env.timeout(travel_time)
-            collection_cost = self.transport_cost  
+            collection_cost = self.transport_cost
 
         # Vehicle is now available again
         vehicle.in_transit = False
@@ -211,7 +211,7 @@ class CollectorCompany(OperationalEntity):
 
         return collection_cost
 
-    def _perform_collection_at_site(self, generator, target_volume):# -> tuple[Literal[0], dict] | tuple[float | Literal[0], dict]:
+    def _perform_collection_at_site(self, generator, target_volume):
         """Perform actual waste collection at generator site with proper constraint checking"""
         active_streams = self._filter_active_waste_streams(generator)
 
@@ -226,9 +226,9 @@ class CollectorCompany(OperationalEntity):
                 break
 
             collectible_amount = min(
-                stream.volume,                     
-                self.collection_capacity * self.efficiency,  
-                remaining_capacity                   
+                stream.volume,
+                self.collection_capacity * self.efficiency,
+                remaining_capacity
             )
 
             if collectible_amount > 0:
@@ -280,7 +280,7 @@ class CollectorCompany(OperationalEntity):
             self.state.track_transport_flow(
                 source_type="generator",
                 source_name=generator.name,
-                target_type="collector", 
+                target_type="collector",
                 target_name=self.name,
                 waste_type=waste_type,
                 volume=amount,
@@ -338,7 +338,7 @@ class CollectorCompany(OperationalEntity):
 
             try:
                 # Process new transport requests
-                new_transports = self.transport_manager.process_requests(current_time) 
+                new_transports = self.transport_manager.process_requests(current_time)
                 self.active_transports.extend(new_transports)
 
                 # Check completed transports
@@ -383,7 +383,7 @@ class CollectorCompany(OperationalEntity):
             elif self.status == EntityStatus.RECOVERING:
                 self.efficiency = self.get_operational_efficiency()
             if self.status == EntityStatus.FAILED:
-                yield self.env.timeout(self.collection_frequency)  
+                yield self.env.timeout(self.collection_frequency)
                 continue
 
             self.collection_capacity = max(10, self.initial_collection_capacity * self.efficiency)
@@ -425,8 +425,8 @@ class CollectorCompany(OperationalEntity):
 
             waste_type_enum = signal['waste_type']
 
-            source_type = signal.get('source_type', 'generator')  
-            source_id = signal.get('source_id', signal.get('generator_id')) 
+            source_type = signal.get('source_type', 'generator')
+            source_id = signal.get('source_id', signal.get('generator_id'))
             current_time = self.env.now
 
             matching_generators = []
@@ -469,7 +469,7 @@ class CollectorCompany(OperationalEntity):
                         self.kanban_manager.acknowledge_signal(signal['id'])
                         break
                     else:
-                        break  
+                        break
             else:
                 if source_type == "treatment":
                     self._propagate_signal_to_generators(signal, current_time)
@@ -485,9 +485,9 @@ class CollectorCompany(OperationalEntity):
 
         local_generators = [
             g for g in state.generators
-            if (g.region_type == self.region_type and 
+            if (g.region_type == self.region_type and
                 waste_type_enum in g.waste_streams and
-                g.inventory_policy == InventoryPolicy.PULL)  
+                g.inventory_policy == InventoryPolicy.PULL)
         ]
 
         for generator in local_generators:
