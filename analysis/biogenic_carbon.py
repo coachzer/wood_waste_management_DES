@@ -41,6 +41,11 @@ def _biogenic_stock_by_product() -> Dict[str, float]:
     return stock
 
 
+# Snapshot once at import: the specifications are hardcoded in
+# ``ProductDataManager``, so rebuilding the manager per call buys nothing.
+_BIOGENIC_STOCK_BY_PRODUCT = _biogenic_stock_by_product()
+
+
 def biogenic_carbon_metrics(monitor_data: Dict[str, Any]) -> Dict[str, float]:
     """Biogenic carbon stored (kg CO2e) per output type and total, negative-signed.
 
@@ -50,7 +55,7 @@ def biogenic_carbon_metrics(monitor_data: Dict[str, Any]) -> Dict[str, float]:
     order, then ``biogenic_carbon_stored_total_kgco2e``.
     """
     produced = total_produced_by_product(monitor_data, _PRODUCTS)
-    stock = _biogenic_stock_by_product()
+    stock = _BIOGENIC_STOCK_BY_PRODUCT
     metrics: Dict[str, float] = {}
     total = 0.0
     for product in _PRODUCTS:

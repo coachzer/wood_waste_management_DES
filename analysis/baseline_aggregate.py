@@ -2,8 +2,6 @@ from __future__ import annotations
 import math
 from typing import Dict, Any, List
 
-from scipy import stats
-
 from .bullwhip import (
     collector_anchored_bullwhip,
     collector_anchored_pooled_bullwhip,
@@ -15,7 +13,7 @@ from .bullwhip import (
 from .flow_times import flow_time_metrics
 from .avoided_emissions import avoided_emissions_metrics
 from .biogenic_carbon import biogenic_carbon_metrics
-from ._kpi_shared import _GENERIC_NAMESPACES
+from ._kpi_shared import _GENERIC_NAMESPACES, t_ci_margin
 
 
 # Marginal KPIs aggregated into summary.csv, in display order. The nested
@@ -60,7 +58,7 @@ def _mean_ci(vals: List[float], alpha: float):
     if n > 1:
         var = sum((x - mean) ** 2 for x in vals) / (n - 1)
         stdev = math.sqrt(var)
-        margin = float(stats.t.ppf(1 - alpha / 2, n - 1)) * stdev / math.sqrt(n)
+        margin = t_ci_margin(n, stdev, alpha)
         return mean, stdev, mean - margin, mean + margin
     return mean, 0.0, mean, mean
 

@@ -11,7 +11,6 @@ It consumes the persisted ``run_*.json`` files, so it runs post-hoc without
 re-simulating.
 """
 
-import math
 from itertools import combinations
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -23,6 +22,7 @@ from ._kpi_shared import (
     DEFAULT_METRICS,
     _discovered_namespace_metrics,
     load_combo_kpis,
+    t_ci_margin,
 )
 
 
@@ -61,7 +61,7 @@ def paired_t_comparison(diffs: List[float], alpha: float = 0.05) -> Optional[dic
     diffs_array = np.asarray(diffs, dtype=float)
     mean_diff = float(diffs_array.mean())
     sd_diff = float(diffs_array.std(ddof=1))
-    standard_error = sd_diff / math.sqrt(n)
+    standard_error = sd_diff / n ** 0.5
 
     if standard_error == 0.0:
         return {
@@ -74,8 +74,7 @@ def paired_t_comparison(diffs: List[float], alpha: float = 0.05) -> Optional[dic
             "p_value": 0.0 if mean_diff != 0.0 else 1.0,
         }
 
-    t_critical = float(stats.t.ppf(1 - alpha / 2, n - 1))
-    margin = t_critical * standard_error
+    margin = t_ci_margin(n, sd_diff, alpha)
     t_stat = mean_diff / standard_error
     p_value = float(2 * stats.t.sf(abs(t_stat), n - 1))
     return {

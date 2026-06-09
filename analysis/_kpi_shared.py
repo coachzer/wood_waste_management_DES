@@ -7,13 +7,26 @@ import-free to run as a bare file (the old ``monitoring/__init__`` import cycle)
 The clean-monitoring refactor killed that cycle, so the modules now run via
 ``python -m analysis.<module>`` and import this leaf instead of copying it.
 
-This module is a leaf: it imports only the standard library, so importing it can
-never reintroduce a cycle.
+This module is a leaf: it imports only the standard library and scipy, so
+importing it can never reintroduce a project-internal cycle.
 """
 
 import json
+import math
 from pathlib import Path
 from typing import Dict, List
+
+from scipy import stats
+
+
+def t_ci_margin(n: int, stdev: float, alpha: float) -> float:
+    """Two-sided Student-t CI half-width for a mean of ``n`` samples (ADR 0008).
+
+    ``t.ppf(1 - alpha/2, n-1) * stdev / sqrt(n)`` -- the one formula behind both
+    the marginal ``summary.csv`` CIs and the paired-difference CIs. Requires
+    ``n > 1`` (zero degrees of freedom has no t quantile).
+    """
+    return float(stats.t.ppf(1 - alpha / 2, n - 1)) * stdev / math.sqrt(n)
 
 # Curated headline KPIs compared by default in the paired and stochastic-dominance
 # reports. Restricting the set keeps each metric's comparison family small (so the
