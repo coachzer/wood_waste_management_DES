@@ -20,6 +20,8 @@ from config.constants import (
     INITIAL_INVENTORY_FRACTION,
     PROCESSING_CAPACITY_FRACTION,
     CARBON_PRICE_EUR_PER_KG_CO2E,
+    ABC_PRIORITY_SCORE_MULTIPLIER,
+    INPUT_AVAILABILITY_SATURATION_M3,
 )
 
 class TreatmentOperator(OperationalEntity):
@@ -302,9 +304,14 @@ class TreatmentOperator(OperationalEntity):
                 demand_score = 0.0
 
             efficiency_score = self._get_transformation_efficiency(transformation)
-            input_availability = min(self.waste_storage.get(input_type, 0) / 100, 1.0)
+            input_availability = min(
+                self.waste_storage.get(input_type, 0) / INPUT_AVAILABILITY_SATURATION_M3, 1.0
+            )
 
-            total_score = (abc_priority * 2.0) + demand_score + efficiency_score + input_availability
+            total_score = (
+                (abc_priority * ABC_PRIORITY_SCORE_MULTIPLIER)
+                + demand_score + efficiency_score + input_availability
+            )
 
             transformation_scores.append(((input_type, output_type), transformation, total_score))
 

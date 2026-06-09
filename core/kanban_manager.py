@@ -1,9 +1,11 @@
 from typing import List, Dict, Any
 
+from config.constants import KANBAN_SIGNAL_MAX_AGE_DAYS
+
 class KanbanManager:
     def __init__(self):
         self.signals: List[Dict[str, Any]] = []
-        self.max_signal_age = 24.0
+        self.max_signal_age = KANBAN_SIGNAL_MAX_AGE_DAYS
         self.acknowledged_signals = set()  # Track processed signals
 
     def add_signal(self, waste_type, timestamp, volume=0, source_id=None, source_type=None):

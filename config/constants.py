@@ -61,6 +61,23 @@ RECOVERING_BASE_EFFICIENCY = 0.3
 PROCESSING_CAPACITY_FRACTION = 0.8
 # Collection centers take longer to repair than other entities (days of downtime).
 COLLECTION_CENTER_DOWNTIME_DAYS = 2.0
+
+# Kanban demand signals older than this many simulation days are pruned, so
+# stale demand cannot trigger collection long after it was raised.
+KANBAN_SIGNAL_MAX_AGE_DAYS = 24.0
+
+# Transformation-selection scoring (ADR 0002, Phase F). The ABC priority weight
+# enters the score at this multiplier, making it the dominant term (CONTEXT.md
+# "ABC Classification"); the input-availability term saturates at 1.0 once
+# on-hand input waste reaches this volume.
+ABC_PRIORITY_SCORE_MULTIPLIER = 2.0
+INPUT_AVAILABILITY_SATURATION_M3 = 100.0
+
+# Collector base efficiency wears down linearly with elapsed simulation time
+# (equipment aging): 1 - t * rate, floored. At this rate a 365-day run ends
+# around 0.82, so the floor only binds on longer horizons.
+COLLECTOR_TIME_DEGRADATION_RATE_PER_DAY = 0.0005
+COLLECTOR_DEGRADATION_FLOOR = 0.5
 HISTORY_BUFFER_SIZE = 1000
 SEASONAL_PERIODS = 4
 SEASONAL_AMPLITUDE = 0.2  # +/- fraction of the seasonal sinusoid about a unit mean

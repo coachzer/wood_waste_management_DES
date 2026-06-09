@@ -9,6 +9,8 @@ from config.constants import (
     LOCAL_COLLECTION_RATIO,
     COLLECTION_COST_PER_KM_PER_M3,
     ESTIMATED_COLLECTION_COST_PER_KM,
+    COLLECTOR_DEGRADATION_FLOOR,
+    COLLECTOR_TIME_DEGRADATION_RATE_PER_DAY,
 )
 from core.transport_manager import PointToPointTransport, TransportRequest
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
@@ -734,7 +736,10 @@ class CollectorCompany(OperationalEntity):
         self, utilization: float, kanban_signals: int, base_time: float
     ) -> float:
         """Calculate efficiency multiplier based on policy and strategy"""
-        base_degradation = max(0.5, 1.0 - (base_time * 0.0005))
+        base_degradation = max(
+            COLLECTOR_DEGRADATION_FLOOR,
+            1.0 - (base_time * COLLECTOR_TIME_DEGRADATION_RATE_PER_DAY),
+        )
         return self.inventory_policy_behavior.collector_efficiency(
             self.stock_strategy_behavior, utilization, kanban_signals, base_degradation
         )
