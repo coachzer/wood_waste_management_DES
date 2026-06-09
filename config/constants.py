@@ -1,11 +1,29 @@
+from models.enums import WasteType
+
 LANDFILL_EMISSIONS_PER_M3 = 0.24  # t CO2e per m³
 LANDFILL_EMISSIONS_PER_M3_KG = 0.24 * 1_000  # 240 kg CO2e / m³
 TRANSPORT_EMISSIONS_PER_TON_KM = 0.087  # kg eCO2 per ton-kilometer or 87 g CO2e/ton km
-DENSITY = 0.6
-TRANSPORT_EMISSIONS_PER_M3_KM = 0.087 * DENSITY
 
 KILOGRAMS_PER_TONNE = 1000.0  # unit conversion factor, kg per tonne
-LANDFILL_COST_PER_TONNE_USD = 46.0  # $/tonne deterrent gate cost, at par with EU-27 landfill range ~EUR 39-46/t (CEWEP 2021 / EEA 2023); x DENSITY -> $/m³
+LANDFILL_COST_PER_TONNE_USD = 46.0  # $/tonne deterrent gate cost, at par with EU-27 landfill range ~EUR 39-46/t (CEWEP 2021 / EEA 2023)
+
+# Standard waste densities in kg/m³ based on EWC codes and industry data
+WASTE_DENSITIES = {
+    WasteType.FORESTRY_WASTE_02_01_07: 350.0,
+    WasteType.BARK_CORK_WASTE_03_01_01: 400.0,
+    WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: 200.0,
+    WasteType.OTHER_WOOD_WASTE_03_01_99: 450.0,
+    WasteType.BARK_WOOD_WASTE_03_03_01: 450.0,
+    WasteType.PAPER_CARDBOARD_SORTING_WASTE_03_03_08: 600.0,
+    WasteType.PAPER_PACKAGING_15_01_01: 600.0,
+    WasteType.WOODEN_PACKAGING_15_01_03: 400.0,
+    WasteType.CONSTRUCTION_WOOD_17_02_01: 500.0,
+    WasteType.PAPER_CARDBOARD_19_12_01: 600.0,
+    WasteType.WOOD_19_12_07: 400.0,
+    WasteType.PAPER_CARDBOARD_20_01_01: 600.0,
+    WasteType.NON_HAZARDOUS_WOOD_20_01_38: 450.0,
+    WasteType.BULKY_WASTE_20_03_07: 300.0
+}
 
 # Avoided emissions (C11, ADR 0011): recycling avoided-burden, kg CO2eq / m3.
 # Per-product factors from Lao & Chang (2023), biogenic carbon EXCLUDED so the

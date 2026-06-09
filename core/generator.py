@@ -6,7 +6,7 @@ from models.data_classes import WasteStream, OperationalEntity
 from instrumentation.waste_monitor import WasteMonitor
 from core.kanban_manager import KanbanManager
 from core.strategies import build_stock_strategy, build_inventory_policy
-from utils.capacity_utils import handle_storage_event
+from utils.capacity_utils import handle_storage_event, split_overflow_by_type
 
 class WasteGenerator(OperationalEntity):
     def __init__(
@@ -240,7 +240,7 @@ class WasteGenerator(OperationalEntity):
 
             handle_storage_event(
                 self,
-                overflow_amount,
+                split_overflow_by_type(current_volumes, overflow_amount),
                 force_landfill=force_landfill
             )
 

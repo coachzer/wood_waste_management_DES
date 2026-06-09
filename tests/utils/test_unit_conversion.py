@@ -18,9 +18,9 @@ Each assertion is mutation-verified non-vacuous; see the commit / per-test notes
 
 import pytest
 
+from config.constants import WASTE_DENSITIES
 from models.enums import WasteType
 from utils.unit_conversion import (
-    WASTE_DENSITIES,
     _create_waste_type_mapping,
     convert_generation_rates_to_volume,
 )

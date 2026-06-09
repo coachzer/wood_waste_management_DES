@@ -2,6 +2,9 @@ from config.base_config import get_cost_params
 from typing import Dict, Tuple
 from config.constants import (
     LANDFILL_EMISSIONS_PER_M3_KG,
+    LANDFILL_COST_PER_TONNE_USD,
+    KILOGRAMS_PER_TONNE,
+    WASTE_DENSITIES,
     EXPANSION_SIZE_M3,
     OVERFLOW_VOLUME_TOLERANCE_M3,
 )
@@ -31,8 +34,44 @@ def check_storage_capacity(
     overflow = addition_total - available_capacity
     return scaled_additions, overflow
     
-def handle_storage_event(entity, volume, force_landfill=False):
+def split_overflow_by_type(
+    composition: Dict[WasteType, float],
+    overflow_total: float,
+) -> Dict[WasteType, float]:
+    """Apportion a scalar overflow volume across waste types proportionally.
+
+    Used by callers that know the composition of the storage being truncated but
+    only have a scalar overflow total. The split preserves the same type-ratio
+    check_storage_capacity scales additions by, so each type contributes
+    overflow_total * (vol_m3 / total_composition); the per-type landfill-cost
+    path can then weight each type by its own density (ADR 0013).
+
+    The composition is consumed in sorted(key=WasteType.value) order to keep
+    arithmetic deterministic across processes (the CRN guard -- enum members hash
+    by id(), so unsorted set/dict-of-enum iteration silently breaks reproducibility).
+    """
+    total_composition = sum(composition.values())
+    if total_composition <= 0.0:
+        return {
+            waste_type: 0.0
+            for waste_type in sorted(composition, key=lambda item: item.value)
+        }
+    return {
+        waste_type: overflow_total * (volume_m3 / total_composition)
+        for waste_type, volume_m3 in sorted(
+            composition.items(), key=lambda item: item[0].value
+        )
+    }
+
+
+def handle_storage_event(entity, composition: Dict[WasteType, float], force_landfill=False):
     """Resolve a storage overflow by either expanding capacity or landfilling.
+
+    ``composition`` is the per-WasteType breakdown of the overflowing volume (m³).
+    The expand-vs-landfill decision and the landfilled-mass attribution use the
+    total over all types, while the landfill cost weights each type by its own
+    bulk density (ADR 0013) -- low-density streams (e.g. sawdust at 200 kg/m³)
+    cost proportionally less to landfill than dense ones at the flat-rate ceiling.
 
     Called when an entity's storage would exceed waste_storage_capacity. Compares
     the cost of one fixed expansion (EXPANSION_SIZE_M3 of new capacity) against the
@@ -61,9 +100,12 @@ def handle_storage_event(entity, volume, force_landfill=False):
     """
     if entity is None:
         raise ValueError("Entity cannot be None for overflow handling")
-    if volume is None or volume < 0:
-        raise ValueError("Volume must be a non-negative number")
-    if volume < OVERFLOW_VOLUME_TOLERANCE_M3:
+    if composition is None:
+        raise ValueError("Composition cannot be None for overflow handling")
+    total_volume = sum(composition.values())
+    if total_volume < 0:
+        raise ValueError("Overflow volume must be non-negative")
+    if total_volume < OVERFLOW_VOLUME_TOLERANCE_M3:
         return 0.0, "no_action"
 
     config = get_cost_params()
@@ -75,13 +117,23 @@ def handle_storage_event(entity, volume, force_landfill=False):
         1 + expansion_count * config.expansion_cost_escalation_per_prior
     )
 
-    base_landfill_cost_per_m3 = config.landfill_per_m3
-    landfill_cost_per_m3 = base_landfill_cost_per_m3 * (
+    # Per-type landfill cost: each stream's volume is converted to mass at its own
+    # bulk density (WASTE_DENSITIES, kg/m³) before the per-tonne gate cost applies,
+    # then escalated by prior landfills on this entity. Sorted by WasteType.value
+    # so the summation order is deterministic across processes (CRN guard).
+    landfill_cost_escalation = (
         1 + landfill_count * config.landfill_cost_escalation_per_prior
     )
+    base_landfill_cost = sum(
+        volume_m3 * (WASTE_DENSITIES[waste_type] / KILOGRAMS_PER_TONNE)
+        * LANDFILL_COST_PER_TONNE_USD
+        for waste_type, volume_m3 in sorted(
+            composition.items(), key=lambda item: item[0].value
+        )
+    )
+    landfill_cost = base_landfill_cost * landfill_cost_escalation
 
     expansion_cost = EXPANSION_SIZE_M3 * expansion_cost_per_m3
-    landfill_cost = volume * landfill_cost_per_m3
 
     if force_landfill or expansion_cost >= landfill_cost:
         entity.landfill_count = landfill_count + 1
@@ -91,14 +143,14 @@ def handle_storage_event(entity, volume, force_landfill=False):
         # collection-center mass-balance invariant can account for it (ADR 0009).
         state = getattr(entity, 'state', None)
         if state is not None:
-            state.track_waste_landfilled(entity.name, volume)
+            state.track_waste_landfilled(entity.name, total_volume)
 
-        emissions = volume * LANDFILL_EMISSIONS_PER_M3_KG
-        
+        emissions = total_volume * LANDFILL_EMISSIONS_PER_M3_KG
+
         if hasattr(entity, 'waste_monitor') and entity.waste_monitor:
             entity.waste_monitor.track_event(
                 facility_type=entity.facility_type,
-                volume=volume,
+                volume=total_volume,
                 strategy="landfill",
                 cost_incurred=landfill_cost,
                 timestamp=entity.env.now,
@@ -121,7 +173,7 @@ def handle_storage_event(entity, volume, force_landfill=False):
         if hasattr(entity, 'waste_monitor') and entity.waste_monitor:
             entity.waste_monitor.track_event(
                 facility_type=entity.facility_type,
-                volume=volume,
+                volume=total_volume,
                 strategy="expand_storage",
                 cost_incurred=expansion_cost,
                 timestamp=entity.env.now,

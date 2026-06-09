@@ -10,7 +10,11 @@ from core.kanban_manager import KanbanManager
 from core.strategies import build_stock_strategy, build_inventory_policy
 from models.enums import InventoryPolicy
 from models.products import ProductDataManager
-from utils.capacity_utils import handle_storage_event, check_storage_capacity
+from utils.capacity_utils import (
+    handle_storage_event,
+    check_storage_capacity,
+    split_overflow_by_type,
+)
 from config.constants import INITIAL_INVENTORY_FRACTION
 
 class TreatmentOperator(OperationalEntity):
@@ -166,7 +170,7 @@ class TreatmentOperator(OperationalEntity):
             overflow_amount = total_new - self.waste_storage_capacity
             handle_storage_event(
                 self,
-                overflow_amount
+                split_overflow_by_type(new_storage, overflow_amount)
             )
 
             scaling_factor = self.waste_storage_capacity / total_new
@@ -762,10 +766,17 @@ class TreatmentOperator(OperationalEntity):
         )
 
         if overflow_amount > 0:
-            handle_storage_event(
-                self,
-                overflow_amount
-            )
+            # check_storage_capacity already scaled each type proportionally, so the
+            # per-type overflow is exactly what was skimmed off each addition. Sorted
+            # by WasteType.value for deterministic iteration (CRN guard).
+            per_type_overflow = {
+                waste_type: waste_amounts[waste_type]
+                - allowed_additions.get(waste_type, 0.0)
+                for waste_type in sorted(
+                    waste_amounts, key=lambda waste_type: waste_type.value
+                )
+            }
+            handle_storage_event(self, per_type_overflow)
 
         total_added = 0.0
         for waste_type, amount in allowed_additions.items():

@@ -1,24 +1,6 @@
 from typing import Dict, Optional
-from config.constants import KILOGRAMS_PER_TONNE
+from config.constants import KILOGRAMS_PER_TONNE, WASTE_DENSITIES
 from models.enums import WasteType
-
-# Standard waste densities in kg/m³ based on EWC codes and industry data
-WASTE_DENSITIES = {
-    WasteType.FORESTRY_WASTE_02_01_07: 350.0,
-    WasteType.BARK_CORK_WASTE_03_01_01: 400.0,
-    WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: 200.0,
-    WasteType.OTHER_WOOD_WASTE_03_01_99: 450.0,
-    WasteType.BARK_WOOD_WASTE_03_03_01: 450.0,
-    WasteType.PAPER_CARDBOARD_SORTING_WASTE_03_03_08: 600.0,
-    WasteType.PAPER_PACKAGING_15_01_01: 600.0,
-    WasteType.WOODEN_PACKAGING_15_01_03: 400.0,
-    WasteType.CONSTRUCTION_WOOD_17_02_01: 500.0,
-    WasteType.PAPER_CARDBOARD_19_12_01: 600.0,
-    WasteType.WOOD_19_12_07: 400.0,
-    WasteType.PAPER_CARDBOARD_20_01_01: 600.0,
-    WasteType.NON_HAZARDOUS_WOOD_20_01_38: 450.0,
-    WasteType.BULKY_WASTE_20_03_07: 300.0
-}
 
 def _tonnes_to_cubic_meters(tonnes: float, waste_type: WasteType) -> float:
     """

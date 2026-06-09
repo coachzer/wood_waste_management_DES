@@ -17,6 +17,7 @@ from models.state import SimulationState
 
 CONSTRUCTION = WasteType.CONSTRUCTION_WOOD_17_02_01
 PACKAGING = WasteType.WOODEN_PACKAGING_15_01_03
+PAPER = WasteType.PAPER_PACKAGING_15_01_01  # 600 kg/m³ = the retired flat density
 
 
 class FakeCenter:
@@ -70,11 +71,16 @@ def test_expand_branch_stores_overflow_and_landfills_remainder():
     """A large overflow takes the expand branch (capacity +500). The collected
     mass must end up stored (up to the new capacity) plus landfilled -- not
     dropped. Empty center, capacity 2000, 4000 handed in -> overflow 2000
-    (> ~1812, so expand): 2500 stored (full new capacity), 1500 landfilled."""
-    state = SimulationState()
-    collector = FakeCollector(FakeCenter(2000.0, {CONSTRUCTION: 0.0}), state)
+    (> ~1812, so expand): 2500 stored (full new capacity), 1500 landfilled.
 
-    CollectorCompany._add_to_collection_center(collector, {CONSTRUCTION: 4000.0})
+    Uses PAPER (600 kg/m³): per-type landfill cost (ADR 0013) only exceeds the
+    expansion cost at this overflow for streams at/above the retired flat 0.6
+    density, so a denser stream is needed to still reach the expand branch under
+    test. The mass figures below are volume-based and density-independent."""
+    state = SimulationState()
+    collector = FakeCollector(FakeCenter(2000.0, {PAPER: 0.0}), state)
+
+    CollectorCompany._add_to_collection_center(collector, {PAPER: 4000.0})
 
     assert collector.collection_center.waste_storage_capacity == 2500.0
     assert stored_total(collector) == 2500.0

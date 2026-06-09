@@ -1,7 +1,9 @@
 import numpy as np
 from typing import Dict, List, Optional
 from config.constants import (
-    TRANSPORT_EMISSIONS_PER_M3_KM,
+    TRANSPORT_EMISSIONS_PER_TON_KM,
+    KILOGRAMS_PER_TONNE,
+    WASTE_DENSITIES,
     FAILED_ENTITY_EFFICIENCY,
     TRAVEL_SPEED_KMH,
     LOCAL_COLLECTION_RATIO,
@@ -11,7 +13,11 @@ from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, S
 from instrumentation.waste_monitor import WasteMonitor
 from models.data_classes import Vehicle, CollectionCenter, OperationalEntity
 from models.distances import REGION_COORDINATES, get_distance, get_closest_regions
-from utils.capacity_utils import handle_storage_event, check_storage_capacity
+from utils.capacity_utils import (
+    handle_storage_event,
+    check_storage_capacity,
+    split_overflow_by_type,
+)
 from core.kanban_manager import KanbanManager
 from core.strategies import build_stock_strategy, build_inventory_policy
 
@@ -166,8 +172,17 @@ class CollectorCompany(OperationalEntity):
             collection_cost = self.transport_cost + (distance * volume_cost_factor * collected_amount)
             self.last_collection_cost = collection_cost
 
-            # Transport emissions: volume x distance x per-m3-km factor.
-            emissions = collected_amount * distance * TRANSPORT_EMISSIONS_PER_M3_KM
+            # Transport emissions: each stream's volume is converted to mass at its
+            # own bulk density (WASTE_DENSITIES, kg/m³) before the per-ton-km factor
+            # applies (ADR 0013). Sorted by WasteType.value so the summation order is
+            # deterministic across processes (CRN guard).
+            emissions = sum(
+                volume_m3 * (WASTE_DENSITIES[waste_type] / KILOGRAMS_PER_TONNE)
+                * distance * TRANSPORT_EMISSIONS_PER_TON_KM
+                for waste_type, volume_m3 in sorted(
+                    collected_waste.items(), key=lambda item: item[0].value
+                )
+            )
 
             if hasattr(self, 'waste_monitor') and self.waste_monitor:
                 self.waste_monitor.update_entity_costs(
@@ -230,10 +245,17 @@ class CollectorCompany(OperationalEntity):
         )
 
         if overflow > 0:
-            handle_storage_event(
-                generator,
-                overflow
-            )
+            # check_storage_capacity already scaled each type proportionally, so the
+            # per-type overflow is exactly what was skimmed off each stream. Sorted by
+            # WasteType.value for deterministic iteration (CRN guard).
+            per_type_overflow = {
+                waste_type: potential_collections[waste_type]
+                - allowed_collections.get(waste_type, 0.0)
+                for waste_type in sorted(
+                    potential_collections, key=lambda waste_type: waste_type.value
+                )
+            }
+            handle_storage_event(generator, per_type_overflow)
 
         # Process the actual collections
         collected_waste = {}
@@ -288,7 +310,9 @@ class CollectorCompany(OperationalEntity):
             # handle_storage_event decides expand vs landfill; on the expand branch
             # store what now fits and landfill the remainder, so every collected m3
             # is stored or landfilled, none silently dropped (ADR 0009).
-            _cost, action = handle_storage_event(self, overflow_amount)
+            _cost, action = handle_storage_event(
+                self, split_overflow_by_type(collected_waste, overflow_amount)
+            )
 
             if action == "expand_storage":
                 storable = min(
@@ -296,7 +320,9 @@ class CollectorCompany(OperationalEntity):
                     self.collection_center.waste_storage_capacity - current_total,
                 )
                 handle_storage_event(
-                    self, total_to_add - storable, force_landfill=True
+                    self,
+                    split_overflow_by_type(collected_waste, total_to_add - storable),
+                    force_landfill=True,
                 )
             else:
                 storable = available_space
