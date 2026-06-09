@@ -16,6 +16,7 @@ from .visualization_utils import (
     aggregate_generation_data,
     calculate_average_efficiency,
     calculate_storage_levels,
+    group_results_by_scenario_and_policy,
     safe_write_image,
 )
 
@@ -153,30 +154,6 @@ def get_scenario_colors_and_symbols():
 def create_scenario_label(result: Dict) -> str:
     """Create a standardized scenario label from result data"""
     return f"{result['inventory_policy']} | {result['stock_strategy']}"
-
-def group_results_by_scenario_and_policy(results: List[Dict]) -> Dict:
-    """Group results by base scenario name and inventory policy"""
-    grouped_results = {}
-    
-    for result in results:
-        scenario_name = result['scenario_name']
-        
-        if '_push_' in scenario_name:
-            base_scenario = scenario_name.split('_push_')[0]
-        elif '_pull_' in scenario_name:
-            base_scenario = scenario_name.split('_pull_')[0]
-        else:
-            base_scenario = scenario_name
-        
-        key = (base_scenario, result['inventory_policy'])
-        if key not in grouped_results:
-            grouped_results[key] = []
-        grouped_results[key].append(result)
-    
-    for key in grouped_results:
-        grouped_results[key].sort(key=lambda x: x['stock_strategy'])
-    
-    return grouped_results
 
 def _create_generation_comparison(results: List[Dict], output_dir: str):
     """Compare waste generation across scenarios over time"""
@@ -679,24 +656,7 @@ def _create_entity_status_view(results: List[Dict], output_dir: str):
             return status
         return f'UNKNOWN_{status}'
 
-    grouped_results = {}
-    for result in results:
-        scenario_name = result['scenario_name']
-
-        if '_push_' in scenario_name:
-            base_scenario = scenario_name.split('_push_')[0]
-        elif '_pull_' in scenario_name:
-            base_scenario = scenario_name.split('_pull_')[0]
-        else:
-            base_scenario = scenario_name
-
-        key = (base_scenario, result['inventory_policy'])
-        if key not in grouped_results:
-            grouped_results[key] = []
-        grouped_results[key].append(result)
-
-    for key in grouped_results:
-        grouped_results[key].sort(key=lambda x: x['stock_strategy'])
+    grouped_results = group_results_by_scenario_and_policy(results)
 
     entity_configs = [
         {

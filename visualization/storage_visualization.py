@@ -15,6 +15,7 @@ from .visualization_utils import (
     extract_collection_storage_data,
     extract_processor_waste_storage_data,
     extract_processor_finished_goods_storage_data,
+    group_results_by_scenario_and_policy,
     safe_write_image,
 )
 
@@ -29,25 +30,7 @@ def create_storage_heatmaps(results: List[Dict], output_dir: str):
     if not results:
         raise ValueError("No results provided to create_storage_heatmaps")
 
-    grouped_results = {}
-    for result in results:
-        scenario_name = result['scenario_name']
-
-        if '_push_' in scenario_name:
-            base_scenario = scenario_name.split('_push_')[0]
-        elif '_pull_' in scenario_name:
-            base_scenario = scenario_name.split('_pull_')[0]
-        else:
-            base_scenario = scenario_name
-
-        key = (base_scenario, result['inventory_policy'])
-        if key not in grouped_results:
-            grouped_results[key] = []
-        grouped_results[key].append(result)
-
-    # Sort each group by stock_strategy for consistent ordering
-    for key in grouped_results:
-        grouped_results[key].sort(key=lambda x: x['stock_strategy'])
+    grouped_results = group_results_by_scenario_and_policy(results)
 
     for entity_type in ['generation', 'collection']:
         entity_subdir = os.path.join(entity_dir, entity_type)
