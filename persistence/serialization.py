@@ -18,16 +18,23 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Dict
 
-# The six polled history dicts plus the two event logs that carry the full
-# raw run, in the order get_monitor_data assembles them. KPIs are derived from
-# exactly these; persisting them lets a new KPI be computed without a re-run.
-RAW_PAYLOAD_KEYS = (
+# The six polled history dicts, in the order get_monitor_data assembles them.
+# Each name doubles as the export key AND the suffix of the HistoryStore
+# property it is read from (get_{key}); get_monitor_data builds its export by
+# iterating this tuple, so the persisted and exported lists cannot drift.
+HISTORY_KEYS = (
     "generation_history",
     "collection_history",
     "processing_history",
     "environmental_history",
     "event_history",
     "entity_status_history",
+)
+
+# The histories plus the two event logs that carry the full raw run. KPIs are
+# derived from exactly these; persisting them lets a new KPI be computed
+# without a re-run.
+RAW_PAYLOAD_KEYS = HISTORY_KEYS + (
     "transport_flows",
     "consumption_events",
 )

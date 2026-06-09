@@ -15,6 +15,7 @@ from config.constants import (
 from core.transport_manager import PointToPointTransport
 from models.data_classes import OperationalEntity
 from models.enums import RegionType, OutputType
+from persistence.serialization import HISTORY_KEYS
 from models.state import SimulationState
 from instrumentation.waste_monitor import WasteMonitor
 from instrumentation.mass_balance import EntityRegistry, MassBalanceMonitor
@@ -221,13 +222,14 @@ class SimulationManager:
 
     def get_monitor_data(self) -> Dict[str, Any]:
         """Extract all relevant monitoring data"""
-        return {
-            'generation_history': self.waste_monitor.store.get_generation_history,
-            'collection_history': self.waste_monitor.store.get_collection_history,
-            'processing_history': self.waste_monitor.store.get_processing_history,
-            'environmental_history': self.waste_monitor.store.get_environmental_history,
-            'event_history': self.waste_monitor.store.get_event_history,
-            'entity_status_history': self.waste_monitor.store.get_entity_status_history,
+        # Each history key names both the export entry and the HistoryStore
+        # property it is read from, so the persisted raw-payload list and this
+        # export are driven by the same tuple.
+        monitor_data: Dict[str, Any] = {
+            key: getattr(self.waste_monitor.store, f"get_{key}")
+            for key in HISTORY_KEYS
+        }
+        monitor_data.update({
             # Raw run logs for post-hoc analysis (e.g. bullwhip, ADR 0004),
             # consumed in process by extract_kpis.
             'transport_flows': self.state.transport_flows,
@@ -259,7 +261,8 @@ class SimulationManager:
                     for product in self.facility_manager.demand
                 },
             }
-        }
+        })
+        return monitor_data
 
     def _seasonal_factor(self, current_time: float) -> float:
         """Seasonal demand multiplier, aligned with waste-generation seasonality.
