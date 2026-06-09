@@ -1,6 +1,6 @@
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Tuple, List
+from typing import Dict, Tuple, List
 from config.constants import (
     SIMULATION_DURATION,
     FINISHED_GOODS_BUFFER_WEEKS,
@@ -70,13 +70,6 @@ class ScenarioConfig:
             finished_goods_buffer_weeks=self.finished_goods_buffer_weeks
         )
 
-TIME_PERIODS = {
-    "quarter_1": (0, 90),     # Q1: Jan-Mar (91 days)
-    "quarter_2": (91, 181),   # Q2: Apr-Jun (91 days) 
-    "quarter_3": (182, 272),  # Q3: Jul-Sep (91 days)
-    "quarter_4": (273, 364),  # Q4: Oct-Dec (92 days)
-}
-
 LOW_FAILURE = FailureConfig(
     probability=0.0024,  # ~0.24% chance per day 
     min_duration=1.0,    # 1 day minimum
@@ -125,19 +118,6 @@ for _buffer_weeks in BUFFER_SWEEP_WEEKS:
     _scenario.name = f"Buffer{_buffer_weeks}"
     _scenario.finished_goods_buffer_weeks = _buffer_weeks
     SCENARIO_CONFIGS[_scenario.name] = _scenario
-
-def validate_config(config: Any, validator: Callable[[Any], None], name: str) -> None:
-    """Generic configuration validation helper
-
-    Args:
-        config: Configuration object to validate
-        validator: Validation function to apply
-        name: Name of the configuration (for error messages)
-    """
-    try:
-        validator(config)
-    except Exception as e:
-        raise ValueError(f"Invalid {name} configuration: {str(e)}")
 
 def validate_all_numeric_positive(
     config_dict: Dict[str, float],
@@ -200,22 +180,6 @@ def _create_uncertainty_set(config: ScenarioConfig) -> UncertaintySet:
         finished_goods_buffer_weeks=config.finished_goods_buffer_weeks
     )
 
-def validate_time_periods() -> None:
-    """Validate time period configuration"""
-    validate_config(TIME_PERIODS, lambda periods: _validate_time_periods_internal(periods), "time periods")
-
-def _validate_time_periods_internal(periods: Dict[str, Tuple[int, int]]) -> None:
-    """Internal validation function for time periods"""
-    total_units = sum(end - start + 1 for start, end in periods.values())
-    if total_units != SIMULATION_DURATION:
-        raise ValueError("Time periods don't match simulation duration")
-    
-    sorted_periods = sorted((start, end) for start, end in periods.values())
-    for i in range(len(sorted_periods) - 1):
-        if sorted_periods[i][1] + 1 != sorted_periods[i + 1][0]:
-            raise ValueError("Time periods must be consecutive without gaps or overlaps")
-
-validate_time_periods()
 for scenario_name, config in SCENARIO_CONFIGS.items():
     validate_scenario_config(config)
     uncertainty_sets[scenario_name] = _create_uncertainty_set(config)
