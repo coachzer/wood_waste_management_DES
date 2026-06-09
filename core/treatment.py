@@ -1,7 +1,6 @@
 import numpy as np
 from typing import Dict, List, Optional
 from core.abc_analysis import BiogenicCarbonABCAnalyzer
-from core.transport_manager import PointToPointTransport
 from models.data_classes import WasteTransformation, OperationalEntity, ProductStorage
 from models.distances import get_distance
 from models.enums import OutputType, RegionType, StockStrategy, WasteType, EntityStatus
@@ -28,7 +27,6 @@ class TreatmentOperator(OperationalEntity):
         waste_storage_capacity,
         energy_consumption,
         environmental_impact,
-        conversion_rate,
         operational_costs,
         region: str,
         uncertainty_set=None,
@@ -38,12 +36,10 @@ class TreatmentOperator(OperationalEntity):
         finished_goods_capacity: Optional[Dict[OutputType, float]] = None,
         initial_waste_storage: Optional[Dict[WasteType, float]] = None,
         market_share: float = 0.0,
-        scenario_config=None,
         stock_strategy: StockStrategy = None,
         inventory_policy: InventoryPolicy = None,
         stock_strategy_behavior = None,
         inventory_policy_behavior = None,
-        transport_manager: Optional[PointToPointTransport] = None,
         state = None,
         abc_demand_config_path: str = "data/demand.json",
         failure_config = None,
@@ -57,7 +53,6 @@ class TreatmentOperator(OperationalEntity):
         super().__init__(failure_config=failure_config, seed=seed)
 
         self.waste_monitor = waste_monitor
-        self.scenario_config = scenario_config
         self.stock_strategy = stock_strategy
         self.inventory_policy = inventory_policy
 
@@ -72,7 +67,6 @@ class TreatmentOperator(OperationalEntity):
         self.inventory_policy_behavior = inventory_policy_behavior or build_inventory_policy(inventory_policy)
 
         self.kanban_manager = kanban_manager or KanbanManager()
-        self.transport_manager = transport_manager or PointToPointTransport()
         self.state = state
         self.env = env
         self.name = name
@@ -82,7 +76,6 @@ class TreatmentOperator(OperationalEntity):
         self.processing_time = processing_time
         self.waste_storage_capacity = waste_storage_capacity
         self.energy_consumption = energy_consumption
-        self.conversion_rate = conversion_rate
         self.operational_costs = operational_costs
         self.environmental_impact = environmental_impact
         self.processing_capacity = self.waste_storage_capacity * 0.8
@@ -92,8 +85,6 @@ class TreatmentOperator(OperationalEntity):
         # Share of national market demand presented each consumption tick,
         # proportional to processing capacity; set by SimulationManager (ADR 0002).
         self.market_share = market_share
-        self.demand_history = []
-        self.minimum_required_waste = 0.1
         # Waste storage primed to ~2 weeks of producible throughput (ADR 0002,
         # Phase C); collection self-corrects the mix within ~2 weeks.
         self._waste_storage = dict.fromkeys(WasteType, 0.0)
@@ -125,9 +116,6 @@ class TreatmentOperator(OperationalEntity):
             }
         )
 
-        # Stochastic components
-        self.uncertainty_set = uncertainty_set
-        self.transformation_efficiency = 0.95
         # Transformations
         self.transformations = transformations or self._default_transformations()
 
@@ -457,9 +445,7 @@ class TreatmentOperator(OperationalEntity):
         if amount_to_process <= 0:
             return 0.0
 
-        amount_to_process, output_amount = self._calculate_output_amounts(
-            amount_to_process, efficiency
-        )
+        output_amount = amount_to_process * efficiency
 
         self._update_waste_storage(input_type, amount_to_process, output_amount)
 
@@ -496,12 +482,6 @@ class TreatmentOperator(OperationalEntity):
                 efficiency = np.clip(self.rng.normal(mean * efficiency, std), 0.6, 1.0)
         return efficiency
 
-    def _calculate_output_amounts(self, amount_to_process, efficiency):
-        """Calculate actual processing and output amounts considering capacity constraints"""
-        potential_output = amount_to_process * efficiency
-        output_amount = potential_output
-        return amount_to_process, output_amount
-
     def _update_waste_storage(self, input_type, amount_to_process, output_amount):
         """Update waste storage and track raw production"""
         self.waste_storage[input_type] -= amount_to_process
@@ -533,7 +513,6 @@ class TreatmentOperator(OperationalEntity):
 
         monitor.track_environmental_impact(
             entity_name=name,
-            entity_type="treatment",
             environmental_impact=environmental_impact_emissions,  # kg CO₂e
             timestamp=timestamp,
             impact_category="carbon_emissions",
@@ -684,7 +663,6 @@ class TreatmentOperator(OperationalEntity):
         if not collected_waste or sum(collected_waste.values()) == 0:
             return 0, 0
 
-        self.demand_history.append((self.env.now, required_waste))
         self.waste_monitor.track_processing(self, self.env.now)
 
         actually_stored = self._add_to_storage(collected_waste)

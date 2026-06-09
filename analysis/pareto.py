@@ -130,7 +130,7 @@ def read_objective_point(
     means: Dict[str, float] = {}
     with open(summary_csv_path, "r", encoding="utf-8", newline="") as handle:
         reader = csv.reader(handle)
-        header = next(reader, None)  # metric,mean,stdev,ci95_low,ci95_high,count
+        next(reader, None)  # skip header: metric,mean,stdev,ci95_low,ci95_high,count
         for row in reader:
             if len(row) < 2 or row[0] not in wanted:
                 continue

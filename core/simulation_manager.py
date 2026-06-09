@@ -30,9 +30,8 @@ class SimulationManager:
     """Manages complete simulation lifecycle - setup, execution, and monitoring"""
     
     def __init__(self, seed=None):
-        # Reset cross-run registries: the OperationalEntity registries and
+        # Reset cross-run state: the OperationalEntity failure counts and
         # facility counters are process-global, so they must be cleared per run.
-        OperationalEntity._entity_registry.clear()
         OperationalEntity._failure_counts.clear()
         facility_builder_module.facilities = {
             'WasteGenerator': 0,

@@ -1,11 +1,9 @@
-from collections import defaultdict
 from typing import List, Dict, Any
 
 class KanbanManager:
     def __init__(self):
         self.signals: List[Dict[str, Any]] = []
         self.max_signal_age = 24.0
-        self.signal_history = defaultdict(list)
         self.acknowledged_signals = set()  # Track processed signals
 
     def add_signal(self, waste_type, timestamp, volume=0, source_id=None, source_type=None):
@@ -40,6 +38,3 @@ class KanbanManager:
         if current_time:
             self.clean_old_signals(current_time)
         return [s for s in self.signals if s['id'] not in self.acknowledged_signals]
-
-    def clear_signals(self):
-        self.signals.clear()

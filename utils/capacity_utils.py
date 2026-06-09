@@ -149,7 +149,6 @@ def handle_storage_event(entity, composition: Dict[WasteType, float], force_land
 
         if hasattr(entity, 'waste_monitor') and entity.waste_monitor:
             entity.waste_monitor.track_event(
-                facility_type=entity.facility_type,
                 volume=total_volume,
                 strategy="landfill",
                 cost_incurred=landfill_cost,
@@ -158,7 +157,6 @@ def handle_storage_event(entity, composition: Dict[WasteType, float], force_land
 
             entity.waste_monitor.track_environmental_impact(
                 entity_name=entity.name,
-                entity_type=entity.facility_type,
                 environmental_impact=emissions,
                 timestamp=entity.env.now,
                 impact_category="landfill_emissions"
@@ -172,7 +170,6 @@ def handle_storage_event(entity, composition: Dict[WasteType, float], force_land
 
         if hasattr(entity, 'waste_monitor') and entity.waste_monitor:
             entity.waste_monitor.track_event(
-                facility_type=entity.facility_type,
                 volume=total_volume,
                 strategy="expand_storage",
                 cost_incurred=expansion_cost,

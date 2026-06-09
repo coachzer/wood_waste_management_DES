@@ -46,18 +46,3 @@ class FacilityDataManager:
     def get_demand(self, product_type: str) -> float:
         """Get national demand for a specific product type"""
         return self.demand.get(product_type, 0)
-    
-    def get_product_specification(self, product_type: str):
-        return self.product_manager.get_product_specification(product_type)
-    
-    def get_product_recipe(self, product_type: str):
-        return self.product_manager.get_product_recipe(product_type)
-    
-    def get_waste_mapping(self, ewc_code: str):
-        return self.product_manager.get_waste_mapping(ewc_code)
-    
-    def can_produce_from_waste(self, product_type: str, ewc_codes):
-        return self.product_manager.can_produce_from_waste(product_type, ewc_codes)
-    
-    def get_products_by_biogenic_priority(self):
-        return self.product_manager.get_products_by_biogenic_priority()

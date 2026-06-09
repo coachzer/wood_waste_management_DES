@@ -86,7 +86,6 @@ def first_order_dominance(
     a_cdf_never_above = True  # F_A <= F_B everywhere  -> A is the larger one
     a_cdf_below_somewhere = False  # F_A < F_B somewhere -> strict for A
     b_cdf_never_above = True
-    b_cdf_below_somewhere = False
     for x in grid:
         cdf_a = sum(1 for sample in samples_a if sample <= x) / n_a
         cdf_b = sum(1 for sample in samples_b if sample <= x) / n_b

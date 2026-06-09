@@ -75,10 +75,6 @@ class WasteMonitor:
 
         history["storage_utilization"].append(utilization)
 
-        if len(history["storage_utilization"]) > 1:
-            rate_of_change = utilization - history["storage_utilization"][-2]
-            history.setdefault("utilization_rate", []).append(rate_of_change)
-
         # Add cost tracking (initialize with 0)
         history["energy_costs"].append(0.0)
         history["operational_costs"].append(0.0)
@@ -98,8 +94,8 @@ class WasteMonitor:
             history["status"].append(treatment.status.value)
 
             self._track_storage_metrics(treatment, history)
-            total_processed = self._track_processing_metrics(treatment, history)
-            self._track_operational_metrics(treatment, history, total_processed)
+            self._track_processing_metrics(treatment, history)
+            self._track_operational_metrics(treatment, history)
             self._track_product_metrics(treatment, history, timestamp)
 
             # Add cost tracking (initialize with 0)
@@ -134,7 +130,7 @@ class WasteMonitor:
                 history["operational"]["processing_costs"][-1] += processing_cost
                 history["operational"]["total_costs"][-1] += energy_cost + processing_cost
 
-    def track_event(self, facility_type: str, volume: float, strategy: str,
+    def track_event(self, volume: float, strategy: str,
                     cost_incurred: float, timestamp: float):
         """Event tracking"""
 
@@ -163,12 +159,12 @@ class WasteMonitor:
 
         history["total_costs"][-1] = cost_incurred
 
-    def track_environmental_impact(self, entity_name: str, entity_type: str, 
-                                environmental_impact: float, timestamp: float, 
+    def track_environmental_impact(self, entity_name: str,
+                                environmental_impact: float, timestamp: float,
                                 impact_category: str = "carbon_emissions"):
         """Environmental impact tracking - emissions only (kg CO₂e)"""
 
-        self.store.ensure_environmental(entity_name, entity_type)
+        self.store.ensure_environmental(entity_name)
 
         history = self.store.environmental_history[entity_name]
 
@@ -290,10 +286,9 @@ class WasteMonitor:
             )
         return total_processed
 
-    def _track_operational_metrics(self, treatment, history, total_processed):
+    def _track_operational_metrics(self, treatment, history):
         """Track operational metrics"""
         history["operational"]["energy_consumption"].append(treatment.energy_consumption)
-        history["operational"]["conversion_rate"].append(treatment.conversion_rate)
 
     def _track_product_metrics(self, treatment, history, timestamp):
         """Track product-related metrics"""

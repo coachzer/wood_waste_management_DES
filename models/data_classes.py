@@ -15,7 +15,6 @@ class FailureConfig:
 class OperationalEntity:
     """Base class for entities that can experience failures"""
 
-    _entity_registry = {}
     _failure_counts = {}
     status: EntityStatus
     failure_time: Optional[float]
@@ -39,12 +38,6 @@ class OperationalEntity:
         self.downtime_duration = 1.0
         self.rng = np.random.default_rng(seed)
 
-    @classmethod
-    def get_entity_counts(cls):
-        """Get count of each entity type"""
-        return {entity_type: len(entities) 
-                for entity_type, entities in cls._entity_registry.items()}
-    
     @classmethod
     def get_failure_stats(cls):
         """Get failure statistics"""
@@ -167,4 +160,3 @@ class ProductStorage:
     """Data class to represent storage for finished products"""
     capacity: Dict[OutputType, float]  # Capacity in m³ per product type (ADR 0002, Phase C)
     current_storage: Dict[OutputType, float] # Current storage in m³ per product type
-    densities: Optional[Dict[OutputType, float]] = None  # e.g., kg/m3 per product

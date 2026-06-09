@@ -66,7 +66,6 @@ class WasteGenerator(OperationalEntity):
             }
         self.generation_frequency = generation_frequency
         self.waste_storage_capacity = waste_storage_capacity
-        self.uncertainty_set = uncertainty_set
         self.environmental_impact = environmental_impact
         self.efficiency = efficiency
         self.current_storage = sum(initial_stock.values() if initial_stock else [0])
@@ -119,8 +118,6 @@ class WasteGenerator(OperationalEntity):
         """Checks for failures and updates generation rates based on entity status."""
         if self.failure_config:
             self.check_failure(current_time, self.failure_config.probability)
-        else:
-            raise ValueError("failure_config is required for entity status handling")
 
         if self.status == EntityStatus.FAILED:
             if not hasattr(self, '_original_rates'):

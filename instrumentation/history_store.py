@@ -94,7 +94,6 @@ class HistoryStore:
                 "efficiency": [],
                 "transport_costs": [],
                 "storage_utilization": [],
-                "utilization_rate": [],
                 "regions": [],
                 "status": [],
                 "energy_costs": [],
@@ -127,7 +126,6 @@ class HistoryStore:
                 },
                 "operational": {
                     "energy_consumption": [],
-                    "conversion_rate": [],
                     "energy_costs": [],
                     "processing_costs": [],
                     "total_costs": [],
@@ -148,7 +146,7 @@ class HistoryStore:
                 "total_costs": []
             }
 
-    def ensure_environmental(self, entity_name, entity_type):
+    def ensure_environmental(self, entity_name):
         """Initialize the per-entity environmental history entry if it does not yet exist."""
         if entity_name not in self.environmental_history:
             self.environmental_history[entity_name] = {
@@ -157,7 +155,6 @@ class HistoryStore:
                 "transport_emissions": [],
                 "landfill_emissions": [],
                 "total_impact": [],
-                "entity_type": entity_type
             }
 
     def ensure_entity_status(self, category, entity_name):

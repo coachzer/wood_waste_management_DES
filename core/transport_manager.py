@@ -17,8 +17,7 @@ class PointToPointTransport:
     def __init__(self, state=None):
         self.state = state
         self.pending_requests: List[TransportRequest] = []
-        self.active_transports: List[Dict] = []
-        
+
     def request_transport(self, request: TransportRequest) -> bool:
         self.pending_requests.append(request)
         return True

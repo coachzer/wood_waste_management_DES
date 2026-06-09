@@ -194,7 +194,6 @@ class CollectorCompany(OperationalEntity):
                 )
                 self.waste_monitor.track_environmental_impact(
                     entity_name=self.name,
-                    entity_type=self.facility_type,
                     environmental_impact=emissions,
                     timestamp=self.env.now,
                     impact_category="transport_emissions"
