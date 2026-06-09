@@ -42,7 +42,7 @@ def create_output_directory(output_dir: str):
     os.makedirs(output_dir, exist_ok=True)
 
 def save_plot_files(fig: go.Figure, output_dir: str, filename: str, print_message: str = None):
-    """Save both HTML and PNG versions of a plot"""
+    """Save HTML and PDF versions of a plot"""
     create_output_directory(output_dir)
 
     fig.write_html(f"{output_dir}/{filename}.html")

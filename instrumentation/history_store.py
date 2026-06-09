@@ -2,12 +2,12 @@
 
 Owns the six polled history dicts the live recorder writes into and the
 serializer reads from: ``generation_``, ``collection_``, ``processing_``,
-``environmental_``, ``event_`` and ``entity_status_history``. Splitting the
-container out of ``WasteMonitor`` (clean-monitoring issue 09) left the recorder
-writing data, this store holding it, and the serializer reading it -- one role
-each. Issue 10 moves the per-entity *schema* authoring here too: the ``ensure_*``
-methods own the empty-dict templates that define each history entry's shape, so
-the recorder only appends samples and authors no dict literals.
+``environmental_``, ``event_`` and ``entity_status_history``. The roles are
+split one each: ``WasteMonitor`` writes data, this store holds it, the
+serializer reads it. The store also authors the per-entity *schemas*: the
+``ensure_*`` methods own the empty-dict templates that define each history
+entry's shape, so the recorder only appends samples and authors no dict
+literals.
 
 The getters return a shallow top-level copy (``dict(...)``) so a caller cannot
 mutate the store's spine while still sharing the per-entity history nodes, which

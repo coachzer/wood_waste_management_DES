@@ -1,4 +1,4 @@
-"""Parallel-coordinates visualization of the Pareto frontier (C5 follow-up).
+"""Parallel-coordinates visualization of the Pareto frontier.
 
 The frontier is a four-objective reduction (service, emissions, landfill, cost)
 that a 2D scatter cannot show without dropping axes. A parallel-coordinates plot
@@ -13,7 +13,7 @@ stays high somewhere no other line beats.
 Unlike ``analysis/pareto.py`` (the pure, project-import-free CSV layer), this
 module is a normal project module: it imports the frontier logic from
 ``analysis.pareto`` and depends on Plotly, like the other
-``monitoring/visualization/*`` modules. It is HTML-only -- no static export, so
+``visualization/*`` modules. It is HTML-only -- no static export, so
 no kaleido dependency.
 """
 

@@ -1,6 +1,7 @@
 """Instrumentation space: live recorders + the in-memory store.
 
-Top of the four-space stack -- writes raw simulation history. Populated by later
-clean-monitoring slices (WasteMonitor-as-recorder and MassBalance move here in
-issues 07/09/10); intentionally empty for now.
+Top of the four-space stack -- writes raw simulation history. Holds the
+``WasteMonitor`` recorder (polls entities and appends samples), the
+``HistoryStore`` container (owns the raw history dicts and their per-entity
+schemas), and the ``mass_balance`` invariant checks.
 """
