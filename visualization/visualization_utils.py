@@ -40,111 +40,84 @@ def safe_write_image(fig, path, **kwargs):
         )
         return False
 
-def extract_storage_data(history: Dict, metric: str) -> Dict:
-    """Extract storage utilization data for heatmap"""
+def _last_value(series) -> float:
+    """Final value of a cumulative series; tolerates bare numbers and empties."""
+    if isinstance(series, list):
+        return series[-1] if series else 0
+    if isinstance(series, (int, float)):
+        return series
+    return 0
+
+def last_cumulative_by_entity(history: Dict, key: str) -> Dict[str, float]:
+    """Sum each entity's final cumulative value under ``key``.
+
+    ``key`` may be a dotted path (``processed.total``). The leaf is either a
+    series list (take the last element), a dict of per-type series (sum each
+    last element), or a bare number. Cumulative counters make this correct
+    regardless of per-entity logging cadence.
+    """
+    totals = {}
+    for entity, data in history.items():
+        leaf = data
+        for part in key.split('.'):
+            leaf = leaf.get(part, {}) if isinstance(leaf, dict) else {}
+        if isinstance(leaf, dict):
+            totals[entity] = sum(_last_value(series) for series in leaf.values())
+        else:
+            totals[entity] = _last_value(leaf)
+    return totals
+
+def extract_heatmap_matrix(history: Dict, value_selector) -> Dict:
+    """Interpolate each entity's series onto a shared time grid for heatmaps.
+
+    ``value_selector(entity_data)`` returns the series to plot (or a falsy
+    value, rendered as a zero row).
+    """
     entities = list(history.keys())
     if not entities:
         return {'x_values': [], 'y_values': [], 'z_values': []}
-    
+
     all_timestamps = []
     for entity_data in history.values():
         if 'timestamps' in entity_data:
             all_timestamps.extend(entity_data['timestamps'])
-    
+
     if not all_timestamps:
         return {'x_values': [], 'y_values': [], 'z_values': []}
-    
+
     time_range = np.linspace(min(all_timestamps), max(all_timestamps), HEATMAP_TIME_GRID_POINTS)
     z_matrix = []
-    
+
     for entity in entities:
         entity_data = history[entity]
-        if metric in entity_data and entity_data[metric]:
-            timestamps = entity_data['timestamps']
-            values = entity_data[metric]
-            interpolated = np.interp(time_range, timestamps, values)
+        values = value_selector(entity_data)
+        if values:
+            interpolated = np.interp(time_range, entity_data['timestamps'], values)
             z_matrix.append(interpolated)
         else:
             z_matrix.append(np.zeros(len(time_range)))
-    
+
     return {
         'x_values': time_range,
         'y_values': entities,
         'z_values': z_matrix
     }
 
-def extract_collection_storage_data(history: Dict) -> Dict:
-    """Extract collection center storage data for heatmap"""
-    collectors = list(history.keys())
-    timestamps = []
-    z_values = []
-
-    for collector_history in history.values():
-        timestamps.extend(collector_history.get('timestamps', []))
-    timestamps = sorted(set(timestamps))
-
-    for collector in collectors:
-        collector_history = history[collector]
-        collector_values = []
-        for ts in timestamps:
-            if ts in collector_history.get('timestamps', []):
-                idx = collector_history['timestamps'].index(ts)
-                collector_values.append(
-                    collector_history.get('storage_utilization', [0]*len(collector_history['timestamps']))[idx]
-                )
-            else:
-                collector_values.append(0)
-        z_values.append(collector_values)
-
-    return {
-        'z_values': z_values,
-        'x_values': timestamps,
-        'y_values': collectors
-    }
+def extract_storage_data(history: Dict, metric: str) -> Dict:
+    """Extract storage utilization data for heatmap"""
+    return extract_heatmap_matrix(history, lambda entity_data: entity_data.get(metric))
 
 def extract_processor_waste_storage_data(history: Dict) -> Dict:
     """Extract waste storage utilization for processors"""
-    return _extract_processor_storage_data(history, 'waste_utilization')
+    return extract_heatmap_matrix(
+        history, lambda entity_data: entity_data.get('storage', {}).get('waste_utilization')
+    )
 
 def extract_processor_finished_goods_storage_data(history: Dict) -> Dict:
     """Extract finished-goods storage utilization for processors"""
-    return _extract_processor_storage_data(history, 'finished_goods_utilization')
-
-def _extract_processor_storage_data(history: Dict, metric: str) -> Dict:
-    """Helper method for processor storage data extraction"""
-    entities = list(history.keys())
-    if not entities:
-        return {'x_values': [], 'y_values': [], 'z_values': []}
-    
-    all_timestamps = []
-    for entity_data in history.values():
-        if 'timestamps' in entity_data:
-            all_timestamps.extend(entity_data['timestamps'])
-    
-    if not all_timestamps:
-        return {'x_values': [], 'y_values': [], 'z_values': []}
-    
-    time_range = np.linspace(min(all_timestamps), max(all_timestamps), HEATMAP_TIME_GRID_POINTS)
-    z_matrix = []
-    
-    for entity in entities:
-        entity_data = history[entity]
-        if 'storage' in entity_data and metric in entity_data['storage']:
-            timestamps = entity_data['timestamps']
-            utilization = entity_data['storage'][metric]
-            if utilization:
-                interpolated = np.interp(time_range, timestamps, utilization)
-                z_matrix.append(interpolated)
-            else:
-                z_matrix.append(np.zeros(len(time_range)))
-        else:
-            z_matrix.append(np.zeros(len(time_range)))
-    
-    return {
-        'x_values': time_range,
-        'y_values': entities,
-        'z_values': z_matrix
-    }
+    return extract_heatmap_matrix(
+        history, lambda entity_data: entity_data.get('storage', {}).get('finished_goods_utilization')
+    )
 
 def aggregate_generation_data(history: Dict) -> Dict:
     """Aggregate generation data across all generators"""

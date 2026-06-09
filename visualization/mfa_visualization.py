@@ -10,7 +10,7 @@ from config.constants import (
     SANKEY_HEIGHT_PX,
     WIDE_EXPORT_WIDTH_PX,
 )
-from visualization.visualization_utils import safe_write_image
+from visualization.visualization_utils import last_cumulative_by_entity, safe_write_image
 
 # Sankey node colors keyed by pipeline stage.
 NODE_COLORS = {
@@ -27,36 +27,6 @@ def format_volume(volume: float) -> str:
         return f"{volume/1000:.1f}k m³"
     else:
         return f"{volume:.1f} m³"
-
-def _get_generator_volumes(generation_history: Dict) -> Dict:
-    """Calculate generator volumes"""
-    generator_volumes = {}
-    for generator, history in generation_history.items():
-        total = 0
-        for _, volumes in history.get("total_generated", {}).items():
-            if volumes:
-                total += volumes[-1]  # Latest cumulative value
-        generator_volumes[generator] = total
-    return generator_volumes
-
-def _get_collector_volumes(collection_history: Dict) -> Dict:
-    """Calculate collector volumes"""
-    collector_volumes = {}
-    for collector, history in collection_history.items():
-        total = 0
-        for _, volumes in history.get("collected_volumes", {}).items():
-            if volumes:
-                total += volumes[-1] 
-        collector_volumes[collector] = total
-    return collector_volumes
-
-def _get_treatment_volumes(processing_history: Dict) -> Dict:
-    """Calculate treatment volumes"""
-    treatment_volumes = {}
-    for treatment, history in processing_history.items():
-        processed = history.get("processed", {}).get("total", [])
-        treatment_volumes[treatment] = processed[-1] if processed else 0
-    return treatment_volumes
 
 def _get_product_volumes(state) -> Dict:
     """Sum true per-operator product output (m³) across treatment operators.
@@ -75,9 +45,9 @@ def _get_product_volumes(state) -> Dict:
 def get_volumes(generation_history: Dict, collection_history: Dict, processing_history: Dict, state):
     """Calculate volumes for each stage - now includes all treatment storage types"""
     return (
-        _get_generator_volumes(generation_history),
-        _get_collector_volumes(collection_history),
-        _get_treatment_volumes(processing_history),
+        last_cumulative_by_entity(generation_history, "total_generated"),
+        last_cumulative_by_entity(collection_history, "collected_volumes"),
+        last_cumulative_by_entity(processing_history, "processed.total"),
         _get_product_volumes(state)
     )
 

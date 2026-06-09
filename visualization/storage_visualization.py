@@ -12,7 +12,6 @@ from config.constants import (
 )
 from .visualization_utils import (
     extract_storage_data,
-    extract_collection_storage_data,
     extract_processor_waste_storage_data,
     extract_processor_finished_goods_storage_data,
     group_results_by_scenario_and_policy,
@@ -127,12 +126,11 @@ def _create_entity_storage_heatmaps_grouped(grouped_results: Dict, entity_type: 
 
             if entity_type == 'generation':
                 history = monitor_data['generation_history']
-                heatmap_data = extract_storage_data(history, 'storage_utilization')
             elif entity_type == 'collection':
                 history = monitor_data['collection_history']
-                heatmap_data = extract_collection_storage_data(history)
             else:
                 raise ValueError(f"Unknown entity_type: {entity_type}")
+            heatmap_data = extract_storage_data(history, 'storage_utilization')
 
             if heatmap_data['z_values']:
                 fig.add_trace(

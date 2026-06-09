@@ -17,6 +17,7 @@ from .visualization_utils import (
     calculate_average_efficiency,
     calculate_storage_levels,
     group_results_by_scenario_and_policy,
+    last_cumulative_by_entity,
     safe_write_image,
 )
 
@@ -474,28 +475,15 @@ def _extract_efficiency_metrics(results: List[Dict]) -> List[Dict]:
 
 def _calculate_collection_metrics(monitor_data: Dict) -> Dict:
     """Calculate collection efficiency metrics"""
-    total_generated = 0
-    for data in monitor_data.get('generation_history', {}).values():
-        total_gen = data.get('total_generated', {})
-        if isinstance(total_gen, dict):
-            total_generated += sum(
-                v[-1] if isinstance(v, list) and v else v 
-                for v in total_gen.values()
-            )
-        else:
-            total_generated += total_gen or 0
-    
-    total_collected = 0
-    for data in monitor_data.get('collection_history', {}).values():
-        collected_volumes = data.get('collected_volumes', {})
-        for volumes in collected_volumes.values():
-            if isinstance(volumes, list) and volumes:
-                total_collected += volumes[-1]
-            elif volumes:
-                total_collected += volumes
-    
+    total_generated = sum(
+        last_cumulative_by_entity(monitor_data.get('generation_history', {}), 'total_generated').values()
+    )
+    total_collected = sum(
+        last_cumulative_by_entity(monitor_data.get('collection_history', {}), 'collected_volumes').values()
+    )
+
     collection_efficiency = (total_collected / total_generated * 100) if total_generated > 0 else 0
-    
+
     return {
         'total_generated': total_generated,
         'total_collected': total_collected,
@@ -504,14 +492,12 @@ def _calculate_collection_metrics(monitor_data: Dict) -> Dict:
 
 def _calculate_processing_metrics(monitor_data: Dict, total_collected: float) -> Dict:
     """Calculate processing efficiency metrics"""
-    total_processed = 0
-    for data in monitor_data.get('processing_history', {}).values():
-        processed_data = data.get('processed', {}).get('total', [])
-        if isinstance(processed_data, list) and processed_data:
-            total_processed += processed_data[-1]
-    
+    total_processed = sum(
+        last_cumulative_by_entity(monitor_data.get('processing_history', {}), 'processed.total').values()
+    )
+
     processing_efficiency = (total_processed / total_collected * 100) if total_collected > 0 else 0
-    
+
     return {
         'total_processed': total_processed,
         'processing_efficiency': processing_efficiency

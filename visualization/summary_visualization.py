@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List
 from config.constants import CHART_PALETTE, DASHBOARD_HEIGHT_PX
+from .visualization_utils import last_cumulative_by_entity
 
 def create_cost_impact_comparison(results: List[Dict], output_dir: str):
     """Create bar charts comparing cost and environmental impact breakdowns"""
@@ -78,9 +79,9 @@ def create_summary_dashboard(results: List[Dict], output_dir: str):
         processing_history = monitor_data['processing_history']
         event_history = monitor_data['event_history']
 
-        total_generated = _get_total_generated(generation_history)
-        total_collected = sum(_get_total_collected(collection_history).values())
-        total_processed = _get_total_processed(processing_history)
+        total_generated = sum(last_cumulative_by_entity(generation_history, 'total_generated').values())
+        total_collected = sum(last_cumulative_by_entity(collection_history, 'collected_volumes').values())
+        total_processed = sum(last_cumulative_by_entity(processing_history, 'processed.total').values())
 
         # Calculate event cost (per-event increments, summed to match
         # create_cost_impact_comparison's 'overflow' total)
@@ -150,39 +151,3 @@ def create_summary_dashboard(results: List[Dict], output_dir: str):
     df.to_html(f"{output_dir}/metrics_summary.html", index=False, 
             table_id="metrics-table", classes="table table-striped table-hover")
 
-def _get_total_generated(history: Dict) -> float:
-    """Calculate total waste generated"""
-    total = 0
-    for data in history.values():
-        total_generated = data.get('total_generated', {})
-        if isinstance(total_generated, dict):
-            for _, values in total_generated.items():
-                if isinstance(values, list) and values:
-                    total += values[-1]
-                elif isinstance(values, (int, float)):
-                    total += values
-    return total
-
-def _get_total_collected(history: Dict) -> Dict:
-    """Calculate collector volumes"""
-    collector_volumes = {}
-    for collector, data in history.items():
-        total = 0
-        for _, volumes in data.get("collected_volumes", {}).items():
-            if volumes:
-                total += volumes[-1] if isinstance(volumes, list) else volumes
-        collector_volumes[collector] = total
-    return collector_volumes
-
-def _get_total_processed(history: Dict) -> float:
-    """Calculate total waste processed"""
-    total = 0
-    for data in history.values():
-        processed = data.get('processed', {})
-        if isinstance(processed, dict):
-            total_processed = processed.get('total', [])
-            if isinstance(total_processed, list) and total_processed:
-                total += total_processed[-1]
-            elif isinstance(total_processed, (int, float)):
-                total += total_processed
-    return total
