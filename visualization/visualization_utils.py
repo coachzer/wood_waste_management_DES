@@ -1,6 +1,15 @@
 import numpy as np
 from typing import Dict
 
+
+def safe_write_image(fig, path, **kwargs):
+    try:
+        fig.write_image(path, **kwargs)
+        return True
+    except Exception:
+        print(f"PDF export skipped ({path}) -- set BROWSER_PATH to a Chromium executable to enable it")
+        return False
+
 def extract_storage_data(history: Dict, metric: str) -> Dict:
     """Extract storage utilization data for heatmap"""
     entities = list(history.keys())

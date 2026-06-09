@@ -2,6 +2,7 @@ import plotly.graph_objects as go
 from typing import Dict
 
 from config.constants import PLOTS_ROOT
+from visualization.visualization_utils import safe_write_image
 
 
 def format_volume(volume: float) -> str:
@@ -272,7 +273,7 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
     print(f"Material flow analysis saved to {save_path}")
 
     pdf_path = save_path.replace(".html", ".pdf")
-    fig.write_image(pdf_path, height=600, width=1600)
-    print(f"PDF version saved to {pdf_path}")
+    if safe_write_image(fig, pdf_path, height=600, width=1600):
+        print(f"PDF version saved to {pdf_path}")
 
     return save_path

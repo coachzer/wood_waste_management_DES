@@ -7,7 +7,8 @@ from .visualization_utils import (
     extract_collection_storage_data,
     extract_processing_storage_data,
     extract_processor_waste_storage_data,
-    extract_processor_finished_goods_storage_data
+    extract_processor_finished_goods_storage_data,
+    safe_write_image,
 )
 
 def create_storage_heatmaps(results: List[Dict], output_dir: str):
@@ -155,15 +156,16 @@ def _create_processing_storage_heatmaps_grouped(grouped_results: Dict, storage_t
 
         try:
             fig.write_html(f"{output_dir}/{filename}")
-
-            pdf_path = filename.replace(".html", ".pdf")
-            fig.write_image(
-                f"{output_dir}/{pdf_path}",
-                height=300 * num_strategies + 100,
-                width=1600,
-            )
         except Exception as e:
             raise RuntimeError(f"Failed writing HTML file {filename}: {str(e)}") from e
+
+        pdf_path = filename.replace(".html", ".pdf")
+        safe_write_image(
+            fig,
+            f"{output_dir}/{pdf_path}",
+            height=300 * num_strategies + 100,
+            width=1600,
+        )
 
 def _create_entity_storage_heatmaps_grouped(grouped_results: Dict, entity_type: str, output_dir: str):
     """Create grouped storage heatmaps for each scenario/policy combination for specific entity type"""
@@ -257,11 +259,13 @@ def _create_entity_storage_heatmaps_grouped(grouped_results: Dict, entity_type: 
 
         try:
             fig.write_html(f"{output_dir}/{filename}")
-            pdf_path = filename.replace(".html", ".pdf")
-            fig.write_image(
-                f"{output_dir}/{pdf_path}",
-                height=300 * num_strategies + 100,
-                width=1600,
-            )
         except Exception as e:
-            raise RuntimeError(f"Failed writing files {filename}: {str(e)}") from e
+            raise RuntimeError(f"Failed writing HTML file {filename}: {str(e)}") from e
+
+        pdf_path = filename.replace(".html", ".pdf")
+        safe_write_image(
+            fig,
+            f"{output_dir}/{pdf_path}",
+            height=300 * num_strategies + 100,
+            width=1600,
+        )

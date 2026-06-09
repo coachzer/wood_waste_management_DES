@@ -8,7 +8,8 @@ from .visualization_utils import (
     aggregate_collection_data,
     aggregate_generation_data,
     calculate_average_efficiency,
-    calculate_storage_levels
+    calculate_storage_levels,
+    safe_write_image,
 )
 
 def create_temporal_comparisons(results: List[Dict], output_dir: str):
@@ -40,7 +41,7 @@ def save_plot_files(fig: go.Figure, output_dir: str, filename: str, print_messag
 
     fig.write_html(f"{output_dir}/{filename}.html")
 
-    fig.write_image(f"{output_dir}/{filename}.pdf", scale=2)
+    safe_write_image(fig, f"{output_dir}/{filename}.pdf", scale=2)
 
     if print_message:
         print(print_message)
@@ -393,7 +394,7 @@ def _create_environmental_breakdown_comparison(results: List[Dict], output_dir: 
     )
 
     fig.write_html(f"{output_dir}/environmental_breakdown_comparison.html")
-    fig.write_image(f"{output_dir}/environmental_breakdown_comparison.pdf", scale=2)
+    safe_write_image(fig, f"{output_dir}/environmental_breakdown_comparison.pdf", scale=2)
     print("Environmental breakdown comparison saved")
 
 def _create_cost_vs_environmental_pareto(results: List[Dict], output_dir: str):
@@ -1049,7 +1050,6 @@ def _create_entity_status_view(results: List[Dict], output_dir: str):
             filename = f"{config['filename_prefix']}_{file_id}.html"
             fig.write_html(f"{entity_status_dir}/{filename}")
 
-            # Save PDF version
             pdf_path = filename.replace(".html", ".pdf")
-            fig.write_image(f"{entity_status_dir}/{pdf_path}", scale=2)
-            print(f"PDF version saved to {pdf_path}")
+            if safe_write_image(fig, f"{entity_status_dir}/{pdf_path}", scale=2):
+                print(f"PDF version saved to {pdf_path}")
