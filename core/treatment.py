@@ -14,7 +14,11 @@ from utils.capacity_utils import (
     check_storage_capacity,
     split_overflow_by_type,
 )
-from config.constants import INITIAL_INVENTORY_FRACTION
+from config.constants import (
+    INITIAL_INVENTORY_FRACTION,
+    PROCESSING_CAPACITY_FRACTION,
+    CARBON_PRICE_EUR_PER_KG_CO2E,
+)
 
 class TreatmentOperator(OperationalEntity):
     """Treatment operator that processes waste into products"""
@@ -78,7 +82,7 @@ class TreatmentOperator(OperationalEntity):
         self.energy_consumption = energy_consumption
         self.operational_costs = operational_costs
         self.environmental_impact = environmental_impact
-        self.processing_capacity = self.waste_storage_capacity * 0.8
+        self.processing_capacity = self.waste_storage_capacity * PROCESSING_CAPACITY_FRACTION
         self.initial_processing_capacity = self.processing_capacity
         self.region = region
         self.region_type = RegionType[region.upper().replace('-', '_')]
@@ -496,8 +500,8 @@ class TreatmentOperator(OperationalEntity):
         environmental_impact_emissions = amount_to_process * self.environmental_impact
 
         environmental_cost = (
-            environmental_impact_emissions * 0.05
-        )  # €0.05 per kg CO₂e (example)
+            environmental_impact_emissions * CARBON_PRICE_EUR_PER_KG_CO2E
+        )
 
         monitor = self.waste_monitor
         name = self.name

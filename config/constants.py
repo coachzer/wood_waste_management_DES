@@ -6,6 +6,17 @@ TRANSPORT_EMISSIONS_PER_TON_KM = 0.087  # kg eCO2 per ton-kilometer or 87 g CO2e
 KILOGRAMS_PER_TONNE = 1000.0  # unit conversion factor, kg per tonne
 LANDFILL_COST_PER_TONNE_USD = 46.0  # $/tonne deterrent gate cost, at par with EU-27 landfill range ~EUR 39-46/t (CEWEP 2021 / EEA 2023)
 
+# Carbon shadow price applied to treatment emissions to derive an environmental
+# cost component. Uncalibrated placeholder (the source comment tagged it "example");
+# flag for the paper before any cost number leans on it.
+CARBON_PRICE_EUR_PER_KG_CO2E = 0.05
+
+# Per-km collection transport cost rates. The two are distinct: the realized cost
+# scales with both distance and the volume actually collected, while the pre-trip
+# estimate uses a flat per-km rate (no volume known yet).
+COLLECTION_COST_PER_KM_PER_M3 = 0.1  # realized: distance * this * collected volume
+ESTIMATED_COLLECTION_COST_PER_KM = 0.5  # pre-trip estimate: distance * this
+
 # Standard waste densities in kg/m³ based on EWC codes and industry data
 WASTE_DENSITIES = {
     WasteType.FORESTRY_WASTE_02_01_07: 350.0,
@@ -46,6 +57,10 @@ PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_50 = 0.5
 PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_90 = 0.9
 FAILED_ENTITY_EFFICIENCY = 0.1
 RECOVERING_BASE_EFFICIENCY = 0.3
+# Treatment processing capacity is sized as this fraction of waste storage capacity.
+PROCESSING_CAPACITY_FRACTION = 0.8
+# Collection centers take longer to repair than other entities (days of downtime).
+COLLECTION_CENTER_DOWNTIME_DAYS = 2.0
 HISTORY_BUFFER_SIZE = 1000
 SEASONAL_PERIODS = 4
 SEASONAL_AMPLITUDE = 0.2  # +/- fraction of the seasonal sinusoid about a unit mean

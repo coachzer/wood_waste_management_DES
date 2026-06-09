@@ -7,6 +7,8 @@ from config.constants import (
     FAILED_ENTITY_EFFICIENCY,
     TRAVEL_SPEED_KMH,
     LOCAL_COLLECTION_RATIO,
+    COLLECTION_COST_PER_KM_PER_M3,
+    ESTIMATED_COLLECTION_COST_PER_KM,
 )
 from core.transport_manager import PointToPointTransport, TransportRequest
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
@@ -163,13 +165,12 @@ class CollectorCompany(OperationalEntity):
 
         if collected_amount > 0:
 
-            volume_cost_factor = 0.1
             vehicle.current_load = collected_amount
             vehicle.current_load_by_type = dict(collected_waste)
             yield self.env.timeout(travel_time)
 
             self._add_to_collection_center(collected_waste)
-            collection_cost = self.transport_cost + (distance * volume_cost_factor * collected_amount)
+            collection_cost = self.transport_cost + (distance * COLLECTION_COST_PER_KM_PER_M3 * collected_amount)
             self.last_collection_cost = collection_cost
 
             # Transport emissions: each stream's volume is converted to mass at its
@@ -615,7 +616,7 @@ class CollectorCompany(OperationalEntity):
 
             # Estimate cost based on distance
             _, distance = self._calculate_travel_time_to_generator(generator)
-            estimated_cost = self.transport_cost + (distance * 0.5)
+            estimated_cost = self.transport_cost + (distance * ESTIMATED_COLLECTION_COST_PER_KM)
             total_cost += estimated_cost
 
         return total_cost

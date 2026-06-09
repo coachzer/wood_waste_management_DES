@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Dict, Optional
-from config.constants import FAILED_ENTITY_EFFICIENCY, HISTORY_BUFFER_SIZE, SEASONAL_PERIODS, SIMULATION_DURATION
+from config.constants import FAILED_ENTITY_EFFICIENCY, HISTORY_BUFFER_SIZE, SEASONAL_AMPLITUDE, SEASONAL_PERIODS, SIMULATION_DURATION
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
 from models.data_classes import WasteStream, OperationalEntity
 from instrumentation.waste_monitor import WasteMonitor
@@ -106,7 +106,7 @@ class WasteGenerator(OperationalEntity):
         self.seasonal_periods = SEASONAL_PERIODS
         self.seasonal_factors = np.array(
             [
-                1 + 0.2 * np.sin(2 * np.pi * t / self.seasonal_periods)
+                1 + SEASONAL_AMPLITUDE * np.sin(2 * np.pi * t / self.seasonal_periods)
                 for t in range(self.seasonal_periods)
             ]
         )  
@@ -143,7 +143,7 @@ class WasteGenerator(OperationalEntity):
                 yield self.env.timeout(self.generation_frequency)
                 continue
 
-            season_index = min(3, int(current_time / (SIMULATION_DURATION / SEASONAL_PERIODS)))
+            season_index = min(SEASONAL_PERIODS - 1, int(current_time / (SIMULATION_DURATION / SEASONAL_PERIODS)))
             seasonal_factor = self.seasonal_factors[season_index]
 
             self._process_stock_strategy(current_time, seasonal_factor)

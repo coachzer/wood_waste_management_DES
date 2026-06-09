@@ -153,7 +153,8 @@ class CollectionCenter(OperationalEntity):
         self.waste_storage_capacity = waste_storage_capacity
         self.current_storage = current_storage
         self.coordinates = coordinates
-        self.downtime_duration = 2.0  # Collection centers take longer to repair
+        from config.constants import COLLECTION_CENTER_DOWNTIME_DAYS
+        self.downtime_duration = COLLECTION_CENTER_DOWNTIME_DAYS
 
 @dataclass
 class ProductStorage:
