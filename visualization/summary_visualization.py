@@ -83,12 +83,12 @@ def create_summary_dashboard(results: List[Dict], output_dir: str):
         total_collected = sum(_get_total_collected(collection_history).values())
         total_processed = _get_total_processed(processing_history)
 
-        # Calculate event cost
+        # Calculate event cost (per-event increments, summed to match
+        # create_cost_impact_comparison's 'overflow' total)
         total_overflow_cost = 0
-        if 'total_cost' in event_history and 'values' in event_history['total_cost']:
-            cost_values = event_history['total_cost']['values']
-            if cost_values:
-                total_overflow_cost = cost_values[-1]
+        total_costs = event_history.get('system_events', {}).get('total_costs', [])
+        if total_costs:
+            total_overflow_cost = sum(total_costs)
 
         # Calculate efficiency percentages
         collection_eff = (total_collected / total_generated * 100) if total_generated > 0 else 0
