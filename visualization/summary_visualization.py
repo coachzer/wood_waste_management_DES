@@ -15,7 +15,6 @@ def create_cost_impact_comparison(results: List[Dict], output_dir: str):
         monitor_data = result['monitor_data']
         scenario_labels.append(f"{result['inventory_policy']} | {result['stock_strategy']}")
         
-        # Extract costs from embedded operational tracking
         total_energy = 0
         total_operational = 0
         total_transport = 0
@@ -79,7 +78,6 @@ def create_summary_dashboard(results: List[Dict], output_dir: str):
         processing_history = monitor_data['processing_history']
         event_history = monitor_data['event_history']
 
-        # Calculate totals
         total_generated = _get_total_generated(generation_history)
         total_collected = sum(_get_total_collected(collection_history).values())
         total_processed = _get_total_processed(processing_history)
@@ -91,7 +89,6 @@ def create_summary_dashboard(results: List[Dict], output_dir: str):
         if total_costs:
             total_overflow_cost = sum(total_costs)
 
-        # Calculate efficiency percentages
         collection_eff = (total_collected / total_generated * 100) if total_generated > 0 else 0
         processing_eff = (total_processed / total_collected * 100) if total_collected > 0 else 0
 
@@ -105,7 +102,6 @@ def create_summary_dashboard(results: List[Dict], output_dir: str):
             'Event Cost': total_overflow_cost
         })
 
-    # Create the dashboard visualization
     df = pd.DataFrame(metrics_data)
     fig = sp.make_subplots(
         rows=2, cols=3,
@@ -146,14 +142,11 @@ def create_summary_dashboard(results: List[Dict], output_dir: str):
         showlegend=False
     )
 
-    # Rotate x-axis labels for better readability
     for i in range(1, 7):
         fig.update_xaxes(tickangle=45, row=(i-1)//3 + 1, col=(i-1)%3 + 1)
 
-    # Save the plots
     fig.write_html(f"{output_dir}/summary_dashboard.html")
     
-    # Save metrics summary table
     df.to_html(f"{output_dir}/metrics_summary.html", index=False, 
             table_id="metrics-table", classes="table table-striped table-hover")
 

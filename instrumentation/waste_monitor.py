@@ -76,7 +76,6 @@ class WasteMonitor:
 
         history["storage_utilization"].append(utilization)
 
-        # Add cost tracking (initialize with 0)
         history["energy_costs"].append(0.0)
         history["operational_costs"].append(0.0)
         history["total_costs"].append(0.0)
@@ -99,7 +98,6 @@ class WasteMonitor:
             self._track_operational_metrics(treatment, history)
             self._track_product_metrics(treatment, history, timestamp)
 
-            # Add cost tracking (initialize with 0)
             history["operational"]["energy_costs"].append(0.0)
             history["operational"]["processing_costs"].append(0.0)
             history["operational"]["total_costs"].append(0.0)
@@ -148,7 +146,6 @@ class WasteMonitor:
         history["expansion_costs"].append(0.0)
         history["total_costs"].append(0.0)
 
-        # Update based on strategy
         if strategy == "landfill":
             history["landfill_usage"][-1] = volume
             history["landfill_costs"][-1] = cost_incurred

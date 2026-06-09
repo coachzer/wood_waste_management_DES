@@ -83,7 +83,7 @@ def first_order_dominance(
     grid = sorted(set(samples_a) | set(samples_b))
     n_a, n_b = len(samples_a), len(samples_b)
 
-    a_cdf_never_above = True  # F_A <= F_B everywhere  -> A is the larger one
+    a_cdf_never_above = True  # F_A <= F_B everywhere (necessary, not sufficient, for A larger)
     a_cdf_below_somewhere = False  # F_A < F_B somewhere -> strict for A
     b_cdf_never_above = True
     for x in grid:

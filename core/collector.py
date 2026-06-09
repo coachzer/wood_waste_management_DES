@@ -112,7 +112,7 @@ class CollectorCompany(OperationalEntity):
         self.vehicles = [
             Vehicle(
                 id=f"{self.name}_vehicle_{i}",
-                capacity=self.vehicle_capacity, # m³
+                capacity=self.vehicle_capacity,
                 current_region=self.region_type,
             )
             for i in range(num_vehicles)
@@ -203,7 +203,6 @@ class CollectorCompany(OperationalEntity):
             yield self.env.timeout(travel_time)
             collection_cost = self.transport_cost
 
-        # Vehicle is now available again
         vehicle.in_transit = False
         vehicle.current_load = 0
         vehicle.current_load_by_type = {}
@@ -521,7 +520,6 @@ class CollectorCompany(OperationalEntity):
         if self.collection_center.current_storage[waste_type] < volume:
             return False
 
-        # Create transport request
         request = TransportRequest(
             origin=self.region_type,
             destination=destination,
@@ -552,11 +550,9 @@ class CollectorCompany(OperationalEntity):
         if self.status == EntityStatus.FAILED:
             return self.env.process(self._dummy_process(0))
 
-        # Check if generator has any waste
         if generator.current_storage <= 0:
             return self.env.process(self._dummy_process(0))
 
-        # Find available vehicle
         available_vehicle = self._find_available_vehicle()
         if not available_vehicle:
             return self.env.process(self._dummy_process(0))
@@ -586,7 +582,6 @@ class CollectorCompany(OperationalEntity):
             available_vehicle.in_transit = False
             return self.env.process(self._dummy_process(0))
 
-        # Dispatch vehicle
         return self.env.process(self._dispatch_vehicle_for_collection(available_vehicle, generator, target_volume))
 
     def _dummy_process(self, return_value):
@@ -596,7 +591,6 @@ class CollectorCompany(OperationalEntity):
 
     def _unified_collection_strategy(self) -> float:
         """Strategy with 80/20 volume allocation between same/cross regions"""
-        # Use volume-based regional prioritization
         volume_prioritized = self._get_prioritized_generators()
 
         total_cost = 0

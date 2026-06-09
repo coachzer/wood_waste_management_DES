@@ -11,7 +11,6 @@ def _tonnes_to_cubic_meters(tonnes: float, waste_type: WasteType) -> float:
     else:
         density_kg_m3 = WASTE_DENSITIES[waste_type]
 
-    # Convert tonnes to kg, then to m³
     kg = tonnes * KILOGRAMS_PER_TONNE
     cubic_meters = kg / density_kg_m3
 

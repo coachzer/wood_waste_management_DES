@@ -107,7 +107,6 @@ class TreatmentOperator(OperationalEntity):
         # against deposited product_volumes by MassBalanceMonitor.check_yield_bridge.
         self.expected_output_volume = 0.0
 
-        # Initialize product data manager for accessing product specifications
         self.product_manager = ProductDataManager()
 
         # Finished-goods inventory: per-product capacity sized to a fixed demand
@@ -122,7 +121,6 @@ class TreatmentOperator(OperationalEntity):
             }
         )
 
-        # Transformations
         self.transformations = transformations or self._default_transformations()
 
         # ABC prioritization is always on (ADR 0002, Phase F): biogenic-carbon
@@ -130,7 +128,6 @@ class TreatmentOperator(OperationalEntity):
         self.abc_priority_map = {}
         self._initialize_abc_priorities(abc_demand_config_path)
 
-        # Start processes
         self.process = env.process(self.run_facility())
         env.process(self.schedule_collection_requests())
 

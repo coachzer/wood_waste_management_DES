@@ -15,9 +15,7 @@ class SimulationState:
         self.generators = []
         self.collectors = []
         self.treatment_operators = []
-        # Initialize transport flows
         self.transport_flows = []
-        # Initialize regional waste tracker
         self.waste_tracker = regional_tracker.RegionalWasteTracker()
         # Finished goods removed from inventory without consumption (mass-balance
         # discard term, ADR 0002 Phase E.5). Zero by construction; the counter
@@ -203,7 +201,6 @@ class SimulationState:
             'particle_board': 0.0,
             'osb': 0.0
         }
-        # Reset market consumption event log
         self.consumption_events = []
         self.waste_landfilled = {}
 

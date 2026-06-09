@@ -356,7 +356,6 @@ def _create_environmental_breakdown_comparison(results: List[Dict], output_dir: 
         scenario_labels.append(f"{result['inventory_policy']} | {result['stock_strategy']}")
         environmental_history = monitor_data.get('environmental_history', {})
 
-        # Sum total impacts by category
         totals = {'carbon_emissions': 0, 'transport_emissions': 0, 'landfill_emissions': 0}
 
         for entity_data in environmental_history.values():
@@ -368,7 +367,6 @@ def _create_environmental_breakdown_comparison(results: List[Dict], output_dir: 
         for category in totals.keys():
             impact_data[category].append(totals[category])
 
-    # Create stacked bar chart
     fig = go.Figure()
     colors = {'carbon_emissions': '#1f77b4', 'transport_emissions': '#ff7f0e', 'landfill_emissions': '#d62728'}
 
@@ -473,18 +471,14 @@ def _extract_efficiency_metrics(results: List[Dict]) -> List[Dict]:
     for result in results:
         monitor_data = result['monitor_data']
         
-        # Calculate total costs using utility function
         all_costs_by_time = extract_total_costs_from_monitor_data(monitor_data)
         total_cost = sum(all_costs_by_time.values()) if all_costs_by_time else 0
         
-        # Calculate environmental impact using utility function
         total_environmental_impact = calculate_total_environmental_impact(monitor_data)
         
-        # Calculate collection and processing metrics
         collection_metrics = _calculate_collection_metrics(monitor_data)
         processing_metrics = _calculate_processing_metrics(monitor_data, collection_metrics['total_collected'])
         
-        # Cost efficiency
         cost_per_m3 = total_cost / processing_metrics['total_processed'] if processing_metrics['total_processed'] > 0 else float('inf')
         
         scenario_data.append({
@@ -503,7 +497,6 @@ def _extract_efficiency_metrics(results: List[Dict]) -> List[Dict]:
 
 def _calculate_collection_metrics(monitor_data: Dict) -> Dict:
     """Calculate collection efficiency metrics"""
-    # Calculate total generated
     total_generated = 0
     for data in monitor_data.get('generation_history', {}).values():
         total_gen = data.get('total_generated', {})
@@ -515,7 +508,6 @@ def _calculate_collection_metrics(monitor_data: Dict) -> Dict:
         else:
             total_generated += total_gen or 0
     
-    # Calculate total collected
     total_collected = 0
     for data in monitor_data.get('collection_history', {}).values():
         collected_volumes = data.get('collected_volumes', {})
@@ -608,7 +600,6 @@ def _add_efficiency_scatter_plots(fig, scenario_data: List[Dict]):
 def _update_all_subplot_styling(fig):
     """Apply consistent styling to all subplots"""
 
-    # Common axis styling
     axis_style = {
         "showgrid": True,
         "gridcolor": "#E5E5E5",
@@ -620,7 +611,6 @@ def _update_all_subplot_styling(fig):
         "tickfont": {"size": 10},
     }
 
-    # Update x-axes
     fig.update_xaxes(title_text="Total Cost (€)", row=1, col=1, **axis_style)
     fig.update_xaxes(title_text="Total Cost (€)", row=1, col=2, **axis_style)
     fig.update_xaxes(
@@ -628,7 +618,6 @@ def _update_all_subplot_styling(fig):
     )
     fig.update_xaxes(title_text="Strategy", row=2, col=2, **axis_style, tickangle=45)
 
-    # Update y-axes
     fig.update_yaxes(
         title_text="Environmental Impact<br>(kg CO₂e)", row=1, col=1, **axis_style
     )
@@ -676,7 +665,6 @@ def _add_cost_efficiency_bar_chart(fig, scenario_data: List[Dict]):
 def _create_entity_status_view(results: List[Dict], output_dir: str):
     """Create entity status timeline plots grouped by scenario and inventory policy, with stock strategies as subplots."""
 
-    # Create entity_status subdirectory
     entity_status_dir = os.path.join(output_dir, "entity_status")
     os.makedirs(entity_status_dir, exist_ok=True)
 
@@ -695,7 +683,6 @@ def _create_entity_status_view(results: List[Dict], output_dir: str):
     for result in results:
         scenario_name = result['scenario_name']
 
-        # Extract base scenario name
         if '_push_' in scenario_name:
             base_scenario = scenario_name.split('_push_')[0]
         elif '_pull_' in scenario_name:
@@ -779,10 +766,8 @@ def _create_entity_status_view(results: List[Dict], output_dir: str):
                                 start_idx = idx
                                 current_status = statuses[idx]
 
-                        # Add the final segment
                         segments.append((start_idx, len(statuses), current_status))
 
-                    # Add one trace per segment with proper colors
                     for seg_start, seg_end, seg_status in segments:
                         seg_timestamps = timestamps[seg_start:seg_end]
                         seg_y = [y_position] * len(seg_timestamps)
@@ -816,12 +801,10 @@ def _create_entity_status_view(results: List[Dict], output_dir: str):
                 }
             )
 
-            # Update axes for each subplot
             for i in range(1, num_strategies + 1):
                 fig.update_xaxes(title_text="Time", row=i, col=1)
                 fig.update_yaxes(title_text=config['y_title'], row=i, col=1)
 
-            # Save individual file with scenario and policy specific naming
             filename = f"{config['filename_prefix']}_{file_id}.html"
             fig.write_html(f"{entity_status_dir}/{filename}")
 

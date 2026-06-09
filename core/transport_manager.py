@@ -50,7 +50,6 @@ class PointToPointTransport:
         if not self.pending_requests:
             return []
         
-        # Serve oldest request first (FIFO on request time)
         self.pending_requests.sort(key=lambda r: r.request_time)
         
         scheduled_transports = []
@@ -64,7 +63,6 @@ class PointToPointTransport:
                     scheduled_transports.append(transport)
                     processed_requests.append(request)
         
-        # Remove processed requests
         for request in processed_requests:
             self.pending_requests.remove(request)
         

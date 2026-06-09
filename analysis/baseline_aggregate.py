@@ -156,7 +156,6 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         (total_processed / total_generated * 100.0) if total_generated > 0 else 0.0
     )
 
-    # Events: landfill volume
     landfill_volume = 0.0
     sys_evt = evt_hist.get("system_events", {})
     if sys_evt:

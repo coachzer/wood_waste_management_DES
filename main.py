@@ -254,12 +254,10 @@ def main():
         
         for inventory_policy in inventory_policies:
             for stock_strategy in stock_strategies:
-                # Run single simulation
                 result = run_single_simulation(scenario_name, inventory_policy, stock_strategy)
                 results.append(result)
                 mfa_files.append(result["mfa_path"])
     
-    # Create comparison visualizations
     print(f"\n{'='*60}")
     print("Creating scenario comparison visualizations")
     print(f"{'='*60}")
@@ -270,7 +268,6 @@ def main():
     comparison.create_summary_dashboard()
     print(f"Scenario comparison visualizations saved to {SCENARIO_COMPARISON_PLOTS_DIR}/")
 
-    # Print summary
     print(f"\n{'='*60}")
     print("SIMULATION BATCH COMPLETE")
     print(f"{'='*60}")
@@ -278,12 +275,10 @@ def main():
     print(f"Base scenarios: {len(scenarios)}")
     print(f"Strategy combinations per base scenario: {len(inventory_policies) * len(stock_strategies)}")
 
-    # Print MFA files
     print("\nMFA Visualizations Created:")
     for mfa_path in mfa_files:
         print(f"  {mfa_path}")
         
-    # Print total execution time
     print(f"\n{'='*60}")
     print("All simulations completed successfully!")
     print(f"Results saved to: {len(results)} simulation results")
