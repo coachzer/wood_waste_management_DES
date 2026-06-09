@@ -48,10 +48,7 @@ def create_storage_heatmaps(results: List[Dict], output_dir: str):
     # Sort each group by stock_strategy for consistent ordering
     for key in grouped_results:
         grouped_results[key].sort(key=lambda x: x['stock_strategy'])
-    
-    if len(grouped_results) >= len(results):
-        raise ValueError(f"Grouping failed: Expected fewer groups ({len(grouped_results)}) than individual results ({len(results)})")
-    
+
     for entity_type in ['generation', 'collection']:
         entity_subdir = os.path.join(entity_dir, entity_type)
         os.makedirs(entity_subdir, exist_ok=True)  # Ensure subdirectory exists
