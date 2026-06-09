@@ -230,9 +230,9 @@ def calculate_storage_levels(history: Dict) -> Dict:
             time_storage[t] += s
     
     sorted_times = sorted(time_storage.keys())
-    storage_levels = [time_storage[t] for t in sorted_times]  # No cumulative calculation
-    
+    storage_levels = [time_storage[t] for t in sorted_times]
+
     return {
         'timestamps': sorted_times,
-        'storage': storage_levels  
+        'storage': storage_levels
     }

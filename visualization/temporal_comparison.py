@@ -276,23 +276,23 @@ def _create_generation_efficiency_comparison(results: List[Dict], output_dir: st
     save_plot_files(fig, output_dir, "generation_efficiency_comparison", "Generation efficiency comparison plot saved")
 
 def _create_processing_comparison(results: List[Dict], output_dir: str):
-    """Compare processing throughput across scenarios"""
+    """Compare treatment waste storage levels across scenarios"""
     fig = create_basic_time_series_plot(
-        "Storage Throughput Over Time - Scenario Comparison",
+        "Treatment Waste Storage Level Over Time - Scenario Comparison",
         "Time",
-        "Cumulative Storage Volume (m³)"
+        "Storage Level (m³)"
     )
-    
+
     for result in results:
         monitor_data = result['monitor_data']
         history = monitor_data['processing_history']
-        
-        throughput = calculate_storage_levels(history)
-        if throughput['timestamps']:
+
+        storage_levels = calculate_storage_levels(history)
+        if storage_levels['timestamps']:
             add_scenario_trace(
                 fig,
-                throughput['timestamps'],
-                throughput['storage'],
+                storage_levels['timestamps'],
+                storage_levels['storage'],
                 result['scenario_name']
             )
     
