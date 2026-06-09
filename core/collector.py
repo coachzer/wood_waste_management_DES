@@ -441,15 +441,6 @@ class CollectorCompany(OperationalEntity):
                             and g.waste_streams[waste_type_enum].volume > 0
                         )
                     ]
-                case "treatment":
-                    matching_generators = [
-                        g
-                        for g in self._get_prioritized_generators()
-                        if (
-                            waste_type_enum in g.waste_streams
-                            and g.waste_streams[waste_type_enum].volume > 0
-                        )
-                    ]
                 case _:
                     matching_generators = [
                         g
