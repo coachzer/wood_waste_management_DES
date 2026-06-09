@@ -1,19 +1,8 @@
 # python -m core.abc_analysis
 import json
 from typing import Dict, List
-from dataclasses import dataclass
+from models.data_classes import ABCClassification
 from models.products import ProductDataManager
-
-@dataclass
-class ABCClassification:
-    """ABC classification result for a product"""
-    product_type: str
-    biogenic_carbon_per_unit: float  # kg CO₂eq/m³
-    demand_volume: float  # m³
-    total_biogenic_impact: float  # Total kg CO₂eq
-    abc_class: str
-    cumulative_percentage: float
-    priority_weight: float
 
 class BiogenicCarbonABCAnalyzer:
     """ABC Analysis based on biogenic carbon stock values"""

@@ -161,3 +161,14 @@ class ProductStorage:
     """Data class to represent storage for finished products"""
     capacity: Dict[OutputType, float]  # Capacity in m³ per product type (ADR 0002, Phase C)
     current_storage: Dict[OutputType, float] # Current storage in m³ per product type
+
+@dataclass
+class ABCClassification:
+    """ABC classification result for a product"""
+    product_type: str
+    biogenic_carbon_per_unit: float  # kg CO2eq/m3
+    demand_volume: float  # m3
+    total_biogenic_impact: float  # Total kg CO2eq
+    abc_class: str
+    cumulative_percentage: float
+    priority_weight: float
