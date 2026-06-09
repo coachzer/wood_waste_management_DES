@@ -200,48 +200,13 @@ class BiogenicCarbonABCAnalyzer:
         report.append("Higher absolute values indicate better climate impact")
         
         return "\n".join(report)
-    
-    def update_demand_config_with_priorities(self, output_path: str = "demand_with_abc.json"):
-        """Update demand configuration with ABC priority information"""
-        classifications = self.perform_abc_classification()
-        
-        updated_config = {
-            "national_demand": self.demand_data["national_demand"].copy(),
-            "abc_analysis": {
-                "analysis_date": "2025-08-05",
-                "methodology": "Biogenic carbon stock based ABC classification",
-                "thresholds": {
-                    "class_a_percentage": 70.0,
-                    "class_b_percentage": 95.0
-                },
-                "products": {}
-            }
-        }
-        
-        for item in classifications:
-            updated_config["abc_analysis"]["products"][item.product_type] = {
-                "abc_class": item.abc_class,
-                "priority_weight": item.priority_weight,
-                "biogenic_carbon_per_unit": item.biogenic_carbon_per_unit,
-                "total_biogenic_impact": item.total_biogenic_impact,
-                "cumulative_percentage": item.cumulative_percentage,
-                "demand_volume": item.demand_volume
-            }
-        
-        with open(output_path, 'w') as f:
-            json.dump(updated_config, f, indent=2)
-        
-        print(f"Updated demand configuration saved to {output_path}")
-        return updated_config
 
 if __name__ == "__main__":
     analyzer = BiogenicCarbonABCAnalyzer("data/demand.json")
-    
+
     report = analyzer.generate_abc_report()
     print(report)
-    
-    analyzer.update_demand_config_with_priorities()
-    
+
     classifications = analyzer.perform_abc_classification()
     
     print("\nABC Classification Results:")
