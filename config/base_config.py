@@ -163,35 +163,8 @@ def validate_scenario_config(config: ScenarioConfig) -> None:
     if config.finished_goods_buffer_weeks <= 0:
         raise ValueError("finished_goods_buffer_weeks must be positive")
 
-uncertainty_sets = {}
-
-def _create_uncertainty_set(config: ScenarioConfig) -> UncertaintySet:
-    """Create uncertainty set from a scenario configuration"""
-    return UncertaintySet(
-        name=config.name,
-        collection_efficiency=config.coll_eff,
-        treatment_conversion=config.treat_conv,
-        transportation_time=config.trans_time,
-        generator_failure=config.generator_failure,
-        collector_failure=config.collector_failure,
-        treatment_failure=config.treatment_failure,
-        waste_generation_mean=config.waste_gen[0],
-        waste_generation_variability=config.waste_gen[1],
-        finished_goods_buffer_weeks=config.finished_goods_buffer_weeks
-    )
-
-for scenario_name, config in SCENARIO_CONFIGS.items():
+for config in SCENARIO_CONFIGS.values():
     validate_scenario_config(config)
-    uncertainty_sets[scenario_name] = _create_uncertainty_set(config)
-
-default_uncertainty_set = uncertainty_sets["Baseline"]
-
-def get_uncertainty_set(scenario_name: str = "Baseline") -> UncertaintySet:
-    """Get uncertainty set for a specific scenario"""
-    try:
-        return uncertainty_sets[scenario_name]
-    except KeyError:
-        raise KeyError(f"Uncertainty set '{scenario_name}' not found")
 
 def get_scenario_config(scenario_name: str) -> ScenarioConfig:
     """Get scenario configuration by name"""

@@ -9,7 +9,6 @@ from .base_config import (
     ScenarioConfig,
     
     # Scenario access functions
-    get_uncertainty_set,
     get_scenario_config,
     list_available_scenarios,
     
@@ -27,7 +26,6 @@ __all__ = [
     'ScenarioConfig', 
     
     # Access functions
-    'get_uncertainty_set',
     'get_scenario_config',
     'list_available_scenarios',
     'get_cost_params',
