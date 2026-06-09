@@ -14,7 +14,7 @@ from config.constants import (
 )
 from core.transport_manager import PointToPointTransport
 from models.data_classes import OperationalEntity
-from models.enums import RegionType, OutputType, InventoryPolicy
+from models.enums import RegionType, OutputType
 from models.state import SimulationState
 from instrumentation.waste_monitor import WasteMonitor
 from instrumentation.mass_balance import EntityRegistry, MassBalanceMonitor
@@ -331,7 +331,7 @@ class SimulationManager:
                         timestamp=current_time,
                     )
 
-                if (operator.inventory_policy == InventoryPolicy.PULL
+                if (operator.inventory_policy.is_pull()
                         and producible_attempted > 0):
                     self.kanban_manager.add_signal(
                         waste_type=None,

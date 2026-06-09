@@ -477,7 +477,7 @@ class CollectorCompany(OperationalEntity):
             g for g in state.generators
             if (g.region_type == self.region_type and
                 waste_type_enum in g.waste_streams and
-                g.inventory_policy == InventoryPolicy.PULL)
+                g.inventory_policy.is_pull())
         ]
 
         for generator in local_generators:

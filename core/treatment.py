@@ -263,7 +263,7 @@ class TreatmentOperator(OperationalEntity):
         local_collectors = [
             c for c in state.collectors 
             if (c.region_type == self.region_type and 
-                c.inventory_policy == InventoryPolicy.PULL and
+                c.inventory_policy.is_pull() and
                 c.availability and 
                 c.collection_center.current_storage.get(waste_type, 0) > 0) 
         ]

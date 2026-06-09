@@ -52,6 +52,9 @@ class InventoryPolicy(Enum):
     PUSH = "push"
     PULL = "pull"
 
+    def is_pull(self) -> bool:
+        return self is InventoryPolicy.PULL
+
 class StockStrategy(Enum):
     ON_DEMAND = "on_demand"
     REORDER_90 = "reorder_90"
