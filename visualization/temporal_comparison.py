@@ -26,12 +26,9 @@ def create_temporal_comparisons(results: List[Dict], output_dir: str):
     env_dir = os.path.join(temp_dir, "environmental")
     pareto_dir = os.path.join(temp_dir, "pareto")
     os.makedirs(temp_dir, exist_ok=True)
-    
-    _create_generation_comparison(results, os.path.join(temp_dir, "generation"))
-    _create_collection_comparison(results, os.path.join(temp_dir, "collection"))
-    _create_collection_efficiency_comparison(results, os.path.join(temp_dir, "collection"))
-    _create_generation_efficiency_comparison(results, os.path.join(temp_dir, "generation"))
-    _create_processing_comparison(results, os.path.join(temp_dir, "processing"))
+
+    for spec in _METRIC_COMPARISON_SPECS:
+        _create_metric_comparison(results, os.path.join(temp_dir, spec['subdir']), spec)
     _create_cost_comparison(results, os.path.join(temp_dir, "cost"))
     _create_environmental_impact_comparison(results, env_dir)
     _create_environmental_breakdown_comparison(results, env_dir)
@@ -138,120 +135,75 @@ def get_scenario_colors_and_symbols():
     """Return the shared theme mappings: color per policy, symbol per strategy"""
     return POLICY_COLORS, STRATEGY_SYMBOLS
 
-def _create_generation_comparison(results: List[Dict], output_dir: str):
-    """Compare waste generation across scenarios over time"""
-    fig = create_basic_time_series_plot(
-        "Total Waste Generation Over Time - Scenario Comparison",
-        "Time",
-        "Cumulative Volume (m³)"
-    )
-    
-    for result in results:
-        monitor_data = result['monitor_data']
-        history = monitor_data['generation_history']
-        
-        total_generation = aggregate_generation_data(history)
-        if total_generation['timestamps']:
-            add_scenario_trace(
-                fig, 
-                total_generation['timestamps'],
-                total_generation['volumes'], 
-                result['scenario_name']
-            )
-    
-    save_plot_files(fig, output_dir, "generation_comparison", "Generation comparison plot saved")
+_METRIC_COMPARISON_SPECS = [
+    {
+        'subdir': "generation",
+        'history_key': 'generation_history',
+        'aggregate': aggregate_generation_data,
+        'value_key': 'volumes',
+        'title': "Total Waste Generation Over Time - Scenario Comparison",
+        'y_title': "Cumulative Volume (m³)",
+        'filename': "generation_comparison",
+        'message': "Generation comparison plot saved",
+    },
+    {
+        'subdir': "collection",
+        'history_key': 'collection_history',
+        'aggregate': aggregate_collection_data,
+        'value_key': 'volumes',
+        'title': "Collection Volumes Over Time - Scenario Comparison",
+        'y_title': "Total Collected Volume",
+        'filename': "collection_comparison",
+        'message': "Collection comparison plot saved",
+    },
+    {
+        'subdir': "collection",
+        'history_key': 'collection_history',
+        'aggregate': calculate_average_efficiency,
+        'value_key': 'efficiency',
+        'title': "Collection Efficiency Over Time - Scenario Comparison",
+        'y_title': "Average Efficiency (%)",
+        'filename': "collection_efficiency_comparison",
+        'message': "Collection efficiency comparison plot saved",
+    },
+    {
+        'subdir': "generation",
+        'history_key': 'generation_history',
+        'aggregate': calculate_average_efficiency,
+        'value_key': 'efficiency',
+        'title': "Generation Efficiency Over Time - Scenario Comparison",
+        'y_title': "Average Efficiency (%)",
+        'filename': "generation_efficiency_comparison",
+        'message': "Generation efficiency comparison plot saved",
+    },
+    {
+        'subdir': "processing",
+        'history_key': 'processing_history',
+        'aggregate': calculate_storage_levels,
+        'value_key': 'storage',
+        'title': "Treatment Waste Storage Level Over Time - Scenario Comparison",
+        'y_title': "Storage Level (m³)",
+        'filename': "processing_comparison",
+        'message': "Processing comparison plot saved",
+    },
+]
 
-def _create_collection_comparison(results: List[Dict], output_dir: str):
-    """Compare collection volumes across scenarios"""
-    fig = create_basic_time_series_plot(
-        "Collection Volumes Over Time - Scenario Comparison",
-        "Time",
-        "Total Collected Volume"
-    )
-    
-    for result in results:
-        monitor_data = result['monitor_data']
-        history = monitor_data['collection_history']
-        
-        aggregated_data = aggregate_collection_data(history)
-        if aggregated_data['timestamps']:
-            add_scenario_trace(
-                fig,
-                aggregated_data['timestamps'],
-                aggregated_data['volumes'],
-                result['scenario_name']
-            )
-    
-    save_plot_files(fig, output_dir, "collection_comparison", "Collection comparison plot saved")
+def _create_metric_comparison(results: List[Dict], output_dir: str, spec: Dict):
+    """Compare one aggregated metric across scenarios over time"""
+    fig = create_basic_time_series_plot(spec['title'], "Time", spec['y_title'])
 
-def _create_collection_efficiency_comparison(results: List[Dict], output_dir: str):
-    """Compare collection efficiency across scenarios"""
-    fig = create_basic_time_series_plot(
-        "Collection Efficiency Over Time - Scenario Comparison",
-        "Time",
-        "Average Efficiency (%)"
-    )
-    
     for result in results:
-        monitor_data = result['monitor_data']
-        history = monitor_data['collection_history']
-        
-        efficiency_data = calculate_average_efficiency(history)
-        if efficiency_data:
-            add_scenario_trace(
-                fig,
-                efficiency_data['timestamps'],
-                efficiency_data['efficiency'],
-                result['scenario_name']
-            )
-    
-    save_plot_files(fig, output_dir, "collection_efficiency_comparison", "Collection efficiency comparison plot saved")
-
-def _create_generation_efficiency_comparison(results: List[Dict], output_dir: str):
-    """Compare generation efficiency across scenarios"""
-    fig = create_basic_time_series_plot(
-        "Generation Efficiency Over Time - Scenario Comparison",
-        "Time",
-        "Average Efficiency (%)"
-    )
-    
-    for result in results:
-        monitor_data = result['monitor_data']
-        history = monitor_data['generation_history']
-
-        efficiency_data = calculate_average_efficiency(history)
-        if efficiency_data:
+        history = result['monitor_data'][spec['history_key']]
+        data = spec['aggregate'](history)
+        if data['timestamps']:
             add_scenario_trace(
                 fig,
-                efficiency_data['timestamps'],
-                efficiency_data['efficiency'],
+                data['timestamps'],
+                data[spec['value_key']],
                 result['scenario_name']
             )
-    
-    save_plot_files(fig, output_dir, "generation_efficiency_comparison", "Generation efficiency comparison plot saved")
 
-def _create_processing_comparison(results: List[Dict], output_dir: str):
-    """Compare treatment waste storage levels across scenarios"""
-    fig = create_basic_time_series_plot(
-        "Treatment Waste Storage Level Over Time - Scenario Comparison",
-        "Time",
-        "Storage Level (m³)"
-    )
-
-    for result in results:
-        monitor_data = result['monitor_data']
-        history = monitor_data['processing_history']
-
-        storage_levels = calculate_storage_levels(history)
-        if storage_levels['timestamps']:
-            add_scenario_trace(
-                fig,
-                storage_levels['timestamps'],
-                storage_levels['storage'],
-                result['scenario_name']
-            )
-    
-    save_plot_files(fig, output_dir, "processing_comparison", "Processing comparison plot saved")
+    save_plot_files(fig, output_dir, spec['filename'], spec['message'])
 
 def _create_cost_comparison(results: List[Dict], output_dir: str):
     """Compare cumulative costs across scenarios"""
