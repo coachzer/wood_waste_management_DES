@@ -42,6 +42,22 @@ DEFAULT_METRICS = [
     "collection_rate_pct",
 ]
 
+# Per-KPI sense: "max" = larger is better, "min" = larger is worse. The one
+# encoding behind both the stochastic-dominance sense annotation and the Pareto
+# objective vector (cleanup task #46); each report selects the keys it needs.
+# Discovered namespace metrics are intentionally absent -- their sense is mixed.
+KPI_SENSE: Dict[str, str] = {
+    "service_level_full_pct": "max",
+    "service_level_operational_pct": "max",
+    "stockout_lost_m3": "min",
+    "total_consumed_m3": "max",
+    "landfill_volume_m3": "min",
+    "total_emissions_kgco2e": "min",
+    "overall_efficiency_pct": "max",
+    "collection_rate_pct": "max",
+    "total_system_cost": "min",
+}
+
 # Nested KPI sub-dicts ``extract_kpis`` emits, ridden generically as flat
 # ``{namespace}.{key}`` metrics with no per-key wiring (issue 06). ``bullwhip``
 # (ADR 0004), ``residence`` (Little's Law, C4), ``carbon`` (ADR 0011),

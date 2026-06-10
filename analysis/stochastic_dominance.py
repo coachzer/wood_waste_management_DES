@@ -22,25 +22,15 @@ from typing import Dict, List, Optional, Tuple
 
 from ._kpi_shared import (
     DEFAULT_METRICS,
+    KPI_SENSE,
     _discovered_namespace_metrics,
     load_combo_kpis,
 )
 
-# Per-KPI sense: "max" = larger is better, "min" = larger is worse. Annotation
-# only (the dominance math is sense-free). Discovered namespace metrics are
-# intentionally absent -- their sense is mixed, so the report leaves it blank.
-# In-module rather than in constants.py: this is dominance-report presentation,
-# not a project-wide constant.
-KPI_SENSES: Dict[str, str] = {
-    "service_level_full_pct": "max",
-    "service_level_operational_pct": "max",
-    "stockout_lost_m3": "min",
-    "total_consumed_m3": "max",
-    "landfill_volume_m3": "min",
-    "total_emissions_kgco2e": "min",
-    "overall_efficiency_pct": "max",
-    "collection_rate_pct": "max",
-}
+# Per-KPI sense annotation only (the dominance math is sense-free). The senses
+# live in the shared ``KPI_SENSE`` map; this report annotates exactly its
+# headline metrics, and discovered namespace metrics stay blank (mixed sense).
+KPI_SENSES: Dict[str, str] = {metric: KPI_SENSE[metric] for metric in DEFAULT_METRICS}
 
 # Relative tolerance for the second-order (integrated-CDF) comparison: its
 # accumulation carries ~1e-13 floating rounding noise (the first-order comparison

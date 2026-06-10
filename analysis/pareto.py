@@ -23,16 +23,19 @@ import csv
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
-# The objective vector: each entry is ``(summary.csv metric key, sense)`` where
-# sense is "max" (higher is better, e.g. service level) or "min" (lower is
-# better, e.g. emissions/landfill/cost). Kept in-module rather than in
-# config/constants.py: it is this report's objective definition, not a
-# project-wide constant.
+from ._kpi_shared import KPI_SENSE
+
+# The objective vector: each entry is ``(summary.csv metric key, sense)``. The
+# metric *selection* is this report's objective definition and stays in-module;
+# the senses come from the shared ``KPI_SENSE`` map in ``_kpi_shared``.
 OBJECTIVES: List[Tuple[str, str]] = [
-    ("service_level_full_pct", "max"),
-    ("total_emissions_kgco2e", "min"),
-    ("landfill_volume_m3", "min"),
-    ("total_system_cost", "min"),
+    (metric, KPI_SENSE[metric])
+    for metric in (
+        "service_level_full_pct",
+        "total_emissions_kgco2e",
+        "landfill_volume_m3",
+        "total_system_cost",
+    )
 ]
 
 
