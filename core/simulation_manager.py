@@ -1,4 +1,3 @@
-import math
 import simpy
 import traceback
 from typing import List, Dict, Any
@@ -7,11 +6,10 @@ from config.base_config import (
 )
 from config.constants import (
     SIMULATION_DURATION,
-    SEASONAL_PERIODS,
-    SEASONAL_AMPLITUDE,
     WEEKS_PER_YEAR,
     CONSUMPTION_INTERVAL_DAYS,
 )
+from utils.seasonality import seasonal_factor
 from core.transport_manager import PointToPointTransport
 from models.data_classes import OperationalEntity
 from models.enums import RegionType, OutputType
@@ -258,18 +256,6 @@ class SimulationManager:
         })
         return monitor_data
 
-    def _seasonal_factor(self, current_time: float) -> float:
-        """Seasonal demand multiplier, aligned with waste-generation seasonality.
-
-        Uses the same quarter-discretized sinusoid as WasteGenerator
-        (core/generator.py) so consumption and generation share one rhythm.
-        """
-        season_index = min(
-            SEASONAL_PERIODS - 1,
-            int(current_time / (SIMULATION_DURATION / SEASONAL_PERIODS))
-        )
-        return 1 + SEASONAL_AMPLITUDE * math.sin(2 * math.pi * season_index / SEASONAL_PERIODS)
-
     def _market_consumption_process(self):
         """Weekly market consumption of finished goods (ADR 0002).
 
@@ -290,7 +276,7 @@ class SimulationManager:
         while True:
             yield self.env.timeout(CONSUMPTION_INTERVAL_DAYS)
             current_time = self.env.now
-            seasonal_factor = self._seasonal_factor(current_time)
+            current_seasonal_factor = seasonal_factor(current_time)
 
             for operator in self.state.treatment_operators:
                 producible_outputs = {
@@ -303,7 +289,7 @@ class SimulationManager:
                     attempted = (
                         operator.market_share
                         * (annual_demand / WEEKS_PER_YEAR)
-                        * seasonal_factor
+                        * current_seasonal_factor
                     )
                     if attempted <= 0:
                         continue
