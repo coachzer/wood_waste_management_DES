@@ -3,7 +3,7 @@
 The invariant, per treatment operator and product, is:
 
     initial_finished_goods + cumulative_produced
-        == cumulative_consumed + current_finished_goods + production_discarded
+        == cumulative_consumed + current_finished_goods
 
 These tests drive a state through the ``EntityRegistry`` seam -- the injection
 boundary ADR 0002 designed -- so the invariant can be exercised without a SimPy
@@ -44,10 +44,9 @@ def make_operator(name, produced, storage, expected_output=None):
 
 
 def make_state(operator):
-    """A minimal SimulationState stand-in: an event log and a discard counter."""
+    """A minimal SimulationState stand-in: an event log."""
     return SimpleNamespace(
         consumption_events=[],
-        production_discarded={"mdf": 0.0, "particle_board": 0.0, "osb": 0.0},
         treatment_operators=[operator],
     )
 

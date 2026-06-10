@@ -1,6 +1,5 @@
 from typing import Optional
 from models import regional_tracker
-from models.enums import OutputType
 
 
 class SimulationState:
@@ -18,10 +17,6 @@ class SimulationState:
         self.treatment_operators = []
         self.transport_flows = []
         self.waste_tracker = regional_tracker.RegionalWasteTracker()
-        # Finished goods removed from inventory without consumption (mass-balance
-        # discard term, ADR 0002 Phase E.5). Zero by construction; the counter
-        # exists so the mass-balance identity is explicit.
-        self.production_discarded = {output_type.value: 0.0 for output_type in OutputType}
         # Market consumption event log (demand-as-consumption model, ADR 0002)
         self.consumption_events = []
         # Raw waste landfilled per entity (mass-balance discard term, ADR 0009).
@@ -193,7 +188,6 @@ class SimulationState:
         self.treatment_operators = []
         self.transport_flows = []
         self.waste_tracker = regional_tracker.RegionalWasteTracker()
-        self.production_discarded = {output_type.value: 0.0 for output_type in OutputType}
         self.consumption_events = []
         self.waste_landfilled = {}
 

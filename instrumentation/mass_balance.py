@@ -4,8 +4,11 @@ Asserts, per treatment operator and product, that finished-goods mass is
 conserved across a simulation run:
 
     initial_finished_goods + cumulative_produced
-        == cumulative_consumed + current_finished_goods + production_discarded
+        == cumulative_consumed + current_finished_goods
 
+There is no discard term: finished goods have no disposal path, and the
+treatment yield loss is applied before deposit (untracked by design -- a
+documented model limitation, not conserved mass).
 A mismatch means mass appeared or vanished without a recorded reason. The monitor
 construction-snapshots the primed inventory, then checks the identity every
 consumption tick and at end of run. The product invariant runs every tick; the
@@ -114,10 +117,9 @@ class MassBalanceMonitor:
                     if event["operator"] == operator.name and event["product"] == product
                 )
                 current = operator.finished_goods.current_storage[OutputType(product)]
-                discarded = state.production_discarded[product]
 
                 lhs = initial + produced
-                rhs = consumed + current + discarded
+                rhs = consumed + current
                 delta = lhs - rhs
                 self.telemetry.append((timestamp, operator.name, product, lhs, rhs, delta))
 

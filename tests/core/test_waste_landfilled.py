@@ -2,8 +2,8 @@
 
 The collection-center waste invariant (mass_balance) needs landfilled raw waste
 attributed to the entity that dumped it -- the existing WasteMonitor.track_event
-only keeps a single global, entity-less bucket. This counter is the waste-side
-analog of ``production_discarded``: a per-name accumulator the invariant reads.
+only keeps a single global, entity-less bucket. This counter is a per-name
+accumulator the invariant reads.
 """
 
 from models.state import SimulationState
