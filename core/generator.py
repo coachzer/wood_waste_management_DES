@@ -24,8 +24,6 @@ class WasteGenerator(OperationalEntity):
         waste_monitor: Optional[WasteMonitor] = None,
         stock_strategy: StockStrategy = None,
         inventory_policy: InventoryPolicy = None,
-        stock_strategy_behavior = None,
-        inventory_policy_behavior = None,
         kanban_manager = None,
         state = None,
         failure_config = None,
@@ -42,8 +40,8 @@ class WasteGenerator(OperationalEntity):
         self.facility_type = "generator"
         self.stock_strategy = stock_strategy
         self.inventory_policy = inventory_policy
-        self.stock_strategy_behavior = stock_strategy_behavior or build_stock_strategy(stock_strategy)
-        self.inventory_policy_behavior = inventory_policy_behavior or build_inventory_policy(inventory_policy)
+        self.stock_strategy_behavior = build_stock_strategy(stock_strategy)
+        self.inventory_policy_behavior = build_inventory_policy(inventory_policy)
         if initial_stock:
             total_initial = sum(initial_stock.values())
             if total_initial > waste_storage_capacity:

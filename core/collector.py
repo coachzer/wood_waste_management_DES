@@ -66,8 +66,6 @@ class CollectorCompany(OperationalEntity):
         kanban_manager: KanbanManager = None,
         inventory_policy: InventoryPolicy = None,
         stock_strategy: StockStrategy = None,
-        stock_strategy_behavior = None,
-        inventory_policy_behavior = None,
         transport_manager: PointToPointTransport = None,
         state = None,
         failure_config = None,
@@ -87,8 +85,8 @@ class CollectorCompany(OperationalEntity):
         self.state = state
         self.inventory_policy = inventory_policy
         self.stock_strategy = stock_strategy
-        self.stock_strategy_behavior = stock_strategy_behavior or build_stock_strategy(stock_strategy)
-        self.inventory_policy_behavior = inventory_policy_behavior or build_inventory_policy(inventory_policy)
+        self.stock_strategy_behavior = build_stock_strategy(stock_strategy)
+        self.inventory_policy_behavior = build_inventory_policy(inventory_policy)
         self.transport_manager = transport_manager or PointToPointTransport()
         self.initial_collection_capacity = collection_capacity
         self.collection_capacity = collection_capacity

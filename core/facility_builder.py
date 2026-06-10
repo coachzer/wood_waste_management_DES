@@ -6,7 +6,6 @@ from models.data_classes import OperationalEntity, WasteTransformation
 from core.generator import WasteGenerator
 from core.collector import CollectorCompany
 from core.treatment import TreatmentOperator
-from core.strategies import build_stock_strategy, build_inventory_policy
 from instrumentation.waste_monitor import WasteMonitor
 from utils.unit_conversion import convert_generation_rates_to_volume
 from config.constants import (
@@ -88,8 +87,6 @@ class FacilityBuilder:
             waste_monitor=self.waste_monitor,
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
-            stock_strategy_behavior=build_stock_strategy(stock_strategy),
-            inventory_policy_behavior=build_inventory_policy(inventory_policy),
             kanban_manager=self.kanban_manager,
             state=self.state,
             failure_config=self.uncertainty_set.generator_failure if self.uncertainty_set else None,
@@ -130,8 +127,6 @@ class FacilityBuilder:
             uncertainty_set=self.uncertainty_set,
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
-            stock_strategy_behavior=build_stock_strategy(stock_strategy),
-            inventory_policy_behavior=build_inventory_policy(inventory_policy),
             transport_manager=self.transport_manager,
             kanban_manager=self.kanban_manager,
             state=self.state,
@@ -182,8 +177,6 @@ class FacilityBuilder:
             market_share=market_share,
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
-            stock_strategy_behavior=build_stock_strategy(stock_strategy),
-            inventory_policy_behavior=build_inventory_policy(inventory_policy),
             kanban_manager=self.kanban_manager,
             state=self.state,
             failure_config=self.uncertainty_set.treatment_failure if self.uncertainty_set else None,

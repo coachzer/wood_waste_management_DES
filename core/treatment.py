@@ -47,8 +47,6 @@ class TreatmentOperator(OperationalEntity):
         market_share: float = 0.0,
         stock_strategy: StockStrategy = None,
         inventory_policy: InventoryPolicy = None,
-        stock_strategy_behavior = None,
-        inventory_policy_behavior = None,
         state = None,
         abc_demand_config_path: str = "data/demand.json",
         failure_config = None,
@@ -72,8 +70,8 @@ class TreatmentOperator(OperationalEntity):
         if self.stock_strategy is None:
             raise ValueError("stock_strategy must be provided")
 
-        self.stock_strategy_behavior = stock_strategy_behavior or build_stock_strategy(stock_strategy)
-        self.inventory_policy_behavior = inventory_policy_behavior or build_inventory_policy(inventory_policy)
+        self.stock_strategy_behavior = build_stock_strategy(stock_strategy)
+        self.inventory_policy_behavior = build_inventory_policy(inventory_policy)
 
         self.kanban_manager = kanban_manager or KanbanManager()
         self.state = state
