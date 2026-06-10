@@ -139,12 +139,29 @@ def test_explicit_metrics_list_suppresses_bullwhip_auto_append(tmp_path, write_r
     assert all(not r["metric"].startswith("bullwhip.") for r in rows)
 
 
-def test_other_nested_kpi_dict_is_not_flattened_into_metrics(tmp_path, write_run):
-    # Only the bullwhip namespace is lifted; the per-product service-level dict
-    # must not explode into service_level_full_by_product_pct.MDF etc.
+def test_service_by_product_namespace_is_lifted_into_metrics(tmp_path, write_run):
+    # VIZ-REVIEW T8: the per-product service-level dict is a registered generic
+    # namespace, so its keys are discovered and compared like bullwhip's.
+    for seed in (0, 1):
+        write_run(tmp_path, "push", "on_demand", seed,
+                  {"service_level_full_by_product_pct": {"mdf": 90.0, "osb": 80.0}})
+        write_run(tmp_path, "pull", "on_demand", seed,
+                  {"service_level_full_by_product_pct": {"mdf": 70.0, "osb": 80.0}})
+
+    rows = build_paired_report(tmp_path)
+
+    mdf = next(r for r in rows if r["metric"] == "service_level_full_by_product_pct.mdf")
+    # Combo labels sort pull < push, so the paired diff is pull - push.
+    assert mdf["mean_diff"] == -20.0
+    assert mdf["n_pairs"] == 2
+
+
+def test_unregistered_nested_kpi_dict_is_not_flattened_into_metrics(tmp_path, write_run):
+    # Only the registered generic namespaces are lifted; an arbitrary nested
+    # dict must not explode into per-key metrics.
     for seed in (0, 1):
         kpis = {
-            "service_level_full_by_product_pct": {"MDF": 90.0, "OSB": 80.0},
+            "unregistered_nested_dict": {"some_key": 90.0},
             "bullwhip": {"collector_stage": 1.0},
         }
         write_run(tmp_path, "push", "on_demand", seed, kpis)
@@ -152,7 +169,7 @@ def test_other_nested_kpi_dict_is_not_flattened_into_metrics(tmp_path, write_run
 
     rows = build_paired_report(tmp_path)
 
-    assert all(not r["metric"].startswith("service_level_full_by_product_pct") for r in rows)
+    assert all(not r["metric"].startswith("unregistered_nested_dict") for r in rows)
     # The bullwhip lift still happened on the same runs.
     assert any(r["metric"] == "bullwhip.collector_stage" for r in rows)
 

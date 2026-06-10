@@ -61,18 +61,25 @@ KPI_SENSE: Dict[str, str] = {
 # Nested KPI sub-dicts ``extract_kpis`` emits, ridden generically as flat
 # ``{namespace}.{key}`` metrics with no per-key wiring (issue 06). ``bullwhip``
 # (ADR 0004), ``residence`` (Little's Law, C4), ``carbon`` (ADR 0011),
-# ``availability`` (entity status history, cleanup task #61).
-_GENERIC_NAMESPACES = ("bullwhip", "residence", "carbon", "availability")
+# ``availability`` (entity status history, cleanup task #61),
+# ``service_level_full_by_product_pct`` (per-product full Service Level,
+# VIZ-REVIEW T8; keys are the demand.json product names).
+_GENERIC_NAMESPACES = (
+    "bullwhip",
+    "residence",
+    "carbon",
+    "availability",
+    "service_level_full_by_product_pct",
+)
 
 
 def _flatten_namespaces(kpis: dict) -> dict:
     """Lift each nested generic namespace sub-dict to top-level
     ``{namespace}.{key}`` keys so downstream functions work on flat keys.
 
-    Only the registered namespaces are flattened; other keys (including the nested
-    ``service_level_full_by_product_pct`` dict) pass through untouched. ``None``
-    values are preserved so the paired drop-on-``None`` semantics fire identically
-    on lifted keys.
+    Only the registered namespaces are flattened; other nested keys pass through
+    untouched. ``None`` values are preserved so the paired drop-on-``None``
+    semantics fire identically on lifted keys.
     """
     flattened = {
         key: value for key, value in kpis.items() if key not in _GENERIC_NAMESPACES

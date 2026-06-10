@@ -145,6 +145,33 @@ def test_residence_namespace_flows_through_as_prefixed_rows():
     assert wip is not None and float(wip[1]) == 200.0
 
 
+def test_service_by_product_namespace_emitted_as_prefixed_rows():
+    # VIZ-REVIEW T8: the per-product full service level dict rides the same
+    # generic pass, so summary.csv carries one row per product with mean + CI.
+    kpis = [
+        {"service_level_full_by_product_pct": {"mdf": 90.0, "osb": 80.0}},
+        {"service_level_full_by_product_pct": {"mdf": 70.0, "osb": 60.0}},
+    ]
+    rows = summary_rows(kpis)
+    mdf = _row(rows, "service_level_full_by_product_pct.mdf")
+    assert mdf is not None
+    assert float(mdf[1]) == 80.0 and int(mdf[5]) == 2
+    osb = _row(rows, "service_level_full_by_product_pct.osb")
+    assert osb is not None and float(osb[1]) == 70.0
+
+
+def test_service_by_product_never_attempted_product_emits_count_zero_row():
+    # A product the market never attempted is None in every replication
+    # (undefined, not zero); the row stays discoverable with count 0.
+    kpis = [
+        {"service_level_full_by_product_pct": {"mdf": None}},
+        {"service_level_full_by_product_pct": {"mdf": None}},
+    ]
+    cells = _row(summary_rows(kpis), "service_level_full_by_product_pct.mdf")
+    assert cells is not None
+    assert int(cells[5]) == 0
+
+
 def test_residence_none_across_replications_still_emits_discoverable_row():
     # All-None across replications: the row still appears with count 0 so the
     # namespace stays discoverable (mirrors the bullwhip degenerate handling).
