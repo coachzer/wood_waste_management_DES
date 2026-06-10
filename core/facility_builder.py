@@ -1,7 +1,7 @@
 import numpy as np
 from simpy import Environment
 from models.facility_data import FacilityDataManager
-from models.enums import RegionType, WasteType, OutputType
+from models.enums import RegionType, WasteType, OutputType, normalize_waste_type
 from models.data_classes import OperationalEntity, WasteTransformation
 from models.transformations import TRANSFORMATION_CATALOGUE, WASTE_TO_OUTPUT_TYPES
 from core.generator import WasteGenerator
@@ -274,29 +274,13 @@ class FacilityBuilder:
                 volume_by_type[waste_type] = volume_by_type.get(waste_type, 0.0) + volume
         return volume_by_type
 
-    # Private helper methods for processor creation
-    def _map_waste_type(self, input_type):
-        """Map string waste type codes to WasteType enums"""
-        waste_type_mapping = {
-            "03_01_05": WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05,
-            "15_01_03": WasteType.WOODEN_PACKAGING_15_01_03,
-            "17_02_01": WasteType.CONSTRUCTION_WOOD_17_02_01,
-            "03_01_01": WasteType.BARK_CORK_WASTE_03_01_01,
-            "20_01_38": WasteType.NON_HAZARDOUS_WOOD_20_01_38,
-            "15_01_01": WasteType.PAPER_PACKAGING_15_01_01
-        }
-        
-        mapped_type = waste_type_mapping.get(input_type, input_type)
-        return WasteType(mapped_type)
-    
     def _build_transformations(self, proc_data):
         """Build waste transformation mappings for a processor"""
         transformations = {}
 
         for input_type in proc_data.input_types:
-            try:
-                waste_type = self._map_waste_type(input_type)
-            except ValueError:
+            waste_type = normalize_waste_type(input_type)
+            if waste_type is None:
                 print(f"Warning: Skipping invalid waste type: {input_type}")
                 continue
 

@@ -13,7 +13,7 @@ from config.constants import (
     COLLECTOR_TIME_DEGRADATION_RATE_PER_DAY,
 )
 from core.transport_manager import PointToPointTransport, TransportRequest
-from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
+from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy, normalize_waste_type
 from instrumentation.waste_monitor import WasteMonitor
 from models.data_classes import Vehicle, CollectionCenter, OperationalEntity
 from models.distances import REGION_COORDINATES, get_distance, get_closest_regions
@@ -671,30 +671,6 @@ class CollectorCompany(OperationalEntity):
                 completed.append(transport)
         return completed
 
-    def _normalize_waste_type(self, waste_type_input) -> Optional[WasteType]:
-        """Convert various waste type inputs to WasteType enum"""
-        if isinstance(waste_type_input, WasteType):
-            return waste_type_input
-
-        if isinstance(waste_type_input, str):
-            normalized = waste_type_input.replace(" ", "_").replace("-", "_").upper()
-            try:
-                return WasteType[normalized]
-            except KeyError:
-                pass
-
-            waste_type_mapping = {
-                "03_01_05": WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05,
-                "15_01_03": WasteType.WOODEN_PACKAGING_15_01_03,
-                "17_02_01": WasteType.CONSTRUCTION_WOOD_17_02_01,
-                "03_01_01": WasteType.BARK_CORK_WASTE_03_01_01,
-                "20_01_38": WasteType.NON_HAZARDOUS_WOOD_20_01_38,
-                "15_01_01": WasteType.PAPER_PACKAGING_15_01_01,
-            }
-            return waste_type_mapping.get(waste_type_input)
-
-        return None
-
     def _filter_active_waste_streams(self, generator) -> Dict[WasteType, any]:
         """Filter and convert generator waste streams to valid WasteType enums"""
         active_streams = {}
@@ -703,7 +679,7 @@ class CollectorCompany(OperationalEntity):
             if stream.volume <= 0:
                 continue
 
-            waste_type_enum = self._normalize_waste_type(waste_type_str)
+            waste_type_enum = normalize_waste_type(waste_type_str)
             if not waste_type_enum:
                 continue
 

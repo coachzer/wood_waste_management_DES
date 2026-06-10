@@ -42,6 +42,28 @@ class WasteType(Enum):
     NON_HAZARDOUS_WOOD_20_01_38 = "20 01 38"
     BULKY_WASTE_20_03_07 = "20 03 07"
 
+def normalize_waste_type(value) -> "WasteType | None":
+    """Map any accepted waste-type spelling onto the WasteType enum.
+
+    Accepts a WasteType (passed through), an EWC value ("03 01 05"), an
+    underscore-separated code ("03_01_05"), or an enum member name in any
+    case ("sawdust_shavings_cuttings_wood_03_01_05"). Returns None when
+    nothing matches. Single home for this normalization -- the collector
+    and the facility builder previously carried diverged private copies.
+    """
+    if isinstance(value, WasteType):
+        return value
+    if not isinstance(value, str):
+        return None
+    try:
+        return WasteType(value.replace("_", " "))
+    except ValueError:
+        pass
+    try:
+        return WasteType[value.replace(" ", "_").replace("-", "_").upper()]
+    except KeyError:
+        return None
+
 class OutputType(Enum):
     """Types of output products produced by the system."""
     MDF = "mdf"     
