@@ -22,8 +22,6 @@ verbatim and must not be reordered.
 import os
 import json
 
-from models.enums import WasteType
-
 
 class HistoryStore:
     """Holds the six raw history dicts and authors their per-entity schemas.
@@ -79,7 +77,6 @@ class HistoryStore:
         """
         return {
             "storage_utilization": [],
-            "regions": [],
             "status": [],
             "energy_costs": [],
             "operational_costs": [],
@@ -110,30 +107,30 @@ class HistoryStore:
             }
 
     def ensure_processing(self, treatment_name):
-        """Initialize the per-treatment history structure if it does not yet exist."""
+        """Initialize the per-treatment history structure if it does not yet exist.
+
+        Only consumed series are recorded (VIZ-REVIEW T7): the per-WasteType
+        ``by_type`` breakdowns, ``finished_goods_by_type``, ``products.total``,
+        ``products.quality``, and ``operational.energy_consumption`` were
+        write-only and are no longer part of the schema.
+        """
         if treatment_name not in self.processing_history:
             product_types = self.product_types
             self.processing_history[treatment_name] = {
                 "timestamps": [],
                 "storage": {
                     "total": [],
-                    "by_type": {waste_type: [] for waste_type in WasteType},
                     "utilization": [],
                     "waste_utilization": [],
                     "finished_goods_utilization": [],
-                    "finished_goods_by_type": {ptype: [] for ptype in product_types},
                 },
                 "processed": {
                     "total": [],
-                    "by_type": {waste_type: [] for waste_type in WasteType},
                 },
                 "products": {
-                    "total": [],
                     "by_type": {ptype: [] for ptype in product_types},
-                    "quality": [],
                 },
                 "operational": {
-                    "energy_consumption": [],
                     "energy_costs": [],
                     "processing_costs": [],
                     "total_costs": [],
@@ -146,7 +143,6 @@ class HistoryStore:
         if event_key not in self.event_history:
             self.event_history[event_key] = {
                 "timestamps": [],
-                "overflow_events": [],
                 "landfill_usage": [],
                 "storage_expansions": [],
                 "landfill_costs": [],

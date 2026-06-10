@@ -17,7 +17,6 @@ Run in full-suite context: single-test isolation can ImportError on the
 """
 from instrumentation.history_store import HistoryStore
 from instrumentation.waste_monitor import WasteMonitor
-from models.enums import WasteType
 
 # The six raw history dicts the store owns and the recorder writes into.
 HISTORY_GETTERS = (
@@ -122,20 +121,22 @@ def test_ensure_generation_materializes_the_generation_schema():
     store.ensure_generation("gen-1")
     assert set(store.generation_history["gen-1"]) == {
         "timestamps", "volumes", "efficiency", "total_generated",
-        "total_potential_generated", "storage_utilization", "regions",
+        "total_potential_generated", "storage_utilization",
         "status", "energy_costs", "operational_costs", "total_costs",
     }
 
 
 def test_ensure_processing_materializes_nested_schema_from_product_types():
-    """``ensure_processing`` builds the treatment schema, keyed by WasteType + product_types.
+    """``ensure_processing`` builds the treatment schema with only read streams.
 
-    The ``by_type`` breakdowns must cover every ``WasteType`` member; the product
-    views are keyed, in order, by the demand product types the store loaded from
-    ``demand.json``.
+    VIZ-REVIEW T7 removed the write-only series (per-WasteType ``by_type``
+    breakdowns, ``finished_goods_by_type``, ``products.total``, the constant
+    ``products.quality`` and ``operational.energy_consumption``); the consumed
+    ``products.by_type`` (avoided emissions, C11) is keyed, in order, by the
+    demand product types the store loaded from ``demand.json``.
 
-    Mutation check (red): drop ``"operational"`` from the literal, key ``by_type``
-    off a WasteType subset, or reorder the product-type comprehensions -> an
+    Mutation check (red): drop ``"operational"`` from the literal, reorder the
+    product-type comprehension, or restore a removed write-only series -> an
     assertion below fails.
     """
     store = HistoryStore()
@@ -144,10 +145,33 @@ def test_ensure_processing_materializes_nested_schema_from_product_types():
     assert set(history) == {
         "timestamps", "storage", "processed", "products", "operational", "status",
     }
-    assert set(history["storage"]["by_type"]) == set(WasteType)
-    assert set(history["processed"]["by_type"]) == set(WasteType)
+    assert set(history["storage"]) == {
+        "total", "utilization", "waste_utilization", "finished_goods_utilization",
+    }
+    assert set(history["processed"]) == {"total"}
+    assert set(history["products"]) == {"by_type"}
     assert list(history["products"]["by_type"]) == store.product_types
-    assert list(history["storage"]["finished_goods_by_type"]) == store.product_types
+    assert set(history["operational"]) == {
+        "energy_costs", "processing_costs", "total_costs",
+    }
+
+
+def test_ensure_event_materializes_the_system_event_schema():
+    """``ensure_event`` creates the event entry with only consumed series.
+
+    VIZ-REVIEW T9: ``overflow_events`` (the redundant union of
+    ``landfill_usage`` and ``storage_expansions``) is gone; the remaining
+    volume/cost series all feed KPIs.
+
+    Mutation check (red): restore ``overflow_events`` in the literal, or drop
+    a consumed key -> the key-set assertion fails.
+    """
+    store = HistoryStore()
+    store.ensure_event("system_events")
+    assert set(store.event_history["system_events"]) == {
+        "timestamps", "landfill_usage", "storage_expansions",
+        "landfill_costs", "expansion_costs", "total_costs",
+    }
 
 
 def test_ensure_is_idempotent_and_does_not_clobber_samples():

@@ -1,7 +1,6 @@
 import logging
 import os
 from typing import Dict, Any
-from models.enums import WasteType
 from config.constants import SIMULATION_DURATION, PLOTS_ROOT
 from instrumentation.history_store import HistoryStore
 
@@ -15,8 +14,8 @@ class WasteMonitor:
         if not os.path.exists(PLOTS_ROOT):
             os.makedirs(PLOTS_ROOT)
 
-    def track_generation(self, generator, timestamp, region=None):
-        """Track waste generation events with timestamps, region info, and costs"""
+    def track_generation(self, generator, timestamp):
+        """Track waste generation events with timestamps and costs"""
         self.store.ensure_generation(generator.name)
         self.store.ensure_entity_status("generators", generator.name)
 
@@ -25,8 +24,7 @@ class WasteMonitor:
 
         history = self.store.generation_history[generator.name]
         history["timestamps"].append(timestamp)
-        history["status"].append(generator.status.name) 
-        history["regions"].append(region if region is not None else getattr(generator, "region", None))
+        history["status"].append(generator.status.name)
 
         for waste_type, stream in generator.waste_streams.items():
             if waste_type not in history["volumes"]:
@@ -50,8 +48,8 @@ class WasteMonitor:
         history["operational_costs"].append(0.0)
         history["total_costs"].append(0.0)
 
-    def track_collection(self, collector, timestamp: float, region=None):
-        """Track waste collection events with region info and costs"""
+    def track_collection(self, collector, timestamp: float):
+        """Track waste collection events with costs"""
         self.store.ensure_collection(collector.name)
         self.store.ensure_entity_status("collectors", collector.name)
 
@@ -61,7 +59,6 @@ class WasteMonitor:
         history = self.store.collection_history[collector.name]
         history["timestamps"].append(timestamp)
         history["status"].append(collector.status.name)
-        history["regions"].append(region if region is not None else getattr(collector, "region", None))
 
         for waste_type, amount in collector.collected_waste.items():
             if waste_type not in history["collected_volumes"]:
@@ -95,7 +92,6 @@ class WasteMonitor:
 
             self._track_storage_metrics(treatment, history)
             self._track_processing_metrics(treatment, history)
-            self._track_operational_metrics(treatment, history)
             self._track_product_metrics(treatment, history, timestamp)
 
             history["operational"]["energy_costs"].append(0.0)
@@ -139,7 +135,6 @@ class WasteMonitor:
 
         history = self.store.event_history[event_key]
         history["timestamps"].append(timestamp)
-        history["overflow_events"].append(0.0)
         history["landfill_usage"].append(0.0)
         history["storage_expansions"].append(0.0)
         history["landfill_costs"].append(0.0)
@@ -149,11 +144,9 @@ class WasteMonitor:
         if strategy == "landfill":
             history["landfill_usage"][-1] = volume
             history["landfill_costs"][-1] = cost_incurred
-            history["overflow_events"][-1] = volume
         elif strategy == "expand_storage":
             history["storage_expansions"][-1] = volume
             history["expansion_costs"][-1] = cost_incurred
-            history["overflow_events"][-1] = volume
 
         history["total_costs"][-1] = cost_incurred
 
@@ -258,53 +251,30 @@ class WasteMonitor:
         """Track storage-related metrics"""
         history["storage"]["total"].append(treatment.current_storage)
         history["storage"]["utilization"].append(treatment.storage_utilization)
-        for waste_type in WasteType:
-            history["storage"]["by_type"][waste_type].append(
-                treatment.waste_storage[waste_type]
-            )
         waste_util = (treatment.current_storage / treatment.waste_storage_capacity * 100) if treatment.waste_storage_capacity > 0 else 0.0
         history["storage"]["waste_utilization"].append(waste_util)
         finished_goods_capacity_total = sum(treatment.finished_goods.capacity.values())
         finished_goods_util = (sum(treatment.finished_goods.current_storage.values()) / finished_goods_capacity_total * 100) if finished_goods_capacity_total > 0 else 0.0
         history["storage"]["finished_goods_utilization"].append(finished_goods_util)
 
-        for out_enum, qty in treatment.finished_goods.current_storage.items():
-            key = out_enum.value
-            if key not in history["storage"]["finished_goods_by_type"]:
-                history["storage"]["finished_goods_by_type"][key] = []
-            history["storage"]["finished_goods_by_type"][key].append(qty)
-
     def _track_processing_metrics(self, treatment, history):
         """Track processing-related metrics"""
         total_processed = sum(treatment.processed_volumes.values())
         history["processed"]["total"].append(total_processed)
-        for waste_type in WasteType:
-            history["processed"]["by_type"][waste_type].append(
-                treatment.processed_volumes[waste_type]
-            )
         return total_processed
-
-    def _track_operational_metrics(self, treatment, history):
-        """Track operational metrics"""
-        history["operational"]["energy_consumption"].append(treatment.energy_consumption)
 
     def _track_product_metrics(self, treatment, history, timestamp):
         """Track product-related metrics"""
         product_types = self.store.product_types
         product_volumes = getattr(treatment, 'product_volumes', {})
-        total_products = sum(product_volumes.get(ptype, 0) for ptype in product_types)
-        history["products"]["total"].append(total_products)
 
         # Cumulative produced volume per output type (C11 avoided-emissions
-        # driver). Mirrors processed["by_type"]; a write-only series consumed
-        # post-hoc by analysis.avoided_emissions.
+        # driver). A write-only series consumed post-hoc by
+        # analysis.avoided_emissions.
         for ptype in product_types:
             history["products"]["by_type"].setdefault(ptype, []).append(
                 product_volumes.get(ptype, 0)
             )
-
-        quality = getattr(treatment, 'product_quality', 1.0)
-        history["products"]["quality"].append(quality)
 
     def _sum_totals(self, history_dict: Dict[str, Any], key: str) -> float:
         """Helper function to sum totals across all entities"""
