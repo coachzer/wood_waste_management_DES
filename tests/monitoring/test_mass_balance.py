@@ -309,6 +309,25 @@ def test_leaking_waste_system_trips():
     raise AssertionError("expected MassBalanceViolation for unaccounted generated waste")
 
 
+def _baseline_run():
+    """One Baseline PUSH/ON_DEMAND replication with armed invariants.
+
+    The shared configuration of the four slow end-to-end invariant tests below.
+    Deferred import keeps main's heavy import chain off this module's fast
+    tests.
+    """
+    from main import run_single_simulation
+
+    return run_single_simulation(
+        scenario_name="Baseline",
+        inventory_policy=InventoryPolicy.PUSH,
+        stock_strategy=StockStrategy.ON_DEMAND,
+        seed=123456,
+        create_mfa=False,
+        raise_on_violation=True,
+    )
+
+
 @pytest.mark.slow
 def test_yield_bridge_trips_on_halved_yield(monkeypatch):
     """A mis-scaled yield is caught end-to-end (connection-audit Probe 4).
@@ -321,7 +340,6 @@ def test_yield_bridge_trips_on_halved_yield(monkeypatch):
     ``MassBalanceViolation``). Slow: a full 365-day, 12-region simulation.
     """
     from core.treatment import TreatmentOperator
-    from main import run_single_simulation
 
     def halved_output(self, amount_to_process, efficiency):
         return amount_to_process, amount_to_process * efficiency * 0.5
@@ -329,14 +347,7 @@ def test_yield_bridge_trips_on_halved_yield(monkeypatch):
     monkeypatch.setattr(TreatmentOperator, "_calculate_output_amounts", halved_output)
 
     with pytest.raises(SystemExit) as excinfo:
-        run_single_simulation(
-            scenario_name="Baseline",
-            inventory_policy=InventoryPolicy.PUSH,
-            stock_strategy=StockStrategy.ON_DEMAND,
-            seed=123456,
-            create_mfa=False,
-            raise_on_violation=True,
-        )
+        _baseline_run()
 
     cause = excinfo.value.__cause__
     assert isinstance(cause, MassBalanceViolation)
@@ -352,16 +363,7 @@ def test_yield_bridge_holds_on_baseline_run():
     intake/output divergence; a clean return means deposited finished goods
     match the intake x efficiency expectation. Slow: a full baseline run.
     """
-    from main import run_single_simulation
-
-    result = run_single_simulation(
-        scenario_name="Baseline",
-        inventory_policy=InventoryPolicy.PUSH,
-        stock_strategy=StockStrategy.ON_DEMAND,
-        seed=123456,
-        create_mfa=False,
-        raise_on_violation=True,
-    )
+    result = _baseline_run()
     assert result["scenario_name"]
 
 
@@ -374,16 +376,7 @@ def test_waste_system_invariant_holds_on_baseline_run():
     leak; a clean return means raw waste is conserved system-wide. Slow: a full
     365-day, 12-region simulation.
     """
-    from main import run_single_simulation
-
-    result = run_single_simulation(
-        scenario_name="Baseline",
-        inventory_policy=InventoryPolicy.PUSH,
-        stock_strategy=StockStrategy.ON_DEMAND,
-        seed=123456,
-        create_mfa=False,
-        raise_on_violation=True,
-    )
+    result = _baseline_run()
     assert result["scenario_name"]
 
 
@@ -397,14 +390,5 @@ def test_collection_center_invariant_holds_on_baseline_run():
     aborts (as ``SystemExit``) on any per-center leak; a clean return confirms
     the localized identity holds. Slow: a full 365-day, 12-region simulation.
     """
-    from main import run_single_simulation
-
-    result = run_single_simulation(
-        scenario_name="Baseline",
-        inventory_policy=InventoryPolicy.PUSH,
-        stock_strategy=StockStrategy.ON_DEMAND,
-        seed=123456,
-        create_mfa=False,
-        raise_on_violation=True,
-    )
+    result = _baseline_run()
     assert result["scenario_name"]

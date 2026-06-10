@@ -19,16 +19,13 @@ SAWDUST = WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05
 PAPER = WasteType.PAPER_PACKAGING_15_01_01
 
 
-def make_entity(state, capacity=1000.0, name="collector-1"):
+def make_entity(state, monitor, capacity=1000.0, name="collector-1"):
     """A storage-bearing entity stand-in handle_storage_event can act on.
 
-    A no-op monitor stub stands in for WasteMonitor so the recording calls have
-    somewhere to go; the monitor-less case is covered separately below.
+    ``monitor`` is the shared ``noop_waste_monitor`` stub so the recording
+    calls have somewhere to go; the monitor-less case is covered separately
+    below.
     """
-    monitor = SimpleNamespace(
-        track_event=lambda **kwargs: None,
-        track_environmental_impact=lambda **kwargs: None,
-    )
     return SimpleNamespace(
         name=name,
         facility_type="collector",
@@ -41,9 +38,9 @@ def make_entity(state, capacity=1000.0, name="collector-1"):
     )
 
 
-def test_landfill_branch_attributes_volume_to_entity():
+def test_landfill_branch_attributes_volume_to_entity(noop_waste_monitor):
     state = SimulationState()
-    entity = make_entity(state)
+    entity = make_entity(state, noop_waste_monitor)
 
     _cost, action = handle_storage_event(entity, {SAWDUST: 100.0}, force_landfill=True)
 
@@ -51,9 +48,9 @@ def test_landfill_branch_attributes_volume_to_entity():
     assert state.waste_landfilled == {"collector-1": 100.0}
 
 
-def test_expand_branch_records_no_landfill():
+def test_expand_branch_records_no_landfill(noop_waste_monitor):
     state = SimulationState()
-    entity = make_entity(state)
+    entity = make_entity(state, noop_waste_monitor)
 
     # Landfill cost is now composition-dependent (ADR 0013). Pure PAPER has density
     # 600 kg/m³ = the retired flat 0.6 t/m³, so it preserves the original ~1812 m³
@@ -65,7 +62,7 @@ def test_expand_branch_records_no_landfill():
     assert state.waste_landfilled == {}
 
 
-def test_landfill_cost_is_per_type_density_weighted():
+def test_landfill_cost_is_per_type_density_weighted(noop_waste_monitor):
     """Landfill cost weights each waste type by its OWN density, not a flat 0.6
     (ADR 0013). 100 m³ of PAPER (600 kg/m³) costs 3x 100 m³ of SAWDUST (200 kg/m³).
 
@@ -77,7 +74,7 @@ def test_landfill_cost_is_per_type_density_weighted():
     from config.constants import KILOGRAMS_PER_TONNE, LANDFILL_COST_PER_TONNE_USD, WASTE_DENSITIES
 
     state = SimulationState()
-    entity = make_entity(state)
+    entity = make_entity(state, noop_waste_monitor)
 
     cost, action = handle_storage_event(
         entity, {PAPER: 100.0, SAWDUST: 100.0}, force_landfill=True

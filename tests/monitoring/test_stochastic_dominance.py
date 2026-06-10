@@ -12,8 +12,6 @@ is interpretation layered on top -- whether "larger" means "better" -- so these
 core tests are sense-free; sense annotation is checked at the report layer.
 """
 
-import json
-
 from analysis.stochastic_dominance import (
     KPI_SENSES,
     build_dominance_report,
@@ -22,18 +20,6 @@ from analysis.stochastic_dominance import (
     second_order_dominance,
     write_dominance_report,
 )
-
-
-def _write_run(combo_dir, policy, strategy, seed, kpis):
-    """Write one run_<seed>.json with the fields load_combo_kpis reads."""
-    combo_dir.mkdir(parents=True, exist_ok=True)
-    run = {
-        "inventory_policy": policy,
-        "stock_strategy": strategy,
-        "seed": seed,
-        "kpis": kpis,
-    }
-    (combo_dir / f"run_{seed}.json").write_text(json.dumps(run), encoding="utf-8")
 
 
 # --- first-order dominance -------------------------------------------------
@@ -102,18 +88,18 @@ def test_relation_reports_none_when_incomparable():
 
 # --- dataset reader / report ----------------------------------------------
 
-def test_build_dominance_report_maps_winner_and_sense(tmp_path):
+def test_build_dominance_report_maps_winner_and_sense(tmp_path, write_run):
     # push__on_demand FSD-dominates pull__on_demand on a "max" KPI (service):
     # push has the larger, better distribution.
     for seed, (push_v, pull_v) in enumerate(
         [(90.0, 50.0), (92.0, 55.0), (94.0, 60.0)], start=1
     ):
-        _write_run(
-            tmp_path / "push__on_demand", "push", "on_demand", seed,
+        write_run(
+            tmp_path, "push", "on_demand", seed,
             {"service_level_full_pct": push_v},
         )
-        _write_run(
-            tmp_path / "pull__on_demand", "pull", "on_demand", seed,
+        write_run(
+            tmp_path, "pull", "on_demand", seed,
             {"service_level_full_pct": pull_v},
         )
     rows = build_dominance_report(tmp_path, metrics=["service_level_full_pct"])
@@ -127,12 +113,12 @@ def test_build_dominance_report_maps_winner_and_sense(tmp_path):
     assert row["n_a"] == 3 and row["n_b"] == 3
 
 
-def test_build_dominance_report_records_no_dominance(tmp_path):
+def test_build_dominance_report_records_no_dominance(tmp_path, write_run):
     # Crossing CDFs with equal means -> no dominance; the pair is still reported.
     for seed, (a_v, b_v) in enumerate([(1.0, 2.0), (5.0, 2.0)], start=1):
-        _write_run(tmp_path / "push__on_demand", "push", "on_demand", seed,
+        write_run(tmp_path, "push", "on_demand", seed,
                    {"landfill_volume_m3": a_v})
-        _write_run(tmp_path / "pull__on_demand", "pull", "on_demand", seed,
+        write_run(tmp_path, "pull", "on_demand", seed,
                    {"landfill_volume_m3": b_v})
     rows = build_dominance_report(tmp_path, metrics=["landfill_volume_m3"])
     assert len(rows) == 1
@@ -141,22 +127,22 @@ def test_build_dominance_report_records_no_dominance(tmp_path):
     assert rows[0]["sense"] == "min"
 
 
-def test_build_dominance_report_drops_combo_with_too_few_samples(tmp_path):
+def test_build_dominance_report_drops_combo_with_too_few_samples(tmp_path, write_run):
     # A single replication is not a distribution -> the pair is skipped.
-    _write_run(tmp_path / "push__on_demand", "push", "on_demand", 1,
+    write_run(tmp_path, "push", "on_demand", 1,
                {"service_level_full_pct": 90.0})
-    _write_run(tmp_path / "pull__on_demand", "pull", "on_demand", 1,
+    write_run(tmp_path, "pull", "on_demand", 1,
                {"service_level_full_pct": 50.0})
-    _write_run(tmp_path / "pull__on_demand", "pull", "on_demand", 2,
+    write_run(tmp_path, "pull", "on_demand", 2,
                {"service_level_full_pct": 55.0})
     assert build_dominance_report(tmp_path, metrics=["service_level_full_pct"]) == []
 
 
-def test_write_dominance_report_round_trips(tmp_path):
+def test_write_dominance_report_round_trips(tmp_path, write_run):
     for seed, (push_v, pull_v) in enumerate([(90.0, 50.0), (92.0, 55.0)], start=1):
-        _write_run(tmp_path / "push__on_demand", "push", "on_demand", seed,
+        write_run(tmp_path, "push", "on_demand", seed,
                    {"total_emissions_kgco2e": push_v})
-        _write_run(tmp_path / "pull__on_demand", "pull", "on_demand", seed,
+        write_run(tmp_path, "pull", "on_demand", seed,
                    {"total_emissions_kgco2e": pull_v})
     report = write_dominance_report(tmp_path, metrics=["total_emissions_kgco2e"])
     assert report == tmp_path / "stochastic_dominance.csv"

@@ -12,16 +12,8 @@ from visualization.pareto_visualization import (
 )
 
 
-def _write_summary(combo_dir, means):
-    combo_dir.mkdir(parents=True, exist_ok=True)
-    lines = ["metric,mean,stdev,ci95_low,ci95_high,count"]
-    for metric, mean in means.items():
-        lines.append(f"{metric},{mean},0,0,0,10")
-    (combo_dir / "summary.csv").write_text("\n".join(lines), encoding="utf-8")
-
-
-def _baseline_dataset(scenario_dir):
-    _write_summary(
+def _baseline_dataset(write_summary, scenario_dir):
+    write_summary(
         scenario_dir / "push__reorder_50",
         {
             "service_level_full_pct": 74.96,
@@ -30,7 +22,7 @@ def _baseline_dataset(scenario_dir):
             "total_system_cost": 1.52e7,
         },
     )
-    _write_summary(
+    write_summary(
         scenario_dir / "push__on_demand",
         {
             "service_level_full_pct": 67.38,
@@ -41,8 +33,8 @@ def _baseline_dataset(scenario_dir):
     )
 
 
-def test_build_pareto_figure_has_config_and_objective_axes(tmp_path):
-    _baseline_dataset(tmp_path)
+def test_build_pareto_figure_has_config_and_objective_axes(tmp_path, write_summary):
+    _baseline_dataset(write_summary, tmp_path)
     rows = build_pareto_report(tmp_path)
     figure = build_pareto_figure(rows)
     dimensions = figure.data[0].dimensions
@@ -54,8 +46,8 @@ def test_build_pareto_figure_has_config_and_objective_axes(tmp_path):
     assert all(len(dim["values"]) == len(rows) for dim in dimensions)
 
 
-def test_write_pareto_plot_emits_html(tmp_path):
-    _baseline_dataset(tmp_path)
+def test_write_pareto_plot_emits_html(tmp_path, write_summary):
+    _baseline_dataset(write_summary, tmp_path)
     plot_path = write_pareto_plot(tmp_path)
     assert plot_path == tmp_path / "pareto_frontier.html"
     assert plot_path.exists()

@@ -20,15 +20,6 @@ from analysis.pareto import (
 MIN_MIN = [("a", "min"), ("b", "min")]
 
 
-def _write_summary(combo_dir, means):
-    """Write a minimal summary.csv (the real header + a row per metric)."""
-    combo_dir.mkdir(parents=True, exist_ok=True)
-    lines = ["metric,mean,stdev,ci95_low,ci95_high,count"]
-    for metric, mean in means.items():
-        lines.append(f"{metric},{mean},0,0,0,10")
-    (combo_dir / "summary.csv").write_text("\n".join(lines), encoding="utf-8")
-
-
 # --- domination core -------------------------------------------------------
 
 def test_dominates_strict_single_objective():
@@ -98,8 +89,8 @@ def test_pareto_frontier_mixed_sense_with_real_objectives():
 
 # --- dataset reader / report ----------------------------------------------
 
-def test_read_objective_point_pulls_the_means(tmp_path):
-    _write_summary(
+def test_read_objective_point_pulls_the_means(tmp_path, write_summary):
+    write_summary(
         tmp_path,
         {
             "service_level_full_pct": 67.38,
@@ -118,9 +109,9 @@ def test_read_objective_point_pulls_the_means(tmp_path):
     }
 
 
-def test_build_pareto_report_scenario_mode_flags_non_dominated(tmp_path):
+def test_build_pareto_report_scenario_mode_flags_non_dominated(tmp_path, write_summary):
     # Two combos: one dominates the other on every objective.
-    _write_summary(
+    write_summary(
         tmp_path / "push__on_demand",
         {
             "service_level_full_pct": 90.0,
@@ -129,7 +120,7 @@ def test_build_pareto_report_scenario_mode_flags_non_dominated(tmp_path):
             "total_system_cost": 200.0,
         },
     )
-    _write_summary(
+    write_summary(
         tmp_path / "pull__on_demand",
         {
             "service_level_full_pct": 40.0,
@@ -143,9 +134,9 @@ def test_build_pareto_report_scenario_mode_flags_non_dominated(tmp_path):
     assert flags == {"push__on_demand": True, "pull__on_demand": False}
 
 
-def test_write_pareto_report_round_trips_and_labels_root_mode(tmp_path):
+def test_write_pareto_report_round_trips_and_labels_root_mode(tmp_path, write_summary):
     # Root layout: scenario dirs -> combo dirs. Labels become scenario__combo.
-    _write_summary(
+    write_summary(
         tmp_path / "Baseline" / "push__on_demand",
         {
             "service_level_full_pct": 90.0,
@@ -154,7 +145,7 @@ def test_write_pareto_report_round_trips_and_labels_root_mode(tmp_path):
             "total_system_cost": 200.0,
         },
     )
-    _write_summary(
+    write_summary(
         tmp_path / "Buffer4wk" / "push__on_demand",
         {
             "service_level_full_pct": 95.0,

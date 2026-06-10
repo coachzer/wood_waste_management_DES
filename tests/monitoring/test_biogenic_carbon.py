@@ -22,22 +22,8 @@ _STOCK = {
 }
 
 
-def _monitor_data(per_operator):
-    """Build a monitor_data carrying only products.by_type series per operator.
-
-    ``per_operator`` is a list of ``{product: [cumulative series]}`` dicts, one
-    per treatment operator.
-    """
-    return {
-        "processing_history": {
-            f"op{i}": {"products": {"by_type": by_type}}
-            for i, by_type in enumerate(per_operator)
-        }
-    }
-
-
-def test_each_product_is_rescaled_by_its_own_biogenic_stock():
-    md = _monitor_data(
+def test_each_product_is_rescaled_by_its_own_biogenic_stock(monitor_data):
+    md = monitor_data(
         [{"mdf": [0.0, 10.0], "particle_board": [0.0, 20.0], "osb": [0.0, 5.0]}]
     )
     m = biogenic_carbon_metrics(md)
@@ -48,15 +34,15 @@ def test_each_product_is_rescaled_by_its_own_biogenic_stock():
     assert m["biogenic_carbon_stored_osb_kgco2e"] == pytest.approx(5.0 * _STOCK["osb"])
 
 
-def test_total_is_the_sum_across_products():
-    md = _monitor_data([{"mdf": [10.0], "particle_board": [20.0], "osb": [5.0]}])
+def test_total_is_the_sum_across_products(monitor_data):
+    md = monitor_data([{"mdf": [10.0], "particle_board": [20.0], "osb": [5.0]}])
     m = biogenic_carbon_metrics(md)
     expected = 10.0 * _STOCK["mdf"] + 20.0 * _STOCK["particle_board"] + 5.0 * _STOCK["osb"]
     assert m["biogenic_carbon_stored_total_kgco2e"] == pytest.approx(expected)
 
 
-def test_production_sums_across_operators_using_the_last_sample():
-    md = _monitor_data([{"mdf": [0.0, 4.0]}, {"mdf": [0.0, 6.0]}])
+def test_production_sums_across_operators_using_the_last_sample(monitor_data):
+    md = monitor_data([{"mdf": [0.0, 4.0]}, {"mdf": [0.0, 6.0]}])
     m = biogenic_carbon_metrics(md)
     # 4 + 6 = 10 m3 of MDF across the two operators; only the final sample counts.
     assert m["biogenic_carbon_stored_mdf_kgco2e"] == pytest.approx(10.0 * _STOCK["mdf"])
@@ -69,11 +55,11 @@ def test_empty_monitor_data_is_all_zero():
     assert m["biogenic_carbon_stored_total_kgco2e"] == 0.0
 
 
-def test_stored_credit_is_negative_signed_sequestration():
+def test_stored_credit_is_negative_signed_sequestration(monitor_data):
     # ProductSpecification.biogenic_carbon_stock is negative (carbon sequestered
     # out of the atmosphere); produced volume is non-negative, so the credit
     # reads negative beside the positive total_emissions_kgco2e.
-    md = _monitor_data([{"osb": [3.0]}])
+    md = monitor_data([{"osb": [3.0]}])
     m = biogenic_carbon_metrics(md)
     assert m["biogenic_carbon_stored_osb_kgco2e"] < 0
     assert m["biogenic_carbon_stored_total_kgco2e"] < 0

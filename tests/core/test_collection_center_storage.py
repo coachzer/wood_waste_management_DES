@@ -38,17 +38,14 @@ class FakeCollector:
 
     facility_type = "collector"
 
-    def __init__(self, center, state, name="collector-1", region="podravska"):
+    def __init__(self, center, state, monitor, name="collector-1", region="podravska"):
         self.collection_center = center
         self.state = state
         self.name = name
         self.region = region
         self.expansion_count = 0
         self.env = SimpleNamespace(now=0.0)
-        self.waste_monitor = SimpleNamespace(
-            track_event=lambda **kwargs: None,
-            track_environmental_impact=lambda **kwargs: None,
-        )
+        self.waste_monitor = monitor
 
     @property
     def waste_storage_capacity(self):
@@ -67,7 +64,7 @@ def landfilled_total(state, name="collector-1"):
     return state.waste_landfilled.get(name, 0.0)
 
 
-def test_expand_branch_stores_overflow_and_landfills_remainder():
+def test_expand_branch_stores_overflow_and_landfills_remainder(noop_waste_monitor):
     """A large overflow takes the expand branch (capacity +500). The collected
     mass must end up stored (up to the new capacity) plus landfilled -- not
     dropped. Empty center, capacity 2000, 4000 handed in -> overflow 2000
@@ -78,7 +75,7 @@ def test_expand_branch_stores_overflow_and_landfills_remainder():
     density, so a denser stream is needed to still reach the expand branch under
     test. The mass figures below are volume-based and density-independent."""
     state = SimulationState()
-    collector = FakeCollector(FakeCenter(2000.0, {PAPER: 0.0}), state)
+    collector = FakeCollector(FakeCenter(2000.0, {PAPER: 0.0}), state, noop_waste_monitor)
 
     CollectorCompany._add_to_collection_center(collector, {PAPER: 4000.0})
 
@@ -89,11 +86,11 @@ def test_expand_branch_stores_overflow_and_landfills_remainder():
     assert stored_total(collector) + landfilled_total(state) == 4000.0
 
 
-def test_landfill_branch_conserves_mass():
+def test_landfill_branch_conserves_mass(noop_waste_monitor):
     """A small overflow takes the landfill branch: what fits is stored, the
     excess is landfilled and attributed -- still conserving mass."""
     state = SimulationState()
-    collector = FakeCollector(FakeCenter(2000.0, {CONSTRUCTION: 0.0}), state)
+    collector = FakeCollector(FakeCenter(2000.0, {CONSTRUCTION: 0.0}), state, noop_waste_monitor)
 
     CollectorCompany._add_to_collection_center(collector, {CONSTRUCTION: 2100.0})
 
@@ -103,10 +100,10 @@ def test_landfill_branch_conserves_mass():
     assert stored_total(collector) + landfilled_total(state) == 2100.0
 
 
-def test_no_overflow_stores_everything():
+def test_no_overflow_stores_everything(noop_waste_monitor):
     """Within capacity, all waste is stored and nothing is landfilled."""
     state = SimulationState()
-    collector = FakeCollector(FakeCenter(2000.0, {CONSTRUCTION: 0.0, PACKAGING: 0.0}), state)
+    collector = FakeCollector(FakeCenter(2000.0, {CONSTRUCTION: 0.0, PACKAGING: 0.0}), state, noop_waste_monitor)
 
     CollectorCompany._add_to_collection_center(
         collector, {CONSTRUCTION: 300.0, PACKAGING: 200.0}

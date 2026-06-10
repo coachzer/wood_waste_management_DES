@@ -8,22 +8,7 @@ metrics that ride the existing all-combo-pairs machinery (no PUSH-vs-PULL
 filter), generic over the namespace like issue 06.
 """
 
-import json
-
 from analysis.paired_comparison import build_paired_report
-
-
-def _write_run(scenario_dir, inventory_policy, stock_strategy, seed, kpis):
-    """Persist one ``run_*.json`` the way the baseline run does, under its combo dir."""
-    combo_dir = scenario_dir / f"{inventory_policy}__{stock_strategy}"
-    combo_dir.mkdir(parents=True, exist_ok=True)
-    run = {
-        "inventory_policy": inventory_policy,
-        "stock_strategy": stock_strategy,
-        "seed": seed,
-        "kpis": kpis,
-    }
-    (combo_dir / f"run_{seed:03d}.json").write_text(json.dumps(run), encoding="utf-8")
 
 
 def _find(rows, metric, combo_a, combo_b):
@@ -34,12 +19,12 @@ def _find(rows, metric, combo_a, combo_b):
     return None
 
 
-def test_nested_bullwhip_key_becomes_a_paired_comparison_metric(tmp_path):
+def test_nested_bullwhip_key_becomes_a_paired_comparison_metric(tmp_path, write_run):
     # Combo labels sort as pull__on_demand < push__on_demand, so the pair is
     # (combo_a=pull, combo_b=push) and the diff is pull - push.
     for seed, (push_v, pull_v) in enumerate([(1.0, 2.0), (1.0, 3.0), (1.0, 4.0)]):
-        _write_run(tmp_path, "push", "on_demand", seed, {"bullwhip": {"collector_stage": push_v}})
-        _write_run(tmp_path, "pull", "on_demand", seed, {"bullwhip": {"collector_stage": pull_v}})
+        write_run(tmp_path, "push", "on_demand", seed, {"bullwhip": {"collector_stage": push_v}})
+        write_run(tmp_path, "pull", "on_demand", seed, {"bullwhip": {"collector_stage": pull_v}})
 
     rows = build_paired_report(tmp_path)
 
@@ -50,13 +35,13 @@ def test_nested_bullwhip_key_becomes_a_paired_comparison_metric(tmp_path):
     assert row["n_pairs"] == 3
 
 
-def test_none_bullwhip_value_survives_flatten_and_drops_that_seed(tmp_path):
+def test_none_bullwhip_value_survives_flatten_and_drops_that_seed(tmp_path, write_run):
     # A lifted bullwhip key whose value is None on one seed must stay None (not
     # vanish) so the existing paired drop-on-None leaves a genuinely paired set.
     pulls = {0: 2.0, 1: None, 2: 4.0}
     for seed in (0, 1, 2):
-        _write_run(tmp_path, "push", "on_demand", seed, {"bullwhip": {"collector_stage": 1.0}})
-        _write_run(tmp_path, "pull", "on_demand", seed, {"bullwhip": {"collector_stage": pulls[seed]}})
+        write_run(tmp_path, "push", "on_demand", seed, {"bullwhip": {"collector_stage": 1.0}})
+        write_run(tmp_path, "pull", "on_demand", seed, {"bullwhip": {"collector_stage": pulls[seed]}})
 
     rows = build_paired_report(tmp_path)
 
@@ -66,12 +51,12 @@ def test_none_bullwhip_value_survives_flatten_and_drops_that_seed(tmp_path):
     assert row["mean_diff"] == 2.0
 
 
-def test_arbitrary_new_bullwhip_key_flows_through_without_wiring(tmp_path):
+def test_arbitrary_new_bullwhip_key_flows_through_without_wiring(tmp_path, write_run):
     # Generic over the namespace: a key never named in this module still
     # produces a comparison (acceptance criterion for issue 07).
     for seed in (0, 1):
-        _write_run(tmp_path, "push", "on_demand", seed, {"bullwhip": {"some_future_echelon": 1.0}})
-        _write_run(tmp_path, "pull", "on_demand", seed, {"bullwhip": {"some_future_echelon": 5.0}})
+        write_run(tmp_path, "push", "on_demand", seed, {"bullwhip": {"some_future_echelon": 1.0}})
+        write_run(tmp_path, "pull", "on_demand", seed, {"bullwhip": {"some_future_echelon": 5.0}})
 
     rows = build_paired_report(tmp_path)
 
@@ -80,13 +65,13 @@ def test_arbitrary_new_bullwhip_key_flows_through_without_wiring(tmp_path):
     assert row["mean_diff"] == 4.0
 
 
-def _write_six_combo_grid(scenario_dir, bullwhip_value_for):
+def _write_six_combo_grid(write_run, scenario_dir, bullwhip_value_for):
     """Write one run per (policy, strategy) x seed; bullwhip value via callback."""
     seeds = (0, 1, 2)
     for policy in ("push", "pull"):
         for strategy in ("on_demand", "reorder_50", "reorder_90"):
             for seed in seeds:
-                _write_run(
+                write_run(
                     scenario_dir, policy, strategy, seed,
                     {
                         "service_level_full_pct": 90.0,
@@ -95,10 +80,10 @@ def _write_six_combo_grid(scenario_dir, bullwhip_value_for):
                 )
 
 
-def test_bullwhip_metric_rides_all_fifteen_combo_pairs(tmp_path):
+def test_bullwhip_metric_rides_all_fifteen_combo_pairs(tmp_path, write_run):
     # Six combos -> C(6,2) = 15 pairwise comparisons per metric, no PUSH-vs-PULL
     # filter; the curated flat metric is still reported alongside.
-    _write_six_combo_grid(tmp_path, lambda policy, strategy, seed: seed + (1.0 if policy == "pull" else 0.0))
+    _write_six_combo_grid(write_run, tmp_path, lambda policy, strategy, seed: seed + (1.0 if policy == "pull" else 0.0))
 
     rows = build_paired_report(tmp_path)
 
@@ -108,14 +93,14 @@ def test_bullwhip_metric_rides_all_fifteen_combo_pairs(tmp_path):
     assert len(curated_rows) == 15
 
 
-def test_bullwhip_metrics_follow_curated_metrics_in_authored_order(tmp_path):
+def test_bullwhip_metrics_follow_curated_metrics_in_authored_order(tmp_path, write_run):
     for seed in (0, 1):
         kpis = {
             "service_level_full_pct": 90.0,
             "bullwhip": {"treatment_stage": 2.0, "collector_stage": 0.8},
         }
-        _write_run(tmp_path, "push", "on_demand", seed, kpis)
-        _write_run(tmp_path, "pull", "on_demand", seed, kpis)
+        write_run(tmp_path, "push", "on_demand", seed, kpis)
+        write_run(tmp_path, "pull", "on_demand", seed, kpis)
 
     rows = build_paired_report(tmp_path)
     metric_order = list(dict.fromkeys(r["metric"] for r in rows))
@@ -126,26 +111,26 @@ def test_bullwhip_metrics_follow_curated_metrics_in_authored_order(tmp_path):
     assert metric_order.index("bullwhip.treatment_stage") < metric_order.index("bullwhip.collector_stage")
 
 
-def test_all_none_bullwhip_metric_yields_no_comparison_row(tmp_path):
+def test_all_none_bullwhip_metric_yields_no_comparison_row(tmp_path, write_run):
     # Unlike summary.csv (which keeps a count=0 discoverability row), a paired
     # report has nothing to compare when every value is None, so the metric is
     # dropped entirely -- same as any curated metric with an empty family.
     for seed in (0, 1):
-        _write_run(tmp_path, "push", "on_demand", seed, {"bullwhip": {"collector_stage": None}})
-        _write_run(tmp_path, "pull", "on_demand", seed, {"bullwhip": {"collector_stage": None}})
+        write_run(tmp_path, "push", "on_demand", seed, {"bullwhip": {"collector_stage": None}})
+        write_run(tmp_path, "pull", "on_demand", seed, {"bullwhip": {"collector_stage": None}})
 
     rows = build_paired_report(tmp_path)
 
     assert all(r["metric"] != "bullwhip.collector_stage" for r in rows)
 
 
-def test_explicit_metrics_list_suppresses_bullwhip_auto_append(tmp_path):
+def test_explicit_metrics_list_suppresses_bullwhip_auto_append(tmp_path, write_run):
     # An explicit metric list is honored verbatim: no bullwhip key is appended
     # even though the runs carry one.
     for seed in (0, 1):
-        _write_run(tmp_path, "push", "on_demand", seed,
+        write_run(tmp_path, "push", "on_demand", seed,
                    {"service_level_full_pct": 90.0, "bullwhip": {"collector_stage": 1.0}})
-        _write_run(tmp_path, "pull", "on_demand", seed,
+        write_run(tmp_path, "pull", "on_demand", seed,
                    {"service_level_full_pct": 80.0, "bullwhip": {"collector_stage": 5.0}})
 
     rows = build_paired_report(tmp_path, metrics=["service_level_full_pct"])
@@ -154,7 +139,7 @@ def test_explicit_metrics_list_suppresses_bullwhip_auto_append(tmp_path):
     assert all(not r["metric"].startswith("bullwhip.") for r in rows)
 
 
-def test_other_nested_kpi_dict_is_not_flattened_into_metrics(tmp_path):
+def test_other_nested_kpi_dict_is_not_flattened_into_metrics(tmp_path, write_run):
     # Only the bullwhip namespace is lifted; the per-product service-level dict
     # must not explode into service_level_full_by_product_pct.MDF etc.
     for seed in (0, 1):
@@ -162,8 +147,8 @@ def test_other_nested_kpi_dict_is_not_flattened_into_metrics(tmp_path):
             "service_level_full_by_product_pct": {"MDF": 90.0, "OSB": 80.0},
             "bullwhip": {"collector_stage": 1.0},
         }
-        _write_run(tmp_path, "push", "on_demand", seed, kpis)
-        _write_run(tmp_path, "pull", "on_demand", seed, kpis)
+        write_run(tmp_path, "push", "on_demand", seed, kpis)
+        write_run(tmp_path, "pull", "on_demand", seed, kpis)
 
     rows = build_paired_report(tmp_path)
 
@@ -172,15 +157,15 @@ def test_other_nested_kpi_dict_is_not_flattened_into_metrics(tmp_path):
     assert any(r["metric"] == "bullwhip.collector_stage" for r in rows)
 
 
-def test_constant_paired_difference_hits_zero_variance_branch(tmp_path):
+def test_constant_paired_difference_hits_zero_variance_branch(tmp_path, write_run):
     # A bullwhip key constant within each combo yields a constant paired diff,
     # exercising the existing zero-variance branch post-flatten: a nonzero
     # constant is deterministically significant (ADR 0007 identity flavor), a
     # zero constant is not -- both with zero sd.
     for seed in (0, 1, 2):
-        _write_run(tmp_path, "push", "on_demand", seed,
+        write_run(tmp_path, "push", "on_demand", seed,
                    {"bullwhip": {"treatment_stage": 1.0, "collector_stage": 2.0}})
-        _write_run(tmp_path, "pull", "on_demand", seed,
+        write_run(tmp_path, "pull", "on_demand", seed,
                    {"bullwhip": {"treatment_stage": 3.0, "collector_stage": 2.0}})
 
     rows = build_paired_report(tmp_path)
@@ -196,13 +181,13 @@ def test_constant_paired_difference_hits_zero_variance_branch(tmp_path):
     assert zero["significant_holm"] is False
 
 
-def test_residence_namespace_key_becomes_a_paired_comparison_metric(tmp_path):
+def test_residence_namespace_key_becomes_a_paired_comparison_metric(tmp_path, write_run):
     # The second generic namespace (C4) is flattened and discovered just like
     # bullwhip: a residence.* key rides the all-combo-pairs paired machinery.
     for seed, (push_v, pull_v) in enumerate([(1.0, 2.0), (1.0, 3.0), (1.0, 4.0)]):
-        _write_run(tmp_path, "push", "on_demand", seed,
+        write_run(tmp_path, "push", "on_demand", seed,
                    {"residence": {"treatment_residence_days": push_v}})
-        _write_run(tmp_path, "pull", "on_demand", seed,
+        write_run(tmp_path, "pull", "on_demand", seed,
                    {"residence": {"treatment_residence_days": pull_v}})
 
     rows = build_paired_report(tmp_path)
