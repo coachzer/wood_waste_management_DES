@@ -12,7 +12,6 @@ from models.data_classes import FailureConfig
 class UncertaintySet:
     """Uncertainty set - only variability parameters"""
     name: str
-    collection_efficiency: Tuple[float, float]
     treatment_conversion: Tuple[float, float]
     transportation_time: Tuple[float, float]
     generator_failure: FailureConfig
@@ -44,7 +43,6 @@ class ScenarioConfig:
     """Configuration for a simulation scenario - unified and simplified"""
     name: str
     waste_gen: Tuple[float, float]
-    coll_eff: Tuple[float, float]
     treat_conv: Tuple[float, float]
     trans_time: Tuple[float, float]
     generator_failure: FailureConfig
@@ -59,7 +57,6 @@ class ScenarioConfig:
 
         return UncertaintySet(
             name=self.name,
-            collection_efficiency=self.coll_eff,
             treatment_conversion=self.treat_conv,
             transportation_time=self.trans_time,
             generator_failure=self.generator_failure,
@@ -98,7 +95,6 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
     "Baseline": ScenarioConfig(
         name="Baseline",
         waste_gen=(1.0, 0.1),    # Standard generation, low variability
-        coll_eff=(0.85, 0.05),   # Good, stable collection efficiency
         treat_conv=(0.9, 0.03),  # High, stable conversion efficiency
         trans_time=(2.0, 0.2),   # Fast, predictable transport
         generator_failure=LOW_FAILURE,
@@ -157,7 +153,6 @@ def validate_tuple(mean_std_tuple: Tuple[float, float], name: str) -> None:
 def validate_scenario_config(config: ScenarioConfig) -> None:
     """Validate a scenario configuration"""
     validate_tuple(config.waste_gen, "Waste generation")
-    validate_tuple(config.coll_eff, "Collection efficiency")
     validate_tuple(config.treat_conv, "Treatment conversion")
     validate_tuple(config.trans_time, "Transportation time")
     if config.finished_goods_buffer_weeks <= 0:
