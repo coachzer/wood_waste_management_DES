@@ -117,7 +117,8 @@ class OperationalEntity:
             from config.constants import RECOVERING_BASE_EFFICIENCY
             return RECOVERING_BASE_EFFICIENCY + ((1.0 - RECOVERING_BASE_EFFICIENCY) * self.recovery_progress)
         else:
-            return 0.0
+            from config.constants import FAILED_ENTITY_EFFICIENCY
+            return FAILED_ENTITY_EFFICIENCY
 
     def _get_recovery_duration(self):
         """Get random recovery duration based on failure config"""

@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Dict, Optional
-from config.constants import FAILED_ENTITY_EFFICIENCY, HISTORY_BUFFER_SIZE
+from config.constants import HISTORY_BUFFER_SIZE
 from utils.seasonality import seasonal_factor
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
 from models.data_classes import WasteStream, OperationalEntity
@@ -110,7 +110,7 @@ class WasteGenerator(OperationalEntity):
         if self.status == EntityStatus.FAILED:
             if not hasattr(self, '_original_rates'):
                 self._original_rates = self.waste_generation_rates.copy()
-            self.waste_generation_rates = {wt: r * FAILED_ENTITY_EFFICIENCY for wt, r in self._original_rates.items()}
+            self.waste_generation_rates = {wt: r * self.get_operational_efficiency() for wt, r in self._original_rates.items()}
         elif self.status == EntityStatus.RECOVERING:
             if hasattr(self, '_original_rates'):
                 self.efficiency = self.get_operational_efficiency()

@@ -4,7 +4,6 @@ from config.constants import (
     TRANSPORT_EMISSIONS_PER_TON_KM,
     KILOGRAMS_PER_TONNE,
     WASTE_DENSITIES,
-    FAILED_ENTITY_EFFICIENCY,
     TRAVEL_SPEED_KMH,
     LOCAL_COLLECTION_RATIO,
     COLLECTION_COST_PER_KM_PER_M3,
@@ -347,9 +346,7 @@ class CollectorCompany(OperationalEntity):
 
     def _apply_status_throughput_effects(self):
         """FAILED floors efficiency; RECOVERING ramps it back via recovery progress."""
-        if self.status == EntityStatus.FAILED:
-            self.efficiency = FAILED_ENTITY_EFFICIENCY
-        elif self.status == EntityStatus.RECOVERING:
+        if self.status in (EntityStatus.FAILED, EntityStatus.RECOVERING):
             self.efficiency = self.get_operational_efficiency()
 
     def update_efficiency(self):
