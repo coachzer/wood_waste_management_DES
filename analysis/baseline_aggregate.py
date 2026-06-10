@@ -27,10 +27,13 @@ _SUMMARY_METRICS = [
     "processing_rate_pct",
     "overall_efficiency_pct",
     "landfill_volume_m3",
+    "expansion_volume_m3",
     "total_emissions_kgco2e",
     "collection_transport_cost",
     "processing_cost",
     "storage_overflow_cost",
+    "landfill_cost",
+    "expansion_cost",
     "total_system_cost",
     "max_collector_util_pct",
     "max_processor_waste_util_pct",
@@ -155,10 +158,14 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         (total_processed / total_generated * 100.0) if total_generated > 0 else 0.0
     )
 
-    landfill_volume = 0.0
+    # Storage-overflow event streams (VIZ-REVIEW T9): the landfill/expansion
+    # volume and cost series decompose storage_overflow_cost along the
+    # expand-vs-landfill boundary in handle_storage_event (ADR 0013).
     sys_evt = evt_hist.get("system_events", {})
-    if sys_evt:
-        landfill_volume = float(sum(sys_evt.get("landfill_usage", []) or []))
+    landfill_volume = float(sum(sys_evt.get("landfill_usage", []) or []))
+    expansion_volume = float(sum(sys_evt.get("storage_expansions", []) or []))
+    landfill_cost = float(sum(sys_evt.get("landfill_costs", []) or []))
+    expansion_cost = float(sum(sys_evt.get("expansion_costs", []) or []))
 
     # Emissions
     total_emissions = 0.0
@@ -252,10 +259,13 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         "processing_rate_pct": processing_rate,
         "overall_efficiency_pct": overall_eff,
         "landfill_volume_m3": landfill_volume,
+        "expansion_volume_m3": expansion_volume,
         "total_emissions_kgco2e": total_emissions,
         "collection_transport_cost": collection_transport_cost,
         "processing_cost": processing_cost,
         "storage_overflow_cost": storage_overflow_cost,
+        "landfill_cost": landfill_cost,
+        "expansion_cost": expansion_cost,
         "total_system_cost": total_system_cost,
         "max_collector_util_pct": max_collector_util,
         "max_processor_waste_util_pct": max_processor_waste_util,

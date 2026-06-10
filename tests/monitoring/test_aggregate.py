@@ -9,7 +9,7 @@ import math
 
 from scipy import stats
 
-from analysis.baseline_aggregate import summary_rows
+from analysis.baseline_aggregate import _SUMMARY_METRICS, extract_kpis, summary_rows
 
 
 def _row(rows, metric):
@@ -143,6 +143,41 @@ def test_residence_namespace_flows_through_as_prefixed_rows():
     assert float(residence[1]) == 3.0 and int(residence[5]) == 2
     wip = _row(rows, "residence.generator_wip_m3")
     assert wip is not None and float(wip[1]) == 200.0
+
+
+def test_overflow_cost_decomposition_kpis_extracted_from_system_events():
+    # VIZ-REVIEW T9: storage_overflow_cost decomposes along the
+    # expand-vs-landfill boundary (ADR 0013). The per-event cost and volume
+    # series were recorded but never aggregated; each becomes a scalar KPI.
+    monitor_data = {
+        "event_history": {
+            "system_events": {
+                "timestamps": [1.0, 2.0, 3.0],
+                "landfill_usage": [10.0, 0.0, 5.0],
+                "storage_expansions": [0.0, 500.0, 0.0],
+                "landfill_costs": [50.0, 0.0, 25.0],
+                "expansion_costs": [0.0, 200.0, 0.0],
+                "total_costs": [50.0, 200.0, 25.0],
+            }
+        },
+    }
+    kpis = extract_kpis(monitor_data)
+    assert kpis["landfill_cost"] == 75.0
+    assert kpis["expansion_cost"] == 200.0
+    assert kpis["expansion_volume_m3"] == 500.0
+    # The decomposition closes against the aggregate the KPI layer already had.
+    assert (
+        kpis["landfill_cost"] + kpis["expansion_cost"]
+        == kpis["storage_overflow_cost"]
+    )
+
+
+def test_overflow_cost_decomposition_kpis_reach_summary_csv():
+    # The three decomposition KPIs must be wired into the marginal metric list,
+    # not just computed: an extracted-but-unlisted KPI never reaches summary.csv
+    # (the exact failure mode T8/T9 cleaned up).
+    for metric in ("landfill_cost", "expansion_cost", "expansion_volume_m3"):
+        assert metric in _SUMMARY_METRICS
 
 
 def test_service_by_product_namespace_emitted_as_prefixed_rows():
