@@ -737,6 +737,30 @@ class CollectorCompany(OperationalEntity):
             self.stock_strategy_behavior, utilization, kanban_signals, base_degradation
         )
 
+    @staticmethod
+    def _select_generators_up_to_volume(generators: List, target_volume: float) -> List:
+        """Pick generators by descending storage until their collectible sum meets the target."""
+        generators_sorted = sorted(
+            generators, key=lambda g: g.current_storage, reverse=True
+        )
+
+        selected = []
+        accumulated_volume = 0
+
+        for generator in generators_sorted:
+            if accumulated_volume >= target_volume:
+                break
+
+            collectible = min(
+                generator.current_storage, target_volume - accumulated_volume
+            )
+
+            if collectible > 0:
+                selected.append(generator)
+                accumulated_volume += collectible
+
+        return selected
+
     def _get_prioritized_generators(self) -> List:
         """Get generators with 80% volume allocation to same region, 20% to next closest region"""
 
@@ -763,26 +787,11 @@ class CollectorCompany(OperationalEntity):
         prioritized_generators = []
 
         if same_region_generators and same_region_target > 0:
-            same_region_sorted = sorted(
-                same_region_generators, key=lambda g: g.current_storage, reverse=True
-            )
-
-            selected_same_region = []
-            accumulated_volume = 0
-
-            for generator in same_region_sorted:
-                if accumulated_volume >= same_region_target:
-                    break
-
-                collectible = min(
-                    generator.current_storage, same_region_target - accumulated_volume
+            prioritized_generators.extend(
+                self._select_generators_up_to_volume(
+                    same_region_generators, same_region_target
                 )
-
-                if collectible > 0:
-                    selected_same_region.append(generator)
-                    accumulated_volume += collectible
-
-            prioritized_generators.extend(selected_same_region)
+            )
 
         if other_region_generators and cross_region_target > 0:
             closest_regions = get_closest_regions(
@@ -795,25 +804,9 @@ class CollectorCompany(OperationalEntity):
                 ]
 
                 if region_generators:
-                    region_sorted = sorted(
-                        region_generators, key=lambda g: g.current_storage, reverse=True
+                    selected_cross_region = self._select_generators_up_to_volume(
+                        region_generators, cross_region_target
                     )
-
-                    selected_cross_region = []
-                    accumulated_volume = 0
-
-                    for generator in region_sorted:
-                        if accumulated_volume >= cross_region_target:
-                            break
-
-                        collectible = min(
-                            generator.current_storage,
-                            cross_region_target - accumulated_volume,
-                        )
-
-                        if collectible > 0:
-                            selected_cross_region.append(generator)
-                            accumulated_volume += collectible
 
                     if selected_cross_region:
                         prioritized_generators.extend(selected_cross_region)
