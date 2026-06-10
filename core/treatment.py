@@ -11,6 +11,7 @@ from core.kanban_manager import KanbanManager
 from core.strategies import build_stock_strategy, build_inventory_policy
 from models.enums import InventoryPolicy
 from models.products import ProductDataManager
+from models.transformations import TRANSFORMATION_CATALOGUE, WASTE_TO_OUTPUT_TYPES
 from utils.capacity_utils import (
     handle_storage_event,
     check_storage_capacity,
@@ -656,59 +657,11 @@ class TreatmentOperator(OperationalEntity):
         return actually_stored, sum(collected_waste.values())
 
     def _default_transformations(self) -> Dict[WasteType, WasteTransformation]:
-        """Define default transformation pathways for all waste types"""
-        base_transformations = {
-            WasteType.CONSTRUCTION_WOOD_17_02_01: (0.98, 0.90),
-            WasteType.WOODEN_PACKAGING_15_01_03: (0.88, 0.95),
-            WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: (0.95, 0.50),
-            WasteType.BARK_CORK_WASTE_03_01_01: (0.85, 0.70),
-            WasteType.NON_HAZARDOUS_WOOD_20_01_38: (0.88, 0.60),
-            WasteType.PAPER_PACKAGING_15_01_01: (0.82, 0.65),
-            WasteType.FORESTRY_WASTE_02_01_07: (0.82, 0.75),
-            WasteType.OTHER_WOOD_WASTE_03_01_99: (0.85, 0.65),
-        }
-
+        """Build the full catalogue fallback when no transformations are injected."""
         transformations = {}
 
-        default_output_mapping = {
-            WasteType.CONSTRUCTION_WOOD_17_02_01: [
-                OutputType.PARTICLE_BOARD,    
-                OutputType.OSB,    
-            ],
-            WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: [
-                OutputType.PARTICLE_BOARD,  
-                OutputType.MDF,    
-                OutputType.OSB,   
-            ],
-            WasteType.WOODEN_PACKAGING_15_01_03: [
-                OutputType.PARTICLE_BOARD,  
-                OutputType.OSB,    
-            ],
-            WasteType.BARK_CORK_WASTE_03_01_01: [
-                OutputType.MDF,    
-                OutputType.PARTICLE_BOARD,  
-            ],
-            WasteType.NON_HAZARDOUS_WOOD_20_01_38: [
-                OutputType.PARTICLE_BOARD, 
-                OutputType.MDF,   
-                OutputType.OSB,    
-            ],
-            WasteType.PAPER_PACKAGING_15_01_01: [
-                OutputType.MDF,
-            ],
-            WasteType.FORESTRY_WASTE_02_01_07: [
-                OutputType.PARTICLE_BOARD,
-                OutputType.MDF,
-            ],
-            WasteType.OTHER_WOOD_WASTE_03_01_99: [
-                OutputType.PARTICLE_BOARD,
-                OutputType.MDF,
-                OutputType.OSB,
-            ],
-        }
-
-        for input_type, (efficiency, energy) in base_transformations.items():
-            for output_type in default_output_mapping[input_type]:
+        for input_type, (efficiency, energy) in TRANSFORMATION_CATALOGUE.items():
+            for output_type in WASTE_TO_OUTPUT_TYPES[input_type]:
                 key = (input_type, output_type)
                 transformations[key] = WasteTransformation(
                     input_type=input_type,

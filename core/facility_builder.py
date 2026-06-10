@@ -3,6 +3,7 @@ from simpy import Environment
 from models.facility_data import FacilityDataManager
 from models.enums import RegionType, WasteType, OutputType
 from models.data_classes import OperationalEntity, WasteTransformation
+from models.transformations import TRANSFORMATION_CATALOGUE, WASTE_TO_OUTPUT_TYPES
 from core.generator import WasteGenerator
 from core.collector import CollectorCompany
 from core.treatment import TreatmentOperator
@@ -274,19 +275,6 @@ class FacilityBuilder:
         return volume_by_type
 
     # Private helper methods for processor creation
-    def _get_base_transformations(self):
-        """Get base transformation efficiencies and energy requirements"""
-        return {
-            WasteType.CONSTRUCTION_WOOD_17_02_01: (0.98, 0.90),
-            WasteType.WOODEN_PACKAGING_15_01_03: (0.88, 0.95),
-            WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: (0.95, 0.50),
-            WasteType.BARK_CORK_WASTE_03_01_01: (0.85, 0.70),
-            WasteType.NON_HAZARDOUS_WOOD_20_01_38: (0.88, 0.60),
-            WasteType.PAPER_PACKAGING_15_01_01: (0.82, 0.65),
-            WasteType.FORESTRY_WASTE_02_01_07: (0.82, 0.75),
-            WasteType.OTHER_WOOD_WASTE_03_01_99: (0.85, 0.65),
-        }
-
     def _map_waste_type(self, input_type):
         """Map string waste type codes to WasteType enums"""
         waste_type_mapping = {
@@ -301,25 +289,10 @@ class FacilityBuilder:
         mapped_type = waste_type_mapping.get(input_type, input_type)
         return WasteType(mapped_type)
     
-    def _get_appropriate_mappings(self):
-        """Get appropriate output products for each waste type"""
-        return {
-            WasteType.CONSTRUCTION_WOOD_17_02_01: ['particle_board', 'osb'],
-            WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05: ['particle_board', 'mdf'],
-            WasteType.WOODEN_PACKAGING_15_01_03: ['particle_board', 'osb'],
-            WasteType.BARK_CORK_WASTE_03_01_01: ['mdf', 'particle_board'],
-            WasteType.NON_HAZARDOUS_WOOD_20_01_38: ['particle_board', 'mdf', 'osb'],
-            WasteType.PAPER_PACKAGING_15_01_01: ['mdf'],
-            WasteType.FORESTRY_WASTE_02_01_07: ['particle_board', 'mdf'],
-            WasteType.OTHER_WOOD_WASTE_03_01_99: ['particle_board', 'mdf', 'osb'],
-        }
-
     def _build_transformations(self, proc_data):
         """Build waste transformation mappings for a processor"""
-        base_transformations = self._get_base_transformations()
-        appropriate_mappings = self._get_appropriate_mappings()
         transformations = {}
-                
+
         for input_type in proc_data.input_types:
             try:
                 waste_type = self._map_waste_type(input_type)
@@ -327,11 +300,14 @@ class FacilityBuilder:
                 print(f"Warning: Skipping invalid waste type: {input_type}")
                 continue
 
-            if waste_type not in base_transformations:
+            if waste_type not in TRANSFORMATION_CATALOGUE:
                 continue
 
-            efficiency, energy = base_transformations[waste_type]
-            appropriate_outputs = appropriate_mappings.get(waste_type, [])
+            efficiency, energy = TRANSFORMATION_CATALOGUE[waste_type]
+            appropriate_outputs = [
+                output_type.value
+                for output_type in WASTE_TO_OUTPUT_TYPES.get(waste_type, [])
+            ]
             
             for output_type in proc_data.output_types:
                 if output_type.lower() == waste_type.value.lower():
