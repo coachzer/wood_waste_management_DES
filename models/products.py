@@ -3,38 +3,6 @@ from dataclasses import dataclass
 
 
 @dataclass
-class ProductRecipe:
-    """Recipe defining how to produce a product from wood waste inputs"""
-    product_type: str
-    input_mappings: Dict[str, List[str]]  # waste_category -> list of EWC codes
-    processing_time: float  # days per m³ of product
-    energy_consumption: float  # kWh per m³ of product
-    conversion_efficiency: float  # percentage (0-100) of input that becomes product
-    description: str
-    
-    def get_material_requirements(self) -> Dict[str, float]:
-        """Get material requirements in tonnes per m³ based on industry data"""
-        if self.product_type == "mdf":
-            return {
-                "03 01 01": 0.462,  # wood chips (70% of 660kg wood residue) → 0.462 tonnes
-                "03 01 05": 0.198   # sawdust (30% of 660kg wood residue) → 0.198 tonnes
-            }
-        elif self.product_type == "particle_board":
-            return {
-                "03 01 01": 0.396,  # wood chips (60% of 660kg panel) → 0.396 tonnes
-                "03 01 05": 0.132,  # sawdust (20% of 660kg panel) → 0.132 tonnes
-                "03 01 99": 0.132   # shavings (20% of 660kg panel) → 0.132 tonnes
-            }
-        elif self.product_type == "osb":
-            return {
-                "02 01 07": 0.416,  # forestry chips (70% of 594kg wood strands) → 0.416 tonnes
-                "03 01 01": 0.178   # processing chips (30% of 594kg wood strands) → 0.178 tonnes
-            }
-        else:
-            return {}
-
-
-@dataclass
 class ProductSpecification:
     """Product specifications including density, wood content, and biogenic stock"""
     product_type: str
@@ -76,15 +44,13 @@ class WasteMapping:
 
 
 class ProductDataManager:
-    """Manager for product specifications, recipes, and waste mappings"""
-    
+    """Manager for product specifications and waste mappings"""
+
     def __init__(self):
         self.product_specifications: Dict[str, ProductSpecification] = {}
-        self.product_recipes: Dict[str, ProductRecipe] = {}
         self.waste_mappings: Dict[str, WasteMapping] = {}
         self._initialize_waste_mappings()
         self._initialize_product_specifications()
-        self._initialize_product_recipes()
     
     def _initialize_waste_mappings(self):
         """Map EWC codes to processing categories"""
@@ -134,66 +100,13 @@ class ProductDataManager:
             )
         }
     
-    def _initialize_product_recipes(self):
-        """Initialize production recipes with EWC code mappings based on industry data"""
-        self.product_recipes = {
-            "mdf": ProductRecipe(
-                product_type="mdf",
-                input_mappings={
-                    "wood_chips": ["03 01 01"],      # 0.462 tonnes (70% of wood residue)
-                    "sawdust": ["03 01 05"]          # 0.198 tonnes (30% of wood residue)
-                },
-                processing_time=3.0,
-                energy_consumption=120.0,
-                conversion_efficiency=89.0,  # 660kg wood / 741kg total = 89%
-                description="MDF: 0.462t chips (03 01 01) + 0.198t sawdust (03 01 05) per m³"
-            ),
-            "particle_board": ProductRecipe(
-                product_type="particle_board",
-                input_mappings={
-                    "wood_chips": ["03 01 01"],      # 0.396 tonnes (60% of panel)
-                    "sawdust": ["03 01 05", "03 01 99"]  # 0.264 tonnes (40% - sawdust + shavings)
-                },
-                processing_time=2.0,
-                energy_consumption=80.0,
-                conversion_efficiency=100.0,  # Most efficient conversion
-                description="Particleboard: 0.396t chips (03 01 01) + 0.264t sawdust/shavings (03 01 05/99) per m³"
-            ),
-            "osb": ProductRecipe(
-                product_type="osb",
-                input_mappings={
-                    "forestry_chips": ["02 01 07"],  # 0.416 tonnes (70% of wood strands)
-                    "wood_chips": ["03 01 01"]       # 0.178 tonnes (30% of wood strands)
-                },
-                processing_time=2.5,
-                energy_consumption=90.0,
-                conversion_efficiency=95.8,  # 594kg wood / 620kg total = 95.8%
-                description="OSB: 0.416t forestry chips (02 01 07) + 0.178t processing chips (03 01 01) per m³"
-            )
-        }
-    
     # Access methods
     def get_product_specification(self, product_type: str) -> Optional[ProductSpecification]:
         return self.product_specifications.get(product_type)
-    
-    def get_product_recipe(self, product_type: str) -> Optional[ProductRecipe]:
-        return self.product_recipes.get(product_type)
-    
+
     def get_waste_mapping(self, ewc_code: str) -> Optional[WasteMapping]:
         return self.waste_mappings.get(ewc_code)
-    
-    def can_produce_from_waste(self, product_type: str, ewc_codes: List[str]) -> bool:
-        """Check if a product can be made from available waste types"""
-        recipe = self.get_product_recipe(product_type)
-        if not recipe:
-            return False
-        
-        # Check if any of the input categories can be satisfied
-        for category, required_codes in recipe.input_mappings.items():
-            if any(code in ewc_codes for code in required_codes):
-                return True
-        return False
-    
+
     def get_products_by_biogenic_priority(self) -> List[tuple[str, float]]:
         """Get products ranked by biogenic stock efficiency"""
         products_with_efficiency = [
@@ -201,26 +114,3 @@ class ProductDataManager:
             for product_type, spec in self.product_specifications.items()
         ]
         return sorted(products_with_efficiency, key=lambda x: x[1])
-    
-    def get_material_requirements(self, product_type: str, volume_m3: float) -> Optional[Dict[str, float]]:
-        """Calculate exact material requirements in tonnes for producing given volume"""
-        recipe = self.get_product_recipe(product_type)
-        if not recipe:
-            return None
-        
-        requirements = recipe.get_material_requirements()
-        return {
-            ewc_code: amount * volume_m3
-            for ewc_code, amount in requirements.items()
-        }
-    
-    def can_fulfill_production(self, product_type: str, volume_m3: float, available_waste: Dict[str, float]) -> bool:
-        """Check if production can be fulfilled with available waste"""
-        requirements = self.get_material_requirements(product_type, volume_m3)
-        if not requirements:
-            return False
-        
-        for ewc_code, needed_amount in requirements.items():
-            if available_waste.get(ewc_code, 0) < needed_amount:
-                return False
-        return True
