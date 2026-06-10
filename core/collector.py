@@ -345,6 +345,13 @@ class CollectorCompany(OperationalEntity):
 
             yield self.env.timeout(1.0)
 
+    def _apply_status_throughput_effects(self):
+        """FAILED floors efficiency; RECOVERING ramps it back via recovery progress."""
+        if self.status == EntityStatus.FAILED:
+            self.efficiency = FAILED_ENTITY_EFFICIENCY
+        elif self.status == EntityStatus.RECOVERING:
+            self.efficiency = self.get_operational_efficiency()
+
     def update_efficiency(self):
         """Efficiency update"""
         current_time = self.env.now
@@ -367,14 +374,7 @@ class CollectorCompany(OperationalEntity):
 
             self.update_efficiency()
 
-            if self.failure_config:
-                self.check_failure(current_time, self.failure_config.probability)
-
-            if self.status == EntityStatus.FAILED:
-                self.efficiency = FAILED_ENTITY_EFFICIENCY
-            elif self.status == EntityStatus.RECOVERING:
-                self.efficiency = self.get_operational_efficiency()
-            if self.status == EntityStatus.FAILED:
+            if self.apply_failure_tick(current_time):
                 yield self.env.timeout(self.collection_frequency)
                 continue
 

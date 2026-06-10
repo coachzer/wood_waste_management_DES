@@ -317,23 +317,13 @@ class TreatmentOperator(OperationalEntity):
         transformation_scores.sort(key=lambda x: x[2], reverse=True)
         return [(key, transform) for key, transform, _ in transformation_scores]
 
-    def _handle_failures(self, current_time: float):
-        """Checks for and handles facility failures, updating processing capacity."""
-        if not self.failure_config:
-            return
-
-        # Use the base class failure checking with proper config
-        self.check_failure(current_time, self.failure_config.probability)
-
+    def _apply_status_throughput_effects(self):
+        """Scale processing capacity by status-driven operational efficiency."""
         match self.status:
-            case EntityStatus.FAILED:
-                recovery_efficiency = self.get_operational_efficiency()
+            case EntityStatus.FAILED | EntityStatus.RECOVERING:
                 self.processing_capacity = (
-                    self.initial_processing_capacity * recovery_efficiency
+                    self.initial_processing_capacity * self.get_operational_efficiency()
                 )
-            case EntityStatus.RECOVERING:
-                recovery_efficiency = self.get_operational_efficiency()
-                self.processing_capacity = self.initial_processing_capacity * recovery_efficiency
             case EntityStatus.OPERATIONAL:
                 self.processing_capacity = self.initial_processing_capacity
 
@@ -393,9 +383,8 @@ class TreatmentOperator(OperationalEntity):
         """Main process loop for the treatment facility."""
         while True:
             current_time = self.env.now
-            self._handle_failures(current_time)
 
-            if self.status == EntityStatus.FAILED:
+            if self.apply_failure_tick(current_time):
                 yield self.env.timeout(self.processing_time)
                 continue
 

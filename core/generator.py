@@ -105,11 +105,8 @@ class WasteGenerator(OperationalEntity):
         # Start waste generation process
         self.action = env.process(self.generate_waste())
 
-    def _handle_entity_status(self, current_time):
-        """Checks for failures and updates generation rates based on entity status."""
-        if self.failure_config:
-            self.check_failure(current_time, self.failure_config.probability)
-
+    def _apply_status_throughput_effects(self):
+        """Scale generation rates by status, restoring originals on recovery."""
         if self.status == EntityStatus.FAILED:
             if not hasattr(self, '_original_rates'):
                 self._original_rates = self.waste_generation_rates.copy()
@@ -128,9 +125,8 @@ class WasteGenerator(OperationalEntity):
         """Generate waste with optimized calculations and failure handling, including Kanban pull logic"""
         while True:
             current_time = self.env.now
-            self._handle_entity_status(current_time)
 
-            if self.status == EntityStatus.FAILED:
+            if self.apply_failure_tick(current_time):
                 yield self.env.timeout(self.generation_frequency)
                 continue
 

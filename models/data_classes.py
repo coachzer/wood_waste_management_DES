@@ -86,6 +86,27 @@ class OperationalEntity:
 
         return self.status == EntityStatus.FAILED
 
+    def apply_failure_tick(self, current_time) -> bool:
+        """Advance the failure lifecycle for one tick of the entity's main loop.
+
+        Rolls/advances the OPERATIONAL -> FAILED -> RECOVERING state machine
+        when a failure_config is present, applies the entity's status-driven
+        throughput effects, and returns True when the caller should skip this
+        tick's work because the entity is FAILED.
+        """
+        if self.failure_config:
+            self.check_failure(current_time, self.failure_config.probability)
+        self._apply_status_throughput_effects()
+        return self.status == EntityStatus.FAILED
+
+    def _apply_status_throughput_effects(self):
+        """Map the current failure status onto entity throughput state.
+
+        Subclasses override to scale whatever drives their output (collector
+        efficiency, treatment processing capacity, generator rates); the base
+        entity has no throughput state to adjust.
+        """
+
     def get_operational_efficiency(self) -> float:
         """Get current operational efficiency based on status"""
         if self.status == EntityStatus.OPERATIONAL:
