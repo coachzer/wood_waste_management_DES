@@ -146,7 +146,7 @@ def test_yield_bridge_balanced_does_not_raise():
 #           accounted-for terms, which this check catches.
 
 
-def make_collector(name, storage):
+def make_center_collector(name, storage):
     """A collector stand-in exposing the collection center the invariant reads."""
     return SimpleNamespace(
         name=name,
@@ -166,7 +166,7 @@ def flow(source, target, volume):
 def test_balanced_collection_center_does_not_raise():
     """Inflow accounted for by treatment outflow, on-hand storage, and landfill
     -- the center conserves raw waste and must not raise."""
-    collector = make_collector("collector-1", {"17 02 01": 0.0})
+    collector = make_center_collector("collector-1", {"17 02 01": 0.0})
     state = make_waste_state()
     monitor = MassBalanceMonitor(
         EntityRegistry(state=state, operators=[], collectors=[collector])
@@ -185,7 +185,7 @@ def test_balanced_collection_center_does_not_raise():
 def test_dropped_overflow_trips_collection_center_invariant():
     """Mass collected but neither stored, sent to treatment, nor landfilled --
     the expand-drop leak class -- must raise."""
-    collector = make_collector("collector-1", {"17 02 01": 0.0})
+    collector = make_center_collector("collector-1", {"17 02 01": 0.0})
     state = make_waste_state()
     monitor = MassBalanceMonitor(
         EntityRegistry(state=state, operators=[], collectors=[collector])
@@ -253,7 +253,7 @@ def build_waste_monitor():
     replayed run is expressed entirely through the mutable run terms.
     """
     generator = make_generator("gen-1", {WT: 0.0}, 0.0)
-    collector = make_collector("col-1", {WT: 0.0})
+    collector = make_center_collector("col-1", {WT: 0.0})
     operator = make_treatment_op("op-1", {WT: 0.0}, {WT: 0.0})
     state = make_system_state()
     monitor = MassBalanceMonitor(

@@ -19,23 +19,27 @@ SAWDUST = WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05
 PAPER = WasteType.PAPER_PACKAGING_15_01_01
 
 
-def make_entity(state, monitor, capacity=1000.0, name="collector-1"):
+def make_entity(state, monitor=False, capacity=1000.0, name="collector-1"):
     """A storage-bearing entity stand-in handle_storage_event can act on.
 
     ``monitor`` is the shared ``noop_waste_monitor`` stub so the recording
-    calls have somewhere to go; the monitor-less case is covered separately
-    below.
+    calls have somewhere to go. ``monitor=False`` omits the ``waste_monitor``
+    attribute entirely (not merely None) -- the guard-asymmetry regression
+    below needs ``hasattr`` itself to be false, the shape a real entity never
+    has but the guard must survive.
     """
-    return SimpleNamespace(
+    entity = SimpleNamespace(
         name=name,
         facility_type="collector",
         env=SimpleNamespace(now=3.0),
-        waste_monitor=monitor,
         state=state,
         waste_storage_capacity=capacity,
         expansion_count=0,
         landfill_count=0,
     )
+    if monitor is not False:
+        entity.waste_monitor = monitor
+    return entity
 
 
 def test_landfill_branch_attributes_volume_to_entity(noop_waste_monitor):
@@ -156,32 +160,14 @@ def test_split_overflow_by_type_is_proportional():
 # --- Guard-asymmetry regression (fixed by utils-cleanup issue 05) ------------
 
 
-def make_monitorless_entity(name="collector-nomon"):
-    """A storage-bearing entity with NO waste_monitor attribute at all.
-
-    Real entities always inject a monitor, but handle_storage_event's landfill
-    branch used to call track_environmental_impact outside the
-    hasattr(waste_monitor) guard that wraps track_event, so a monitor-less entity
-    reaching that branch raised AttributeError. state=None keeps
-    track_waste_landfilled out of the way so the test isolates the monitor guard.
-    """
-    return SimpleNamespace(
-        name=name,
-        facility_type="collector",
-        env=SimpleNamespace(now=3.0),
-        state=None,
-        waste_storage_capacity=1000.0,
-        expansion_count=0,
-        landfill_count=0,
-    )
-
-
 def test_landfill_branch_survives_missing_monitor():
     """A monitor-less entity forced down the landfill branch must NOT crash. The
     fix brings track_environmental_impact under the same waste_monitor guard as
     track_event, so the landfill resolves (action == "landfill") without raising.
-    Pre-fix this raised AttributeError on the unguarded call."""
-    entity = make_monitorless_entity()
+    Pre-fix this raised AttributeError on the unguarded call. state=None keeps
+    track_waste_landfilled out of the way so the test isolates the monitor
+    guard."""
+    entity = make_entity(state=None, name="collector-nomon")
 
     _cost, action = handle_storage_event(entity, {SAWDUST: 100.0}, force_landfill=True)
 

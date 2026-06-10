@@ -31,7 +31,7 @@ CONSTRUCTION = WasteType.CONSTRUCTION_WOOD_17_02_01
 PACKAGING = WasteType.WOODEN_PACKAGING_15_01_03
 
 
-def make_collector(storage, state, name="collector-1"):
+def make_intake_collector(storage, state, name="collector-1"):
     """A collector stand-in exposing what provide_waste_for_treatment reads."""
     return SimpleNamespace(
         name=name,
@@ -49,7 +49,7 @@ def test_intake_logs_collector_to_treatment_flow():
     """Each waste type handed to treatment is logged as a collector->treatment
     flow carrying the transferred volume."""
     state = SimulationState()
-    collector = make_collector({CONSTRUCTION: 100.0, PACKAGING: 40.0}, state)
+    collector = make_intake_collector({CONSTRUCTION: 100.0, PACKAGING: 40.0}, state)
 
     provided = CollectorCompany.provide_waste_for_treatment(
         collector, 70.0, [CONSTRUCTION, PACKAGING], treatment_name="treatment-1"
@@ -72,7 +72,7 @@ def test_intake_logs_collector_to_treatment_flow():
 def test_intake_logs_one_flow_per_waste_type():
     """Drawing across two waste types logs one flow each, with the per-type volume."""
     state = SimulationState()
-    collector = make_collector({CONSTRUCTION: 30.0, PACKAGING: 50.0}, state)
+    collector = make_intake_collector({CONSTRUCTION: 30.0, PACKAGING: 50.0}, state)
 
     provided = CollectorCompany.provide_waste_for_treatment(
         collector, 60.0, [CONSTRUCTION, PACKAGING], treatment_name="treatment-1"
