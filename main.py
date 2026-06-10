@@ -1,4 +1,4 @@
-from config.base_config import get_scenario_with_strategies, list_available_scenarios
+from config.base_config import get_scenario_config, list_available_scenarios
 from config.constants import BASELINE_OUTPUT_ROOT, SCENARIO_COMPARISON_PLOTS_DIR
 from core.simulation_manager import SimulationManager
 from models.enums import InventoryPolicy, StockStrategy
@@ -40,14 +40,10 @@ def run_single_simulation(
         np.random.seed(seed)
 
     try:
-        scenario_config = get_scenario_with_strategies(
-            base_scenario_name=scenario_name,
-            inventory_policy=inventory_policy,
-            stock_strategy=stock_strategy
-        )
+        scenario_config = get_scenario_config(scenario_name)
 
         manager = SimulationManager(seed=seed)
-        manager.initialize_entities(scenario_config)
+        manager.initialize_entities(scenario_config, inventory_policy, stock_strategy)
         manager.setup_processes(raise_on_violation=raise_on_violation)
         manager.run_simulation()
 
@@ -69,7 +65,7 @@ def run_single_simulation(
 
         return {
             "base_scenario": scenario_name,
-            "scenario_name": scenario_config.name,
+            "scenario_name": f"{scenario_name}_{inventory_policy.value}_{stock_strategy.value}",
             "inventory_policy": inventory_policy.value,
             "stock_strategy": stock_strategy.value,
             "seed": seed,

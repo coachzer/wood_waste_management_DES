@@ -5,7 +5,6 @@ from config.constants import (
     SIMULATION_DURATION,
     FINISHED_GOODS_BUFFER_WEEKS,
 )
-from models.enums import InventoryPolicy, StockStrategy
 from models.data_classes import FailureConfig
 
 @dataclass
@@ -48,8 +47,6 @@ class ScenarioConfig:
     generator_failure: FailureConfig
     collector_failure: FailureConfig
     treatment_failure: FailureConfig
-    inventory_policy: InventoryPolicy = InventoryPolicy.PUSH
-    stock_strategy: StockStrategy = StockStrategy.REORDER_90
     finished_goods_buffer_weeks: int = FINISHED_GOODS_BUFFER_WEEKS  # swept by the bucket-C sensitivity scenarios
 
     def to_uncertainty_set(self) -> UncertaintySet:
@@ -100,8 +97,6 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
         generator_failure=LOW_FAILURE,
         collector_failure=MEDIUM_FAILURE,
         treatment_failure=HIGH_FAILURE,
-        inventory_policy=InventoryPolicy.PUSH,
-        stock_strategy=StockStrategy.REORDER_90
     )
 }
 
@@ -166,21 +161,6 @@ def get_scenario_config(scenario_name: str) -> ScenarioConfig:
     if scenario_name not in SCENARIO_CONFIGS:
         raise KeyError(f"Scenario '{scenario_name}' not found")
     return SCENARIO_CONFIGS[scenario_name]
-
-def get_scenario_with_strategies(
-    base_scenario_name: str,
-    inventory_policy: InventoryPolicy,
-    stock_strategy: StockStrategy
-) -> ScenarioConfig:
-    """Create a scenario config by combining a base scenario with specific strategies"""
-    base_scenario = SCENARIO_CONFIGS.get(base_scenario_name, SCENARIO_CONFIGS["Baseline"])
-    
-    modified_scenario = deepcopy(base_scenario)
-    modified_scenario.name = f"{base_scenario_name}_{inventory_policy.value}_{stock_strategy.value}"
-    modified_scenario.inventory_policy = inventory_policy
-    modified_scenario.stock_strategy = stock_strategy
-    
-    return modified_scenario
 
 def list_available_scenarios() -> List[str]:
     """List all available scenario names"""

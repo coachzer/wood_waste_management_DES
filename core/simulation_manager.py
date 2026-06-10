@@ -12,7 +12,7 @@ from config.constants import (
 from utils.seasonality import seasonal_factor
 from core.transport_manager import PointToPointTransport
 from models.data_classes import OperationalEntity
-from models.enums import RegionType, OutputType
+from models.enums import RegionType, OutputType, InventoryPolicy, StockStrategy
 from persistence.serialization import HISTORY_KEYS
 from models.state import SimulationState
 from instrumentation.waste_monitor import WasteMonitor
@@ -50,8 +50,17 @@ class SimulationManager:
         self.facility_manager = FacilityDataManager()
         self.facility_builder = None
         
-    def initialize_entities(self, scenario_config: ScenarioConfig) -> None:
-        """Single point of entity initialization and setup"""
+    def initialize_entities(
+        self,
+        scenario_config: ScenarioConfig,
+        inventory_policy: InventoryPolicy,
+        stock_strategy: StockStrategy,
+    ) -> None:
+        """Single point of entity initialization and setup.
+
+        The scenario config defines the operating environment only; the
+        policy/strategy combo is the experimental grid axis, passed separately.
+        """
         try:
             # Load facility data
             self.facility_manager.load_data()
@@ -71,7 +80,9 @@ class SimulationManager:
             )
             
             # Build all facilities
-            generators, collectors, processors = self._build_all_facilities(scenario_config)
+            generators, collectors, processors = self._build_all_facilities(
+                inventory_policy, stock_strategy
+            )
 
             # Initialize simulation state
             self.state.initialize(generators, collectors, processors)
@@ -84,7 +95,11 @@ class SimulationManager:
         except ValueError as e:
             self._handle_initialization_error(e)
 
-    def _build_all_facilities(self, scenario_config: ScenarioConfig) -> tuple[List[WasteGenerator], List[CollectorCompany], List[TreatmentOperator]]:
+    def _build_all_facilities(
+        self,
+        inventory_policy: InventoryPolicy,
+        stock_strategy: StockStrategy,
+    ) -> tuple[List[WasteGenerator], List[CollectorCompany], List[TreatmentOperator]]:
         """Build all facilities for all regions using the facility builder"""
         generators = []
         collectors = []
@@ -102,16 +117,14 @@ class SimulationManager:
             # Build generators for this region
             for gen_data in facilities.generators:
                 generator = self.facility_builder.create_generator(
-                    gen_data, region, scenario_config.stock_strategy,
-                    scenario_config.inventory_policy
+                    gen_data, region, stock_strategy, inventory_policy
                 )
                 generators.append(generator)
 
             # Build collectors for this region
             for col_data in facilities.collectors:
                 collector = self.facility_builder.create_collector(
-                    col_data, region, scenario_config.stock_strategy,
-                    scenario_config.inventory_policy
+                    col_data, region, stock_strategy, inventory_policy
                 )
                 collectors.append(collector)
 
@@ -123,8 +136,8 @@ class SimulationManager:
                     else 0.0
                 )
                 processor = self.facility_builder.create_processor(
-                    proc_data, region, scenario_config.stock_strategy,
-                    scenario_config.inventory_policy, market_share=market_share
+                    proc_data, region, stock_strategy, inventory_policy,
+                    market_share=market_share
                 )
                 processors.append(processor)
 
