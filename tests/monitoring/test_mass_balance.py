@@ -371,10 +371,14 @@ def test_yield_bridge_holds_on_baseline_run():
     ``run_single_simulation`` runs with ``raise_on_violation=True``, so the
     end-of-run ``check_yield_bridge`` aborts (as ``SystemExit``) on any
     intake/output divergence; a clean return means deposited finished goods
-    match the intake x efficiency expectation. Slow: a full baseline run.
+    match the intake x efficiency expectation. The clean return IS the
+    invariant assertion; the KPI check guards non-vacuity -- a zero-throughput
+    run would close the bridge trivially. Slow: a full baseline run.
     """
+    from analysis.baseline_aggregate import extract_kpis
+
     result = _baseline_run()
-    assert result["scenario_name"]
+    assert extract_kpis(result["monitor_data"])["total_processed_m3"] > 0.0
 
 
 @pytest.mark.slow
@@ -383,11 +387,15 @@ def test_waste_system_invariant_holds_on_baseline_run():
 
     ``run_single_simulation`` runs with ``raise_on_violation=True``, so the
     end-of-run ``check_waste_system`` aborts (surfaced as ``SystemExit``) on any
-    leak; a clean return means raw waste is conserved system-wide. Slow: a full
-    365-day, 12-region simulation.
+    leak; a clean return means raw waste is conserved system-wide. The clean
+    return IS the invariant assertion; the KPI check guards non-vacuity -- a
+    run that generated nothing would conserve trivially. Slow: a full 365-day,
+    12-region simulation.
     """
+    from analysis.baseline_aggregate import extract_kpis
+
     result = _baseline_run()
-    assert result["scenario_name"]
+    assert extract_kpis(result["monitor_data"])["total_generated_m3"] > 0.0
 
 
 @pytest.mark.slow
@@ -398,7 +406,11 @@ def test_collection_center_invariant_holds_on_baseline_run():
     reposition outflow now sourced on the origin collector (not the borrowed
     carrier), each center's books balance independently. ``raise_on_violation``
     aborts (as ``SystemExit``) on any per-center leak; a clean return confirms
-    the localized identity holds. Slow: a full 365-day, 12-region simulation.
+    the localized identity holds. The clean return IS the invariant assertion;
+    the KPI check guards non-vacuity -- centers that never received inflow
+    would balance trivially. Slow: a full 365-day, 12-region simulation.
     """
+    from analysis.baseline_aggregate import extract_kpis
+
     result = _baseline_run()
-    assert result["scenario_name"]
+    assert extract_kpis(result["monitor_data"])["total_collected_m3"] > 0.0
