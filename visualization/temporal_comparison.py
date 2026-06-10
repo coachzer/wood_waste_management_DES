@@ -40,7 +40,14 @@ def create_output_directory(output_dir: str):
     os.makedirs(output_dir, exist_ok=True)
 
 def extract_total_costs_from_monitor_data(monitor_data: Dict) -> Dict[str, float]:
-    """Extract and aggregate total costs from all history sources in monitor data"""
+    """Extract and aggregate total costs from all history sources in monitor data
+
+    The cost series are per-tick increments, so summing at the union of
+    entity timestamps is alignment-safe: an entity absent at a timestamp
+    contributed nothing then. Do NOT route cumulative or level series
+    through this pattern -- those need ``aggregate_aligned_series``
+    (visualization_utils), or absent entities saw the aggregate downward.
+    """
     all_costs_by_time = {}
     
     def process_cost_data(history_dict: Dict, cost_key: str = 'total_costs'):
@@ -72,7 +79,12 @@ def extract_total_costs_from_monitor_data(monitor_data: Dict) -> Dict[str, float
     return all_costs_by_time
 
 def calculate_cumulative_data(data_by_time: Dict[str, float]) -> tuple:
-    """Calculate cumulative data from timestamped values"""
+    """Calculate cumulative data from timestamped values
+
+    Input values must be per-tick increments (cumsum of increments is exact
+    regardless of timestamp alignment). Feeding already-cumulative series
+    here double-counts them.
+    """
     if not data_by_time:
         return [], []
     
@@ -105,7 +117,12 @@ def create_basic_time_series_plot(title: str, x_title: str, y_title: str) -> go.
     return fig
 
 def extract_environmental_impacts_by_category(monitor_data: Dict, category: str) -> Dict[str, float]:
-    """Extract environmental impacts for a specific category from monitor data"""
+    """Extract environmental impacts for a specific category from monitor data
+
+    Impact series are per-tick increments (alignment-safe to sum at the union
+    of timestamps); environmental_history is genuinely misaligned across
+    entities, and this increment-sum is the only correct aggregation for it.
+    """
     all_impacts_by_time = {}
     environmental_history = monitor_data.get('environmental_history', {})
     

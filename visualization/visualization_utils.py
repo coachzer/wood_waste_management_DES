@@ -137,86 +137,120 @@ def extract_processor_finished_goods_storage_data(history: Dict) -> Dict:
         history, lambda entity_data: entity_data.get('storage', {}).get('finished_goods_utilization')
     )
 
-def aggregate_generation_data(history: Dict) -> Dict:
-    """Aggregate generation data across all generators"""
-    all_timestamps = set()
-    all_data = {}
-    
-    for data in history.values():
+def _validate_entity_series(entity_name: str, series_name: str,
+                            timestamps: List[float], values: List[float]):
+    """Reject corrupted monitor history instead of silently misplotting it."""
+    if len(timestamps) != len(values):
+        raise ValueError(
+            f"Series '{series_name}' of entity '{entity_name}' has "
+            f"{len(values)} values for {len(timestamps)} timestamps"
+        )
+    if any(b <= a for a, b in zip(timestamps, timestamps[1:])):
+        raise ValueError(
+            f"Timestamps of entity '{entity_name}' are not strictly increasing"
+        )
+
+
+def aggregate_aligned_series(series_by_entity: Dict, series_class: str) -> Dict:
+    """Aggregate per-entity time series on the union of their timestamps.
+
+    ``series_by_entity`` maps an entity name to a ``(timestamps, values)``
+    pair. The monitor loop currently samples every entity on one shared
+    cadence, so the per-entity timestamp vectors are identical and this
+    alignment is a no-op — but that is an accident of the sampling schedule,
+    not a contract. Event-driven tracking (``track_processing`` is also called
+    from the treatment intake path) can introduce per-entity timestamps at any
+    time, and a plain ``{timestamp: sum}`` dict then drops each absent
+    entity's contribution, sawing the aggregate curve downward (VIZ-REVIEW T4).
+
+    Gap semantics depend on what the series measures (``series_class``):
+
+    - ``'cumulative'`` (running totals): forward-fill; an entity contributes
+      zero before its first observation. Result is the sum across entities.
+    - ``'level'`` (sampled stock levels): forward-fill; the first observed
+      value is extended backward (a primed buffer existed before the monitor
+      first sampled it). Result is the sum across entities.
+    - ``'rate'`` (sampled state variables such as efficiency): forward-fill,
+      then average; an entity is excluded from the mean before its first
+      observation. Forward-filling before averaging keeps a single entity's
+      off-cadence sample from collapsing the mean to its own value.
+
+    Per-tick increments (costs, emissions) must NOT be routed through this
+    helper: their alignment-safe aggregation is a plain sum-then-cumsum, and
+    forward-filling them would double-count.
+    """
+    if series_class not in ('cumulative', 'level', 'rate'):
+        raise ValueError(f"Unknown series class '{series_class}'")
+
+    for entity_name, (timestamps, values) in series_by_entity.items():
+        _validate_entity_series(entity_name, series_class, timestamps, values)
+
+    union_times = sorted({t for timestamps, _ in series_by_entity.values() for t in timestamps})
+
+    aligned_values = []
+    for t in union_times:
+        contributions = []
+        for timestamps, values in series_by_entity.values():
+            index = np.searchsorted(timestamps, t, side='right') - 1
+            if index >= 0:
+                contributions.append(values[index])
+            elif series_class == 'cumulative':
+                contributions.append(0.0)
+            elif series_class == 'level' and values:
+                contributions.append(values[0])
+            # 'rate': excluded from the mean before first observation
+        if series_class == 'rate':
+            aligned_values.append(float(np.mean(contributions)) if contributions else 0.0)
+        else:
+            aligned_values.append(float(sum(contributions)))
+
+    return {'timestamps': union_times, 'values': aligned_values}
+
+
+def _sum_series_per_entity(history: Dict, series_key: str) -> Dict:
+    """Collapse each entity's per-waste-type series into one summed series."""
+    series_by_entity = {}
+    for entity_name, data in history.items():
         timestamps = data.get('timestamps', [])
-        for _, totals in data.get('total_generated', {}).items():
-            if len(timestamps) == len(totals):
-                for t, v in zip(timestamps, totals):
-                    all_timestamps.add(t)
-                    if t not in all_data:
-                        all_data[t] = 0
-                    all_data[t] += v
-    
-    sorted_times = sorted(all_timestamps)
-    return {
-        'timestamps': sorted_times,
-        'volumes': [all_data[t] for t in sorted_times]
-    }
+        per_type = data.get(series_key, {})
+        for type_name, values in per_type.items():
+            _validate_entity_series(entity_name, f"{series_key}[{type_name}]",
+                                    timestamps, values)
+        summed = [sum(values[i] for values in per_type.values())
+                  for i in range(len(timestamps))]
+        series_by_entity[entity_name] = (timestamps, summed)
+    return series_by_entity
+
+
+def aggregate_generation_data(history: Dict) -> Dict:
+    """Aggregate cumulative generated volume across all generators"""
+    aligned = aggregate_aligned_series(
+        _sum_series_per_entity(history, 'total_generated'), 'cumulative'
+    )
+    return {'timestamps': aligned['timestamps'], 'volumes': aligned['values']}
 
 def aggregate_collection_data(history: Dict) -> Dict:
-    """Aggregate collection data across all collectors"""
-    all_timestamps = set()
-    all_data = {}
-    
-    for collector_data in history.values():
-        timestamps = collector_data.get('timestamps', [])
-        collected_volumes = collector_data.get('collected_volumes', {})
-        
-        # For each waste type, aggregate the volumes
-        for _, volumes in collected_volumes.items():
-            if len(timestamps) == len(volumes):
-                for t, v in zip(timestamps, volumes):
-                    all_timestamps.add(t)
-                    if t not in all_data:
-                        all_data[t] = 0
-                    all_data[t] += v
-    
-    sorted_times = sorted(all_timestamps)
-    return {
-        'timestamps': sorted_times,
-        'volumes': [all_data[t] for t in sorted_times]
-    }
+    """Aggregate cumulative collected volume across all collectors"""
+    aligned = aggregate_aligned_series(
+        _sum_series_per_entity(history, 'collected_volumes'), 'cumulative'
+    )
+    return {'timestamps': aligned['timestamps'], 'volumes': aligned['values']}
 
 def calculate_average_efficiency(history: Dict) -> Dict:
-    """Calculate average collection efficiency over time"""
-    time_efficiency = {}
-    for _, data in history.items():
-        timestamps = data.get('timestamps', [])
-        efficiency = data.get('efficiency', [])
-        for t, e in zip(timestamps, efficiency):
-            if t not in time_efficiency:
-                time_efficiency[t] = []
-            time_efficiency[t].append(e)
-
-    sorted_times = sorted(time_efficiency.keys())
-
-    avg_efficiency = [np.mean(time_efficiency[t]) if time_efficiency[t] else 0 for t in sorted_times]
-    
-    return {
-        'timestamps': sorted_times,
-        'efficiency': avg_efficiency
+    """Calculate average efficiency (a sampled state variable) over time"""
+    series_by_entity = {
+        entity_name: (data.get('timestamps', []), data.get('efficiency', []))
+        for entity_name, data in history.items()
     }
+    aligned = aggregate_aligned_series(series_by_entity, 'rate')
+    return {'timestamps': aligned['timestamps'], 'efficiency': aligned['values']}
 
 def calculate_storage_levels(history: Dict) -> Dict:
-    """Calculate total storage levels at each timestamp"""
-    time_storage = {}
-    for _, data in history.items():
-        timestamps = data.get('timestamps', [])
-        storage_total = data.get('storage', {}).get('total', [])
-        for t, s in zip(timestamps, storage_total):
-            if t not in time_storage:
-                time_storage[t] = 0
-            time_storage[t] += s
-    
-    sorted_times = sorted(time_storage.keys())
-    storage_levels = [time_storage[t] for t in sorted_times]
-
-    return {
-        'timestamps': sorted_times,
-        'storage': storage_levels
+    """Calculate total storage level (a sampled stock) at each timestamp"""
+    series_by_entity = {
+        entity_name: (data.get('timestamps', []),
+                      data.get('storage', {}).get('total', []))
+        for entity_name, data in history.items()
     }
+    aligned = aggregate_aligned_series(series_by_entity, 'level')
+    return {'timestamps': aligned['timestamps'], 'storage': aligned['values']}
