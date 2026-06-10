@@ -332,19 +332,29 @@ def _baseline_run():
 def test_yield_bridge_trips_on_halved_yield(monkeypatch):
     """A mis-scaled yield is caught end-to-end (connection-audit Probe 4).
 
-    Monkeypatching ``_calculate_output_amounts`` to halve the deposited output
-    leaves intake (and thus ``expected_output_volume``) untouched, so the
-    finished goods diverge from the intake-derived expectation. Probe 4 showed
-    this slips past both single-ledger invariants; the armed yield bridge must
-    abort the run (surfaced as ``SystemExit`` whose cause is a
+    Wrapping ``_process_waste_transformation`` to claw back half of each
+    deposit from BOTH product ledgers (``finished_goods`` and
+    ``product_volumes``) keeps the product invariant internally consistent --
+    exactly the Probe 4 failure shape that slips past both single-ledger
+    invariants -- while intake (and thus ``expected_output_volume``) stays
+    untouched, so only the armed yield bridge can catch the divergence and
+    must abort the run (surfaced as ``SystemExit`` whose cause is a
     ``MassBalanceViolation``). Slow: a full 365-day, 12-region simulation.
     """
     from core.treatment import TreatmentOperator
 
-    def halved_output(self, amount_to_process, efficiency):
-        return amount_to_process, amount_to_process * efficiency * 0.5
+    original = TreatmentOperator._process_waste_transformation
 
-    monkeypatch.setattr(TreatmentOperator, "_calculate_output_amounts", halved_output)
+    def halved_yield(self, input_type, output_type, transformation, output_cap=None):
+        produced = original(self, input_type, output_type, transformation, output_cap)
+        if produced <= 0:
+            return produced
+        lost = produced * 0.5
+        self.finished_goods.current_storage[output_type] -= lost
+        self.product_volumes[output_type.value] -= lost
+        return produced - lost
+
+    monkeypatch.setattr(TreatmentOperator, "_process_waste_transformation", halved_yield)
 
     with pytest.raises(SystemExit) as excinfo:
         _baseline_run()
