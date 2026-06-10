@@ -87,8 +87,9 @@ def test_intake_logs_one_flow_per_waste_type():
 
 
 def make_transport_manager(state):
-    """A PointToPointTransport stand-in: _create_transport reads only self.state."""
-    return SimpleNamespace(state=state)
+    """A real PointToPointTransport with no uncertainty_set: _create_transport
+    reads self.state and applies the identity circuity factor (ADR 0015)."""
+    return PointToPointTransport(state=state)
 
 
 def test_reposition_logs_collector_to_collector_not_treatment():

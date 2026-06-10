@@ -133,6 +133,19 @@ class CollectorCompany(OperationalEntity):
         """Find an available vehicle for collection"""
         return next((v for v in self.vehicles if not v.in_transit), None)
 
+    def _sample_transport_circuity(self):
+        """Per-trip road-circuity factor on the great-circle distance (ADR 0015).
+
+        Drawn from Normal(mean, std) of the scenario's transportation_time,
+        clamped to at least 1.0 -- a road cannot be shorter than the
+        great-circle line. Affects travel time only; cost and emissions stay
+        on the great-circle distance.
+        """
+        if not self.uncertainty_set:
+            return 1.0
+        circuity_mean, circuity_std = self.uncertainty_set.transportation_time
+        return max(1.0, self.rng.normal(circuity_mean, circuity_std))
+
     def _calculate_travel_time_to_generator(self, generator):
         """Calculate travel time to generator (simplified)"""
 
@@ -145,7 +158,7 @@ class CollectorCompany(OperationalEntity):
             # Different region: use full inter-region distance
             distance = get_distance(self.region_type, generator.region_type)
 
-        travel_time_hours = distance / TRAVEL_SPEED_KMH
+        travel_time_hours = distance * self._sample_transport_circuity() / TRAVEL_SPEED_KMH
         travel_time_days = travel_time_hours / 24.0
         return travel_time_days, distance
 

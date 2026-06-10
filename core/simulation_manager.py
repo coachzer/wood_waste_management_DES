@@ -68,6 +68,12 @@ class SimulationManager:
             # Create facility builder with scenario configuration
             uncertainty_set = scenario_config.to_uncertainty_set()
 
+            # The transport manager is constructed in __init__ before the
+            # scenario is known; hand it the uncertainty set here so
+            # repositioning trips apply the mean road-circuity factor
+            # (ADR 0015).
+            self.transport_manager.uncertainty_set = uncertainty_set
+
             self.facility_builder = FacilityBuilder(
                 env=self.env,
                 facility_manager=self.facility_manager,

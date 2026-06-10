@@ -14,9 +14,22 @@ class TransportRequest:
     requester_id: str
 
 class PointToPointTransport:
-    def __init__(self, state=None):
+    def __init__(self, state=None, uncertainty_set=None):
         self.state = state
+        self.uncertainty_set = uncertainty_set
         self.pending_requests: List[TransportRequest] = []
+
+    def _mean_transport_circuity(self) -> float:
+        """Deterministic road-circuity factor on the great-circle distance.
+
+        The scenario's transportation_time mean, clamped to at least 1.0
+        (ADR 0015). Deterministic by design: this manager is shared across
+        collectors and carries no seeded RNG, so the per-trip stochastic draw
+        lives on the collection trips, not here.
+        """
+        if not self.uncertainty_set:
+            return 1.0
+        return max(1.0, self.uncertainty_set.transportation_time[0])
 
     def request_transport(self, request: TransportRequest) -> bool:
         self.pending_requests.append(request)
@@ -73,13 +86,14 @@ class PointToPointTransport:
         vehicle = vehicle_info["vehicle"]
         collector = vehicle_info["collector"]
         
+        circuity = self._mean_transport_circuity()
         distance = get_distance(request.origin, request.destination)
-        travel_time = distance / TRAVEL_SPEED_KMH / 24.0
+        travel_time = distance * circuity / TRAVEL_SPEED_KMH / 24.0
 
         pickup_time = current_time
         if vehicle.current_region != request.origin:
             pickup_distance = get_distance(vehicle.current_region, request.origin)
-            pickup_time += pickup_distance / TRAVEL_SPEED_KMH / 24.0
+            pickup_time += pickup_distance * circuity / TRAVEL_SPEED_KMH / 24.0
         
         arrival_time = pickup_time + travel_time
         
