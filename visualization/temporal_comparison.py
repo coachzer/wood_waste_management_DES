@@ -1,4 +1,3 @@
-import logging
 import os
 import plotly.graph_objects as go
 import plotly.subplots as sp
@@ -7,7 +6,6 @@ from typing import Dict, List
 from config.constants import (
     FRONTIER_FIGURE_HEIGHT_PX,
     FRONTIER_FIGURE_WIDTH_PX,
-    PDF_EXPORT_SCALE,
     POLICY_COLORS,
     STRATEGY_SYMBOLS,
 )
@@ -16,9 +14,10 @@ from .visualization_utils import (
     aggregate_generation_data,
     calculate_average_efficiency,
     calculate_storage_levels,
+    create_scenario_label,
     group_results_by_scenario_and_policy,
     last_cumulative_by_entity,
-    safe_write_image,
+    save_plot_files,
 )
 
 def create_temporal_comparisons(results: List[Dict], output_dir: str):
@@ -42,19 +41,6 @@ def create_temporal_comparisons(results: List[Dict], output_dir: str):
 def create_output_directory(output_dir: str):
     """Create output directory if it doesn't exist"""
     os.makedirs(output_dir, exist_ok=True)
-
-def save_plot_files(fig: go.Figure, output_dir: str, filename: str, print_message: str = None):
-    """Save HTML and PDF versions of a plot"""
-    create_output_directory(output_dir)
-
-    fig.write_html(f"{output_dir}/{filename}.html")
-
-    safe_write_image(fig, f"{output_dir}/{filename}.pdf", scale=PDF_EXPORT_SCALE)
-
-    if print_message:
-        logging.info(print_message)
-    else:
-        logging.info(f"Plot saved: {filename}")
 
 def extract_total_costs_from_monitor_data(monitor_data: Dict) -> Dict[str, float]:
     """Extract and aggregate total costs from all history sources in monitor data"""
@@ -151,10 +137,6 @@ def calculate_total_environmental_impact(monitor_data: Dict) -> float:
 def get_scenario_colors_and_symbols():
     """Return the shared theme mappings: color per policy, symbol per strategy"""
     return POLICY_COLORS, STRATEGY_SYMBOLS
-
-def create_scenario_label(result: Dict) -> str:
-    """Create a standardized scenario label from result data"""
-    return f"{result['inventory_policy']} | {result['stock_strategy']}"
 
 def _create_generation_comparison(results: List[Dict], output_dir: str):
     """Compare waste generation across scenarios over time"""
@@ -331,7 +313,7 @@ def _create_environmental_breakdown_comparison(results: List[Dict], output_dir: 
 
     for result in results:
         monitor_data = result['monitor_data']
-        scenario_labels.append(f"{result['inventory_policy']} | {result['stock_strategy']}")
+        scenario_labels.append(create_scenario_label(result))
         environmental_history = monitor_data.get('environmental_history', {})
 
         totals = {'carbon_emissions': 0, 'transport_emissions': 0, 'landfill_emissions': 0}
@@ -364,9 +346,7 @@ def _create_environmental_breakdown_comparison(results: List[Dict], output_dir: 
         xaxis={'tickangle': 45}
     )
 
-    fig.write_html(f"{output_dir}/environmental_breakdown_comparison.html")
-    safe_write_image(fig, f"{output_dir}/environmental_breakdown_comparison.pdf", scale=PDF_EXPORT_SCALE)
-    logging.info("Environmental breakdown comparison saved")
+    save_plot_files(fig, output_dir, "environmental_breakdown_comparison", "Environmental breakdown comparison saved")
 
 def _create_efficiency_frontier_analysis(results: List[Dict], output_dir: str):
     """Create efficiency frontier analysis"""
@@ -751,9 +731,5 @@ def _create_entity_status_view(results: List[Dict], output_dir: str):
                 fig.update_xaxes(title_text="Time", row=i, col=1)
                 fig.update_yaxes(title_text=config['y_title'], row=i, col=1)
 
-            filename = f"{config['filename_prefix']}_{file_id}.html"
-            fig.write_html(f"{entity_status_dir}/{filename}")
-
-            pdf_path = filename.replace(".html", ".pdf")
-            if safe_write_image(fig, f"{entity_status_dir}/{pdf_path}", scale=PDF_EXPORT_SCALE):
-                logging.info(f"PDF version saved to {pdf_path}")
+            filename = f"{config['filename_prefix']}_{file_id}"
+            save_plot_files(fig, entity_status_dir, filename)

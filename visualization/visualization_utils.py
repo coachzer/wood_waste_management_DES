@@ -1,8 +1,9 @@
 import logging
+import os
 
 import numpy as np
 from typing import Dict, List
-from config.constants import HEATMAP_TIME_GRID_POINTS
+from config.constants import HEATMAP_TIME_GRID_POINTS, PDF_EXPORT_SCALE
 
 
 def group_results_by_scenario_and_policy(results: List[Dict]) -> Dict:
@@ -28,6 +29,23 @@ def group_results_by_scenario_and_policy(results: List[Dict]) -> Dict:
         grouped_results[key].sort(key=lambda x: x['stock_strategy'])
 
     return grouped_results
+
+def create_scenario_label(result: Dict) -> str:
+    """Create a standardized scenario label from result data"""
+    return f"{result['inventory_policy']} | {result['stock_strategy']}"
+
+def save_plot_files(fig, output_dir: str, filename: str, print_message: str = None):
+    """Save HTML and PDF versions of a plot"""
+    os.makedirs(output_dir, exist_ok=True)
+
+    fig.write_html(f"{output_dir}/{filename}.html")
+
+    safe_write_image(fig, f"{output_dir}/{filename}.pdf", scale=PDF_EXPORT_SCALE)
+
+    if print_message:
+        logging.info(print_message)
+    else:
+        logging.info(f"Plot saved: {filename}")
 
 def safe_write_image(fig, path, **kwargs):
     try:

@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List
 from config.constants import CHART_PALETTE, DASHBOARD_HEIGHT_PX
-from .visualization_utils import last_cumulative_by_entity
+from .visualization_utils import create_scenario_label, last_cumulative_by_entity
 
 def create_cost_impact_comparison(results: List[Dict], output_dir: str):
     """Create bar charts comparing cost and environmental impact breakdowns"""
@@ -14,7 +14,7 @@ def create_cost_impact_comparison(results: List[Dict], output_dir: str):
 
     for result in results:
         monitor_data = result['monitor_data']
-        scenario_labels.append(f"{result['inventory_policy']} | {result['stock_strategy']}")
+        scenario_labels.append(create_scenario_label(result))
         
         total_energy = 0
         total_operational = 0
@@ -94,7 +94,7 @@ def create_summary_dashboard(results: List[Dict], output_dir: str):
         processing_eff = (total_processed / total_collected * 100) if total_collected > 0 else 0
 
         metrics_data.append({
-            'Scenario': f"{result['inventory_policy']} | {result['stock_strategy']}",
+            'Scenario': create_scenario_label(result),
             'Total Generated': total_generated,
             'Total Collected': total_collected,
             'Total Processed': total_processed,
