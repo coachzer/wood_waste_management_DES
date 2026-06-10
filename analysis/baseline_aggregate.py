@@ -10,6 +10,7 @@ from .bullwhip import (
     treatment_anchored_bullwhip,
     treatment_anchored_pooled_bullwhip,
 )
+from .availability import availability_metrics
 from .flow_times import flow_time_metrics
 from .avoided_emissions import avoided_emissions_metrics
 from .biogenic_carbon import biogenic_carbon_metrics
@@ -277,4 +278,7 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
             **avoided_emissions_metrics(monitor_data),
             **biogenic_carbon_metrics(monitor_data),
         },
+        # Entity availability (cleanup task #61): pooled OPERATIONAL-time share
+        # per echelon, the first consumer of entity_status_history.
+        "availability": availability_metrics(monitor_data),
     }

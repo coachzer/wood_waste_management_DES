@@ -44,8 +44,9 @@ DEFAULT_METRICS = [
 
 # Nested KPI sub-dicts ``extract_kpis`` emits, ridden generically as flat
 # ``{namespace}.{key}`` metrics with no per-key wiring (issue 06). ``bullwhip``
-# (ADR 0004), ``residence`` (Little's Law, C4), ``carbon`` (ADR 0011).
-_GENERIC_NAMESPACES = ("bullwhip", "residence", "carbon")
+# (ADR 0004), ``residence`` (Little's Law, C4), ``carbon`` (ADR 0011),
+# ``availability`` (entity status history, cleanup task #61).
+_GENERIC_NAMESPACES = ("bullwhip", "residence", "carbon", "availability")
 
 
 def _flatten_namespaces(kpis: dict) -> dict:
