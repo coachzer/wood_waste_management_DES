@@ -554,21 +554,23 @@ class TreatmentOperator(OperationalEntity):
 
         return collected_waste
 
-    def _collect_from_local(self, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
-        """Collect waste from local collectors."""
-        state = self.state
-        local_collectors = [c for c in state.collectors if c.region_type == self.region_type and c.availability]
-
+    def _drain_collectors(self, collectors, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
+        """Drain pre-filtered collectors via the local intake path until satisfied."""
         remaining = amount_to_collect
-        for collector in local_collectors:
+        for collector in collectors:
             if remaining <= 0: break
 
-            local_collected = collector.provide_waste_for_treatment(remaining, waste_types, treatment_name=self.name)
+            drained = collector.provide_waste_for_treatment(remaining, waste_types, treatment_name=self.name)
 
-            for waste_type, amount in local_collected.items():
+            for waste_type, amount in drained.items():
                 collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
                 remaining -= amount
         return remaining
+
+    def _collect_from_local(self, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
+        """Collect waste from local collectors."""
+        local_collectors = [c for c in self.state.collectors if c.region_type == self.region_type and c.availability]
+        return self._drain_collectors(local_collectors, amount_to_collect, waste_types, collected_waste)
 
     def _collect_from_cross_region(self, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
         """Reposition waste from cross-region collectors via transport.
@@ -599,17 +601,8 @@ class TreatmentOperator(OperationalEntity):
 
     def _collect_with_fallback(self, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
         """Collect waste from any available collector as a fallback."""
-        state = self.state
-        all_collectors = [c for c in state.collectors if c.availability]
-
-        remaining = amount_to_collect
-        for collector in all_collectors:
-            if remaining <= 0: break
-            fallback_collected = collector.provide_waste_for_treatment(remaining, waste_types, treatment_name=self.name)
-            for waste_type, amount in fallback_collected.items():
-                collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
-                remaining -= amount
-        return remaining
+        all_collectors = [c for c in self.state.collectors if c.availability]
+        return self._drain_collectors(all_collectors, amount_to_collect, waste_types, collected_waste)
 
     def _request_via_transport(self, collector, amount: float, waste_types: List[WasteType]) -> Dict[WasteType, float]:
         """Request waste via transport system"""
