@@ -3,7 +3,6 @@ import json
 from pathlib import Path
 from .enums import RegionType
 from .entities import RegionalFacilities
-from .products import ProductDataManager
 
 
 class FacilityDataManager:
@@ -13,7 +12,6 @@ class FacilityDataManager:
         self.data_dir = Path(data_dir)
         self.regions: Dict[RegionType, RegionalFacilities] = {}
         self.demand: Dict[str, float] = {}
-        self.product_manager = ProductDataManager()
 
     def load_data(self):
         """Load all facility and demand data"""

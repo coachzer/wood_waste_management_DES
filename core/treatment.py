@@ -10,7 +10,6 @@ from instrumentation.waste_monitor import WasteMonitor
 from core.kanban_manager import KanbanManager
 from core.strategies import build_stock_strategy, build_inventory_policy
 from models.enums import InventoryPolicy
-from models.products import ProductDataManager
 from models.transformations import TRANSFORMATION_CATALOGUE, WASTE_TO_OUTPUT_TYPES
 from utils.capacity_utils import (
     handle_storage_event,
@@ -108,8 +107,6 @@ class TreatmentOperator(OperationalEntity):
         # Yield-bridge accumulator (G1): cumulative intake x efficiency, reconciled
         # against deposited product_volumes by MassBalanceMonitor.check_yield_bridge.
         self.expected_output_volume = 0.0
-
-        self.product_manager = ProductDataManager()
 
         # Finished-goods inventory: per-product capacity sized to a fixed demand
         # buffer, primed to INITIAL_INVENTORY_FRACTION of capacity (ADR 0002, Phase
