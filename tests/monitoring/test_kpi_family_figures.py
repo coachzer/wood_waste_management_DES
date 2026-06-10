@@ -18,11 +18,15 @@ from visualization.kpi_family_figures import (
     BULLWHIP_RATIO_METRICS,
     CARBON_METRICS,
     RESIDENCE_METRICS,
+    SERVICE_BY_PRODUCT_PREFIX,
     build_metric_table,
+    discover_service_by_product_metrics,
+    product_label,
     to_kilotonnes,
     write_bullwhip_figure,
     write_carbon_figure,
     write_residence_figure,
+    write_service_by_product_figure,
 )
 
 
@@ -162,6 +166,70 @@ def test_carbon_metrics_are_the_three_orthogonal_lines():
 
 def test_write_carbon_figure_returns_none_without_data(tmp_path):
     assert write_carbon_figure(tmp_path) is None
+
+
+def _service_by_product_rows():
+    """Per-product full-service rows for the demand.json product names."""
+    return {
+        f"{SERVICE_BY_PRODUCT_PREFIX}particle_board": (55.0, 50.0, 60.0),
+        f"{SERVICE_BY_PRODUCT_PREFIX}osb": (48.0, 44.0, 52.0),
+        f"{SERVICE_BY_PRODUCT_PREFIX}mdf": (49.0, 45.0, 53.0),
+    }
+
+
+def test_discover_service_by_product_metrics_reads_prefixed_rows(tmp_path):
+    # Products come from demand.json, not a constant here: the figure discovers
+    # whichever service_level_full_by_product_pct.* rows the summary carries,
+    # in row order.
+    rows = dict(_service_by_product_rows())
+    rows["service_level_full_pct"] = (50.0, 46.0, 54.0)  # not by-product
+    _write_summary(tmp_path / "push__on_demand", rows)
+
+    assert discover_service_by_product_metrics(tmp_path) == [
+        f"{SERVICE_BY_PRODUCT_PREFIX}particle_board",
+        f"{SERVICE_BY_PRODUCT_PREFIX}osb",
+        f"{SERVICE_BY_PRODUCT_PREFIX}mdf",
+    ]
+
+
+def test_discover_service_by_product_metrics_skips_degenerate_rows(tmp_path):
+    # A product never attempted in any replication aggregates to a blank-stats
+    # count-0 row; it carries no interval, so it must not reach the figure.
+    combo_dir = tmp_path / "push__on_demand"
+    _write_summary(combo_dir, _service_by_product_rows())
+    with open(combo_dir / "summary.csv", "a", encoding="utf-8") as handle:
+        handle.write(f"\n{SERVICE_BY_PRODUCT_PREFIX}plywood,,,,,0")
+
+    discovered = discover_service_by_product_metrics(tmp_path)
+    assert f"{SERVICE_BY_PRODUCT_PREFIX}plywood" not in discovered
+    assert len(discovered) == 3
+
+
+def test_discover_service_by_product_metrics_empty_without_summaries(tmp_path):
+    assert discover_service_by_product_metrics(tmp_path) == []
+
+
+def test_product_label_prettifies_demand_json_names():
+    # Short names are acronyms (MDF, OSB); longer ones read as words.
+    assert product_label(f"{SERVICE_BY_PRODUCT_PREFIX}mdf") == "MDF"
+    assert product_label(f"{SERVICE_BY_PRODUCT_PREFIX}osb") == "OSB"
+    assert (
+        product_label(f"{SERVICE_BY_PRODUCT_PREFIX}particle_board")
+        == "Particle board"
+    )
+
+
+def test_write_service_by_product_figure_returns_none_without_data(tmp_path):
+    assert write_service_by_product_figure(tmp_path) is None
+
+
+def test_write_service_by_product_figure_emits_nonempty_pdf(tmp_path):
+    _write_summary(tmp_path / "push__on_demand", _service_by_product_rows())
+    _write_summary(tmp_path / "pull__reorder_90", _service_by_product_rows())
+    written = write_service_by_product_figure(tmp_path)
+    assert written is not None
+    assert written.name == "service_by_product_comparison.pdf"
+    assert written.read_bytes().startswith(b"%PDF")
 
 
 def test_write_carbon_figure_emits_nonempty_pdf(tmp_path):

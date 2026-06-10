@@ -13,6 +13,7 @@ and CSV parsing are reused from ``analysis.pareto`` and
 ``policy_comparison_figure`` so those rules stay in one place.
 """
 
+import csv
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -81,6 +82,11 @@ CARBON_METRIC_COLORS = {
     "carbon.avoided_emissions_total_kgco2e": "#1f77b4",
     "carbon.biogenic_carbon_stored_total_kgco2e": "#2ca02c",
 }
+
+# Per-product full Service Level rows (VIZ-REVIEW T8). The product set comes
+# from demand.json, not a constant here, so the figure discovers whichever
+# prefixed rows the summary carries rather than hardcoding product names.
+SERVICE_BY_PRODUCT_PREFIX = "service_level_full_by_product_pct."
 
 # Carbon values are scaled to kilotonnes for a readable axis, same divisor as
 # the policy comparison figure's emissions axis.
@@ -260,6 +266,73 @@ def write_residence_figure(path, filename: str = "residence_comparison.pdf"):
     return output_path
 
 
+def discover_service_by_product_metrics(path: Path) -> List[str]:
+    """Per-product service metric keys from the first combo's ``summary.csv``.
+
+    Returns the ``service_level_full_by_product_pct.*`` row names in file
+    order, skipping degenerate count-0 rows (a product never attempted carries
+    no interval). The product set is identical across combos (same demand.json),
+    so reading one combo suffices; ``build_metric_table`` still fails loudly if
+    another combo lacks a discovered key. Empty list if no summaries exist.
+    """
+    for _, summary_path in iter_combo_summaries(Path(path), root=False):
+        metrics: List[str] = []
+        with open(summary_path, "r", encoding="utf-8", newline="") as handle:
+            reader = csv.reader(handle)
+            next(reader, None)  # skip header
+            for row in reader:
+                if len(row) < 5 or not row[0].startswith(SERVICE_BY_PRODUCT_PREFIX):
+                    continue
+                if row[1] == "":  # degenerate: blank stats, count 0
+                    continue
+                metrics.append(row[0])
+        return metrics
+    return []
+
+
+def product_label(metric: str) -> str:
+    """Axis label for one discovered per-product metric key.
+
+    demand.json names are snake_case; short names are panel acronyms (MDF,
+    OSB) and read uppercase, longer ones read as words.
+    """
+    product_name = metric[len(SERVICE_BY_PRODUCT_PREFIX):]
+    if len(product_name) <= 3:
+        return product_name.upper()
+    return product_name.replace("_", " ").capitalize()
+
+
+def write_service_by_product_figure(
+    path, filename: str = "service_by_product_comparison.pdf"
+):
+    """Render and save the per-product service-level PDF under ``path``.
+
+    Grouped bars (one group per product, one bar per combo) of the full
+    Service Level percentage with 95% CI whiskers — the per-product breakdown
+    of the headline ``service_level_full_pct`` comparator. Returns the written
+    ``Path``, or ``None`` if no ``summary.csv`` files (or no per-product rows)
+    exist.
+    """
+    path = Path(path)
+    metrics = discover_service_by_product_metrics(path)
+    if not metrics:
+        return None
+    table = build_metric_table(path, metrics)
+
+    fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
+    _grouped_bars(ax, table, metrics)
+    ax.set_xticklabels([product_label(metric) for metric in metrics])
+    ax.set_ylabel("Full service level (%)")
+    ax.set_title("Per-product full service level across policy configurations")
+    ax.grid(True, axis="y", linestyle=":", alpha=0.5)
+    ax.legend(handles=_grouped_bar_legend(table), loc="best", fontsize=8)
+    fig.tight_layout()
+    output_path = path / filename
+    fig.savefig(output_path)
+    plt.close(fig)
+    return output_path
+
+
 def write_carbon_figure(path, filename: str = "carbon_comparison.pdf"):
     """Render and save the three-carbon-lines PDF under scenario dir ``path``.
 
@@ -336,6 +409,7 @@ if __name__ == "__main__":
             write_bullwhip_figure,
             write_residence_figure,
             write_carbon_figure,
+            write_service_by_product_figure,
         )
     ]
     if all(written is None for written in written_paths):
