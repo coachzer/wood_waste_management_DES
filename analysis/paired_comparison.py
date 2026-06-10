@@ -68,8 +68,8 @@ def paired_t_comparison(diffs: List[float], alpha: float = 0.05) -> Optional[dic
             "n_pairs": n,
             "mean_diff": mean_diff,
             "sd_diff": 0.0,
-            "ci_low": mean_diff,
-            "ci_high": mean_diff,
+            "ci95_low": mean_diff,
+            "ci95_high": mean_diff,
             "t_stat": float("inf") if mean_diff != 0.0 else 0.0,
             "p_value": 0.0 if mean_diff != 0.0 else 1.0,
         }
@@ -81,8 +81,8 @@ def paired_t_comparison(diffs: List[float], alpha: float = 0.05) -> Optional[dic
         "n_pairs": n,
         "mean_diff": mean_diff,
         "sd_diff": sd_diff,
-        "ci_low": mean_diff - margin,
-        "ci_high": mean_diff + margin,
+        "ci95_low": mean_diff - margin,
+        "ci95_high": mean_diff + margin,
         "t_stat": t_stat,
         "p_value": p_value,
     }
@@ -168,7 +168,7 @@ def write_paired_comparison_report(
     for row in rows:
         lines.append(
             f"{row['metric']},{row['combo_a']},{row['combo_b']},{row['n_pairs']},"
-            f"{row['mean_diff']:.6g},{row['sd_diff']:.6g},{row['ci_low']:.6g},{row['ci_high']:.6g},"
+            f"{row['mean_diff']:.6g},{row['sd_diff']:.6g},{row['ci95_low']:.6g},{row['ci95_high']:.6g},"
             f"{row['t_stat']:.6g},{row['p_value']:.6g},{row['p_value_holm']:.6g},{row['significant_holm']}"
         )
 
@@ -192,7 +192,7 @@ def _print_significant_summary(rows: List[dict], alpha: float) -> None:
         direction = ">" if row["mean_diff"] > 0 else "<"
         print(
             f"    {row['combo_a']} {direction} {row['combo_b']}  "
-            f"(diff={row['mean_diff']:.4g}, 95% CI [{row['ci_low']:.4g}, {row['ci_high']:.4g}], "
+            f"(diff={row['mean_diff']:.4g}, 95% CI [{row['ci95_low']:.4g}, {row['ci95_high']:.4g}], "
             f"p_holm={row['p_value_holm']:.3g}, n={row['n_pairs']})"
         )
 
