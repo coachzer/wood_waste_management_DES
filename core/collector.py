@@ -20,6 +20,7 @@ from models.distances import REGION_COORDINATES, get_distance, get_closest_regio
 from utils.capacity_utils import (
     handle_storage_event,
     check_storage_capacity,
+    compute_and_handle_overflow,
     split_overflow_by_type,
 )
 from core.kanban_manager import KanbanManager
@@ -246,17 +247,9 @@ class CollectorCompany(OperationalEntity):
         )
 
         if overflow > 0:
-            # check_storage_capacity already scaled each type proportionally, so the
-            # per-type overflow is exactly what was skimmed off each stream. Sorted by
-            # WasteType.value for deterministic iteration (CRN guard).
-            per_type_overflow = {
-                waste_type: potential_collections[waste_type]
-                - allowed_collections.get(waste_type, 0.0)
-                for waste_type in sorted(
-                    potential_collections, key=lambda waste_type: waste_type.value
-                )
-            }
-            handle_storage_event(generator, per_type_overflow)
+            compute_and_handle_overflow(
+                generator, potential_collections, allowed_collections
+            )
 
         # Process the actual collections
         collected_waste = {}

@@ -14,6 +14,7 @@ from models.products import ProductDataManager
 from utils.capacity_utils import (
     handle_storage_event,
     check_storage_capacity,
+    compute_and_handle_overflow,
     split_overflow_by_type,
 )
 from config.constants import (
@@ -749,17 +750,7 @@ class TreatmentOperator(OperationalEntity):
         )
 
         if overflow_amount > 0:
-            # check_storage_capacity already scaled each type proportionally, so the
-            # per-type overflow is exactly what was skimmed off each addition. Sorted
-            # by WasteType.value for deterministic iteration (CRN guard).
-            per_type_overflow = {
-                waste_type: waste_amounts[waste_type]
-                - allowed_additions.get(waste_type, 0.0)
-                for waste_type in sorted(
-                    waste_amounts, key=lambda waste_type: waste_type.value
-                )
-            }
-            handle_storage_event(self, per_type_overflow)
+            compute_and_handle_overflow(self, waste_amounts, allowed_additions)
 
         total_added = 0.0
         for waste_type, amount in allowed_additions.items():

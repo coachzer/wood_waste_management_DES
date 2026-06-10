@@ -34,6 +34,27 @@ def check_storage_capacity(
     overflow = addition_total - available_capacity
     return scaled_additions, overflow
     
+def compute_and_handle_overflow(
+    entity,
+    original_amounts: Dict[WasteType, float],
+    allowed_amounts: Dict[WasteType, float],
+) -> None:
+    """Route the per-type overflow skimmed by check_storage_capacity to handle_storage_event.
+
+    check_storage_capacity already scaled each type proportionally, so the
+    per-type overflow is exactly what was skimmed off each stream. Sorted by
+    WasteType.value for deterministic iteration (CRN guard).
+    """
+    per_type_overflow = {
+        waste_type: original_amounts[waste_type]
+        - allowed_amounts.get(waste_type, 0.0)
+        for waste_type in sorted(
+            original_amounts, key=lambda waste_type: waste_type.value
+        )
+    }
+    handle_storage_event(entity, per_type_overflow)
+
+
 def split_overflow_by_type(
     composition: Dict[WasteType, float],
     overflow_total: float,
