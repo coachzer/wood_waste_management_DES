@@ -10,6 +10,7 @@ from analysis.paired_comparison import write_paired_comparison_report
 from analysis.pareto import write_pareto_report
 from analysis.stochastic_dominance import write_dominance_report
 from visualization.pareto_visualization import write_pareto_plot
+from visualization.policy_comparison_figure import write_policy_comparison_figure
 import traceback
 import argparse
 import time
@@ -210,6 +211,16 @@ def run_monte_carlo_baseline(
                     print(f"Wrote Pareto frontier plot: {plot_path}")
         except Exception as e:
             print(f"Warning: failed to write Pareto frontier for {scenario_name}: {e}")
+
+        # The paper's Fig. 2 (emissions vs service level with CI crosshairs)
+        # reads the summary.csv files just written; regenerating it here keeps
+        # the embedded figure in sync with the latest run's numbers.
+        try:
+            figure_path = write_policy_comparison_figure(scenario_dir)
+            if figure_path is not None:
+                print(f"Wrote policy comparison figure: {figure_path}")
+        except Exception as e:
+            print(f"Warning: failed to write policy comparison figure for {scenario_name}: {e}")
     elapsed = time.time() - start_time
     print(
         f"\nBaseline Monte Carlo complete. Total runs: {len(results)} in {elapsed:.2f}s"
