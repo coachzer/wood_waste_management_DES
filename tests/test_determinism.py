@@ -22,8 +22,8 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _run_baseline(out_root: Path) -> None:
-    """Run one isolated single-replication baseline into ``out_root``."""
+def _run_baseline(out_root: Path, workers: int = 1, replications: int = 1) -> None:
+    """Run one isolated baseline batch into ``out_root``."""
     result = subprocess.run(
         [
             sys.executable,
@@ -33,7 +33,9 @@ def _run_baseline(out_root: Path) -> None:
             "--scenario",
             "Baseline",
             "--replications",
-            "1",
+            str(replications),
+            "--workers",
+            str(workers),
             "--out-root",
             str(out_root),
         ],
@@ -75,6 +77,33 @@ def test_baseline_runs_are_byte_identical_across_processes(tmp_path):
         "non-deterministic output across processes (likely unsorted set-of-enum "
         f"iteration on an ordered-work path): {mismatched}"
     )
+
+
+@pytest.mark.slow
+def test_parallel_baseline_matches_sequential_byte_for_byte(tmp_path):
+    """--workers N must change wall-clock only, never artifacts."""
+    out_seq = tmp_path / "sequential"
+    out_par = tmp_path / "parallel"
+
+    _run_baseline(out_seq, workers=1, replications=2)
+    _run_baseline(out_par, workers=4, replications=2)
+
+    patterns = ("run_*.json", "raw_*.json", "summary.csv")
+    for pattern in patterns:
+        seq_files = sorted(out_seq.rglob(pattern))
+        par_files = sorted(out_par.rglob(pattern))
+
+        assert seq_files, f"no {pattern} files produced in sequential run"
+        assert [p.relative_to(out_seq).as_posix() for p in seq_files] == [
+            p.relative_to(out_par).as_posix() for p in par_files
+        ], f"artifact set differs for {pattern}"
+
+        mismatched = [
+            p.relative_to(out_par).as_posix()
+            for p, q in zip(seq_files, par_files)
+            if p.read_bytes() != q.read_bytes()
+        ]
+        assert not mismatched, f"artifact bytes differ for {pattern}: {mismatched}"
 
 
 @pytest.mark.slow

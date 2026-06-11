@@ -11,6 +11,7 @@ from analysis.pareto import write_pareto_report
 from analysis.stochastic_dominance import write_dominance_report
 from visualization.pareto_visualization import write_pareto_plot
 from visualization.policy_comparison_figure import write_policy_comparison_figure
+from concurrent.futures import ProcessPoolExecutor
 import traceback
 import argparse
 import time
@@ -79,19 +80,89 @@ def run_single_simulation(
         raise SystemExit(f"Simulation failed for scenario {scenario_name} with {inventory_policy.value}, {stock_strategy.value}") from e
 
 
+def _run_baseline_replication_task(
+    scenario_name: str,
+    inventory_policy: InventoryPolicy,
+    stock_strategy: StockStrategy,
+    seed: int,
+    replication_index: int,
+    combo_dir: Path,
+) -> dict:
+    """Run one baseline replication and persist its artifacts.
+
+    Module-level so it pickles under the Windows spawn start method. Artifact
+    writes happen here inside the worker, so bulky monitor_data never crosses
+    the process boundary; only the small KPI dict returns to the parent.
+    """
+    simulation_result = run_single_simulation(
+        scenario_name=scenario_name,
+        inventory_policy=inventory_policy,
+        stock_strategy=stock_strategy,
+        seed=seed,
+        create_mfa=False,
+        raise_on_violation=False,
+    )
+    kpis = extract_kpis(simulation_result["monitor_data"])
+
+    run_path = combo_dir / f"run_{replication_index:03d}.json"
+    try:
+        with open(run_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "base_scenario": simulation_result["base_scenario"],
+                    "scenario_name": simulation_result["scenario_name"],
+                    "inventory_policy": simulation_result["inventory_policy"],
+                    "stock_strategy": simulation_result["stock_strategy"],
+                    "seed": simulation_result["seed"],
+                    "kpis": kpis,
+                },
+                f,
+                separators=(",", ":"),
+            )
+    except Exception as e:
+        print(f"Warning: failed to write {run_path}: {e}")
+
+    raw_path = combo_dir / f"raw_{replication_index:03d}.json"
+    try:
+        with open(raw_path, "w", encoding="utf-8") as f:
+            json.dump(
+                jsonify(build_raw_payload(simulation_result["monitor_data"])),
+                f,
+                separators=(",", ":"),
+            )
+    except Exception as e:
+        print(f"Warning: failed to write {raw_path}: {e}")
+
+    return {
+        "base_scenario": simulation_result["base_scenario"],
+        "scenario_name": simulation_result["scenario_name"],
+        "inventory_policy": simulation_result["inventory_policy"],
+        "stock_strategy": simulation_result["stock_strategy"],
+        "seed": simulation_result["seed"],
+        "replication_index": replication_index,
+        "kpis": kpis,
+    }
+
+
 def run_monte_carlo_baseline(
     replications: int = 100,
     scenario_filter: str | None = None,
     out_root: Path | None = None,
+    workers: int = 1,
 ) -> list[dict]:
     """
     Run baseline Monte Carlo: 100 replications per InventoryPolicy x StockStrategy.
+
+    Returns lightweight per-replication records (no ``monitor_data``) and, when
+    ``workers > 1``, uses a process pool to keep artifact writes byte-identical
+    while reducing wall-clock time.
 
     ``out_root`` overrides where per-run artifacts are written (default
     ``outputs/baseline``), letting a caller isolate a run into its own directory
     so two invocations can be diffed without clobbering a working ``outputs/``
     dataset.
     """
+
     start_time = time.time()
     results: list[dict] = []
 
@@ -116,62 +187,56 @@ def run_monte_carlo_baseline(
         scenario_dir = out_root / scenario_name
         scenario_dir.mkdir(parents=True, exist_ok=True)
 
+        replication_tasks: list[tuple] = []
+        for policy in inventory_policies:
+            for strategy in stock_strategies:
+                combo_dir = scenario_dir / f"{policy.value}__{strategy.value}"
+                combo_dir.mkdir(parents=True, exist_ok=True)
+                for replication_index in range(replications):
+                    replication_tasks.append(
+                        (
+                            scenario_name,
+                            policy,
+                            strategy,
+                            base_seed + replication_index,
+                            replication_index,
+                            combo_dir,
+                        )
+                    )
+
+        if workers <= 1:
+            replication_records = [
+                _run_baseline_replication_task(*task) for task in replication_tasks
+            ]
+        else:
+            # CRN replications are independent (each worker re-seeds from its
+            # own seed), so the pool only changes wall-clock, never artifacts.
+            with ProcessPoolExecutor(max_workers=workers) as executor:
+                futures = [
+                    executor.submit(_run_baseline_replication_task, *task)
+                    for task in replication_tasks
+                ]
+                # .result() re-raises worker failures (including SystemExit),
+                # preserving the sequential abort-the-batch semantics.
+                replication_records = [future.result() for future in futures]
+
         for policy in inventory_policies:
             for strategy in stock_strategies:
                 print(f"\n-- {policy.value} x {strategy.value} --")
                 combo_dir = scenario_dir / f"{policy.value}__{strategy.value}"
-                combo_dir.mkdir(parents=True, exist_ok=True)
-                combo_kpis: list[dict] = []
-                for i in range(replications):
-                    seed = base_seed + i
-                    res = run_single_simulation(
-                        scenario_name=scenario_name,
-                        inventory_policy=policy,
-                        stock_strategy=strategy,
-                        seed=seed,
-                        create_mfa=False,
-                        raise_on_violation=False,
-                    )
-                    results.append(res)
-                    kpis = extract_kpis(res["monitor_data"])
-                    combo_kpis.append(kpis)
-                    # Persist per-run KPIs (avoid raw monitor_data with Enums)
-                    run_path = combo_dir / f"run_{i:03d}.json"
-                    try:
-                        with open(run_path, "w", encoding="utf-8") as f:
-                            json.dump(
-                                {
-                                    "base_scenario": res["base_scenario"],
-                                    "scenario_name": res["scenario_name"],
-                                    "inventory_policy": res["inventory_policy"],
-                                    "stock_strategy": res["stock_strategy"],
-                                    "seed": res["seed"],
-                                    "kpis": kpis,
-                                },
-                                f,
-                                separators=(",", ":"),
-                            )
-                    except Exception as e:
-                        print(f"Warning: failed to write {run_path}: {e}")
-                    # Additive raw sidecar: the history dicts + event logs
-                    # extract_kpis consumes, persisted so a post-hoc KPI needs no
-                    # re-run. Named raw_NNN.json (NOT run_*) so it stays clear of
-                    # the run_*.json glob the comparator and post-hoc scripts use.
-                    raw_path = combo_dir / f"raw_{i:03d}.json"
-                    try:
-                        with open(raw_path, "w", encoding="utf-8") as f:
-                            json.dump(
-                                jsonify(build_raw_payload(res["monitor_data"])),
-                                f,
-                                separators=(",", ":"),
-                            )
-                    except Exception as e:
-                        print(f"Warning: failed to write {raw_path}: {e}")
+                combo_records = [
+                    record
+                    for record in replication_records
+                    if record["inventory_policy"] == policy.value
+                    and record["stock_strategy"] == strategy.value
+                ]
+                combo_records.sort(key=lambda record: record["replication_index"])
+                combo_kpis = [record["kpis"] for record in combo_records]
+                results.extend(combo_records)
 
                 print(
                     f"Completed {replications} reps for {policy.value} x {strategy.value}"
                 )
-                # Write per-combo summary CSV
                 summary_csv = combo_dir / "summary.csv"
                 try:
                     _write_combo_summary(summary_csv, combo_kpis)
@@ -205,7 +270,7 @@ def run_monte_carlo_baseline(
             pareto_path = write_pareto_report(scenario_dir)
             if pareto_path is not None:
                 print(f"Wrote Pareto frontier: {pareto_path}")
-                # Parallel-coordinates HTML of the same frontier, beside the CSV.
+                # Pareto frontier PDF (emissions vs service level with frontier overlay).
                 plot_path = write_pareto_plot(scenario_dir)
                 if plot_path is not None:
                     print(f"Wrote Pareto frontier plot: {plot_path}")
@@ -323,6 +388,13 @@ if __name__ == "__main__":
         help=f"Override the baseline output root (default: {BASELINE_OUTPUT_ROOT}). "
         "Isolates a run from a working outputs/ dataset.",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Worker processes for baseline replications (default 1 = sequential). "
+        "Artifacts are byte-identical at any worker count; only wall-clock changes.",
+    )
     args = parser.parse_args()
 
     if args.mode == "baseline":
@@ -330,6 +402,7 @@ if __name__ == "__main__":
             replications=args.replications,
             scenario_filter=args.scenario,
             out_root=args.out_root,
+            workers=args.workers,
         )
     else:
         all_results = main()

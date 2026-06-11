@@ -245,7 +245,7 @@ if __name__ == "__main__":
     print(f"Wrote {report}")
     _print_frontier_summary(report_rows)
 
-    # Companion parallel-coordinates HTML. Imported lazily so a missing optional
+    # Companion Pareto frontier PDF. Imported lazily so a missing optional
     # plotting dependency only skips the plot with a note -- the CSV above still
     # stands as the analysis artifact.
     try:

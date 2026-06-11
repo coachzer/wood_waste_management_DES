@@ -19,6 +19,7 @@ place.
 """
 
 import csv
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -197,7 +198,13 @@ def write_policy_comparison_figure(path, filename: str = "policy_comparison.pdf"
         return None
     fig = render_figure(points)
     output_path = path / filename
-    fig.savefig(output_path)
+    fig.savefig(
+        output_path,
+        metadata={
+            "CreationDate": datetime(1970, 1, 1, 0, 0, 0),
+            "ModDate": datetime(1970, 1, 1, 0, 0, 0),
+        },
+    )
     plt.close(fig)
     return output_path
 

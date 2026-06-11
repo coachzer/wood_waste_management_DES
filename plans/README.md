@@ -14,7 +14,7 @@ Execute in the order below unless dependencies say otherwise. Each executor: rea
 | 002 | Seed grid-mode runs for reproducibility | P2 | S | — | DONE (merged into `main` as `a522537` cherry-pick of `536aa17`; full suite 258 passed + 6 skipped re-verified post-merge; reviewed and approved 2026-06-11) |
 | 004 | Cap per-type generation at storage headroom (was all-or-nothing drop) | P2 | S | 003 | DONE (merged into `main` as `e08cbf9`; reviewed and approved 2026-06-11 — outputs/ now stale, re-run baseline before citing numbers) |
 | 006 | Regenerate the paper's Fig. 2 in the baseline flow | P3 | S | — (best after 001) | DONE (merged into `main` as `87e76ad`; behavioral check: figure regenerated against Baseline summary.csv files, valid PDF written; reviewed and approved 2026-06-11) |
-| 007 | Parallelize Monte Carlo baseline replications across worker processes | P2 | M | — | IN PROGRESS (planned 2026-06-11 at `8592fe4`, promoted from the backlog; executor dispatched) |
+| 007 | Parallelize Monte Carlo baseline replications across worker processes | P2 | M | — | DONE (worker pool support added in `main.py`, `--workers` CLI wired, parallel determinism regression test added; full suite 258 passed + 7 skipped, smoke artifacts byte-identical) |
 
 All six plans are merged into `main` as of 2026-06-11 (final state: `a522537`). The plan-execution worktrees and branches have been removed. Reminder: `outputs/` predates plans 001/004 — re-run `python main.py --mode baseline --replications 100` before citing any number; the wired Fig. 2 will regenerate automatically.
 

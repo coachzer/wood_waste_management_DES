@@ -1,11 +1,13 @@
-"""Smoke test for the Pareto parallel-coordinates plot (C5 follow-up).
+"""Smoke test for the Pareto frontier figure (Matplotlib PDF).
 
-Confirms the figure builds from report rows and that ``write_pareto_plot``
-produces an ``pareto_frontier.html`` beside a tmp dataset. Plot aesthetics are
-not asserted -- only that the artifact is written and non-trivial.
+Confirms that ``build_pareto_figure`` returns a Matplotlib Figure and that
+``write_pareto_plot`` produces a ``pareto_frontier.pdf`` beside a tmp
+dataset. Plot aesthetics are not asserted -- only that the artifact is
+written and non-trivial.
 """
 
-from analysis.pareto import build_pareto_report
+import matplotlib.pyplot as plt
+
 from visualization.pareto_visualization import (
     build_pareto_figure,
     write_pareto_plot,
@@ -33,23 +35,21 @@ def _baseline_dataset(write_summary, scenario_dir):
     )
 
 
-def test_build_pareto_figure_has_config_and_objective_axes(tmp_path, write_summary):
+def test_build_pareto_figure_returns_matplotlib_figure(tmp_path, write_summary):
     _baseline_dataset(write_summary, tmp_path)
-    rows = build_pareto_report(tmp_path)
-    figure = build_pareto_figure(rows)
-    dimensions = figure.data[0].dimensions
-    labels = [dim["label"] for dim in dimensions]
-    # Leading config axis plus one axis per objective.
-    assert labels[0] == "config"
-    assert len(dimensions) == 1 + 4
-    # One polyline value per configuration on every axis.
-    assert all(len(dim["values"]) == len(rows) for dim in dimensions)
+    from visualization.pareto_visualization import _build_points
+    from analysis.pareto import OBJECTIVES
+
+    points = _build_points(tmp_path, root=False, objectives=OBJECTIVES)
+    fig = build_pareto_figure(points)
+    assert isinstance(fig, plt.Figure)
+    plt.close(fig)
 
 
-def test_write_pareto_plot_emits_html(tmp_path, write_summary):
+def test_write_pareto_plot_emits_pdf(tmp_path, write_summary):
     _baseline_dataset(write_summary, tmp_path)
     plot_path = write_pareto_plot(tmp_path)
-    assert plot_path == tmp_path / "pareto_frontier.html"
+    assert plot_path == tmp_path / "pareto_frontier.pdf"
     assert plot_path.exists()
     assert plot_path.stat().st_size > 0
 
