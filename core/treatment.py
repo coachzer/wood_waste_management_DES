@@ -273,7 +273,8 @@ class TreatmentOperator(OperationalEntity):
                     timestamp=current_time,
                     volume=signal_volume,
                     source_id=self.name,
-                    source_type="treatment"
+                    source_type="treatment",
+                    target_region=self.region_type,
                 )
 
     def _get_prioritized_transformations(self):

@@ -425,6 +425,16 @@ class CollectorCompany(OperationalEntity):
             if signal.get('source_type') == "market":
                 continue
 
+            # Treatment signals are addressed to one region (the operator's own).
+            # The shared bus means every PULL collector reads every signal, so an
+            # unaddressed signal could be consumed by the wrong region's collector,
+            # which would propagate uselessly and ack it before the intended
+            # collector ever sees it (ADR 0018). Skip signals not meant for us;
+            # leave them on the bus for the collector they are addressed to.
+            target_region = signal.get('target_region')
+            if target_region is not None and target_region != self.region_type:
+                continue
+
             waste_type_enum = signal['waste_type']
 
             source_type = signal.get('source_type', 'generator')

@@ -8,7 +8,7 @@ class KanbanManager:
         self.max_signal_age = KANBAN_SIGNAL_MAX_AGE_DAYS
         self.acknowledged_signals = set()  # Track processed signals
 
-    def add_signal(self, waste_type, timestamp, volume=0, source_id=None, source_type=None):
+    def add_signal(self, waste_type, timestamp, volume=0, source_id=None, source_type=None, target_region=None):
         signal_id = f"{source_id}_{waste_type}_{timestamp}"
 
         # Avoid duplicate signals
@@ -19,7 +19,8 @@ class KanbanManager:
                 'timestamp': timestamp,
                 'volume': volume,
                 'source_id': source_id,
-                "source_type": source_type
+                "source_type": source_type,
+                'target_region': target_region,
             })
 
     def acknowledge_signal(self, signal_id):
