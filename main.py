@@ -11,6 +11,12 @@ from analysis.pareto import write_pareto_report
 from analysis.stochastic_dominance import write_dominance_report
 from visualization.pareto_visualization import write_pareto_plot
 from visualization.policy_comparison_figure import write_policy_comparison_figure
+from visualization.kpi_family_figures import (
+    write_bullwhip_figure,
+    write_carbon_figure,
+    write_residence_figure,
+    write_service_by_product_figure,
+)
 from concurrent.futures import ProcessPoolExecutor
 import traceback
 import argparse
@@ -286,6 +292,19 @@ def run_monte_carlo_baseline(
                 print(f"Wrote policy comparison figure: {figure_path}")
         except Exception as e:
             print(f"Warning: failed to write policy comparison figure for {scenario_name}: {e}")
+
+        for kpi_figure_producer in (
+            write_bullwhip_figure,
+            write_residence_figure,
+            write_carbon_figure,
+            write_service_by_product_figure,
+        ):
+            try:
+                kpi_fig_path = kpi_figure_producer(scenario_dir)
+                if kpi_fig_path is not None:
+                    print(f"Wrote {kpi_fig_path}")
+            except Exception as e:
+                print(f"Warning: failed to write KPI family figure for {scenario_name}: {e}")
     elapsed = time.time() - start_time
     print(
         f"\nBaseline Monte Carlo complete. Total runs: {len(results)} in {elapsed:.2f}s"
