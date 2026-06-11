@@ -97,7 +97,36 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
         generator_failure=LOW_FAILURE,
         collector_failure=MEDIUM_FAILURE,
         treatment_failure=HIGH_FAILURE,
-    )
+    ),
+    # Contracted, volatile generation with degraded collection/treatment and
+    # stretched transport. Calibration anchor: 2020 COVID contraction (-9%
+    # total, -11% C&D waste, Eurostat env_wasgen W075); the 0.60 multiplier is
+    # deliberately more severe than observed -- a beyond-observed stress case.
+    # Reorder checks count on-hand stock only (not in-transit), so the long
+    # trans_time lets orders stack before the first lands -- expected overshoot,
+    # stated as a manuscript footnote.
+    "SupplyDisruption": ScenarioConfig(
+        name="SupplyDisruption",
+        waste_gen=(0.60, 0.25),
+        treat_conv=(0.9, 0.03),
+        trans_time=(4.0, 1.2),
+        generator_failure=LOW_FAILURE,
+        collector_failure=HIGH_FAILURE,
+        treatment_failure=HIGH_FAILURE,
+    ),
+    # Abundant generation with fast transport and reliable infrastructure.
+    # Calibration anchor: 2023 Slovenia floods (+15% wood waste nationally;
+    # Savinjska +21%, Koroska +19%), pushed to a 1.50 multiplier. Tests whether
+    # PUSH buffers saturate or PULL exploits the abundance.
+    "DemandSurge": ScenarioConfig(
+        name="DemandSurge",
+        waste_gen=(1.50, 0.15),
+        treat_conv=(0.9, 0.03),
+        trans_time=(1.5, 0.15),
+        generator_failure=LOW_FAILURE,
+        collector_failure=LOW_FAILURE,
+        treatment_failure=LOW_FAILURE,
+    ),
 }
 
 # Finished-goods buffer sensitivity sweep (bucket-C C1): each scenario is Baseline
