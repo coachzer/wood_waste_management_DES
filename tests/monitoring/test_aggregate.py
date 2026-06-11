@@ -217,3 +217,17 @@ def test_residence_none_across_replications_still_emits_discoverable_row():
     cells = _row(summary_rows(kpis), "residence.treatment_residence_days")
     assert cells is not None
     assert int(cells[5]) == 0
+
+
+def test_total_emissions_sums_per_tick_impact_series_not_last_element():
+    # track_environmental_impact appends a fresh 0.0 slot per new timestamp
+    # (instrumentation/waste_monitor.py), so total_impact is per-tick, not
+    # cumulative. Reading [-1] reports only the final tick's emissions.
+    monitor_data = {
+        "environmental_history": {
+            "collector-1": {"total_impact": [10.0, 20.0, 30.0]},
+            "treatment-1": {"total_impact": [5.0]},
+        },
+    }
+    kpis = extract_kpis(monitor_data)
+    assert kpis["total_emissions_kgco2e"] == 65.0

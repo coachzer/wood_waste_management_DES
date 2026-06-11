@@ -168,12 +168,14 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
     landfill_cost = float(sum(sys_evt.get("landfill_costs", []) or []))
     expansion_cost = float(sum(sys_evt.get("expansion_costs", []) or []))
 
-    # Emissions
+    # Emissions: total_impact is a per-timestamp series (the monitor appends a
+    # fresh slot per new timestamp), so the run total is the sum, not the last
+    # element -- unlike the cumulative processed/generated series above.
     total_emissions = 0.0
     for hist in env_hist.values():
         series = hist.get("total_impact", [])
         if isinstance(series, list) and series:
-            total_emissions += float(series[-1])
+            total_emissions += float(sum(series))
 
     # System cost (section 4.4): total system cost across collection/transport,
     # processing, storage overflow, and waste-side inventory holding. Each
