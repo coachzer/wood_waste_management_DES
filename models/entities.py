@@ -72,7 +72,6 @@ class Processor(OperationalEntity):
     id: str
     input_types: List[str]  # EWC codes that can be processed
     output_types: List[str]  # Products that can be produced
-    processing_capacity: float
     processing_time: float
     waste_storage_capacity: float
     energy_consumption: float = 1.0
@@ -84,7 +83,6 @@ class Processor(OperationalEntity):
                  id: str,
                  input_types: List[str],
                  output_types: List[str],
-                 processing_capacity: float,
                  processing_time: float,
                  waste_storage_capacity: float,
                  energy_consumption: float = 1.0,
@@ -96,7 +94,6 @@ class Processor(OperationalEntity):
         self.id = id
         self.input_types = input_types
         self.output_types = output_types
-        self.processing_capacity = processing_capacity
         self.processing_time = processing_time
         self.waste_storage_capacity = waste_storage_capacity
         self.energy_consumption = energy_consumption

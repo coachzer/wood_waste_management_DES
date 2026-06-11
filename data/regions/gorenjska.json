@@ -81,7 +81,6 @@
                 "particle_board",
                 "osb"
             ],
-            "processing_capacity": 20000,
             "processing_time": 24,
             "waste_storage_capacity": 80000,
             "energy_consumption": 100.0,
