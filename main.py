@@ -1,5 +1,5 @@
 from config.base_config import get_scenario_config, list_available_scenarios
-from config.constants import BASELINE_OUTPUT_ROOT, SCENARIO_COMPARISON_PLOTS_DIR
+from config.constants import BASELINE_OUTPUT_ROOT, DEFAULT_BASE_SEED, SCENARIO_COMPARISON_PLOTS_DIR
 from core.simulation_manager import SimulationManager
 from models.enums import InventoryPolicy, StockStrategy
 from visualization.mfa_visualization import create_material_flow_analysis
@@ -104,7 +104,7 @@ def run_monte_carlo_baseline(
     print(f"Inventory policies: {[p.value for p in inventory_policies]}")
     print(f"Stock strategies: {[s.value for s in stock_strategies]}")
 
-    base_seed = 123456  # deterministic seed series across runs
+    base_seed = DEFAULT_BASE_SEED  # deterministic seed series across runs
     out_root = Path(BASELINE_OUTPUT_ROOT) if out_root is None else Path(out_root)
     out_root.mkdir(parents=True, exist_ok=True)
 
@@ -260,7 +260,10 @@ def main():
         
         for inventory_policy in inventory_policies:
             for stock_strategy in stock_strategies:
-                result = run_single_simulation(scenario_name, inventory_policy, stock_strategy)
+                result = run_single_simulation(
+                    scenario_name, inventory_policy, stock_strategy,
+                    seed=DEFAULT_BASE_SEED,
+                )
                 results.append(result)
                 mfa_files.append(result["mfa_path"])
     

@@ -51,6 +51,10 @@ AVOIDED_EMISSIONS_PER_M3_BY_PRODUCT = {
     "osb": 552.0,  # Lao 2023 OSB
 }
 
+# Shared base seed: grid mode uses it directly; Monte Carlo replication i uses
+# base + i (CRN), so a grid run reproduces MC replication 0 of the same combo.
+DEFAULT_BASE_SEED = 123456
+
 SIMULATION_DURATION = 365  # days in simulation (one full year)
 EXPANSION_SIZE_M3 = 500  # 500m³ expansion size
 OVERFLOW_VOLUME_TOLERANCE_M3 = 1e-10  # overflow volumes below this are treated as zero (no_action)
