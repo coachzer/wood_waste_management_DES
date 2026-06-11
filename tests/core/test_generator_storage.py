@@ -147,17 +147,23 @@ def test_potential_generation_accrues_even_when_storage_is_full():
     assert stub.state.added == []
 
 
-def test_type_exceeding_available_storage_generates_nothing():
-    """All-or-nothing drop: when a type's potential exceeds remaining headroom
-    the type generates exactly zero -- no partial fill.
+def test_type_exceeding_available_storage_is_capped_at_headroom():
+    """Capped partial-fill: when a type's potential exceeds remaining headroom
+    it generates exactly the available headroom, not zero and not the full
+    potential.
 
-    This is the CURRENT behavior. Plan 004 deliberately changes it to capped
-    partial-fill semantics and must update this test to reflect the new
-    invariant (the test goes red as the semantic-change signal).
+    Plan 004 changed the all-or-nothing drop to min(potential, available).
+    This test documents that semantic and replaces the prior
+    test_type_exceeding_available_storage_generates_nothing.
 
     Scenario: capacity=100, storage=90 (10 left).
-    Type 1 potential=8 (fits), type 2 potential=15 (exceeds the 2 remaining).
-    Expected: type 1 stored=8, type 2 stored=0.
+    Type 1 potential=8 (fits in full -- uses 8 of 10).
+    Type 2 potential=15 (exceeds the 2 remaining) -> capped at 2.
+    After both: current_storage == capacity.
+
+    Also checks the zero-headroom edge: once the first type exhausts all
+    headroom, a subsequent type with positive potential generates exactly 0
+    and _update_waste_stream is NOT called for it (no zero-volume churn).
     """
     capacity = 100.0
     initial_storage = 90.0
@@ -169,20 +175,41 @@ def test_type_exceeding_available_storage_generates_nothing():
 
     WasteGenerator._generate_waste_for_period(stub, seasonal_factor=1.0, current_time=0.0)
 
-    # Type 1 fits (8 <= 10 headroom)
+    # Type 1 fits in full (8 <= 10 headroom)
     assert stub.waste_streams[CONSTRUCTION].volume == pytest.approx(8.0)
     assert stub.total_generated[CONSTRUCTION] == pytest.approx(8.0)
 
-    # Type 2 does NOT fit (15 > 2 remaining); all-or-nothing: zero stored
-    assert stub.waste_streams[PACKAGING].volume == pytest.approx(0.0)
-    assert stub.total_generated[PACKAGING] == pytest.approx(0.0)
+    # Type 2 is capped at the 2 remaining m3 (not zero, not 15)
+    assert stub.waste_streams[PACKAGING].volume == pytest.approx(2.0)
+    assert stub.total_generated[PACKAGING] == pytest.approx(2.0)
 
-    # Storage advanced only by type 1
-    assert stub.current_storage == pytest.approx(initial_storage + 8.0)
+    # Storage must equal capacity -- all headroom consumed
+    assert stub.current_storage == pytest.approx(capacity)
 
-    # Potential recorded for both types regardless
+    # Potential recorded for both types at full offered volume (ADR 0005 floor)
     assert stub.total_potential_generated[CONSTRUCTION] == pytest.approx(8.0)
     assert stub.total_potential_generated[PACKAGING] == pytest.approx(15.0)
+
+    # Zero-headroom edge: once storage is full, a third type generates exactly 0
+    import types
+    calls = []
+
+    def recording_update(self, waste_type, volume, current_time, history_index):
+        calls.append((waste_type, volume))
+
+    from models.enums import WasteType as WT
+    BARK = WT.BARK_CORK_WASTE_03_01_01
+    stub2 = make_generator_stub(
+        waste_generation_rates={BARK: 5.0},
+        waste_storage_capacity=capacity,
+        current_storage=capacity,  # no room at all
+    )
+    stub2._update_waste_stream = types.MethodType(recording_update, stub2)
+
+    WasteGenerator._generate_waste_for_period(stub2, seasonal_factor=1.0, current_time=0.0)
+
+    assert stub2.waste_streams[BARK].volume == pytest.approx(0.0)
+    assert calls == [], "_update_waste_stream must not be called when headroom is zero"
 
 
 def test_update_waste_stream_reports_added_volume_to_state():

@@ -262,8 +262,9 @@ class WasteGenerator(OperationalEntity):
             # floor), accumulated for every waste type and consuming no RNG.
             self.total_potential_generated[waste_type] += potential_volume
 
-            if potential_volume <= available_storage:
+            generated_volume = min(potential_volume, available_storage)
+            if generated_volume > 0:
                 self._update_waste_stream(
-                    waste_type, potential_volume, current_time, self.history_index
+                    waste_type, generated_volume, current_time, self.history_index
                 )
-                available_storage -= potential_volume
+                available_storage -= generated_volume
