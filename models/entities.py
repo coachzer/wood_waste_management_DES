@@ -10,25 +10,22 @@ class Generator(OperationalEntity):
     waste_generation_rates: Dict[str, float]  # EWC code -> tonne/day
     generation_frequency: float
     waste_storage_capacity: float
-    environmental_impact: float
     efficiency: float
     initial_stock: Optional[Dict[str, float]] = None
 
-    def __init__(self, 
+    def __init__(self,
                  id: str,
                  waste_generation_rates: Dict[str, float],
                  generation_frequency: float,
                  waste_storage_capacity: float,
-                 environmental_impact: float,
                  efficiency: float,
                  initial_stock: Optional[Dict[str, float]] = None,
-                 failure_config: Optional[FailureConfig] = None):  
+                 failure_config: Optional[FailureConfig] = None):
         super().__init__(failure_config=failure_config)
         self.id = id
         self.waste_generation_rates = waste_generation_rates
         self.generation_frequency = generation_frequency
         self.waste_storage_capacity = waste_storage_capacity
-        self.environmental_impact = environmental_impact
         self.efficiency = efficiency
         self.initial_stock = initial_stock
 
@@ -41,17 +38,15 @@ class Collector(OperationalEntity):
     collection_capacity: float
     collection_frequency: float
     transport_cost: float
-    environmental_impact: float
     efficiency: float
     availability: bool
 
-    def __init__(self, 
-                 id: str, 
-                 waste_types: List[str], 
+    def __init__(self,
+                 id: str,
+                 waste_types: List[str],
                  collection_capacity: float,
-                 collection_frequency: float, 
+                 collection_frequency: float,
                  transport_cost: float,
-                 environmental_impact: float, 
                  efficiency: float,
                  availability: bool,
                  failure_config: Optional[FailureConfig] = None):
@@ -61,7 +56,6 @@ class Collector(OperationalEntity):
         self.collection_capacity = collection_capacity
         self.collection_frequency = collection_frequency
         self.transport_cost = transport_cost
-        self.environmental_impact = environmental_impact
         self.efficiency = efficiency
         self.availability = availability
 

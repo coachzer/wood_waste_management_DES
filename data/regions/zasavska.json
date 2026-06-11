@@ -15,7 +15,6 @@
             },
             "generation_frequency": 1,
             "waste_storage_capacity": 70000,
-            "environmental_impact": 2.5,
             "efficiency": 1.0,
             "initial_stock": {
                 "03 01 05": 0.0,
@@ -52,7 +51,6 @@
             "collection_capacity": 30000,
             "collection_frequency": 12,
             "transport_cost": 50.0,
-            "environmental_impact": 3.2,
             "efficiency": 1.0,
             "availability": true
         }

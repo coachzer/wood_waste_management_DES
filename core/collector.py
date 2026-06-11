@@ -54,7 +54,6 @@ class CollectorCompany(OperationalEntity):
         collection_capacity,
         collection_frequency,
         transport_cost,
-        environmental_impact,
         efficiency,
         availability=True,
         region=None,
@@ -93,7 +92,6 @@ class CollectorCompany(OperationalEntity):
         self.initial_transport_cost = transport_cost
         self.transport_cost = transport_cost
         self.last_collection_cost = 0.0
-        self.environmental_impact = environmental_impact
         self.efficiency = efficiency
         self.availability = availability
         self.region = region

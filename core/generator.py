@@ -17,7 +17,6 @@ class WasteGenerator(OperationalEntity):
         waste_streams: Dict[WasteType, float],
         generation_frequency,
         waste_storage_capacity,
-        environmental_impact,
         efficiency,
         region: str,
         uncertainty_set = None,
@@ -65,7 +64,6 @@ class WasteGenerator(OperationalEntity):
             }
         self.generation_frequency = generation_frequency
         self.waste_storage_capacity = waste_storage_capacity
-        self.environmental_impact = environmental_impact
         self.efficiency = efficiency
         self.current_storage = sum(initial_stock.values() if initial_stock else [0])
         self.last_collected = env.now
