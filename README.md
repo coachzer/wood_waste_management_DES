@@ -116,15 +116,25 @@ data/
   demand.json               National annual demand per product type
   regions/                  One JSON per statistical region (12 files)
   slovenian_cities_distance_matrix_km.csv
-monitoring/
+instrumentation/
   waste_monitor.py          Per-entity tracking of volumes, costs, emissions, events
+  history_store.py          Time-series storage for monitor samples
+  mass_balance.py           Mass balance accounting across the pipeline
+analysis/
   baseline_aggregate.py     KPI extraction from monitor history
-  scenario_comparison.py    Cross-scenario analysis
-  visualization/            Plotly-based charts and temporal comparisons
+  paired_comparison.py      CRN-paired t-tests and Holm-Bonferroni correction
+  bullwhip.py               Throughput bullwhip CV^2 ratios
+  stochastic_dominance.py   FSD/SSD distribution comparisons
+  flow_times.py             Time-weighted WIP via Little's Law
+visualization/
+  scenario_comparison.py    Cross-scenario KPI charts
+  temporal_comparison.py    Time-series inventory and flow plots
+  policy_comparison_figure.py  Push vs pull summary figure
+  kpi_family_figures.py     Per-KPI family chart sets
 utils/
   unit_conversion.py        Tonnes to m3 conversion
   capacity_utils.py         Storage overflow decision logic
-  helpers.py                Shared utilities
+  seasonality.py            Sinusoidal seasonal factor computation
 ```
 
 ## Dependencies
