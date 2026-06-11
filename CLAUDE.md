@@ -59,6 +59,6 @@ Outputs: `outputs/baseline/{scenario}/{policy}__{strategy}/`. MFA visualizations
 
 ## Docs & Skills
 
-Each fact lives in ONE doc; others point to it. **Current state → @HANDOFF.md. Next work → @.scratch/ROADMAP.md.** Past decisions → `docs/adr/*` and `.scratch/done/*` (append-only — never edit a record to match new reality; add a `> Superseded by X` header and leave the body). Domain glossary is imported at the top (@CONTEXT.md).
+Each fact lives in ONE doc; others point to it. Past decisions → `docs/adr/*` and `.scratch/done/*` (append-only — never edit a record to match new reality; add a `> Superseded by X` header and leave the body). Domain glossary is imported at the top (@CONTEXT.md).
 
 Skills (invoke via `/name`): `/diagnose` (structured debugging), `/grill-with-docs` (stress-test a plan against the domain model; updates `CONTEXT.md`), `/tdd` (red-green-refactor), `/to-issues` (break a plan into grabbable issues), `/triage` (issue triage), `/handoff` (compact context for handoffs).
