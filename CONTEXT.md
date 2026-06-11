@@ -333,6 +333,25 @@ ensures fair comparison and avoids cold-start artifacts in
 early-simulation metrics.
 _Avoid_: warm-up stock, safety stock (different concept)
 
+**Holding Cost**:
+The waste-side inventory carrying cost: each daily monitor sample
+accrues `stored m³ x WASTE_HOLDING_COST_PER_M3_PER_DAY` on the
+waste currently in storage, at all three echelons — generator
+storage, the collector's collection-center storage, and the
+**Treatment Operator**'s `waste_storage`. **Finished Goods** are
+deliberately excluded (a different commodity with a different
+carrying rate; future work). Recorded as a per-entity
+`holding_costs` series separate from the transport/processing
+cost series, summed into the `holding_cost` KPI, the fourth
+component of `total_system_cost`. The rate ($0.005/m³-day,
+~$1.83/m³-year) is an uncalibrated placeholder like the carbon
+shadow price — flag in the paper before any cost claim leans on
+it. Policy-sensitive by design: configurations that park more
+waste upstream pay for it (ADR 0017).
+_Avoid_: storage cost (ambiguous with the overflow
+expansion/landfill costs), warehousing cost, inventory cost
+(too generic)
+
 **Avoided Emissions**:
 The greenhouse-gas emissions the system avoids by displacing
 **virgin-feedstock production** of the same wood-based product.

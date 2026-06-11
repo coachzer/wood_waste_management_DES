@@ -11,6 +11,13 @@ LANDFILL_COST_PER_TONNE_USD = 46.0  # $/tonne deterrent gate cost, at par with E
 # flag for the paper before any cost number leans on it.
 CARBON_PRICE_EUR_PER_KG_CO2E = 0.05
 
+# Waste-side inventory holding cost, $/m3 per day, accrued on stored waste at
+# every echelon (generator, collector, treatment waste storage) by the daily
+# monitor sample (~$1.83/m3-year). Uncalibrated placeholder like CARBON_PRICE
+# above; flag for the paper before any cost number leans on it, and restate
+# with the currency work (.scratch/currency-consistency/).
+WASTE_HOLDING_COST_PER_M3_PER_DAY = 0.005
+
 # Per-km collection transport cost rates. The two are distinct: the realized cost
 # scales with both distance and the volume actually collected, while the pre-trip
 # estimate uses a flat per-km rate (no volume known yet).

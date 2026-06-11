@@ -69,9 +69,10 @@ class HistoryStore:
     def ensure_generation(self, generator_name):
         """Initialize the per-generator history entry if it does not yet exist.
 
-        Generators carry no cost series: ``update_entity_costs`` was never
-        called for them, so the former ``energy_costs`` / ``operational_costs``
-        / ``total_costs`` lists were permanent 0.0 stubs (cleanup #10).
+        The only generator cost series is ``holding_costs`` (daily accrual on
+        stored waste). The former ``energy_costs`` / ``operational_costs`` /
+        ``total_costs`` lists were permanent 0.0 stubs -- ``update_entity_costs``
+        was never called for generators -- and stay removed (cleanup #10).
         """
         if generator_name not in self.generation_history:
             self.generation_history[generator_name] = {
@@ -82,6 +83,7 @@ class HistoryStore:
                 "total_potential_generated": {},
                 "storage_utilization": [],
                 "status": [],
+                "holding_costs": [],
             }
 
     def ensure_collection(self, collector_name):
@@ -96,7 +98,8 @@ class HistoryStore:
                 "status": [],
                 "energy_costs": [],
                 "operational_costs": [],
-                "total_costs": []
+                "total_costs": [],
+                "holding_costs": [],
             }
 
     def ensure_processing(self, treatment_name):
@@ -127,6 +130,7 @@ class HistoryStore:
                     "energy_costs": [],
                     "processing_costs": [],
                     "total_costs": [],
+                    "holding_costs": [],
                 },
                 "status": [],
             }

@@ -34,6 +34,7 @@ _SUMMARY_METRICS = [
     "storage_overflow_cost",
     "landfill_cost",
     "expansion_cost",
+    "holding_cost",
     "total_system_cost",
     "max_collector_util_pct",
     "max_processor_waste_util_pct",
@@ -175,8 +176,9 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
             total_emissions += float(series[-1])
 
     # System cost (section 4.4): total system cost across collection/transport,
-    # processing, and storage. Each entity's per-step total_costs series is
-    # summed; the three component totals add to total_system_cost.
+    # processing, storage overflow, and waste-side inventory holding. Each
+    # entity's per-step cost series is summed; the four component totals add
+    # to total_system_cost.
     collection_transport_cost = sum(
         _sum_series(hist.get("total_costs")) for hist in col_hist.values()
     )
@@ -187,8 +189,23 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
     storage_overflow_cost = _sum_series(
         evt_hist.get("system_events", {}).get("total_costs")
     )
+    # Holding cost accrues daily on stored waste at all three echelons
+    # (generator / collector / treatment waste storage) in its own
+    # ``holding_costs`` series, kept separate so the transport and processing
+    # components stay pure.
+    holding_cost = (
+        sum(_sum_series(hist.get("holding_costs")) for hist in gen_hist.values())
+        + sum(_sum_series(hist.get("holding_costs")) for hist in col_hist.values())
+        + sum(
+            _sum_series(hist.get("operational", {}).get("holding_costs"))
+            for hist in proc_hist.values()
+        )
+    )
     total_system_cost = (
-        collection_transport_cost + processing_cost + storage_overflow_cost
+        collection_transport_cost
+        + processing_cost
+        + storage_overflow_cost
+        + holding_cost
     )
 
     # Storage utilizations
@@ -266,6 +283,7 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         "storage_overflow_cost": storage_overflow_cost,
         "landfill_cost": landfill_cost,
         "expansion_cost": expansion_cost,
+        "holding_cost": holding_cost,
         "total_system_cost": total_system_cost,
         "max_collector_util_pct": max_collector_util,
         "max_processor_waste_util_pct": max_processor_waste_util,

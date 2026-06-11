@@ -116,17 +116,20 @@ def test_ensure_generation_materializes_the_generation_schema():
 
     Cleanup #10 removed the generator cost series (``energy_costs``,
     ``operational_costs``, ``total_costs``): ``update_entity_costs`` was never
-    called for generators, so every entry was a 0.0 stub.
+    called for generators, so every entry was a 0.0 stub. The sole cost series
+    since reintroduced is ``holding_costs``, fed by the daily holding-cost
+    accrual in ``track_generation`` (see ``test_holding_cost.py``).
 
     Mutation check (red): drop a key (e.g. ``"status"``) from the literal in
-    ``ensure_generation``, or restore a removed cost series -> the key-set
-    assertion fails.
+    ``ensure_generation``, or restore a removed zero-stub cost series -> the
+    key-set assertion fails.
     """
     store = HistoryStore()
     store.ensure_generation("gen-1")
     assert set(store.generation_history["gen-1"]) == {
         "timestamps", "volumes", "efficiency", "total_generated",
         "total_potential_generated", "storage_utilization", "status",
+        "holding_costs",
     }
 
 
@@ -156,7 +159,7 @@ def test_ensure_processing_materializes_nested_schema_from_product_types():
     assert set(history["products"]) == {"by_type"}
     assert list(history["products"]["by_type"]) == store.product_types
     assert set(history["operational"]) == {
-        "energy_costs", "processing_costs", "total_costs",
+        "energy_costs", "processing_costs", "total_costs", "holding_costs",
     }
 
 

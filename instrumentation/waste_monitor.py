@@ -1,7 +1,11 @@
 import logging
 import os
 from typing import Dict, Any
-from config.constants import SIMULATION_DURATION, PLOTS_ROOT
+from config.constants import (
+    SIMULATION_DURATION,
+    PLOTS_ROOT,
+    WASTE_HOLDING_COST_PER_M3_PER_DAY,
+)
 from instrumentation.history_store import HistoryStore
 
 class WasteMonitor:
@@ -45,6 +49,13 @@ class WasteMonitor:
         utilization = (generator.current_storage / generator.waste_storage_capacity) * 100
         history["storage_utilization"].append(utilization)
 
+        # One monitor sample == one simulated day (monitor_system_process yields
+        # timeout(1)), so each sample accrues a full day of holding cost on the
+        # waste currently stored.
+        history["holding_costs"].append(
+            generator.current_storage * WASTE_HOLDING_COST_PER_M3_PER_DAY
+        )
+
     def track_collection(self, collector, timestamp: float):
         """Track waste collection events with costs"""
         self.store.ensure_collection(collector.name)
@@ -70,6 +81,12 @@ class WasteMonitor:
 
         history["storage_utilization"].append(utilization)
 
+        # Daily holding-cost accrual on the collection center's stored waste;
+        # kept out of total_costs so the transport KPI component stays pure.
+        history["holding_costs"].append(
+            total_storage * WASTE_HOLDING_COST_PER_M3_PER_DAY
+        )
+
         history["energy_costs"].append(0.0)
         history["operational_costs"].append(0.0)
         history["total_costs"].append(0.0)
@@ -94,6 +111,13 @@ class WasteMonitor:
             history["operational"]["energy_costs"].append(0.0)
             history["operational"]["processing_costs"].append(0.0)
             history["operational"]["total_costs"].append(0.0)
+            # Daily holding-cost accrual on the waste-side storage; inside the
+            # same-timestamp guard so re-entrant calls from the operator's own
+            # loop cannot accrue more than once per day. Kept out of
+            # total_costs so the processing KPI component stays pure.
+            history["operational"]["holding_costs"].append(
+                treatment.current_storage * WASTE_HOLDING_COST_PER_M3_PER_DAY
+            )
 
     def update_entity_costs(self, entity_name: str, entity_type: str,
                        energy_cost: float = 0.0, processing_cost: float = 0.0, 
