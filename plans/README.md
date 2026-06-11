@@ -14,6 +14,7 @@ Execute in the order below unless dependencies say otherwise. Each executor: rea
 | 002 | Seed grid-mode runs for reproducibility | P2 | S | — | DONE (merged into `main` as `a522537` cherry-pick of `536aa17`; full suite 258 passed + 6 skipped re-verified post-merge; reviewed and approved 2026-06-11) |
 | 004 | Cap per-type generation at storage headroom (was all-or-nothing drop) | P2 | S | 003 | DONE (merged into `main` as `e08cbf9`; reviewed and approved 2026-06-11 — outputs/ now stale, re-run baseline before citing numbers) |
 | 006 | Regenerate the paper's Fig. 2 in the baseline flow | P3 | S | — (best after 001) | DONE (merged into `main` as `87e76ad`; behavioral check: figure regenerated against Baseline summary.csv files, valid PDF written; reviewed and approved 2026-06-11) |
+| 007 | Parallelize Monte Carlo baseline replications across worker processes | P2 | M | — | IN PROGRESS (planned 2026-06-11 at `8592fe4`, promoted from the backlog; executor dispatched) |
 
 All six plans are merged into `main` as of 2026-06-11 (final state: `a522537`). The plan-execution worktrees and branches have been removed. Reminder: `outputs/` predates plans 001/004 — re-run `python main.py --mode baseline --replications 100` before citing any number; the wired Fig. 2 will regenerate automatically.
 
@@ -27,7 +28,7 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 
 ## Audited but not planned (backlog — worth a future plan if the maintainer wants it)
 
-- **Parallelize Monte Carlo replications** (`main.py` replication loop is sequential; CRN seeds make it embarrassingly parallel; ~4–8x wall-clock win on a 100-rep baseline). M effort, MED risk (stdout ordering, per-combo accumulation). High value if re-runs become frequent — which plans 001/004 will cause.
+- ~~**Parallelize Monte Carlo replications**~~ — promoted to plan 007 on 2026-06-11.
 - **Raw-history JSON writes block the replication loop** (`main.py` writes `raw_NNN.json` via full `jsonify` deep-copy inline). Either offload to a writer thread or add a `--save-raw` opt-out. Verify first whether any analysis path consumes the raw sidecars.
 - **Shared KanbanManager signal bus — investigate, don't fix**: one `KanbanManager` serves all entities; collectors read all non-market signals system-wide, and a collector that cannot serve a generator signal still acknowledges (consumes) it. Cross-region fulfillment is explicitly intended (docstrings), so this looks by-design, but the ack-by-non-serving-collector path could starve PULL signal chains. Worth a focused trace before any paper claim leans on PULL signal latency.
 - **`OperationalEntity._failure_counts` is a class-level mutable shared across instances**, reset only in `SimulationManager.__init__` (`models/data_classes.py:18`). Affects only the diagnostic failure printout, but makes tests order-sensitive if they construct entities directly. S fix (instance variable).
