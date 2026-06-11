@@ -81,7 +81,11 @@ class _ReorderStrategy:
 
 
 class OnDemandStrategy:
-    """Lot-for-lot top-off: lean buffers, responsiveness over utilization."""
+    """Degenerate (s, S) with s = S = capacity: reorder whenever storage is not
+    full, for a gap-to-capacity order quantity.  Every consumption triggers a
+    replenishment equal to the amount just consumed only as a consequence of
+    that degeneracy -- the quantity rule is gap-to-full, not lot-for-lot.
+    Lean buffers, responsiveness over utilization."""
 
     def collector_adaptive_threshold(self, base_time: float) -> float:
         # Gradually increase threshold over time to trigger more collections.
