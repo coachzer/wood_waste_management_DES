@@ -43,7 +43,7 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 
 These are paper/PhD-level options grounded in repo evidence; each would become a design/spike plan on request:
 
-1. **Run the stress scenarios into the paper**: SupplyDisruption and DemandSurge are fully wired and calibration-anchored (`config/base_config.py:108-129`) but `paper-draft/05-results.md` has no cross-scenario robustness section. Two `--mode baseline --scenario <X>` runs plus a §5.6 answer the inevitable reviewer question about robustness of the PUSH/PULL ordering.
+1. **Run the stress scenarios into the paper**: SupplyDisruption and GenerationSurge are fully wired and calibration-anchored (`config/base_config.py:108-129`) but `paper-draft/05-results.md` has no cross-scenario robustness section. Two `--mode baseline --scenario <X>` runs plus a §5.6 answer the inevitable reviewer question about robustness of the PUSH/PULL ordering.
 2. **Surface holding cost** (ADR 0017): the first deliberately policy-sensitive cost component has no figure (`kpi_family_figures.py` lacks it) and no paper presence. One metrics-list line + a §5.2 paragraph with the placeholder-rate caveat.
 3. **Sensitivity analysis the paper already promises** (`paper-draft/todo.md:267`): start with avoided-emissions factor bounds (pure post-hoc arithmetic over existing `run_*.json`, ADR 0011 names the four source papers); carbon-price and holding-cost sweeps need re-runs.
 4. **Resolve the "Lebanon paper" landfill-cost citation** (`config/base_config.py:26`, flagged red in `paper-draft/todo.md:139`) — swap to the citable CEWEP/EEA figure already named in the currency-consistency issue; full EUR restatement stays post-paper per ROADMAP.

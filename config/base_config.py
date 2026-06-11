@@ -104,7 +104,10 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
     # deliberately more severe than observed -- a beyond-observed stress case.
     # Reorder checks count on-hand stock only (not in-transit), so the long
     # trans_time lets orders stack before the first lands -- expected overshoot,
-    # stated as a manuscript footnote.
+    # stated as a manuscript footnote. Bullwhip amplification grows with both
+    # the mean and variance of lead time (Chen et al. 2000, "Quantifying the
+    # bullwhip effect in a simple supply chain", Management Science 46(3)),
+    # which motivates the stretched trans_time=(4.0, 1.2) here.
     "SupplyDisruption": ScenarioConfig(
         name="SupplyDisruption",
         waste_gen=(0.60, 0.25),
@@ -114,12 +117,17 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
         collector_failure=HIGH_FAILURE,
         treatment_failure=HIGH_FAILURE,
     ),
-    # Abundant generation with fast transport and reliable infrastructure.
+    # Abundant waste GENERATION with fast transport and reliable infrastructure.
+    # The surge is in feedstock supply (waste available for treatment capacity),
+    # not in market product demand -- the demand envelope (annual_demand in
+    # demand.json) is unchanged across all scenarios. This distinction is why
+    # the scenario is named GenerationSurge rather than DemandSurge.
     # Calibration anchor: 2023 Slovenia floods (+15% wood waste nationally;
-    # Savinjska +21%, Koroska +19%), pushed to a 1.50 multiplier. Tests whether
-    # PUSH buffers saturate or PULL exploits the abundance.
-    "DemandSurge": ScenarioConfig(
-        name="DemandSurge",
+    # Savinjska +21%, Koroska +19%; SURS/Eurostat env_wasgen), pushed to a
+    # 1.50 multiplier. Tests whether PUSH buffers saturate or PULL exploits
+    # the abundance.
+    "GenerationSurge": ScenarioConfig(
+        name="GenerationSurge",
         waste_gen=(1.50, 0.15),
         treat_conv=(0.9, 0.03),
         trans_time=(1.5, 0.15),
