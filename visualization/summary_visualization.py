@@ -20,12 +20,6 @@ def create_cost_impact_comparison(results: List[Dict], output_dir: str):
         total_operational = 0
         total_transport = 0
         
-        for entity_data in monitor_data.get('generation_history', {}).values():
-            if entity_data.get('energy_costs'):
-                total_energy += sum(entity_data['energy_costs'])
-            if entity_data.get('operational_costs'):
-                total_operational += sum(entity_data['operational_costs'])
-        
         for entity_data in monitor_data.get('collection_history', {}).values():
             if entity_data.get('energy_costs'):
                 total_energy += sum(entity_data['energy_costs'])

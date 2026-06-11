@@ -114,15 +114,19 @@ def test_schema_authoring_lives_on_the_store_not_the_recorder():
 def test_ensure_generation_materializes_the_generation_schema():
     """``ensure_generation`` creates the per-generator entry with the exact key set.
 
-    Mutation check (red): drop a key (e.g. ``"total_costs"``) from the literal in
-    ``ensure_generation`` -> the key-set assertion fails.
+    Cleanup #10 removed the generator cost series (``energy_costs``,
+    ``operational_costs``, ``total_costs``): ``update_entity_costs`` was never
+    called for generators, so every entry was a 0.0 stub.
+
+    Mutation check (red): drop a key (e.g. ``"status"``) from the literal in
+    ``ensure_generation``, or restore a removed cost series -> the key-set
+    assertion fails.
     """
     store = HistoryStore()
     store.ensure_generation("gen-1")
     assert set(store.generation_history["gen-1"]) == {
         "timestamps", "volumes", "efficiency", "total_generated",
-        "total_potential_generated", "storage_utilization",
-        "status", "energy_costs", "operational_costs", "total_costs",
+        "total_potential_generated", "storage_utilization", "status",
     }
 
 

@@ -63,7 +63,6 @@ def extract_total_costs_from_monitor_data(monitor_data: Dict) -> Dict[str, float
                 if i < len(total_costs):
                     all_costs_by_time[timestamp] = all_costs_by_time.get(timestamp, 0) + total_costs[i]
     
-    process_cost_data(monitor_data.get('generation_history', {}))
     process_cost_data(monitor_data.get('collection_history', {}))
     process_cost_data(monitor_data.get('processing_history', {}), 'operational.total_costs')
     

@@ -44,9 +44,6 @@ class WasteMonitor:
 
         utilization = (generator.current_storage / generator.waste_storage_capacity) * 100
         history["storage_utilization"].append(utilization)
-        history["energy_costs"].append(0.0)
-        history["operational_costs"].append(0.0)
-        history["total_costs"].append(0.0)
 
     def track_collection(self, collector, timestamp: float):
         """Track waste collection events with costs"""
@@ -103,14 +100,7 @@ class WasteMonitor:
                        transport_cost: float = 0.0):
         """Update costs in the most recent tracking entry for an entity"""
 
-        if entity_type == "generator" and entity_name in self.store.generation_history:
-            history = self.store.generation_history[entity_name]
-            if history["timestamps"]:
-                history["energy_costs"][-1] += energy_cost
-                history["operational_costs"][-1] += processing_cost
-                history["total_costs"][-1] += energy_cost + processing_cost
-
-        elif entity_type == "collector" and entity_name in self.store.collection_history:
+        if entity_type == "collector" and entity_name in self.store.collection_history:
             history = self.store.collection_history[entity_name]
             if history["timestamps"]:
                 history["energy_costs"][-1] += energy_cost

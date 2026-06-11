@@ -66,25 +66,13 @@ class HistoryStore:
     def get_entity_status_history(self):
         return dict(self.entity_status_history)
 
-    @staticmethod
-    def _base_entity_history():
-        """Series shared by the per-generator and per-collector schemas.
-
-        Only the trailing shared keys live here: ``timestamps`` and
-        ``efficiency`` are also shared but stay inline at each call site
-        because entity-specific keys sit between them, and the persisted
-        key order must not change.
-        """
-        return {
-            "storage_utilization": [],
-            "status": [],
-            "energy_costs": [],
-            "operational_costs": [],
-            "total_costs": []
-        }
-
     def ensure_generation(self, generator_name):
-        """Initialize the per-generator history entry if it does not yet exist."""
+        """Initialize the per-generator history entry if it does not yet exist.
+
+        Generators carry no cost series: ``update_entity_costs`` was never
+        called for them, so the former ``energy_costs`` / ``operational_costs``
+        / ``total_costs`` lists were permanent 0.0 stubs (cleanup #10).
+        """
         if generator_name not in self.generation_history:
             self.generation_history[generator_name] = {
                 "timestamps": [],
@@ -92,7 +80,8 @@ class HistoryStore:
                 "efficiency": [],
                 "total_generated": {},
                 "total_potential_generated": {},
-                **self._base_entity_history()
+                "storage_utilization": [],
+                "status": [],
             }
 
     def ensure_collection(self, collector_name):
@@ -103,7 +92,11 @@ class HistoryStore:
                 "collected_volumes": {},
                 "efficiency": [],
                 "transport_costs": [],
-                **self._base_entity_history()
+                "storage_utilization": [],
+                "status": [],
+                "energy_costs": [],
+                "operational_costs": [],
+                "total_costs": []
             }
 
     def ensure_processing(self, treatment_name):
