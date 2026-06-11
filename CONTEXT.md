@@ -234,8 +234,11 @@ keys are emitted anyway so the robustness pair reads in parallel
 beside the headline pair. Method and rationale: ADR 0004, refined
 by ADR 0005 (floor), ADR 0006 (stage telescoping aggregation
 level), ADR 0007 (pooled variant emits both echelon keys despite
-the Treatment identity), and ADR 0009 (Treatment inbound is
-collector intake, not the transport-log repositioning).
+the Treatment identity), ADR 0009 (Treatment inbound is
+collector intake, not the transport-log repositioning), and
+ADR 0019 (reorder decisions use on-hand stock only; in-transit
+volume excluded — interacts with lead-time length under
+SupplyDisruption).
 _Avoid_: order bullwhip (the metric is flow-based, not
 order-based), bullwhip ratio (unqualified — say which echelon
 and that it is CV^2-normalized), generation floor on
