@@ -56,9 +56,3 @@ Outputs: `outputs/baseline/{scenario}/{policy}__{strategy}/`. MFA visualizations
 2. Add transformation in `FacilityBuilder._get_base_transformations()` and `_get_appropriate_mappings()`
 3. Update `data/demand.json` and `SimulationState` product dicts if new output
 4. Add waste rates to relevant `data/regions/*.json` generator entries
-
-## Docs & Skills
-
-Each fact lives in ONE doc; others point to it. Past decisions → `docs/adr/*` and `.scratch/done/*` (append-only — never edit a record to match new reality; add a `> Superseded by X` header and leave the body). Domain glossary is imported at the top (@CONTEXT.md).
-
-Skills (invoke via `/name`): `/diagnose` (structured debugging), `/grill-with-docs` (stress-test a plan against the domain model; updates `CONTEXT.md`), `/tdd` (red-green-refactor), `/to-issues` (break a plan into grabbable issues), `/triage` (issue triage), `/handoff` (compact context for handoffs).
