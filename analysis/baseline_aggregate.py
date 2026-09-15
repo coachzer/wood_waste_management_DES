@@ -15,6 +15,11 @@ from .flow_times import flow_time_metrics
 from .avoided_emissions import avoided_emissions_metrics
 from .biogenic_carbon import biogenic_carbon_metrics
 from ._kpi_shared import _GENERIC_NAMESPACES, t_ci_margin
+from instrumentation.history_store import (
+    total_emissions_kgco2e,
+    total_landfill_cost,
+    total_landfilled_volume,
+)
 
 
 # Marginal KPIs aggregated into summary.csv, in display order. The nested
@@ -137,6 +142,7 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
     col_hist = monitor_data.get("collection_history", {})
     proc_hist = monitor_data.get("processing_history", {})
     env_hist = monitor_data.get("environmental_history", {})
+    landfill_hist = monitor_data.get("landfill_history", {})
     evt_hist = monitor_data.get("event_history", {})
     final_summary = monitor_data.get("final_summary", {})
 
@@ -159,23 +165,18 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         (total_processed / total_generated * 100.0) if total_generated > 0 else 0.0
     )
 
-    # Storage-overflow event streams (VIZ-REVIEW T9): the landfill/expansion
-    # volume and cost series decompose storage_overflow_cost along the
-    # expand-vs-landfill boundary in handle_storage_event (ADR 0013).
+    # Storage-overflow outcomes (VIZ-REVIEW T9): landfill from the per-entity
+    # landfill ledger (the same record the mass-balance discard term reads),
+    # expansion from the system-event stream. Together they decompose
+    # storage_overflow_cost along the expand-vs-landfill boundary in
+    # handle_storage_event (ADR 0013).
     sys_evt = evt_hist.get("system_events", {})
-    landfill_volume = float(sum(sys_evt.get("landfill_usage", []) or []))
+    landfill_volume = total_landfilled_volume(landfill_hist)
+    landfill_cost = total_landfill_cost(landfill_hist)
     expansion_volume = float(sum(sys_evt.get("storage_expansions", []) or []))
-    landfill_cost = float(sum(sys_evt.get("landfill_costs", []) or []))
     expansion_cost = float(sum(sys_evt.get("expansion_costs", []) or []))
 
-    # Emissions: total_impact is a per-timestamp series (the monitor appends a
-    # fresh slot per new timestamp), so the run total is the sum, not the last
-    # element -- unlike the cumulative processed/generated series above.
-    total_emissions = 0.0
-    for hist in env_hist.values():
-        series = hist.get("total_impact", [])
-        if isinstance(series, list) and series:
-            total_emissions += float(sum(series))
+    total_emissions = total_emissions_kgco2e(env_hist)
 
     # System cost (section 4.4): total system cost across collection/transport,
     # processing, storage overflow, and waste-side inventory holding. Each
@@ -188,9 +189,7 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         _sum_series(hist.get("operational", {}).get("total_costs"))
         for hist in proc_hist.values()
     )
-    storage_overflow_cost = _sum_series(
-        evt_hist.get("system_events", {}).get("total_costs")
-    )
+    storage_overflow_cost = landfill_cost + expansion_cost
     # Holding cost accrues daily on stored waste at all three echelons
     # (generator / collector / treatment waste storage) in its own
     # ``holding_costs`` series, kept separate so the transport and processing

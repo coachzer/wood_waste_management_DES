@@ -15,6 +15,7 @@ from types import SimpleNamespace
 import pytest
 
 from models.enums import InventoryPolicy, OutputType, StockStrategy
+from instrumentation.history_store import HistoryStore
 from instrumentation.mass_balance import (
     EntityRegistry,
     MassBalanceMonitor,
@@ -154,8 +155,13 @@ def make_center_collector(name, storage):
 
 
 def make_waste_state():
-    """A SimulationState stand-in: a transport-flow log and a landfill counter."""
-    return SimpleNamespace(transport_flows=[], waste_landfilled={})
+    """A SimulationState stand-in: a transport-flow log."""
+    return SimpleNamespace(transport_flows=[])
+
+
+def landfill(store, entity_name, volume, timestamp=0.0):
+    """Write one landfill event of ``volume`` m3 to the ledger for ``entity_name``."""
+    store.record_landfill(entity_name, {WT: volume}, cost=0.0, timestamp=timestamp)
 
 
 def flow(source, target, volume):
@@ -167,15 +173,16 @@ def test_balanced_collection_center_does_not_raise():
     -- the center conserves raw waste and must not raise."""
     collector = make_center_collector("collector-1", {"17 02 01": 0.0})
     state = make_waste_state()
+    store = HistoryStore()
     monitor = MassBalanceMonitor(
-        EntityRegistry(state=state, operators=[], collectors=[collector])
+        EntityRegistry(state=state, operators=[], collectors=[collector], history=store)
     )
 
     # 1000 collected in; 700 drawn to treatment, 100 landfilled, 200 left on hand.
     state.transport_flows.extend(
         [flow("gen-1", "collector-1", 1000.0), flow("collector-1", "treatment-1", 700.0)]
     )
-    state.waste_landfilled["collector-1"] = 100.0
+    landfill(store, "collector-1", 100.0)
     collector.collection_center.current_storage["17 02 01"] = 200.0
 
     monitor.check_collection_centers()  # must not raise
@@ -236,31 +243,31 @@ def make_treatment_op(name, waste_storage, processed):
     )
 
 
-def make_system_state(vehicles=(), landfilled=None):
-    """A SimulationState stub exposing the in-transit iterator and landfill log."""
+def make_system_state(vehicles=()):
+    """A SimulationState stub exposing the in-transit iterator."""
     moving = list(vehicles)
-    return SimpleNamespace(
-        iter_outbound_vehicles=lambda: iter(moving),
-        waste_landfilled=dict(landfilled or {}),
-    )
+    return SimpleNamespace(iter_outbound_vehicles=lambda: iter(moving))
 
 
 def build_waste_monitor():
     """Construct a monitor over empty-primed stubs and return (monitor, refs).
 
     Everything is primed at zero so the construction snapshots are zero and a
-    replayed run is expressed entirely through the mutable run terms.
+    replayed run is expressed entirely through the mutable run terms. The
+    landfill ledger is the empty ``HistoryStore`` on the registry.
     """
     generator = make_generator("gen-1", {WT: 0.0}, 0.0)
     collector = make_center_collector("col-1", {WT: 0.0})
     operator = make_treatment_op("op-1", {WT: 0.0}, {WT: 0.0})
     state = make_system_state()
+    store = HistoryStore()
     monitor = MassBalanceMonitor(
         EntityRegistry(
             state=state,
             operators=[operator],
             generators=[generator],
             collectors=[collector],
+            history=store,
         )
     )
     return monitor, state, generator, collector, operator
@@ -278,7 +285,7 @@ def test_balanced_waste_system_does_not_raise():
     collector.collection_center.current_storage[WT] = 200.0
     operator.waste_storage[WT] = 100.0
     operator.processed_volumes[WT] = 150.0
-    state.waste_landfilled["col-1"] = 200.0
+    landfill(monitor.registry.history, "col-1", 200.0)
     vehicle = SimpleNamespace(current_load_by_type={WT: 50.0})
     state.iter_outbound_vehicles = lambda: iter([vehicle])
 
@@ -297,7 +304,7 @@ def test_leaking_waste_system_trips():
     collector.collection_center.current_storage[WT] = 200.0
     operator.waste_storage[WT] = 100.0
     operator.processed_volumes[WT] = 150.0
-    state.waste_landfilled["col-1"] = 150.0
+    landfill(monitor.registry.history, "col-1", 150.0)
     vehicle = SimpleNamespace(current_load_by_type={WT: 50.0})
     state.iter_outbound_vehicles = lambda: iter([vehicle])
 

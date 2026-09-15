@@ -9,6 +9,7 @@ from config.constants import (
     POLICY_COLORS,
     STRATEGY_SYMBOLS,
 )
+from instrumentation.history_store import total_emissions_kgco2e
 from .visualization_utils import (
     aggregate_collection_data,
     aggregate_generation_data,
@@ -74,6 +75,15 @@ def extract_total_costs_from_monitor_data(monitor_data: Dict) -> Dict[str, float
             for i, timestamp in enumerate(event_timestamps):
                 if i < len(event_costs):
                     all_costs_by_time[timestamp] = all_costs_by_time.get(timestamp, 0) + event_costs[i]
+
+    # Landfill costs come from the per-entity landfill ledger, not the
+    # system-event stream (which carries expansions only).
+    for entity_data in monitor_data.get('landfill_history', {}).values():
+        timestamps = entity_data.get('timestamps', [])
+        costs = entity_data.get('costs', [])
+        for i, timestamp in enumerate(timestamps):
+            if i < len(costs):
+                all_costs_by_time[timestamp] = all_costs_by_time.get(timestamp, 0) + costs[i]
     
     return all_costs_by_time
 
@@ -137,15 +147,7 @@ def extract_environmental_impacts_by_category(monitor_data: Dict, category: str)
 
 def calculate_total_environmental_impact(monitor_data: Dict) -> float:
     """Calculate total environmental impact across all categories and entities"""
-    total_impact = 0
-    environmental_history = monitor_data.get('environmental_history', {})
-    
-    for entity_data in environmental_history.values():
-        total_impacts = entity_data.get('total_impact', [])
-        if total_impacts:
-            total_impact += sum(total_impacts)
-    
-    return total_impact
+    return total_emissions_kgco2e(monitor_data.get('environmental_history', {}))
 
 def get_scenario_colors_and_symbols():
     """Return the shared theme mappings: color per policy, symbol per strategy"""

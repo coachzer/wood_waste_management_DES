@@ -1,10 +1,11 @@
 """Storage-overflow handling conserves and attributes mass (issue 11, Finding A).
 
 ``handle_storage_event`` decides expand-vs-landfill and, on the landfill branch,
-must attribute the landfilled raw-waste volume to the dumping entity via
-``state.track_waste_landfilled`` -- the per-entity discard term the
-collection-center mass-balance invariant reads. The expand branch grows capacity
-and must not record a landfill (no mass leaves the system there).
+must attribute the landfilled raw-waste volume to the dumping entity via the
+monitor's landfill ledger (``HistoryStore.record_landfill``) -- the per-entity
+discard term the collection-center mass-balance invariant reads. The expand
+branch grows capacity and must not record a landfill (no mass leaves the system
+there).
 """
 
 from types import SimpleNamespace
@@ -42,19 +43,19 @@ def make_entity(state, monitor=False, capacity=1000.0, name="collector-1"):
     return entity
 
 
-def test_landfill_branch_attributes_volume_to_entity(noop_waste_monitor):
+def test_landfill_branch_attributes_volume_to_entity(ledger_waste_monitor):
     state = SimulationState()
-    entity = make_entity(state, noop_waste_monitor)
+    entity = make_entity(state, ledger_waste_monitor)
 
     _cost, action = handle_storage_event(entity, {SAWDUST: 100.0}, force_landfill=True)
 
     assert action == "landfill"
-    assert state.waste_landfilled == {"collector-1": 100.0}
+    assert ledger_waste_monitor.store.landfilled_volume_by_entity() == {"collector-1": 100.0}
 
 
-def test_expand_branch_records_no_landfill(noop_waste_monitor):
+def test_expand_branch_records_no_landfill(ledger_waste_monitor):
     state = SimulationState()
-    entity = make_entity(state, noop_waste_monitor)
+    entity = make_entity(state, ledger_waste_monitor)
 
     # Landfill cost is now composition-dependent (ADR 0013). Pure PAPER has density
     # 600 kg/m³ = the retired flat 0.6 t/m³, so it preserves the original ~1812 m³
@@ -63,7 +64,7 @@ def test_expand_branch_records_no_landfill(noop_waste_monitor):
     _cost, action = handle_storage_event(entity, {PAPER: 2000.0})
 
     assert action == "expand_storage"
-    assert state.waste_landfilled == {}
+    assert ledger_waste_monitor.store.landfill_history == {}
 
 
 def test_landfill_cost_is_per_type_density_weighted(noop_waste_monitor):
@@ -161,12 +162,10 @@ def test_split_overflow_by_type_is_proportional():
 
 
 def test_landfill_branch_survives_missing_monitor():
-    """A monitor-less entity forced down the landfill branch must NOT crash. The
-    fix brings track_environmental_impact under the same waste_monitor guard as
-    track_event, so the landfill resolves (action == "landfill") without raising.
-    Pre-fix this raised AttributeError on the unguarded call. state=None keeps
-    track_waste_landfilled out of the way so the test isolates the monitor
-    guard."""
+    """A monitor-less entity forced down the landfill branch must NOT crash. Both
+    ledger writes (record_landfill, record_emission) sit under the same
+    waste_monitor guard, so the landfill resolves (action == "landfill") without
+    raising. Pre-fix this raised AttributeError on an unguarded call."""
     entity = make_entity(state=None, name="collector-nomon")
 
     _cost, action = handle_storage_event(entity, {SAWDUST: 100.0}, force_landfill=True)

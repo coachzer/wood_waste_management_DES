@@ -145,23 +145,31 @@ def test_residence_namespace_flows_through_as_prefixed_rows():
     assert wip is not None and float(wip[1]) == 200.0
 
 
-def test_overflow_cost_decomposition_kpis_extracted_from_system_events():
+def test_overflow_cost_decomposition_kpis_extracted_from_ledger_and_events():
     # VIZ-REVIEW T9: storage_overflow_cost decomposes along the
-    # expand-vs-landfill boundary (ADR 0013). The per-event cost and volume
-    # series were recorded but never aggregated; each becomes a scalar KPI.
+    # expand-vs-landfill boundary (ADR 0013). Landfill volume/cost come from
+    # the per-entity landfill ledger, expansions from the system-event stream;
+    # each becomes a scalar KPI and the pair sums to the aggregate.
     monitor_data = {
+        "landfill_history": {
+            "collector-1": {
+                "timestamps": [1.0, 3.0],
+                "volumes": [10.0, 5.0],
+                "costs": [50.0, 25.0],
+                "compositions": [{"17 02 01": 10.0}, {"17 02 01": 5.0}],
+            }
+        },
         "event_history": {
             "system_events": {
-                "timestamps": [1.0, 2.0, 3.0],
-                "landfill_usage": [10.0, 0.0, 5.0],
-                "storage_expansions": [0.0, 500.0, 0.0],
-                "landfill_costs": [50.0, 0.0, 25.0],
-                "expansion_costs": [0.0, 200.0, 0.0],
-                "total_costs": [50.0, 200.0, 25.0],
+                "timestamps": [2.0],
+                "storage_expansions": [500.0],
+                "expansion_costs": [200.0],
+                "total_costs": [200.0],
             }
         },
     }
     kpis = extract_kpis(monitor_data)
+    assert kpis["landfill_volume_m3"] == 15.0
     assert kpis["landfill_cost"] == 75.0
     assert kpis["expansion_cost"] == 200.0
     assert kpis["expansion_volume_m3"] == 500.0
@@ -220,8 +228,8 @@ def test_residence_none_across_replications_still_emits_discoverable_row():
 
 
 def test_total_emissions_sums_per_tick_impact_series_not_last_element():
-    # track_environmental_impact appends a fresh 0.0 slot per new timestamp
-    # (instrumentation/waste_monitor.py), so total_impact is per-tick, not
+    # record_emission appends a fresh 0.0 slot per new timestamp
+    # (instrumentation/history_store.py), so total_impact is per-tick, not
     # cumulative. Reading [-1] reports only the final tick's emissions.
     monitor_data = {
         "environmental_history": {

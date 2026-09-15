@@ -10,7 +10,7 @@ and the raw history is dropped -- which is why a new KPI forces a full re-run.
 ``jsonify`` walks the structure and rewrites every ``Enum`` member to its
 ``.value`` wherever it appears -- as a dict key, a dict value, or inside a
 list/tuple -- yielding a structure ``json.dump`` accepts. ``build_raw_payload``
-selects the six history dicts and two event logs that ``extract_kpis`` consumes
+selects the history dicts and two event logs that ``extract_kpis`` consumes
 in process, so they can be persisted as an additive ``raw_NNN.json`` sidecar.
 """
 from __future__ import annotations
@@ -18,8 +18,8 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Dict
 
-# The six polled history dicts, in the order get_monitor_data assembles them.
-# Each name doubles as the export key AND the suffix of the HistoryStore
+# The polled history dicts and ledgers, in the order get_monitor_data assembles
+# them. Each name doubles as the export key AND the suffix of the HistoryStore
 # property it is read from (get_{key}); get_monitor_data builds its export by
 # iterating this tuple, so the persisted and exported lists cannot drift.
 HISTORY_KEYS = (
@@ -27,6 +27,7 @@ HISTORY_KEYS = (
     "collection_history",
     "processing_history",
     "environmental_history",
+    "landfill_history",
     "event_history",
     "entity_status_history",
 )
@@ -61,7 +62,7 @@ def jsonify(obj: Any) -> Any:
 def build_raw_payload(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
     """Select the raw history dicts and event logs from ``monitor_data``.
 
-    Returns the six history dicts and two event logs under ``RAW_PAYLOAD_KEYS``,
+    Returns the history dicts and two event logs under ``RAW_PAYLOAD_KEYS``,
     dropping derived/static blocks (``final_summary``, ``storage_capacities``)
     that ``kpis`` already captures. The result still contains Enum keys/values;
     pass it through ``jsonify`` before ``json.dump``.

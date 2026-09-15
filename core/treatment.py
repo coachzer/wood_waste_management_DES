@@ -503,11 +503,11 @@ class TreatmentOperator(OperationalEntity):
             transport_cost=0.0,
         )
 
-        monitor.track_environmental_impact(
+        monitor.record_emission(
             entity_name=name,
-            environmental_impact=environmental_impact_emissions,  # kg CO₂e
+            kind="carbon_emissions",
+            kgco2e=environmental_impact_emissions,
             timestamp=timestamp,
-            impact_category="carbon_emissions",
         )
 
     def _update_utilization_metrics(self, amount_to_process):

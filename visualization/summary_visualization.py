@@ -5,6 +5,7 @@ import numpy as np
 from typing import Dict, List
 from config.constants import CHART_PALETTE, DASHBOARD_HEIGHT_PX
 from .visualization_utils import create_scenario_label, last_cumulative_by_entity
+from instrumentation.history_store import total_landfill_cost
 
 def create_cost_impact_comparison(results: List[Dict], output_dir: str):
     """Create bar charts comparing cost and environmental impact breakdowns"""
@@ -39,12 +40,13 @@ def create_cost_impact_comparison(results: List[Dict], output_dir: str):
         cost_data['operational_costs'].append(total_operational)
         cost_data['transport_costs'].append(total_transport)
         
+        # Overflow = expansions (system-event stream) + landfills (ledger).
         event_history = monitor_data.get('event_history', {})
-        overflow_cost = 0
+        overflow_cost = total_landfill_cost(monitor_data.get('landfill_history', {}))
         if 'system_events' in event_history:
             total_costs = event_history['system_events'].get('total_costs', [])
             if total_costs:
-                overflow_cost = sum(total_costs)
+                overflow_cost += sum(total_costs)
         cost_data['overflow'].append(overflow_cost)
 
     fig_cost = go.Figure()
@@ -78,11 +80,12 @@ def create_summary_dashboard(results: List[Dict], output_dir: str):
         total_processed = sum(last_cumulative_by_entity(processing_history, 'processed.total').values())
 
         # Calculate event cost (per-event increments, summed to match
-        # create_cost_impact_comparison's 'overflow' total)
-        total_overflow_cost = 0
+        # create_cost_impact_comparison's 'overflow' total: expansions from the
+        # system-event stream plus landfills from the ledger)
+        total_overflow_cost = total_landfill_cost(monitor_data.get('landfill_history', {}))
         total_costs = event_history.get('system_events', {}).get('total_costs', [])
         if total_costs:
-            total_overflow_cost = sum(total_costs)
+            total_overflow_cost += sum(total_costs)
 
         collection_eff = (total_collected / total_generated * 100) if total_generated > 0 else 0
         processing_eff = (total_processed / total_collected * 100) if total_collected > 0 else 0

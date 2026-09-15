@@ -19,8 +19,9 @@ drained simulation, see their docstrings).
 import logging
 import math
 from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
+from instrumentation.history_store import HistoryStore
 from models.enums import OutputType
 
 # Mixed tolerance: rel_tol handles accumulated float error at scale, abs_tol
@@ -44,6 +45,9 @@ class EntityRegistry:
     The product invariant reads only ``state`` and ``operators``; the
     waste-side fields are carried per the ADR for the deferred waste invariant
     (P2) and default to ``None`` so the product-only seam stays minimal.
+    ``history`` is the run's :class:`HistoryStore`, whose landfill ledger is
+    the raw-waste discard term of the waste invariants (ADR 0009); absent, no
+    landfill is assumed.
     """
 
     state: Any
@@ -51,6 +55,13 @@ class EntityRegistry:
     generators: Optional[List[Any]] = None
     collectors: Optional[List[Any]] = None
     transport: Optional[List[Any]] = None
+    history: Optional[HistoryStore] = None
+
+    def landfilled_by_entity(self) -> Dict[str, float]:
+        """Raw waste landfilled per entity (m3), from the landfill ledger."""
+        if self.history is None:
+            return {}
+        return self.history.landfilled_volume_by_entity()
 
 
 class MassBalanceMonitor:
@@ -156,6 +167,7 @@ class MassBalanceMonitor:
         simulation.
         """
         state = self.registry.state
+        landfilled_by_entity = self.registry.landfilled_by_entity()
         violations = []
         for collector in (self.registry.collectors or []):
             name = collector.name
@@ -169,7 +181,7 @@ class MassBalanceMonitor:
             )
             initial = self._initial_collection_center[name]
             current = sum(collector.collection_center.current_storage.values())
-            landfilled = state.waste_landfilled.get(name, 0.0)
+            landfilled = landfilled_by_entity.get(name, 0.0)
 
             lhs = initial + inflow
             rhs = outflow + current + landfilled
@@ -205,7 +217,7 @@ class MassBalanceMonitor:
 
         ``treated_intake`` is ``processed_volumes`` (the corrected ADR 0009
         intake); ``landfilled`` is the single funnel through
-        ``handle_storage_event``. A mismatch means raw waste appeared or vanished
+        ``handle_storage_event``, read from the landfill ledger. A mismatch means raw waste appeared or vanished
         without a recorded reason. Final-only by intent: the in-transit term keeps
         cross-region repositioning accounted, but it is checked at end of run on a
         drained simulation.
@@ -233,7 +245,7 @@ class MassBalanceMonitor:
         treated_intake = sum(
             sum(operator.processed_volumes.values()) for operator in operators
         )
-        landfilled = sum(state.waste_landfilled.values())
+        landfilled = sum(self.registry.landfilled_by_entity().values())
         initial_collection_center = sum(self._initial_collection_center.values())
 
         lhs = generated + self._initial_treatment_waste_storage + initial_collection_center

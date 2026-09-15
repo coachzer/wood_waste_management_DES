@@ -139,9 +139,8 @@ class WasteMonitor:
                 history["operational"]["processing_costs"][-1] += processing_cost
                 history["operational"]["total_costs"][-1] += energy_cost + processing_cost
 
-    def track_event(self, volume: float, strategy: str,
-                    cost_incurred: float, timestamp: float):
-        """Event tracking"""
+    def track_expansion(self, volume: float, cost_incurred: float, timestamp: float):
+        """Record one storage expansion (the overflow volume that triggered it)."""
 
         event_key = "system_events"
 
@@ -149,42 +148,19 @@ class WasteMonitor:
 
         history = self.store.event_history[event_key]
         history["timestamps"].append(timestamp)
-        history["landfill_usage"].append(0.0)
-        history["storage_expansions"].append(0.0)
-        history["landfill_costs"].append(0.0)
-        history["expansion_costs"].append(0.0)
-        history["total_costs"].append(0.0)
+        history["storage_expansions"].append(volume)
+        history["expansion_costs"].append(cost_incurred)
+        history["total_costs"].append(cost_incurred)
 
-        if strategy == "landfill":
-            history["landfill_usage"][-1] = volume
-            history["landfill_costs"][-1] = cost_incurred
-        elif strategy == "expand_storage":
-            history["storage_expansions"][-1] = volume
-            history["expansion_costs"][-1] = cost_incurred
+    def record_landfill(self, entity_name: str, composition: Dict,
+                        cost: float, timestamp: float):
+        """Write one landfill event to the store's ledger (see HistoryStore)."""
+        self.store.record_landfill(entity_name, composition, cost, timestamp)
 
-        history["total_costs"][-1] = cost_incurred
-
-    def track_environmental_impact(self, entity_name: str,
-                                environmental_impact: float, timestamp: float,
-                                impact_category: str = "carbon_emissions"):
-        """Environmental impact tracking - emissions only (kg CO₂e)"""
-
-        self.store.ensure_environmental(entity_name)
-
-        history = self.store.environmental_history[entity_name]
-
-        if not history["timestamps"] or timestamp > history["timestamps"][-1]:
-            history["timestamps"].append(timestamp)
-            history["carbon_emissions"].append(0.0)
-            history["transport_emissions"].append(0.0)
-            history["landfill_emissions"].append(0.0)
-            history["total_impact"].append(0.0)
-
-        if impact_category in ["carbon_emissions", "transport_emissions", "landfill_emissions"]:
-            history[impact_category][-1] += environmental_impact
-            history["total_impact"][-1] += environmental_impact
-        else:
-            logging.warning(f"Unrecognized environmental impact category: {impact_category}")
+    def record_emission(self, entity_name: str, kind: str,
+                        kgco2e: float, timestamp: float):
+        """Write one emission of ``kind`` to the store's ledger (see HistoryStore)."""
+        self.store.record_emission(entity_name, kind, kgco2e, timestamp)
 
     def calculate_efficiency_metrics(self) -> Dict[str, float]:
         """Calculate system-wide efficiency metrics"""

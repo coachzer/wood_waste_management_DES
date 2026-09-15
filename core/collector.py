@@ -204,11 +204,11 @@ class CollectorCompany(OperationalEntity):
                     processing_cost=0.0,
                     transport_cost=collection_cost
                 )
-                self.waste_monitor.track_environmental_impact(
+                self.waste_monitor.record_emission(
                     entity_name=self.name,
-                    environmental_impact=emissions,
+                    kind="transport_emissions",
+                    kgco2e=emissions,
                     timestamp=self.env.now,
-                    impact_category="transport_emissions"
                 )
         else:
             yield self.env.timeout(travel_time)

@@ -205,6 +205,7 @@ class SimulationManager:
                 operators=self.state.treatment_operators,
                 generators=self.state.generators,
                 collectors=self.state.collectors,
+                history=self.waste_monitor.store,
             ),
             raise_on_violation=raise_on_violation,
         )

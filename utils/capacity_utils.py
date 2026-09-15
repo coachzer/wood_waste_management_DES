@@ -106,15 +106,16 @@ def handle_storage_event(entity, composition: Dict[WasteType, float], force_land
     progressively more expensive.
 
     Mutates the entity in place on whichever branch is taken: bumps expansion_count
-    / landfill_count, accumulates expansion_costs / landfill_costs, and on the
-    expand branch grows waste_storage_capacity by EXPANSION_SIZE_M3. On the landfill
-    branch it also attributes the landfilled volume to the entity via
-    state.track_waste_landfilled (the mass-balance discard term, ADR 0009) when the
-    entity carries a state.
+    / landfill_count (the escalation counters), accumulates expansion_costs, and on
+    the expand branch grows waste_storage_capacity by EXPANSION_SIZE_M3.
 
-    Monitoring is best-effort: if the entity has a truthy waste_monitor, the chosen
-    action and (on landfill) its emissions are recorded; a monitor-less entity is
-    handled identically minus the recording.
+    Recording goes through the entity's waste_monitor when it has a truthy one; a
+    monitor-less entity is handled identically minus the recording. On the landfill
+    branch the event is written once, to the monitor's landfill ledger
+    (HistoryStore.record_landfill) -- the single record both the mass-balance
+    discard term (ADR 0009) and the landfill KPIs read -- and its volumetric
+    emissions to the emission ledger. The expand branch records the expansion in
+    the system-event stream.
 
     Returns (cost_incurred, action) where action is "no_action" (volume below
     tolerance), "expand_storage", or "landfill".
@@ -158,41 +159,32 @@ def handle_storage_event(entity, composition: Dict[WasteType, float], force_land
 
     if force_landfill or expansion_cost >= landfill_cost:
         entity.landfill_count = landfill_count + 1
-        entity.landfill_costs = getattr(entity, 'landfill_costs', 0) + landfill_cost
-
-        # Attribute the landfilled raw waste to the dumping entity so the
-        # collection-center mass-balance invariant can account for it (ADR 0009).
-        state = getattr(entity, 'state', None)
-        if state is not None:
-            state.track_waste_landfilled(entity.name, total_volume)
 
         emissions = total_volume * LANDFILL_EMISSIONS_PER_M3_KG
 
         if hasattr(entity, 'waste_monitor') and entity.waste_monitor:
-            entity.waste_monitor.track_event(
-                volume=total_volume,
-                strategy="landfill",
-                cost_incurred=landfill_cost,
+            entity.waste_monitor.record_landfill(
+                entity_name=entity.name,
+                composition=composition,
+                cost=landfill_cost,
                 timestamp=entity.env.now,
             )
-
-            entity.waste_monitor.track_environmental_impact(
+            entity.waste_monitor.record_emission(
                 entity_name=entity.name,
-                environmental_impact=emissions,
+                kind="landfill_emissions",
+                kgco2e=emissions,
                 timestamp=entity.env.now,
-                impact_category="landfill_emissions"
             )
 
         return landfill_cost, "landfill"
     else:
-        entity.waste_storage_capacity += EXPANSION_SIZE_M3  
+        entity.waste_storage_capacity += EXPANSION_SIZE_M3
         entity.expansion_count = expansion_count + 1
         entity.expansion_costs = getattr(entity, 'expansion_costs', 0) + expansion_cost
 
         if hasattr(entity, 'waste_monitor') and entity.waste_monitor:
-            entity.waste_monitor.track_event(
+            entity.waste_monitor.track_expansion(
                 volume=total_volume,
-                strategy="expand_storage",
                 cost_incurred=expansion_cost,
                 timestamp=entity.env.now,
             )

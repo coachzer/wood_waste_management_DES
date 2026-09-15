@@ -18,23 +18,25 @@ Run in full-suite context: single-test isolation can ImportError on the
 from instrumentation.history_store import HistoryStore
 from instrumentation.waste_monitor import WasteMonitor
 
-# The six raw history dicts the store owns and the recorder writes into.
+# The raw history dicts the store owns and the recorder writes into.
 HISTORY_GETTERS = (
     "get_generation_history",
     "get_collection_history",
     "get_processing_history",
     "get_environmental_history",
+    "get_landfill_history",
     "get_event_history",
     "get_entity_status_history",
 )
 
-# The six schema authors the store owns (issue 10); the recorder only appends.
+# The schema authors the store owns (issue 10); the recorder only appends.
 ENSURE_METHODS = (
     "ensure_generation",
     "ensure_collection",
     "ensure_processing",
     "ensure_event",
     "ensure_environmental",
+    "ensure_landfill",
     "ensure_entity_status",
 )
 
@@ -166,18 +168,18 @@ def test_ensure_processing_materializes_nested_schema_from_product_types():
 def test_ensure_event_materializes_the_system_event_schema():
     """``ensure_event`` creates the event entry with only consumed series.
 
-    VIZ-REVIEW T9: ``overflow_events`` (the redundant union of
-    ``landfill_usage`` and ``storage_expansions``) is gone; the remaining
-    volume/cost series all feed KPIs.
+    VIZ-REVIEW T9 dropped ``overflow_events``; the landfill columns
+    (``landfill_usage`` / ``landfill_costs``) then moved to the per-entity
+    landfill ledger (``record_landfill``), so the stream carries expansions
+    only. ``total_costs`` stays for the event-cost timeline readers.
 
-    Mutation check (red): restore ``overflow_events`` in the literal, or drop
+    Mutation check (red): restore a landfill column in the literal, or drop
     a consumed key -> the key-set assertion fails.
     """
     store = HistoryStore()
     store.ensure_event("system_events")
     assert set(store.event_history["system_events"]) == {
-        "timestamps", "landfill_usage", "storage_expansions",
-        "landfill_costs", "expansion_costs", "total_costs",
+        "timestamps", "storage_expansions", "expansion_costs", "total_costs",
     }
 
 
