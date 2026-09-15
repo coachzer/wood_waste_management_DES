@@ -15,8 +15,9 @@ class WasteMonitor:
         self.env = env
         self.store = HistoryStore()
 
-        if not os.path.exists(PLOTS_ROOT):
-            os.makedirs(PLOTS_ROOT)
+        # exist_ok: parallel baseline workers construct monitors concurrently,
+        # and a check-then-create pair races on the first run of a fresh checkout.
+        os.makedirs(PLOTS_ROOT, exist_ok=True)
 
     def track_generation(self, generator, timestamp):
         """Track waste generation events with timestamps and costs"""
