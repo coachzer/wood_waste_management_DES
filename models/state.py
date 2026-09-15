@@ -1,5 +1,4 @@
 from typing import Optional
-from models import regional_tracker
 
 
 class SimulationState:
@@ -16,7 +15,6 @@ class SimulationState:
         self.collectors = []
         self.treatment_operators = []
         self.transport_flows = []
-        self.waste_tracker = regional_tracker.RegionalWasteTracker()
         # Market consumption event log (demand-as-consumption model, ADR 0002)
         self.consumption_events = []
         # Raw waste landfilled per entity (mass-balance discard term, ADR 0009).
@@ -45,25 +43,6 @@ class SimulationState:
                 if vehicle.in_transit:
                     yield vehicle
 
-    def track_add_waste(self, region, waste_type, amount):
-        """Track waste generation in a specific region"""
-        if not region:
-            return
-        try:
-            self.waste_tracker.add_waste(region, waste_type, amount)
-        except KeyError as e:
-            print(f"Warning: Could not track waste generation - {str(e)}")
-
-    def track_remove_waste(self, region, waste_type, amount):
-        """Track waste removal from a specific region"""
-        if not region:
-            return 0
-        try:
-            return self.waste_tracker.remove_waste(region, waste_type, amount)
-        except KeyError as e:
-            print(f"Warning: Could not track waste removal - {str(e)}")
-            return 0
-        
     def track_transport_flow(self, source_type: str, source_name: str, 
                            target_type: str, target_name: str, 
                            waste_type, volume: float, timestamp: float,
@@ -80,16 +59,6 @@ class SimulationState:
             'transport_method': transport_method
         })
 
-    def get_regional_waste_stats(self, region):
-        """Get waste statistics for a specific region"""
-        if not region:
-            return {}
-        try:
-            return self.waste_tracker.get_regional_stats(region)
-        except KeyError as e:
-            print(f"Warning: Could not get regional stats - {str(e)}")
-            return {}
-            
     def record_consumption_event(self, operator_name: str, product: str,
                                  attempted: float, consumed: float,
                                  reason: str = None, timestamp: float = None) -> None:
@@ -187,33 +156,5 @@ class SimulationState:
         self.collectors = []
         self.treatment_operators = []
         self.transport_flows = []
-        self.waste_tracker = regional_tracker.RegionalWasteTracker()
         self.consumption_events = []
         self.waste_landfilled = {}
-
-    def get_transport_flow_summary(self):
-        """Get summary of transport flows for debugging"""
-        if not self.transport_flows:
-            return "No transport flows recorded"
-        
-        summary = []
-        summary.append(f"Total transport flows: {len(self.transport_flows)}")
-        
-        flow_types = {}
-        for flow in self.transport_flows:
-            key = f"{flow['source_type']} → {flow['target_type']}"
-            if key not in flow_types:
-                flow_types[key] = {"count": 0, "volume": 0}
-            flow_types[key]["count"] += 1
-            flow_types[key]["volume"] += flow['volume']
-        
-        summary.append("\nFlow types:")
-        for flow_type, stats in flow_types.items():
-            summary.append(f"  {flow_type}: {stats['count']} flows, {stats['volume']:.1f} m³ total")
-        
-        summary.append("\nRecent flows (last 50):")
-        for flow in self.transport_flows[-50:]:
-            summary.append(f"  {flow['source_name']} → {flow['target_name']}: "
-                        f"{flow['volume']:.1f} m³ {flow['waste_type']}")
-        
-        return "\n".join(summary)

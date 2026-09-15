@@ -275,10 +275,6 @@ class CollectorCompany(OperationalEntity):
             collected_waste[waste_type] = amount
             total_collected += amount
 
-            self.state.track_remove_waste(
-                generator.region, waste_type, amount
-            )
-
             self.state.track_transport_flow(
                 source_type="generator",
                 source_name=generator.name,
@@ -665,11 +661,6 @@ class CollectorCompany(OperationalEntity):
             None,
         )
         if target_collector:
-            self.state.track_add_waste(
-                target_collector.region,
-                transport["waste_type"],
-                transport["volume"],
-            )
             target_collector.collection_center.current_storage[
                 transport["waste_type"]
             ] += transport["volume"]

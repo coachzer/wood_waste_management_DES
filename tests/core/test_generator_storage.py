@@ -12,8 +12,8 @@ Pins three failure modes in ``WasteGenerator``:
    this test to the capped-at-headroom semantics; until then, the all-or-nothing
    drop is the documented behavior and must be pinned.
 
-3. ``_handle_overflow`` conserves mass: every m³ it removes from streams is
-   reported via ``state.track_remove_waste``; nothing silently vanishes.
+3. ``_handle_overflow`` conserves mass: the volume it removes from streams is
+   exactly the excess over capacity; nothing silently vanishes.
 """
 
 from types import SimpleNamespace
@@ -34,22 +34,12 @@ PACKAGING = WasteType.WOODEN_PACKAGING_15_01_03
 # ---------------------------------------------------------------------------
 
 class RecordingState:
-    """Mirrors the generator-side calls to SimulationState.
+    """Stands in for SimulationState.
 
-    Records every ``track_add_waste`` and ``track_remove_waste`` invocation so
-    tests can assert on the volumes without spinning up a real
-    ``SimulationState``.
+    The generator storage path no longer calls back into state, so this is an
+    inert placeholder that satisfies the ``self.state`` attribute without
+    spinning up a real ``SimulationState``.
     """
-
-    def __init__(self):
-        self.added = []
-        self.removed = []
-
-    def track_add_waste(self, region, waste_type, amount):
-        self.added.append((waste_type, amount))
-
-    def track_remove_waste(self, region, waste_type, amount):
-        self.removed.append((waste_type, amount))
 
 
 def make_generator_stub(
@@ -144,7 +134,6 @@ def test_potential_generation_accrues_even_when_storage_is_full():
     # Nothing committed
     assert stub.total_generated[CONSTRUCTION] == 0.0
     assert stub.current_storage == capacity
-    assert stub.state.added == []
 
 
 def test_type_exceeding_available_storage_is_capped_at_headroom():
@@ -212,13 +201,11 @@ def test_type_exceeding_available_storage_is_capped_at_headroom():
     assert calls == [], "_update_waste_stream must not be called when headroom is zero"
 
 
-def test_update_waste_stream_reports_added_volume_to_state():
+def test_update_waste_stream_increments_all_counters_atomically():
     """_update_waste_stream increments stream volume, current_storage, and
-    total_generated atomically, and calls state.track_add_waste with the
-    identical volume.
+    total_generated atomically with the identical volume.
 
-    Guards against a split-brain where the internal counters and the external
-    tracker diverge.
+    Guards against a split-brain where the three internal counters diverge.
     """
     stub = make_generator_stub(
         waste_generation_rates={CONSTRUCTION: 1.0},
@@ -236,23 +223,18 @@ def test_update_waste_stream_reports_added_volume_to_state():
     assert stub.current_storage == pytest.approx(volume_to_add)
     assert stub.total_generated[CONSTRUCTION] == pytest.approx(volume_to_add)
 
-    # state.track_add_waste must have been called with the same volume
-    assert len(stub.state.added) == 1
-    recorded_type, recorded_volume = stub.state.added[0]
-    assert recorded_type == CONSTRUCTION
-    assert recorded_volume == pytest.approx(volume_to_add)
 
-
-def test_handle_overflow_caps_storage_and_reports_every_removal():
+def test_handle_overflow_caps_storage_and_scales_streams_proportionally():
     """Mass conservation after overflow: _handle_overflow scales streams down to
-    capacity and every m³ it removes is reported via state.track_remove_waste.
+    capacity, and the volume removed is exactly the excess over capacity.
 
-    The sum of track_remove_waste volumes plus the final current_storage must
-    equal the pre-overflow total -- nothing silently vanishes.
+    The per-stream reductions plus the final stored total must equal the
+    pre-overflow total, and every stream must shrink by the same factor --
+    nothing silently vanishes and no type is singled out.
 
     Uses a monkeypatched handle_storage_event stub so the test does not depend
     on landfill-vs-expand cost arithmetic; the invariant being tested is the
-    scaling step and the track_remove_waste calls that follow it.
+    scaling step alone.
     """
     capacity = 100.0
     # Prime streams above capacity to force the scaling branch
@@ -262,10 +244,11 @@ def test_handle_overflow_caps_storage_and_reports_every_removal():
         current_storage=130.0,
         region="podravska",
     )
-    stub.waste_streams[CONSTRUCTION].volume = 80.0
-    stub.waste_streams[PACKAGING].volume = 50.0
+    pre_overflow_volumes = {CONSTRUCTION: 80.0, PACKAGING: 50.0}
+    for waste_type, volume in pre_overflow_volumes.items():
+        stub.waste_streams[waste_type].volume = volume
 
-    pre_overflow_total = 130.0  # 80 + 50
+    pre_overflow_total = sum(pre_overflow_volumes.values())  # 130
 
     # Stub handle_storage_event so it performs no side effects on capacity or
     # streams; we are testing the scaling step that follows it.
@@ -280,9 +263,17 @@ def test_handle_overflow_caps_storage_and_reports_every_removal():
     total_stored = sum(s.volume for s in stub.waste_streams.values())
     assert total_stored == pytest.approx(capacity)
 
-    # Every removed m³ was reported to state
-    total_removed_reported = sum(vol for _, vol in stub.state.removed)
-    assert total_removed_reported == pytest.approx(pre_overflow_total - capacity)
+    # Every stream shrank by the same factor (proportional, not type-biased)
+    expected_scaling_factor = capacity / pre_overflow_total
+    for waste_type, pre_volume in pre_overflow_volumes.items():
+        assert stub.waste_streams[waste_type].volume == pytest.approx(
+            pre_volume * expected_scaling_factor
+        )
 
-    # Mass conservation identity
-    assert total_stored + total_removed_reported == pytest.approx(pre_overflow_total)
+    # Mass conservation identity: removed volume is exactly the excess
+    total_removed = sum(
+        pre_volume - stub.waste_streams[waste_type].volume
+        for waste_type, pre_volume in pre_overflow_volumes.items()
+    )
+    assert total_removed == pytest.approx(pre_overflow_total - capacity)
+    assert total_stored + total_removed == pytest.approx(pre_overflow_total)

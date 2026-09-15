@@ -194,10 +194,6 @@ class WasteGenerator(OperationalEntity):
         self.current_storage += generated_volume
         self.total_generated[waste_type] += generated_volume
 
-        self.state.track_add_waste(
-            self.region, waste_type, generated_volume
-        )
-
         if history_index >= len(history["times"]):
             history_index = 0
 
@@ -229,14 +225,8 @@ class WasteGenerator(OperationalEntity):
             if total_current > effective_capacity:
                 scaling_factor = effective_capacity / total_current
 
-                state = self.state
-
                 for waste_type, stream in self.waste_streams.items():
-                    new_volume = stream.volume * scaling_factor
-                    reduced_volume = stream.volume - new_volume
-                    if reduced_volume > 0:
-                        state.track_remove_waste(self.region, waste_type, reduced_volume)
-                        stream.volume = new_volume
+                    stream.volume *= scaling_factor
 
                 self.current_storage = effective_capacity
             else:
