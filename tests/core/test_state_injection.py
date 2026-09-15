@@ -19,11 +19,9 @@ def test_two_instances_are_independent():
         operator_name="op_a", product="mdf", attempted=10.0, consumed=4.0,
         reason="stockout", timestamp=7.0,
     )
-    first.track_waste_landfilled("collector_a", 3.0)
 
     # The second instance is untouched.
     assert second.consumption_events == []
-    assert second.waste_landfilled == {}
     assert len(first.consumption_events) == 1
 
 
