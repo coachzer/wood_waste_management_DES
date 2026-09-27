@@ -139,6 +139,7 @@ class PointToPointTransport:
             "destination": request.destination,
             "pickup_time": pickup_time,
             "arrival_time": arrival_time,
-            "requester_id": request.requester_id
+            "requester_id": request.requester_id,
+            "target_name": target_name,
         }
         return transport

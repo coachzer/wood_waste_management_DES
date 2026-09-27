@@ -155,8 +155,12 @@ def make_center_collector(name, storage):
 
 
 def make_waste_state():
-    """A SimulationState stand-in: a transport-flow log."""
-    return SimpleNamespace(transport_flows=[])
+    """A SimulationState stand-in: a transport-flow log, no reposition in flight."""
+    return SimpleNamespace(
+        transport_flows=[],
+        pending_reposition_volume_by_origin=lambda: {},
+        scheduled_reposition_volume_by_destination=lambda: {},
+    )
 
 
 def landfill(store, entity_name, volume, timestamp=0.0):
@@ -246,7 +250,10 @@ def make_treatment_op(name, waste_storage, processed):
 def make_system_state(vehicles=()):
     """A SimulationState stub exposing the in-transit iterator."""
     moving = list(vehicles)
-    return SimpleNamespace(iter_outbound_vehicles=lambda: iter(moving))
+    return SimpleNamespace(
+        iter_outbound_vehicles=lambda: iter(moving),
+        pending_reposition_volume_by_origin=lambda: {},
+    )
 
 
 def build_waste_monitor():
@@ -420,3 +427,73 @@ def test_collection_center_invariant_holds_on_baseline_run():
 
     result = _baseline_run()
     assert extract_kpis(result["monitor_data"])["total_collected_m3"] > 0.0
+
+
+# --- cross-region repositioning still in the pipeline at check time ----------
+
+
+def test_queued_and_in_flight_reposition_balance_both_waste_checks():
+    """Repositioning volume mid-pipeline at the end-of-run check is conserved.
+
+    ``transfer_waste_to_region`` debits the origin center at request time. The
+    volume then waits in the shared transport queue (no vehicle yet, no flow
+    logged) or rides a vehicle (flow logged origin -> destination, not yet
+    deposited). Both are real fates, so neither the per-center nor the
+    system-wide identity may trip.
+
+    Mutation checks (red): drop ``pending_reposition_volume_by_origin`` from
+    either check, or ``scheduled_reposition_volume_by_destination`` from the
+    per-center check -> MassBalanceViolation.
+    """
+    from core.transport_manager import PointToPointTransport, TransportRequest
+    from models.enums import RegionType, WasteType
+    from models.state import SimulationState
+
+    waste_type = WasteType.CONSTRUCTION_WOOD_17_02_01
+    state = SimulationState()
+    manager = PointToPointTransport(state=state)
+
+    def collector(name):
+        return SimpleNamespace(
+            name=name,
+            collection_center=SimpleNamespace(current_storage={waste_type: 0.0}),
+            transport_manager=manager,
+            active_transports=[],
+            vehicles=[],
+        )
+
+    origin, destination = collector("col-origin"), collector("col-destination")
+    generator = make_generator("gen-1", {waste_type: 0.0}, 0.0)
+    state.collectors = [origin, destination]
+    monitor = MassBalanceMonitor(
+        EntityRegistry(
+            state=state,
+            operators=[],
+            generators=[generator],
+            collectors=[origin, destination],
+            history=HistoryStore(),
+        )
+    )
+
+    # 1000 generated and collected into the origin center.
+    generator.total_generated[waste_type] = 1000.0
+    state.transport_flows.append(flow("gen-1", "col-origin", 1000.0))
+    # 300 debited and queued for a vehicle; 200 debited and on a vehicle.
+    manager.pending_requests.append(
+        TransportRequest(
+            origin=RegionType.KOROSKA,
+            destination=RegionType.PODRAVSKA,
+            waste_type=waste_type,
+            volume=300.0,
+            request_time=364.0,
+            requester_id="col-origin",
+        )
+    )
+    state.transport_flows.append(flow("col-origin", "col-destination", 200.0))
+    vehicle = SimpleNamespace(in_transit=True, current_load_by_type={waste_type: 200.0})
+    origin.vehicles.append(vehicle)
+    origin.active_transports.append({"volume": 200.0, "target_name": "col-destination"})
+    origin.collection_center.current_storage[waste_type] = 500.0
+
+    monitor.check_collection_centers()  # must not raise
+    monitor.check_waste_system()  # must not raise
