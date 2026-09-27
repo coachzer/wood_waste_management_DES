@@ -123,7 +123,11 @@ collection_frequency)`. The collector's fallback, used only by direct constructi
 back to the per-tick value too. One vehicle carrying one day's capacity per daily trip has an
 annual throughput equal to annual collection capacity, as before, when one vehicle carried
 `collection_capacity` per 12-day trip. The three-vehicle fleet keeps its size, so its headroom
-over the capacity clamp keeps the same ratio.
+over the capacity clamp keeps the same ratio. `collection_capacity` clamps each trip, not the
+tick (`collect_from_generator`'s `clamps`). One tick can therefore move up to three trips'
+worth, before and after this change alike. The hard annual ceiling is 3x nominal in both, and
+what binds in practice is generator stock and center headroom. Not changed here; a stage-3
+item (collector fleets).
 
 **e. Transport cost and emissions per m³.**
 
@@ -165,5 +169,14 @@ stage-1 comparison (see Consequences).
   effective PUSH collection capacity, which drains generator storage before it overflows.
 - **Stage-1 comparison.** Reference: c12839b, `outputs/stage1/ref_n100`. New:
   `outputs/stage1/new_n100`. The table is in `docs/plans/stage1-daily-clock-results.md`.
+  - The six-combo ranking is unchanged, with no flips.
+  - Every headline KPI moved outside its 95% CI. Full service level rose to 83-99%, PUSH
+    landfill fell to 0, total emissions fell 72-98%, and total system cost rose in 5 of 6
+    combos (more processing).
+  - Capacity was never the binding constraint (about 4.6M m³/yr nominal vs about 120k m³
+    processed). The 24-day cadence against the finished-goods headroom clamp was, so this
+    ADR changes results substantially even though annual capacity is preserved.
+  - Per-m³ transport cost fell 2-11%. The fixed per-trip charge rose by $0.04-0.29/m³ (seed
+    123456 probe), but shorter average hauls more than offset it.
 - Out of scope, left for stages 2-4: capacity-loss failures, collector fleets, the
   working-day calendar, continuous seasonality.
