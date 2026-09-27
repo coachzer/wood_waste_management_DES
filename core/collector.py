@@ -238,7 +238,7 @@ class CollectorCompany(OperationalEntity):
 
             collectible_amount = min(
                 stream.volume,
-                self.collection_capacity * self.efficiency,
+                self.collection_capacity,
                 remaining_capacity
             )
 
@@ -383,6 +383,8 @@ class CollectorCompany(OperationalEntity):
                 yield self.env.timeout(self.collection_frequency)
                 continue
 
+            # collection_capacity is the efficiency-scaled capacity; every
+            # consumer reads it directly so efficiency is applied exactly once.
             self.collection_capacity = max(10, self.initial_collection_capacity * self.efficiency)
             self.transport_cost = min(100, self.initial_transport_cost * (2 - self.efficiency))
 
@@ -569,7 +571,7 @@ class CollectorCompany(OperationalEntity):
 
         clamps = [
             generator.current_storage,
-            self.collection_capacity * self.efficiency,
+            self.collection_capacity,
             available_vehicle.capacity,
             collection_center_available,
         ]
@@ -755,7 +757,7 @@ class CollectorCompany(OperationalEntity):
         if not generators_with_waste:
             return []
 
-        total_collection_capacity = self.collection_capacity * self.efficiency
+        total_collection_capacity = self.collection_capacity
 
         same_region_generators = [
             g for g in generators_with_waste if g.region_type == self.region_type
