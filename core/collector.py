@@ -126,6 +126,7 @@ class CollectorCompany(OperationalEntity):
 
         self.process = env.process(self.collection_loop())
         self.transport_process = env.process(self.manage_transport())
+        self.start_failure_process(env)
 
     def _find_available_vehicle(self):
         """Find an available vehicle for collection"""
@@ -378,7 +379,7 @@ class CollectorCompany(OperationalEntity):
 
             self.update_efficiency()
 
-            if self.apply_failure_tick(current_time):
+            if self.apply_failure_tick():
                 yield self.env.timeout(self.collection_frequency)
                 continue
 

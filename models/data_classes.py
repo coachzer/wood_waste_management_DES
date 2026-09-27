@@ -7,9 +7,9 @@ from .enums import WasteType, RegionType, EntityStatus, OutputType
 @dataclass
 class FailureConfig:
     """Configuration for entity failure rates and durations"""
-    probability: float  # Daily probability of failure
-    min_duration: float  # Minimum downtime in days
-    max_duration: float  # Maximum downtime in days
+    probability: float  # Daily probability of failure, rolled once per day
+    min_duration: float  # Minimum duration in days of the FAILED outage and, separately, the RECOVERING ramp
+    max_duration: float  # Maximum duration in days of the FAILED outage and, separately, the RECOVERING ramp
 
 @dataclass(init=False)
 class OperationalEntity:
@@ -37,17 +37,47 @@ class OperationalEntity:
         self.failure_config = failure_config
         self.downtime_duration = 1.0
         self.rng = np.random.default_rng(seed)
+        # Failure draws get their own stream so their count is policy-invariant:
+        # the daily failure roll never shares a generator with the policy-dependent
+        # draws on ``rng``, so every combo at a seed faces the same failure history.
+        seed_sequence = seed if isinstance(seed, np.random.SeedSequence) else np.random.SeedSequence(seed)
+        [failure_seed] = seed_sequence.spawn(1)
+        self.failure_rng = np.random.default_rng(failure_seed)
 
     @classmethod
     def get_failure_stats(cls):
         """Get failure statistics"""
         return cls._failure_counts.copy()
 
+    def start_failure_process(self, env) -> None:
+        """Start the daily failure clock when the entity has a failure_config.
+
+        Failures run on their own SimPy process, decoupled from the entity's
+        main loop, so ``FailureConfig.probability`` is a true daily rate whatever
+        the loop cadence (treatment wakes every 24 days, collectors every ~2
+        weeks). The main loop only reads the resulting status.
+        """
+        if self.failure_config:
+            env.process(self._failure_process(env))
+
+    def _failure_process(self, env):
+        """Advance the failure state machine once per FAILURE_CHECK_INTERVAL_DAYS."""
+        from config.constants import FAILURE_CHECK_INTERVAL_DAYS
+        while True:
+            yield env.timeout(FAILURE_CHECK_INTERVAL_DAYS)
+            self.check_failure(env.now, self.failure_config.probability)
+
     def check_failure(self, current_time, failure_probability):
-        """Enhanced failure checking with recovery state management"""
+        """Advance OPERATIONAL -> FAILED -> RECOVERING -> OPERATIONAL by one step.
+
+        On failure the outage length is drawn from the failure_config, so FAILED
+        lasts ``uniform(min_duration, max_duration)`` days (resolved at the
+        daily check granularity), followed by a RECOVERING ramp of a second
+        independent draw from the same range.
+        """
 
         if self.status == EntityStatus.OPERATIONAL:
-            if self.rng.random() < failure_probability:
+            if self.failure_rng.random() < failure_probability:
                 entity_type = self.__class__.__name__
                 if entity_type not in self._failure_counts:
                     self._failure_counts[entity_type] = 0
@@ -55,6 +85,7 @@ class OperationalEntity:
 
                 self.status = EntityStatus.FAILED
                 self.failure_start_time = current_time
+                self.downtime_duration = self._get_recovery_duration()
 
                 if hasattr(self, 'waste_monitor') and self.waste_monitor:
                     self.waste_monitor.record_entity_status(self, current_time)
@@ -86,16 +117,14 @@ class OperationalEntity:
 
         return self.status == EntityStatus.FAILED
 
-    def apply_failure_tick(self, current_time) -> bool:
-        """Advance the failure lifecycle for one tick of the entity's main loop.
+    def apply_failure_tick(self) -> bool:
+        """Apply the current failure status to one tick of the entity's main loop.
 
-        Rolls/advances the OPERATIONAL -> FAILED -> RECOVERING state machine
-        when a failure_config is present, applies the entity's status-driven
-        throughput effects, and returns True when the caller should skip this
-        tick's work because the entity is FAILED.
+        The status itself is advanced by the daily failure process
+        (``start_failure_process``); this applies the entity's status-driven
+        throughput effects and returns True when the caller should skip this
+        tick's work because the entity is FAILED (a failed entity does no work).
         """
-        if self.failure_config:
-            self.check_failure(current_time, self.failure_config.probability)
         self._apply_status_throughput_effects()
         return self.status == EntityStatus.FAILED
 
@@ -117,13 +146,13 @@ class OperationalEntity:
             from config.constants import RECOVERING_BASE_EFFICIENCY
             return RECOVERING_BASE_EFFICIENCY + ((1.0 - RECOVERING_BASE_EFFICIENCY) * self.recovery_progress)
         else:
-            from config.constants import FAILED_ENTITY_EFFICIENCY
-            return FAILED_ENTITY_EFFICIENCY
+            # FAILED entities do no work: their main-loop tick is skipped.
+            return 0.0
 
     def _get_recovery_duration(self):
-        """Get random recovery duration based on failure config"""
+        """Draw an outage or recovery-ramp duration from the failure config."""
         if self.failure_config:
-            return self.rng.uniform(
+            return self.failure_rng.uniform(
                 self.failure_config.min_duration,
                 self.failure_config.max_duration
             )

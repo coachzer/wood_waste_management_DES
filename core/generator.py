@@ -102,6 +102,7 @@ class WasteGenerator(OperationalEntity):
 
         # Start waste generation process
         self.action = env.process(self.generate_waste())
+        self.start_failure_process(env)
 
     def _apply_status_throughput_effects(self):
         """Scale generation rates by status, restoring originals on recovery."""
@@ -124,7 +125,7 @@ class WasteGenerator(OperationalEntity):
         while True:
             current_time = self.env.now
 
-            if self.apply_failure_tick(current_time):
+            if self.apply_failure_tick():
                 yield self.env.timeout(self.generation_frequency)
                 continue
 

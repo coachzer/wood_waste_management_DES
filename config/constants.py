@@ -66,8 +66,10 @@ LOCAL_COLLECTION_RATIO = 0.8
 # the PUSH trigger fires and orders up to full capacity (S = waste_storage_capacity).
 PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_50 = 0.5
 PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_90 = 0.9
-FAILED_ENTITY_EFFICIENCY = 0.1
 RECOVERING_BASE_EFFICIENCY = 0.3
+# Entity failures are rolled on their own daily clock, independent of each
+# entity's main-loop cadence, so FailureConfig.probability is a per-day rate.
+FAILURE_CHECK_INTERVAL_DAYS = 1.0
 # Treatment processing capacity is sized as this fraction of waste storage capacity.
 PROCESSING_CAPACITY_FRACTION = 0.8
 # Collection centers take longer to repair than other entities (days of downtime).

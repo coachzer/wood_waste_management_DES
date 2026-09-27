@@ -129,6 +129,7 @@ class TreatmentOperator(OperationalEntity):
 
         self.process = env.process(self.run_facility())
         env.process(self.schedule_collection_requests())
+        self.start_failure_process(env)
 
     @property
     def current_storage(self) -> float:
@@ -383,7 +384,7 @@ class TreatmentOperator(OperationalEntity):
         while True:
             current_time = self.env.now
 
-            if self.apply_failure_tick(current_time):
+            if self.apply_failure_tick():
                 yield self.env.timeout(self.processing_time)
                 continue
 
