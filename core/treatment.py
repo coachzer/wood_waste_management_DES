@@ -23,7 +23,9 @@ from config.constants import (
     CARBON_PRICE_EUR_PER_KG_CO2E,
     ABC_PRIORITY_SCORE_MULTIPLIER,
     INPUT_AVAILABILITY_SATURATION_M3,
+    OPERATING_TICK_DAYS,
 )
+from utils.capacity_utils import per_tick_capacity
 
 class TreatmentOperator(OperationalEntity):
     """Treatment operator that processes waste into products"""
@@ -85,7 +87,14 @@ class TreatmentOperator(OperationalEntity):
         self.energy_consumption = energy_consumption
         self.operational_costs = operational_costs
         self.environmental_impact = environmental_impact
-        self.processing_capacity = self.waste_storage_capacity * PROCESSING_CAPACITY_FRACTION
+        # processing_time is the period the region data sizes capacity over
+        # (PROCESSING_CAPACITY_FRACTION of storage per processing_time days); the
+        # operator acts every OPERATING_TICK_DAYS on that period's per-tick share,
+        # so annual capacity is independent of the tick (ADR 0020). Fixed at
+        # construction: storage expansions never raised processing capacity.
+        self.processing_capacity = per_tick_capacity(
+            self.waste_storage_capacity * PROCESSING_CAPACITY_FRACTION, self.processing_time
+        )
         self.initial_processing_capacity = self.processing_capacity
         self.region = region
         self.region_type = RegionType[region.upper().replace('-', '_')]
@@ -107,6 +116,12 @@ class TreatmentOperator(OperationalEntity):
         # Yield-bridge accumulator (G1): cumulative intake x efficiency, reconciled
         # against deposited product_volumes by MassBalanceMonitor.check_yield_bridge.
         self.expected_output_volume = 0.0
+        # PULL Production Backlog (ADR 0020): per-product output volume still owed
+        # to Consumption Events already absorbed from Market Signals. A week's
+        # demand arrives on one day but capacity accrues daily, so the unmet part
+        # carries to later ticks instead of being dropped. Internal to the
+        # operator: never feeds back into the Consumption Event log.
+        self.pull_production_backlog: Dict[str, float] = {}
 
         # Finished-goods inventory: per-product capacity sized to a fixed demand
         # buffer, primed to INITIAL_INVENTORY_FRACTION of capacity (ADR 0002, Phase
@@ -229,7 +244,7 @@ class TreatmentOperator(OperationalEntity):
                         self._create_reorder_signals(signal_volume, current_time)
                     self.trigger_collection(explicit_collection_volume=signal_volume)
 
-            yield self.env.timeout(self.processing_time)
+            yield self.env.timeout(OPERATING_TICK_DAYS)
 
     def _create_collection_signal(
         self, waste_type: WasteType, volume: float, timestamp: float
@@ -334,17 +349,15 @@ class TreatmentOperator(OperationalEntity):
             if self.waste_storage.get(input_type, 0) > 0:
                 self._process_waste_transformation(input_type, output_type, transformation)
 
-    def _produce_for_consumption_events(self, current_time):
-        """Produce in response to downstream market consumption events (PULL).
+    def _absorb_market_signals(self, current_time):
+        """Add the Consumption Events behind new Market Signals to the backlog (PULL).
 
-        ADR 0002 (Phase E): PULL production is event-triggered, not supply-driven.
-        The operator scans its own unacknowledged Market Signals, reads the
-        Consumption Events they reference, and produces each product up to the
-        attempted demand volume (clamped by waste, capacity and finished-goods
-        headroom in ``_process_waste_transformation``). This keeps the bullwhip
-        contrast ``var(production) ~= var(attempted)`` and the PUSH/PULL
-        distinction crisp; PUSH retains the autonomous ``_process_available_waste``
-        loop.
+        ADR 0002 (Phase E): PULL production is event-triggered. The operator scans
+        its own unacknowledged Market Signals, reads the Consumption Events they
+        reference, and adds each producible product's ``attempted`` volume to the
+        PULL Production Backlog (ADR 0020). Runs every tick, FAILED ticks
+        included: an outage stops production, not the order book, so a signal is
+        never pruned unread.
         """
         market_signals = [
             signal for signal in self.kanban_manager.get_signals(current_time)
@@ -353,50 +366,68 @@ class TreatmentOperator(OperationalEntity):
         if not market_signals:
             return
 
-        # Per-product demand target = summed ``attempted`` across the Consumption
-        # Events these signals reference, matched by (operator, signal timestamp).
-        # Ticks land on exact multiples of CONSUMPTION_INTERVAL_DAYS and each
-        # signal shares its events' timestamp, so float equality is safe.
+        # Matched by (operator, signal timestamp). Ticks land on exact multiples
+        # of CONSUMPTION_INTERVAL_DAYS and each signal shares its events'
+        # timestamp, so float equality is safe. no_capability events are skipped:
+        # the operator has no transformation that could ever draw them down.
         signal_timestamps = {signal["timestamp"] for signal in market_signals}
-        state = self.state
-        targets: Dict[str, float] = {}
-        for event in state.consumption_events:
-            if event["operator"] == self.name and event["timestamp"] in signal_timestamps:
-                targets[event["product"]] = targets.get(event["product"], 0.0) + event["attempted"]
+        for event in self.state.consumption_events:
+            if (
+                event["operator"] == self.name
+                and event["timestamp"] in signal_timestamps
+                and event["reason"] != "no_capability"
+            ):
+                product = event["product"]
+                self.pull_production_backlog[product] = (
+                    self.pull_production_backlog.get(product, 0.0) + event["attempted"]
+                )
 
-        # Produce against targets, preserving ABC prioritization. Each
-        # transformation draws down the remaining target for its output product.
+        for signal in market_signals:
+            self.kanban_manager.acknowledge_signal(signal["id"])
+
+    def _produce_for_backlog(self):
+        """Produce against the PULL Production Backlog (PULL).
+
+        Each product is produced up to its backlog volume (clamped by waste,
+        this tick's capacity and finished-goods headroom in
+        ``_process_waste_transformation``), preserving ABC prioritization; what
+        is produced is drawn down and the remainder carries to the next tick.
+        This keeps the bullwhip contrast ``var(production) ~= var(attempted)``
+        and the PUSH/PULL distinction crisp; PUSH retains the autonomous
+        ``_process_available_waste`` loop.
+        """
         for (input_type, output_type), transformation in self._get_prioritized_transformations():
             product = output_type.value.lower()
-            remaining = targets.get(product, 0.0)
+            remaining = self.pull_production_backlog.get(product, 0.0)
             if remaining <= 0 or self.waste_storage.get(input_type, 0) <= 0:
                 continue
             produced = self._process_waste_transformation(
                 input_type, output_type, transformation, output_cap=remaining
             )
-            targets[product] = remaining - produced
-
-        for signal in market_signals:
-            self.kanban_manager.acknowledge_signal(signal["id"])
+            self.pull_production_backlog[product] = remaining - produced
 
     def run_facility(self):
         """Main process loop for the treatment facility."""
         while True:
             current_time = self.env.now
+            demand_driven = self.inventory_policy_behavior.treatment_is_demand_driven()
+
+            if demand_driven:
+                self._absorb_market_signals(current_time)
 
             if self.apply_failure_tick():
-                yield self.env.timeout(self.processing_time)
+                yield self.env.timeout(OPERATING_TICK_DAYS)
                 continue
 
             # PUSH produces autonomously from available waste (supply-driven);
-            # PULL produces only in response to downstream consumption events
+            # PULL produces only against its backlog of consumption events
             # (demand-driven). ADR 0002, Phase E.
-            if self.inventory_policy_behavior.treatment_is_demand_driven():
-                self._produce_for_consumption_events(current_time)
+            if demand_driven:
+                self._produce_for_backlog()
             else:
                 self._process_available_waste()
 
-            yield self.env.timeout(self.processing_time)
+            yield self.env.timeout(OPERATING_TICK_DAYS)
 
     def _process_waste_transformation(self, input_type, output_type, transformation, output_cap=None):
         """Process a single waste transformation.

@@ -7,8 +7,18 @@ from config.constants import (
     WASTE_DENSITIES,
     EXPANSION_SIZE_M3,
     OVERFLOW_VOLUME_TOLERANCE_M3,
+    OPERATING_TICK_DAYS,
 )
 from models.enums import WasteType
+
+def per_tick_capacity(capacity_per_period: float, period_days: float) -> float:
+    """One operating tick's share of a capacity the region data gives per period.
+
+    ``per_tick * 365 / OPERATING_TICK_DAYS == capacity_per_period * 365 / period_days``:
+    moving an entity onto the operating clock leaves its annual capacity
+    unchanged (ADR 0020).
+    """
+    return capacity_per_period * OPERATING_TICK_DAYS / period_days
 
 def check_storage_capacity(
     current_storage: Dict[WasteType, float],

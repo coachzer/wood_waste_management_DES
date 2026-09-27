@@ -138,7 +138,8 @@ def test_mass_balance_and_kpi_read_the_same_landfill_ledger():
     executes the armed waste-side invariants (``raise_on_violation=True``), so a
     ledger that under-reports trips ``MassBalanceViolation`` before the
     comparison is reached. The ``> 0`` guard keeps the equality from closing
-    trivially on a run that never landfilled.
+    trivially on a run that never landfilled (PULL: on the daily clock
+    the PUSH combos at this seed landfill nothing, ADR 0020).
 
     Mutation checks (red): (a) in ``extract_kpis`` read ``landfill_volume``
     from ``event_history`` again -> 0 != ledger total; (b) make
@@ -153,7 +154,7 @@ def test_mass_balance_and_kpi_read_the_same_landfill_ledger():
 
     manager = SimulationManager(seed=7)
     manager.initialize_entities(
-        get_scenario_config("Baseline"), InventoryPolicy.PUSH, StockStrategy.ON_DEMAND
+        get_scenario_config("Baseline"), InventoryPolicy.PULL, StockStrategy.ON_DEMAND
     )
     manager.setup_processes(raise_on_violation=True)
     manager.run_simulation()

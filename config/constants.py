@@ -75,9 +75,21 @@ PROCESSING_CAPACITY_FRACTION = 0.8
 # Collection centers take longer to repair than other entities (days of downtime).
 COLLECTION_CENTER_DOWNTIME_DAYS = 2.0
 
+# Operating clock (ADR 0020). Treatment and collectors act once per tick. The
+# region data keeps each entity's capacity per its native period
+# (processing_time / collection_frequency days); the per-tick capacity is that
+# capacity * OPERATING_TICK_DAYS / period, so annual capacity is unchanged.
+OPERATING_TICK_DAYS = 1.0
+
 # Kanban demand signals older than this many simulation days are pruned, so
-# stale demand cannot trigger collection long after it was raised.
-KANBAN_SIGNAL_MAX_AGE_DAYS = 24.0
+# stale demand cannot trigger collection long after it was raised. Sized to the
+# slowest signal consumer's tick (ADR 0020): every consumer (treatment,
+# collectors, generators) now reads the bus once per OPERATING_TICK_DAYS, and a
+# PULL operator absorbs market signals into its backlog even while FAILED, so
+# one tick is enough for every signal to be seen once. Level-based signals
+# (treatment reorders, generator stock) are re-raised every tick, so keeping
+# older copies would only let a collector act on superseded gaps.
+KANBAN_SIGNAL_MAX_AGE_DAYS = OPERATING_TICK_DAYS
 
 # Transformation-selection scoring (ADR 0002, Phase F). The ABC priority weight
 # enters the score at this multiplier, making it the dominant term (CONTEXT.md

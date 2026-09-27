@@ -32,17 +32,6 @@ def _boom():
     raise AssertionError("signal callable must not be consulted on this path")
 
 
-class _RecordingRng:
-    """Stand-in numpy-style rng recording whether the jitter draw happened."""
-
-    def __init__(self):
-        self.calls = 0
-
-    def uniform(self, low, high):
-        self.calls += 1
-        return 2.5  # arbitrary fixed jitter
-
-
 # --- factories -------------------------------------------------------------
 
 def test_build_stock_strategy_maps_every_enum():
@@ -122,31 +111,6 @@ def test_ondemand_generator_signal_pull_needs_downstream_demand():
 
 
 # --- inventory policy ------------------------------------------------------
-
-def test_push_collection_timeout_always_jitters_without_reading_signals():
-    rng = _RecordingRng()
-    timeout = PushPolicy().collection_timeout(base_timeout=7.0, has_signals_fn=_boom, rng=rng)
-    assert timeout == pytest.approx(9.5)
-    assert rng.calls == 1
-
-
-def test_pull_collection_timeout_skips_jitter_when_signals_pending():
-    rng = _RecordingRng()
-    timeout = PullPolicy().collection_timeout(
-        base_timeout=7.0, has_signals_fn=lambda: True, rng=rng
-    )
-    assert timeout == 7.0
-    assert rng.calls == 0
-
-
-def test_pull_collection_timeout_jitters_when_no_signals():
-    rng = _RecordingRng()
-    timeout = PullPolicy().collection_timeout(
-        base_timeout=7.0, has_signals_fn=lambda: False, rng=rng
-    )
-    assert timeout == pytest.approx(9.5)
-    assert rng.calls == 1
-
 
 def test_should_process_kanban_signals_is_pull_only():
     assert PushPolicy().should_process_kanban_signals(["s"]) is False

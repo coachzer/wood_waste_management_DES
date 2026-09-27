@@ -161,6 +161,22 @@ once; the per-product production targets come from the
 request to collectors.
 _Avoid_: consumption signal, market order
 
+**PULL Production Backlog**:
+A PULL **Treatment Operator**'s per-product volume still to
+produce. Each **Market Signal** adds the `attempted` of the
+tick's **Consumption Events** for that operator (skipping
+`no_capability`). Each daily operating tick produces against it,
+subject to processing capacity, waste on hand and the
+**Finished Goods** headroom clamp, and draws it down by what was
+made. Unmet volume carries forward with no expiry, because one
+day's capacity cannot cover a week's demand. It is absorbed even
+while the operator is FAILED. Internal production state only: it
+never creates a **Consumption Event**, never changes `attempted`,
+and plays no part in **Lost Sales** or **Service Level**, which
+stay defined at the market (ADR 0020).
+_Avoid_: backorder (a Lost Sale does not come back to the market),
+order book
+
 **Demand Signal**:
 A request from a **Treatment Operator** to collectors (and
 transitively to generators) for a specific waste type and volume.

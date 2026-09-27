@@ -24,12 +24,6 @@ from models.enums import InventoryPolicy
 class InventoryPolicyProtocol(Protocol):
     """The policy-dependent decisions the process modules delegate."""
 
-    def collection_timeout(
-        self, base_timeout: float, has_signals_fn: Callable[[], bool], rng
-    ) -> float:
-        """Collector loop wait; PULL skips the jitter draw when signals are pending."""
-        ...
-
     def should_process_kanban_signals(self, kanban_signals: List) -> bool:
         """Whether the collector services kanban signals vs. volume-driven collection."""
         ...
@@ -71,9 +65,6 @@ class InventoryPolicyProtocol(Protocol):
 class PushPolicy:
     """Volume-driven: collectors ignore kanban signals, treatment produces from supply."""
 
-    def collection_timeout(self, base_timeout, has_signals_fn, rng) -> float:
-        return base_timeout + rng.uniform(1, 4)
-
     def should_process_kanban_signals(self, kanban_signals) -> bool:
         return False
 
@@ -102,11 +93,6 @@ class PushPolicy:
 
 class PullPolicy:
     """Demand-driven: collectors service kanban signals, treatment produces on consumption."""
-
-    def collection_timeout(self, base_timeout, has_signals_fn, rng) -> float:
-        if has_signals_fn():
-            return base_timeout
-        return base_timeout + rng.uniform(1, 4)
 
     def should_process_kanban_signals(self, kanban_signals) -> bool:
         return bool(kanban_signals)

@@ -14,6 +14,7 @@ from config.constants import (
     FINISHED_GOODS_BUFFER_WEEKS,
     WASTE_STORAGE_PRIMING_WEEKS,
 )
+from utils.capacity_utils import per_tick_capacity
 
 class FacilityBuilder:
     """Focused on building individual facilities - no orchestration logic"""
@@ -118,6 +119,11 @@ class FacilityBuilder:
             waste_types=waste_types_enum,
             collection_capacity=col_data.collection_capacity,
             collection_frequency=col_data.collection_frequency,
+            # Explicit, not the collector's fallback: one vehicle carries one
+            # tick's collection capacity per trip (ADR 0020).
+            vehicle_capacity=per_tick_capacity(
+                col_data.collection_capacity, col_data.collection_frequency
+            ),
             transport_cost=col_data.transport_cost,
             efficiency=col_data.efficiency,
             availability=col_data.availability,

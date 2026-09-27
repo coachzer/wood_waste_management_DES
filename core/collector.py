@@ -10,6 +10,7 @@ from config.constants import (
     ESTIMATED_COLLECTION_COST_PER_KM,
     COLLECTOR_DEGRADATION_FLOOR,
     COLLECTOR_TIME_DEGRADATION_RATE_PER_DAY,
+    OPERATING_TICK_DAYS,
 )
 from core.transport_manager import PointToPointTransport, TransportRequest
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy, normalize_waste_type
@@ -21,6 +22,7 @@ from utils.capacity_utils import (
     check_storage_capacity,
     compute_and_handle_overflow,
     split_overflow_by_type,
+    per_tick_capacity,
 )
 from core.kanban_manager import KanbanManager
 from core.strategies import build_stock_strategy, build_inventory_policy
@@ -86,9 +88,14 @@ class CollectorCompany(OperationalEntity):
         self.stock_strategy_behavior = build_stock_strategy(stock_strategy)
         self.inventory_policy_behavior = build_inventory_policy(inventory_policy)
         self.transport_manager = transport_manager or PointToPointTransport()
-        self.initial_collection_capacity = collection_capacity
-        self.collection_capacity = collection_capacity
+        # collection_capacity is the region data's volume per collection_frequency
+        # days; the collector acts every OPERATING_TICK_DAYS on that period's
+        # per-tick share, so annual capacity is independent of the tick (ADR 0020).
         self.collection_frequency = collection_frequency
+        self.initial_collection_capacity = per_tick_capacity(
+            collection_capacity, collection_frequency
+        )
+        self.collection_capacity = self.initial_collection_capacity
         self.initial_transport_cost = transport_cost
         self.transport_cost = transport_cost
         self.last_collection_cost = 0.0
@@ -99,14 +106,21 @@ class CollectorCompany(OperationalEntity):
 
         self.collection_center = CollectionCenter(
             region=self.region_type,
-            waste_storage_capacity=collection_capacity * 2,  # Double the collection capacity
+            # A stock, not a flow: two data periods of collection, not two ticks.
+            waste_storage_capacity=collection_capacity * 2,
             current_storage=dict.fromkeys(WasteType, 0.0),
             coordinates=(
                 REGION_COORDINATES[self.region_type] if self.region_type else (0.0, 0.0)
             ),
         )
 
-        self.vehicle_capacity = vehicle_capacity or collection_capacity
+        # Per-trip vehicle capacity. Callers pass it explicitly (FacilityBuilder
+        # uses the per-tick collection capacity, so each vehicle's annual
+        # throughput equals the annual collection capacity, as before the daily
+        # clock); the fallback keeps that same per-tick sizing (ADR 0020).
+        self.vehicle_capacity = (
+            vehicle_capacity if vehicle_capacity is not None else self.initial_collection_capacity
+        )
         self.vehicles = [
             Vehicle(
                 id=f"{self.name}_vehicle_{i}",
@@ -380,7 +394,7 @@ class CollectorCompany(OperationalEntity):
             self.update_efficiency()
 
             if self.apply_failure_tick():
-                yield self.env.timeout(self.collection_frequency)
+                yield self.env.timeout(OPERATING_TICK_DAYS)
                 continue
 
             # collection_capacity is the efficiency-scaled capacity; every
@@ -388,16 +402,9 @@ class CollectorCompany(OperationalEntity):
             self.collection_capacity = max(10, self.initial_collection_capacity * self.efficiency)
             self.transport_cost = min(100, self.initial_transport_cost * (2 - self.efficiency))
 
-            # PULL with pending signals skips the jitter draw; the signal read is
-            # a callable because ``get_signals`` prunes stale signals as a side
-            # effect and PUSH must not trigger it (it short-circuited before).
-            timeout = self.inventory_policy_behavior.collection_timeout(
-                base_timeout=self.collection_frequency,
-                has_signals_fn=lambda: bool(self.kanban_manager.get_signals(self.env.now)),
-                rng=self.rng,
-            )
-
-            yield self.env.timeout(timeout)
+            # No cadence jitter on the daily clock (ADR 0020): the old
+            # uniform(1, 4)-day jitter would stretch a 1-day tick to 2-5 days.
+            yield self.env.timeout(OPERATING_TICK_DAYS)
 
             if not self.should_collect():
                 continue
