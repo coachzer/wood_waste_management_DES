@@ -9,7 +9,7 @@
 ADR 0004 specified a "stage-by-stage diagnostic" beside the anchored headline: Treatment stage =
 `CV²(treatment inbound)/CV²(consumption)`, Collector stage = `CV²(collector inbound)/CV²(treatment
 inbound)`, and it claimed that "the stage ratios telescope to the anchored values." Implementing issue 04
-(`.scratch/bullwhip/issues/04-stage-by-stage-diagnostic.md`) showed that this claim does not say which
+(`.scratch/done/bullwhip/issues/04-stage-by-stage-diagnostic.md`) showed that this claim does not say which
 *aggregation level* it means, and it is true at only one of the two candidate levels. This ADR fixes which
 one and records why. It refines ADR 0004's stage-diagnostic clause and leaves the rest of that decision in
 place.

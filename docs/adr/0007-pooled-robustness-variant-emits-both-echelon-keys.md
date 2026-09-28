@@ -7,7 +7,7 @@
 
 ADR 0004 specified a "pooled robustness check": the anchored throughput-bullwhip ratios recomputed on a
 system-pooled per-echelon series (all nodes summed before CV²), as a conservative lower bound on the
-per-node volume-weighted headline. Issue 05 (`.scratch/bullwhip/issues/05-pooled-robustness-variant.md`)
+per-node volume-weighted headline. Issue 05 (`.scratch/done/bullwhip/issues/05-pooled-robustness-variant.md`)
 implements it as `bullwhip.treatment_anchored_pooled` and `bullwhip.collector_anchored_pooled`. Issue 04
 had already introduced the pooled per-echelon series and the `stage_bullwhip` diagnostic (ADR 0006), which
 makes one of issue 05's two deliverables numerically redundant. This ADR records how the overlap is

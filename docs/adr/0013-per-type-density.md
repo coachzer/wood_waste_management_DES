@@ -16,7 +16,7 @@ init. `config/constants.py::DENSITY = 0.6` was a single flat 600 kg/m3 used to d
 emissions and landfill cost were computed at a flat 600 kg/m3 whatever the actual stream density. That is
 up to about 3x too high for low-density waste (sawdust, 200 kg/m3) and wrong for every stream not at 600.
 The volume-weighted effective density across all 12 regions is about 462 kg/m3, not 600 (ticket
-`.scratch/utils-cleanup/issues/07-unify-density-model.md`).
+`.scratch/done/utils-cleanup/issues/07-unify-density-model.md`).
 
 A related effort to restate currency and source cost parameters (ticket
 `.scratch/currency-consistency/issue-01-usd-model-eur-sources.md`) was investigated at the same time,
