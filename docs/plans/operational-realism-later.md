@@ -19,10 +19,12 @@ Carried over from the stage-1 task list (ADR 0020, daily operating clock).
   from "shortfalls no longer forgotten" in the PULL gains (ADR 0020 a).
 - **Transport distance mix.** Per-m³ transport emissions fell 7.5-17% under the daily clock,
   so average haul distance per m³ fell. The mechanism is not traced.
-- **Fixed per-trip `transport_cost`.** It is charged on empty trips too. Daily trips raise its
-  per-m³ share to $0.04-0.30/m³. Decide whether a fixed charge per trip is the intended cost
-  model.
-- **`TreatmentOperator.utilization_history`.** It is written but never read; remove it or use
-  it.
-- **Collector `max(10, ...)` capacity floor.** It never binds with the current data (minimum
-  750 m³/day); remove it or justify it.
+- **Fixed per-trip `transport_cost`.** Charged on loaded trips only; empty trips cost nothing
+  in the KPI. Daily trips raise its per-m³ share to at most $0.04-0.30/m³ (probe counts empty
+  trips too). Decide whether a fixed charge per trip, and free empty trips, are the intended
+  cost model.
+- **Repositioning ignores vehicle capacity.** `PointToPointTransport._create_transport` loads
+  the full `request.volume` onto one vehicle. Vehicle capacity is now one day of collection,
+  so a repositioning load can be many times it. Fold into stage 3.
+- **Test gaps.** No test pins the `no_capability` skip in `_absorb_market_signals` or
+  `KANBAN_SIGNAL_MAX_AGE_DAYS = OPERATING_TICK_DAYS`; both mutations survive the suite.

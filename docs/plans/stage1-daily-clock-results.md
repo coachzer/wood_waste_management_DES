@@ -48,7 +48,8 @@ it. This confound is not separated (no no-carry control run).
 Per-m3 transport cost fell 2-11% and per-m3 transport emissions fell 7.5-17%. Emissions carry
 no fixed charge, so the average haul got shorter per m3 (a distance/density mix effect,
 mechanism not traced). The fixed per-trip charge did rise as expected. Probe at seed 123456
-(`.scratch/trip_cost_probe.py`, sums `transport_cost` over dispatched collection trips):
+(`.scratch/trip_cost_probe.py`, sums `transport_cost` over dispatched collection trips,
+empty trips included; the KPI charges loaded trips only, so the fixed columns are upper bounds):
 
 | combo | trips ref | trips new | fixed $/m3 ref | fixed $/m3 new | total $/m3 ref | total $/m3 new |
 |---|---|---|---|---|---|---|

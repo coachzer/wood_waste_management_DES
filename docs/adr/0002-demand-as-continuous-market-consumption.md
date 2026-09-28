@@ -10,6 +10,14 @@
 > relocated to `instrumentation/` and `analysis/` by the clean-monitoring refactor. **Trust the code and
 > git history over this prose where they disagree.** Body left intact per the append-only doc rule.
 
+> Partially superseded by ADR 0020 (daily operating clock): treatment no longer wakes every
+> `processing_time` (24 days) but every `OPERATING_TICK_DAYS` (1 day), and the market-signal TTL is
+> 1 day, not 24. The PULL passages below that rest on the 24-day cadence no longer hold: a PULL
+> operator now carries unmet `attempted` forward in a **PULL Production Backlog** (the per-product
+> budget, option (b), which the cadence-contingency note said to revisit once the loop became finer
+> than the consumption tick), and it absorbs Market Signals even while FAILED, so a missed tick no
+> longer expires silently. Lost Sales still do not backlog at the market.
+
 The original model treated national demand (100k m3/year across MDF, particle board, OSB) as a one-shot ceiling: once cumulative production crossed the target, `get_unmet_demands()` returned zero and all processors idled for the remainder of the 365-day run. Adding more waste types with transformation pathways caused the ceiling to be hit by day ~100, making the simulation useless for the remaining 265 days.
 
 We replaced this with a market consumption process: a SimPy process that fires weekly, removes products from treatment operators' `product_to_sell` storage at a seasonally-modulated rate, and records fulfilled vs unfulfilled consumption. The annual demand envelope is the same 100k m3 — what changed is that it's consumed continuously over the year rather than checked as a cumulative ceiling.

@@ -54,8 +54,7 @@ class OperationalEntity:
 
         Failures run on their own SimPy process, decoupled from the entity's
         main loop, so ``FailureConfig.probability`` is a true daily rate whatever
-        the loop cadence (treatment wakes every 24 days, collectors every ~2
-        weeks). The main loop only reads the resulting status.
+        the loop cadence. The main loop only reads the resulting status.
         """
         if self.failure_config:
             env.process(self._failure_process(env))

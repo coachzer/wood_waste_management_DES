@@ -55,7 +55,8 @@ it.
   efficiency)`) applies to that per-day value. The `max(10, ...)` floor never binds with the
   current data. The smallest per-day value is 30,000 / 12 * 0.3 = 750 m³: the smallest
   region `collection_capacity` at the 0.3 efficiency clamp in `update_efficiency`. FAILED
-  ticks are skipped before the recompute.
+  ticks are skipped before the recompute. (The floor was later removed as dead code; the 0.3
+  efficiency clamp is the only lower bound.)
 - **Collection-center storage** stays `2 * collection_capacity` at the data-period value. It
   is a stock, not a flow, and shrinking it 12× would turn the change into a storage cut.
 
@@ -134,8 +135,9 @@ item (collector fleets).
 - Collection emissions are `volume * distance * factor`, so per m³ they depend on the
   distance mix only, not on trip count.
 - The variable cost (`distance * COLLECTION_COST_PER_KM_PER_M3 * volume`) is per m³ as well.
-- `transport_cost` is a **fixed per-trip charge** (capped at 100), charged on loaded trips and
-  also on empty trips.
+- `transport_cost` is a **fixed per-trip charge** (capped at 100). Only loaded trips record it:
+  an empty trip (nothing collectible on arrival) never reaches `update_entity_costs`, so it
+  costs nothing in the `collection_transport_cost` KPI.
 - Daily ticks mean about 12× more trips carrying about 1/12 the volume each, so the fixed
   component per m³ rises.
 
@@ -152,9 +154,8 @@ stage-1 comparison (see Consequences).
 - RECOVERING duration and the ON_DEMAND collector adaptive threshold: measured in simulation
   days, not ticks, so unaffected.
 - Collection-center storage: see above; not rescaled.
-- `utilization_history` (window of 10 samples) now spans 10 days instead of about 10 cycles.
-  It is written but never read (checked by grep of `core/` and `analysis/`), so it has no
-  effect. Noted for later.
+- Treatment's `utilization_history` (window of 10 samples) was written but never read, so the
+  tick change could not affect it. Removed as dead code after this ADR.
 
 ## Consequences
 
