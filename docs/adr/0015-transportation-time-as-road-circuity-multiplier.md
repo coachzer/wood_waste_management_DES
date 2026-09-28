@@ -3,6 +3,10 @@
 Date: 2026-06-10
 Status: accepted
 
+> NOTE (2026-09-28): the numbering remark in Consequences is out of date. ADR 0013 (per-type density) was
+> accepted, and ADR 0012 (frozen-oracle reproduction) was recorded and then deleted in `2a48904`
+> (2026-06-09) along with the freeze infrastructure. No 0012 file exists.
+
 ## Context
 
 The scenario parameter `transportation_time` was passed through `ScenarioConfig`

@@ -1,5 +1,8 @@
 # Summary.csv confidence intervals use Student-t uniformly
 
+> NOTE (2026-09-28): the `monitoring/` package no longer exists. `monitoring/paired_comparison.py` is now
+> `analysis/paired_comparison.py`. The decision is unchanged.
+
 When we added the Monte Carlo `bullwhip` KPIs to per-combo `summary.csv` (issue 06),
 we switched every CI in that file, both the marginal KPIs and the new `bullwhip.*`
 rows, from the earlier `z = 1.96` normal approximation to a Student-t interval

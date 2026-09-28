@@ -10,6 +10,12 @@
 > history disagree with this prose, trust the code and git history.** The body keeps its original meaning
 > under the append-only doc rule.
 
+> NOTE (2026-09-28): the 2026-06-07 note above is wrong about Candidate 2. Commit `af6b942` (2026-06-02,
+> "Replace SimulationState singleton with injection") adopted it before that note was written.
+> `SimulationState` is no longer a singleton. `models/state.py` says each run owns an independent
+> instance, and the `_instance = None` reset and its CLAUDE.md "Known Failure Modes" entry are gone.
+> Candidate 2 is done, not rejected.
+
 An architecture review (2026-05-22, archived as `Architecture review — wood_waste_management_DES.htm` and captured in `.scratch/architecture-deepening/PRD.md`) applied Ousterhout's *A Philosophy of Software Design* to the codebase (about 5,600 LOC, 35 files). It found six structural weaknesses:
 
 - three shallow `*_utils.py` modules that move complexity around instead of reducing it;

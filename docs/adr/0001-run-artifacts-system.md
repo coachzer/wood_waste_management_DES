@@ -1,5 +1,11 @@
 # Self-contained run artifact directories
 
+> NOTE (2026-09-28): this design was never implemented. No code writes to `outputs/runs/`. Baseline runs
+> still write to `outputs/baseline/{scenario}/{policy}__{strategy}/`, and grid mode writes to `plots/`.
+> Plans 009-011 (`plans/README.md`) carry a revised version of this layout, with a manifest and a
+> `kpis.csv`, and are still TODO. Treat this ADR as accepted but not implemented. The body keeps its
+> original meaning under the append-only doc rule.
+
 Every `main.py` invocation writes all its outputs into a single directory under `outputs/runs/YYYY-MM-DD/<run_name>/`. We chose self-contained directories over the previous scattered layout (`outputs/baseline/`, `plots/`, ad-hoc archives) because a run that is a single folder can be globbed, copied or deleted in one step, which makes downstream analysis, comparison and cleanup simple.
 
 ## Considered options

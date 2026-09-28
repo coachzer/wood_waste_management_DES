@@ -1,5 +1,10 @@
 # Treatment-echelon inbound flow is collector intake, not the cross-region transport log
 
+> NOTE (2026-09-28): the verification record this ADR cites, `docs/adr/0009-finding-b-verification.md`,
+> was deleted on purpose in `2a48904` (2026-06-09). That commit called it a throwaway record that
+> collided with this ADR's number. Read it from git history with
+> `git show d97c1d8:docs/adr/0009-finding-b-verification.md`.
+
 ADR 0004 defined the throughput bullwhip on "physical delivered flow from `SimulationState.transport_flows`"
 and named the `collector -> treatment` link in that log as the Treatment echelon. The issue-09 sanity gate
 comparing empirical results with theory, and the diagnosis that followed, showed that this premise is wrong

@@ -3,6 +3,12 @@
 Date: 2026-06-04
 Status: accepted
 
+> NOTE (2026-09-28): the `monitoring/` package no longer exists. `_GENERIC_NAMESPACES` is now a single
+> tuple in `analysis/_kpi_shared.py`. Both `analysis/baseline_aggregate.py` and
+> `analysis/paired_comparison.py` import it, so the "two tuples must match" rule below no longer
+> applies. The golden `--mode additive` gate it mentions was
+> removed when the freeze regime was abandoned (2026-06-09). The decision is unchanged.
+
 ## Context
 
 C11 (P4 circular-economy depth) adds an avoided-emissions KPI. It counts the GHG emissions the
