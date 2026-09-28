@@ -80,8 +80,6 @@ class TreatmentOperator(OperationalEntity):
         self.env = env
         self.name = name
         self.facility_type = "treatment"
-        self.utilization_history = []
-        self.utilization_window = 10
         self.processing_time = processing_time
         self.waste_storage_capacity = waste_storage_capacity
         self.energy_consumption = energy_consumption
@@ -490,7 +488,6 @@ class TreatmentOperator(OperationalEntity):
             logging.warning(f"[{self.name}] Unclassified output: {output_amount:.2f} m³ of {output_type.value} from {input_type.value}")
 
         self._track_treatment_properties(amount_to_process, transformation)
-        self._update_utilization_metrics(amount_to_process)
 
         return output_amount
 
@@ -541,16 +538,6 @@ class TreatmentOperator(OperationalEntity):
             kgco2e=environmental_impact_emissions,
             timestamp=timestamp,
         )
-
-    def _update_utilization_metrics(self, amount_to_process):
-        """Update utilization history for capacity management"""
-        if self.processing_capacity <= 0:
-            current_utilization = 0.0
-        else:
-            current_utilization = amount_to_process / self.processing_capacity
-        self.utilization_history.append(current_utilization)
-        if len(self.utilization_history) > self.utilization_window:
-            self.utilization_history.pop(0)
 
     def request_waste_directly(self, required_waste: float, input_waste_types: List[WasteType]) -> Dict[WasteType, float]:
         """Request waste with local/cross-region routing split"""
