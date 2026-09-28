@@ -61,9 +61,7 @@ operator's aggregate buffer is their sum. **Initial Inventory**
 primes each product at 50% (two weeks). Production is clamped
 per output type to that product's remaining headroom — a
 saturated OSB buffer throttles OSB transformations even when MDF
-has headroom. Replaces the prior two-buffer `product_to_sell` +
-`product_storage` design; the secondary buffer had no drain path
-and was always vestigial.
+has headroom.
 _Avoid_: product_to_sell (old name),
 inventory (too generic — could mean waste_storage too)
 
@@ -262,11 +260,14 @@ committed/`total_generated` (the floor is on potential
 generation — committed carries a policy signal)
 
 **Seasonal Pattern**:
-A sinusoidal factor `1 + 0.2 * sin(2*pi*t/T)` applied to both
-waste generation rates and market consumption rates. Peaks in
-summer (more construction activity), troughs in winter. Shared
-between generators and consumption so that supply and demand are
-driven by the same underlying seasonality.
+A quarter-discretized sinusoidal factor
+`1 + 0.2 * sin(2*pi*q/4)`, where `q` is the 0-based quarter of the
+365-day year (`utils/seasonality.py`). It is a step function, not
+a continuous curve: 1.0 in Q1 (days 0-90), 1.2 in Q2 (peak),
+1.0 in Q3, 0.8 in Q4 (trough), with jumps at the quarter
+boundaries. Applied to both waste generation rates and market
+consumption rates, so supply and demand are driven by the same
+underlying seasonality.
 _Avoid_: seasonal index
 (ambiguous — could refer to the array index or the factor value)
 

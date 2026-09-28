@@ -31,10 +31,8 @@ Outputs: `outputs/baseline/{scenario}/{policy}__{strategy}/`. MFA visualizations
 
 ## Known Failure Modes
 
-- **Reproducibility — YOU MUST sort enum sets.** A given seed must yield byte-identical run JSONs across separate process invocations. **YOU MUST `sorted(..., key=lambda e: e.value)` any set of `WasteType`/`OutputType` before iterating on a path that drives ordered work** (collection allocation, signal creation, storage priming); pass an ordered `List`, never re-wrap in a `set`. (Enum members hash by `id()`, which `PYTHONHASHSEED` does not control, so an unsorted set-of-enums iterates in per-process memory order and silently breaks reproducibility.) Backstops: `tests/test_enum_set_ordering.py`, `tests/test_determinism.py`.
-- **Singleton reset**: `SimulationState._instance = None` in `SimulationManager.__init__()` gives each run fresh state. Stale entity references mean this reset was skipped.
-- **Pull policy deadlock**: Pull requires treatment to trigger collection; if treatment never requests waste, collectors stall. Verify `TreatmentOperator.demand` is set via `_apply_stock_strategy_to_demand_calculation()`.
-- **Unused artifact**: The standalone-generated `demand_with_abc.json` at repo root is NOT consumed by the simulation — don't wire logic to it.
+- **Reproducibility — sort enum sets.** A given seed must yield byte-identical run JSONs across separate process invocations. Before iterating a set of `WasteType`/`OutputType` on a path that drives ordered work (collection allocation, signal creation, storage priming), `sorted(..., key=lambda e: e.value)` it and pass an ordered `List`; don't re-wrap it in a `set`. (Enum members hash by `id()`, which `PYTHONHASHSEED` does not control, so an unsorted set-of-enums iterates in per-process memory order and silently breaks reproducibility.) Backstops: `tests/test_enum_set_ordering.py`, `tests/test_determinism.py`.
+- **Pull policy deadlock**: Pull requires treatment to trigger collection; if treatment never requests waste, collectors stall. Check that `TreatmentOperator._should_trigger_collection_based_on_strategy()` fires (threshold logic in `core/strategies/stock_strategy.py`).
 - **KPIs**: Extracted via `analysis/baseline_aggregate.py::extract_kpis()` from monitor history dicts.
 
 ## Key Conventions
@@ -53,6 +51,6 @@ Outputs: `outputs/baseline/{scenario}/{policy}__{strategy}/`. MFA visualizations
 ## Adding New Waste Types or Products
 
 1. Add enum to `models/enums.py::WasteType` (EWC format) or `OutputType`
-2. Add transformation in `FacilityBuilder._get_base_transformations()` and `_get_appropriate_mappings()`
-3. Update `data/demand.json` and `SimulationState` product dicts if new output
+2. Add the efficiency/energy row to `TRANSFORMATION_CATALOGUE` and the output pathways to `WASTE_TO_OUTPUT_TYPES` in `models/transformations.py`
+3. For a new output, update `data/demand.json` and the product specifications in `models/products.py`
 4. Add waste rates to relevant `data/regions/*.json` generator entries
