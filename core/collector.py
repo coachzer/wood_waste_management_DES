@@ -399,7 +399,7 @@ class CollectorCompany(OperationalEntity):
 
             # collection_capacity is the efficiency-scaled capacity; every
             # consumer reads it directly so efficiency is applied exactly once.
-            self.collection_capacity = max(10, self.initial_collection_capacity * self.efficiency)
+            self.collection_capacity = self.initial_collection_capacity * self.efficiency
             self.transport_cost = min(100, self.initial_transport_cost * (2 - self.efficiency))
 
             # No cadence jitter on the daily clock (ADR 0020): the old
