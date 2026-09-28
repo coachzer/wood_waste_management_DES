@@ -1,13 +1,13 @@
-# Domain Docs
+# Domain docs
 
-How the engineering skills should consume this repo's domain documentation when exploring the codebase.
+How the engineering skills use this repo's domain documentation when they explore the codebase.
 
 ## Before exploring, read these
 
 - **`CONTEXT.md`** at the repo root, if it exists.
-- **`docs/adr/`** — read ADRs that touch the area you're about to work in.
+- **`docs/adr/`**. Read the ADRs that touch the area you are about to work in.
 
-If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The producer skill (`/grill-with-docs`) creates them lazily when terms or decisions actually get resolved.
+If any of these files is missing, **proceed silently** and carry on with the task. Leave their creation to the producer skill. The producer skill (`/grill-with-docs`) creates them when a term or decision gets resolved.
 
 ## File structure
 
@@ -19,17 +19,19 @@ Single-context repo:
 ├── docs/adr/
 │   ├── 0001-*.md
 │   └── 0002-*.md
-└── src/
+├── core/
+├── models/
+└── ...
 ```
 
 ## Use the glossary's vocabulary
 
-When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`. Don't drift to synonyms the glossary explicitly avoids.
+When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`. Use the glossary term itself, never a synonym listed under its `_Avoid_` line.
 
-If the concept you need isn't in the glossary yet, that's a signal — either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/grill-with-docs`).
+If the concept you need isn't in the glossary yet, ask why. Either you are inventing language the project does not use, so reconsider, or there is a real gap, so note it for `/grill-with-docs`.
 
 ## Flag ADR conflicts
 
-If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
+If your output contradicts an existing ADR, say so openly, for example:
 
-> _Contradicts ADR-0007 — but worth reopening because..._
+> _Contradicts ADR-0007, but worth reopening because..._

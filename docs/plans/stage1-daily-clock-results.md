@@ -1,4 +1,4 @@
-# Stage 1 results — daily operating clock (ADR 0020)
+# Stage 1 results for the daily operating clock (ADR 0020)
 
 Date: 2026-09-28. Baseline scenario, 100 CRN replications per combo (seeds 123456..123555),
 marginal 95% t-CIs per combo (not paired-t).

@@ -1,4 +1,4 @@
-# Operational realism — later stages and follow-ups
+# Later stages and follow-ups for operational realism
 
 Carried over from the stage-1 task list (ADR 0020, daily operating clock).
 

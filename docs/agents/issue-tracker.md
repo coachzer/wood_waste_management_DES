@@ -1,4 +1,4 @@
-# Issue tracker: Local Markdown
+# Local markdown issue tracker
 
 Issues and PRDs for this repo live as markdown files in `.scratch/`.
 
