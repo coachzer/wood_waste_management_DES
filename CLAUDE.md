@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for Claude Code working in this repository. The domain glossary is @CONTEXT.md. Use its terms exactly.
+Guidance for Claude Code working in this repository. Use the terms of the domain glossary exactly as defined in @CONTEXT.md
 
 ## Project overview
 
