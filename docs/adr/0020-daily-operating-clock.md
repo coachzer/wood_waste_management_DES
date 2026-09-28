@@ -1,4 +1,4 @@
-# 0020 — Treatment and collectors run on a daily operating clock at unchanged annual capacity
+# Treatment and collectors run on a daily operating clock at unchanged annual capacity
 
 Date: 2026-09-28
 Status: accepted
