@@ -33,7 +33,7 @@ Baseline outputs go to `outputs/baseline/{scenario}/{policy}__{strategy}/`. MFA 
 - **Seeding.** `run_single_simulation()` calls `random.seed(s)` and `np.random.seed(s)`. Per-entity RNGs come from `np.random.SeedSequence`, passed from `SimulationManager` to `FacilityBuilder` to each entity.
 - **Waste types.** EWC codes are the enum values (e.g., `WasteType.CONSTRUCTION_WOOD_17_02_01 = "17 02 01"`). Transformations are keyed by `(WasteType, OutputType)`.
 - **Storage overflow.** Waste above `waste_storage_capacity` goes to landfill, tracked in `WasteMonitor`. Treatment can expand storage (`EXPANSION_SIZE_M3 = 500`).
-- **Region data.** One JSON per region in `data/regions/`. Distances come from `models/distances.py::get_distance()`.
+- **Region data.** One JSON per region in `data/regions/`. Generation rates are rebuilt from SURS by `data/calibrate_generation_rates.py` (ADR 0030), so do not edit them by hand. Distances come from `models/distances.py::get_distance()`.
 - **Constants.** All live in `config/constants.py`. Other modules name a constant from there instead of a literal number.
 - **Variable naming.** Verbose and descriptive, never abbreviated (`waste_storage_capacity`, not `wsc`).
 - **No emojis** in code or comments.
@@ -53,4 +53,4 @@ Baseline outputs go to `outputs/baseline/{scenario}/{policy}__{strategy}/`. MFA 
 1. Add the enum to `models/enums.py::WasteType` (EWC format) or `OutputType`.
 2. Add the efficiency/energy row to `TRANSFORMATION_CATALOGUE` and the output pathways to `WASTE_TO_OUTPUT_TYPES` in `models/transformations.py`.
 3. For a new output, update `data/demand.json` and the product specifications in `models/products.py`.
-4. Add waste rates to the relevant generator entries in `data/regions/*.json`.
+4. Rerun `python -m data.calibrate_generation_rates <green-up-project dir> --write` to pick up SURS rates for the new code.
