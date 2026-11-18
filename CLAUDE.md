@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for Claude Code working in this repository. Use the terms of the domain glossary exactly as defined in @CONTEXT.md
+Use the terms of the domain glossary exactly as defined in @CONTEXT.md
 
 ## Project overview
 
@@ -9,34 +9,26 @@ SimPy discrete event simulation of wood waste management in Slovenia. Generators
 ## Running simulations
 
 ```bash
-python main.py                                        # Grid mode: 1 run per policy×strategy combo
-python main.py --mode baseline --replications 100     # Monte Carlo: 100 seeds per combo
-python main.py --mode baseline --scenario Baseline --replications 50  # Single scenario
-python -m analysis.paired_comparison outputs/baseline/Baseline        # Post-hoc paired (CRN) stats
+.venv/bin/python main.py                                        # Grid mode: 1 run per policy×strategy combo
+.venv/bin/python main.py --mode baseline --replications 100     # Monte Carlo: 100 seeds per combo
+.venv/bin/python main.py --mode baseline --scenario Baseline --replications 50  # Single scenario
+.venv/bin/python -m analysis.paired_comparison outputs/baseline/Baseline        # Post-hoc paired (CRN) stats
 ```
 
 Baseline outputs go to `outputs/baseline/{scenario}/{policy}__{strategy}/`. MFA visualizations (Plotly HTML) go to `plots/`.
 
 **Seeding is Common Random Numbers (CRN).** Baseline replication `i` uses `seed = base_seed + i` for every policy×strategy combo, so all combos see the same waste and failure draws. `summary.csv` reports marginal per-combo CIs. `analysis/paired_comparison.py` uses the pairing (per-replication KPI differences, paired-t CIs, per-metric Holm-Bonferroni) and writes `{scenario}/paired_comparison.csv` after each baseline run.
 
-## Architecture
-
-**Three-layer pipeline.** `WasteGenerator` → `CollectorCompany` → `TreatmentOperator`, all in `core/`. Each inherits `OperationalEntity` (`models/data_classes.py`), which provides failure injection via `FailureConfig` and a three-state lifecycle: `OPERATIONAL → FAILED → RECOVERING`.
-
-**Two entity layers.** `models/entities.py` holds data-only dataclasses loaded from JSON. `core/*.py` holds the SimPy process classes that run in the simulation. Construction order: `SimulationManager.initialize_entities()` → `FacilityDataManager.load_data()` → `FacilityBuilder` (config injected as `ScenarioConfig` → `to_uncertainty_set()`) → `SimulationState.initialize()`. Scenarios live in `SCENARIO_CONFIGS` (`config/base_config.py`).
-
-**Kanban/pull coordination.** `KanbanManager` is active in PULL mode. Treatment signals collectors and collectors signal generators. Signals are consumed in insertion order, with no priority weighting. In PUSH mode, generators emit signals but collectors ignore them and collect by volume.
-
-**ABC prioritization.** `BiogenicCarbonABCAnalyzer` (`core/abc_analysis.py`) ranks products into A/B/C classes (priority weights 1.0/0.7/0.4), which `TreatmentOperator._get_prioritized_transformations()` uses. It is always on, with no enable flag and no per-scenario setting. Inputs are `data/demand.json` and `models/products.py`.
-
 ## Known failure modes
 
 - **Reproducibility: sort enum sets.** A given seed must yield byte-identical run JSONs across separate process invocations. Before iterating a set of `WasteType`/`OutputType` on a path that drives ordered work (collection allocation, signal creation, storage priming), `sorted(..., key=lambda e: e.value)` it and pass an ordered `List`. Keep it a `List` downstream. Enum members hash by `id()`, which `PYTHONHASHSEED` does not control, so an unsorted set of enums iterates in per-process memory order and breaks reproducibility without any error. Backstops are `tests/test_enum_set_ordering.py` and `tests/test_determinism.py`.
 - **Pull policy deadlock.** Under pull, treatment must trigger collection. If treatment never requests waste, collectors stall. Check that `TreatmentOperator._should_trigger_collection_based_on_strategy()` fires (threshold logic is in `core/strategies/stock_strategy.py`).
-- **KPIs.** `analysis/baseline_aggregate.py::extract_kpis()` extracts them from monitor history dicts.
+- **PUSH ignores signals.** In PUSH mode, generators still emit Kanban signals but collectors ignore them and collect by volume. Under PULL, signals are consumed in insertion order with no priority weighting.
+- **ABC prioritization is always on.** `BiogenicCarbonABCAnalyzer` (`core/abc_analysis.py`) feeds `TreatmentOperator._get_prioritized_transformations()`. It has no enable flag and no per-scenario setting.
 
 ## Key conventions
 
+- **KPIs** are extracted in `analysis/baseline_aggregate.py::extract_kpis()`.
 - **Units.** Waste volumes are in m³, converted from tonnes via `utils/unit_conversion.py`. Simulation time is in days, 0 to 365.
 - **Seeding.** `run_single_simulation()` calls `random.seed(s)` and `np.random.seed(s)`. Per-entity RNGs come from `np.random.SeedSequence`, passed from `SimulationManager` to `FacilityBuilder` to each entity.
 - **Waste types.** EWC codes are the enum values (e.g., `WasteType.CONSTRUCTION_WOOD_17_02_01 = "17 02 01"`). Transformations are keyed by `(WasteType, OutputType)`.
@@ -47,6 +39,10 @@ Baseline outputs go to `outputs/baseline/{scenario}/{policy}__{strategy}/`. MFA 
 - **No emojis** in code or comments.
 - **Surgical changes.** Touch only what the task needs. For adjacent working code that could be refactored, open a ticket. If a review check fails, stop and open an issue instead of expanding scope.
 - **Commits.** `type(scope): Imperative subject`, under 72 chars. Types: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`. Scope is optional (a module name such as `treatment`). The subject verb says what changed and does not repeat the type. The body, after a blank line, explains *why*, not *what*. A `feat`, `fix` or `refactor` that can change simulation results needs an `Affects: <what shifted>` trailer. A commit that needs a semicolon is probably two commits. `.githooks/commit-msg` enforces this; after cloning, run `git config core.hooksPath .githooks`.
+
+## Done means
+
+`.venv/bin/python -m pytest` passes, including `tests/test_determinism.py` and `tests/test_enum_set_ordering.py`. The suite is slow (290 tests, about 70 s just to collect), so run it in the background.
 
 ## Ask first
 
