@@ -28,6 +28,8 @@ class FakeCollector:
         self.kanban_manager = kanban_manager
         self.env = SimpleNamespace(now=1.0)
 
+    _signals_in_dispatch_order = CollectorCompany._signals_in_dispatch_order
+
     def _get_prioritized_generators(self):
         return []
 

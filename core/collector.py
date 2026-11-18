@@ -399,11 +399,36 @@ class CollectorCompany(OperationalEntity):
             else:
                 self._unified_collection_strategy()
 
-    def _process_kanban_signals(self, signals):
-        """Process signals with acknowledgment and cross-region support"""
+    def _signals_in_dispatch_order(self, signals):
+        """Order signals for the vehicles this tick (ADR 0031).
+
+        Treatment signals go first, largest volume first, so tiny orders do not use up the
+        vehicles. Treatment re-posts its full gap every tick, so only the newest signal per
+        operator and waste type is live; older ones are acknowledged here.
+        """
+        newest_treatment_signals = {}
+        other_signals = []
         for signal in signals:
             if _is_market_signal(signal) or _is_addressed_to_other_region(signal, self.region_type):
                 continue
+            if signal.get('source_type') != "treatment":
+                other_signals.append(signal)
+                continue
+            key = (signal['source_id'], signal['waste_type'])
+            previous = newest_treatment_signals.get(key)
+            if previous is not None:
+                older, signal = sorted([previous, signal], key=lambda candidate: candidate['timestamp'])
+                self.kanban_manager.acknowledge_signal(older['id'])
+            newest_treatment_signals[key] = signal
+        by_volume_descending = lambda signal: -(signal.get('volume') or 0.0)
+        return (
+            sorted(newest_treatment_signals.values(), key=by_volume_descending)
+            + sorted(other_signals, key=by_volume_descending)
+        )
+
+    def _process_kanban_signals(self, signals):
+        """Process signals with acknowledgment and cross-region support"""
+        for signal in self._signals_in_dispatch_order(signals):
 
             waste_type_enum = signal['waste_type']
 
