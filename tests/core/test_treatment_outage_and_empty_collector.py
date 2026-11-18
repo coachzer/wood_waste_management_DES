@@ -18,8 +18,8 @@ from tests.core.test_operating_clock import CONSTRUCTION, _treatment
 
 def _count_collection_calls(operator, env, days):
     calls = []
-    operator._should_trigger_collection_based_on_strategy = lambda: True
-    operator.trigger_collection = lambda explicit_collection_volume: calls.append(env.now)
+    operator._order_volumes_by_waste_type = lambda: {CONSTRUCTION: 10.0}
+    operator.trigger_collection = lambda order_volumes: calls.append(env.now)
     env.run(until=days)
     return calls
 

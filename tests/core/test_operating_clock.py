@@ -61,6 +61,7 @@ def _treatment(env, inventory_policy=InventoryPolicy.PUSH, state=None, kanban_ma
         kanban_manager=kanban_manager,
         finished_goods_capacity={OutputType.OSB: 10_000.0, OutputType.PARTICLE_BOARD: 10_000.0},
         initial_waste_storage={CONSTRUCTION: 20_000.0},
+        order_share_by_waste_type={CONSTRUCTION: 1.0},
         stock_strategy=StockStrategy.REORDER_50,
         inventory_policy=inventory_policy,
         state=state or SimulationState(),
@@ -204,9 +205,9 @@ def test_treatment_production_and_reorder_polling_run_every_tick():
 
     def record_reorder_poll():
         reorder_times.append(env.now)
-        return False
+        return {}
 
-    operator._should_trigger_collection_based_on_strategy = record_reorder_poll
+    operator._order_volumes_by_waste_type = record_reorder_poll
 
     env.run(until=10)
 

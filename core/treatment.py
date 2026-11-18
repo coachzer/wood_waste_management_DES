@@ -46,6 +46,7 @@ class TreatmentOperator(OperationalEntity):
         kanban_manager: KanbanManager = None,
         finished_goods_capacity: Optional[Dict[OutputType, float]] = None,
         initial_waste_storage: Optional[Dict[WasteType, float]] = None,
+        order_share_by_waste_type: Optional[Dict[WasteType, float]] = None,
         market_share: float = 0.0,
         stock_strategy: StockStrategy = None,
         inventory_policy: InventoryPolicy = None,
@@ -92,6 +93,9 @@ class TreatmentOperator(OperationalEntity):
         self.region = region
         self.region_type = RegionType[region.upper().replace('-', '_')]
         self.market_share = market_share
+        if order_share_by_waste_type is None:
+            raise ValueError("order_share_by_waste_type is required for TreatmentOperator (ADR 0026)")
+        self.order_share_by_waste_type = dict(order_share_by_waste_type)
         self._waste_storage = dict.fromkeys(WasteType, 0.0)
         if initial_waste_storage:
             for waste_type, volume in initial_waste_storage.items():
@@ -179,28 +183,21 @@ class TreatmentOperator(OperationalEntity):
             for item in classifications
         }
 
-    def _should_trigger_collection_based_on_strategy(self) -> bool:
-        """Determine if collection should fire, based purely on waste-storage state.
+    def _order_volumes_by_waste_type(self) -> Dict[WasteType, float]:
+        """Multi-item (s, S) order: one order-up-to level per input type (ADR 0026).
 
-        The reorder threshold ``s`` of the (s, S) signal-volume rule (ADR 0002):
-        collection triggers when total waste storage drops below the strategy's
-        threshold fraction of capacity (ON_DEMAND sets ``s`` to full capacity,
-        firing whenever storage is not full).
+        A type's level is its share of waste storage capacity. It reorders when
+        its on-hand stock is below the strategy fraction of its level (ON_DEMAND:
+        any shortfall) and orders the gap to its level. An empty result means no
+        order this tick.
         """
-        current_total = sum(self.waste_storage.values())
-        return self.stock_strategy_behavior.treatment_should_reorder(
-            current_total, self.waste_storage_capacity
-        )
-
-    def _get_reorder_quantity(self) -> float:
-        """Order quantity for PUSH collection: top up to full capacity.
-
-        The (s, S) order-up-to level ``S = waste_storage_capacity`` uniformly
-        across strategies (ADR 0002), so the quantity is the gap to full. The
-        threshold ``s`` is gated by ``_should_trigger_collection_based_on_strategy``.
-        """
-        current_total = sum(self.waste_storage.values())
-        return max(0.0, self.waste_storage_capacity - current_total)
+        orders = {}
+        for waste_type in sorted(self.order_share_by_waste_type, key=lambda waste_type: waste_type.value):
+            level = self.waste_storage_capacity * self.order_share_by_waste_type[waste_type]
+            on_hand = self.waste_storage.get(waste_type, 0.0)
+            if self.stock_strategy_behavior.treatment_should_reorder(on_hand, level) and level > on_hand:
+                orders[waste_type] = level - on_hand
+        return orders
 
     def schedule_collection_requests(self):
         """Strategy-aware (s, S) collection polling (ADR 0002, signal-volume rule).
@@ -218,12 +215,11 @@ class TreatmentOperator(OperationalEntity):
                 yield self.env.timeout(OPERATING_TICK_DAYS)
                 continue
 
-            if self._should_trigger_collection_based_on_strategy():
-                signal_volume = self._get_reorder_quantity()
-                if signal_volume > 0:
-                    if self.inventory_policy_behavior.propagates_reorder_signals_upstream():
-                        self._create_reorder_signals(signal_volume, current_time)
-                    self.trigger_collection(explicit_collection_volume=signal_volume)
+            order_volumes = self._order_volumes_by_waste_type()
+            if order_volumes:
+                if self.inventory_policy_behavior.propagates_reorder_signals_upstream():
+                    self._create_reorder_signals(order_volumes, current_time)
+                self.trigger_collection(order_volumes)
 
             yield self.env.timeout(OPERATING_TICK_DAYS)
 
@@ -233,20 +229,10 @@ class TreatmentOperator(OperationalEntity):
         """Create a collection signal for specific waste type and volume."""
         self._propagate_signal_to_collectors(waste_type, volume, timestamp)
 
-    def _create_reorder_signals(self, total_shortage: float, timestamp: float):
-        """Create reorder signals distributed across waste types."""
-        input_waste_types = sorted(
-            {key[0] for key in self.transformations.keys()}, key=lambda w: w.value
-        )
-
-        if not input_waste_types:
-            return
-
-        shortage_per_type = total_shortage / len(input_waste_types)
-
-        for waste_type in input_waste_types:
-            if shortage_per_type > 0:
-                self._create_collection_signal(waste_type, shortage_per_type, timestamp)
+    def _create_reorder_signals(self, order_volumes: Dict[WasteType, float], timestamp: float):
+        """Post one reorder signal per ordered waste type, for that type's order volume."""
+        for waste_type in sorted(order_volumes, key=lambda waste_type: waste_type.value):
+            self._create_collection_signal(waste_type, order_volumes[waste_type], timestamp)
 
     def _propagate_signal_to_collectors(self, waste_type, needed_volume, current_time):
         """Propagate signals to collectors with availability checking"""
@@ -606,22 +592,18 @@ class TreatmentOperator(OperationalEntity):
 
         return available_waste
 
-    def trigger_collection(self, explicit_collection_volume: float):
-        """Request waste collection of an explicit order volume.
+    def trigger_collection(self, order_volumes: Dict[WasteType, float]):
+        """Request each ordered waste type separately (ADR 0026).
 
-        The order volume is the (s, S) signal volume computed by the caller and
-        used directly (no ceiling-derived fallback; ADR 0002).
+        A single request across all types lets the first sorted type with stock
+        fill the whole order, starving the types after it.
         """
-        required_waste = explicit_collection_volume
-
-        if required_waste <= 0:
-            return 0, 0
-
-        input_waste_types = sorted(
-            {key[0] for key in self.transformations.keys()}, key=lambda w: w.value
-        )
-
-        collected_waste = self.request_waste_directly(required_waste, input_waste_types)
+        collected_waste = {}
+        for waste_type in sorted(order_volumes, key=lambda waste_type: waste_type.value):
+            if order_volumes[waste_type] <= 0:
+                continue
+            for collected_type, volume in self.request_waste_directly(order_volumes[waste_type], [waste_type]).items():
+                collected_waste[collected_type] = collected_waste.get(collected_type, 0.0) + volume
 
         if not collected_waste or sum(collected_waste.values()) == 0:
             return 0, 0

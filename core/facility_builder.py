@@ -144,6 +144,7 @@ class FacilityBuilder:
         transformations = self._build_transformations(proc_data)
         finished_goods_capacity = self._finished_goods_capacity(transformations, market_share)
         initial_waste_storage = self._prime_waste_storage(transformations, region, market_share)
+        order_share_by_waste_type = self._order_share_by_waste_type(transformations)
 
         if stock_strategy is None and hasattr(self.uncertainty_set, 'stock_strategy'):
             stock_strategy = self.uncertainty_set.stock_strategy
@@ -174,6 +175,7 @@ class FacilityBuilder:
             waste_monitor=self.waste_monitor,
             finished_goods_capacity=finished_goods_capacity,
             initial_waste_storage=initial_waste_storage,
+            order_share_by_waste_type=order_share_by_waste_type,
             market_share=market_share,
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
@@ -211,6 +213,53 @@ class FacilityBuilder:
             for output_type in producible_outputs
             if output_type.value in national_demand
         }
+
+    def _order_share_by_waste_type(self, transformations) -> dict:
+        """Each input type's share of the treatment order-up-to level (ADR 0026).
+
+        Each producible product ``p`` needs ``demand_p / efficiency_p`` waste,
+        with ``efficiency_p`` the mean efficiency of the routes to ``p``. That
+        need is spread over the input types that can make ``p`` by the national
+        generation mix (evenly if no region generates them). Collection crosses
+        regions, so a type the home region lacks still gets ordered. A type's
+        share is the sum of what it gets across products, so shares sum to 1.
+        """
+        national_demand = self.facility_manager.demand
+        national_volume_by_type = {}
+        for any_region in sorted(RegionType, key=lambda region_type: region_type.value):
+            for waste_type, volume in self._region_generation_volume(any_region).items():
+                national_volume_by_type[waste_type] = national_volume_by_type.get(waste_type, 0.0) + volume
+        routes_by_product = {}
+        for transformation in transformations.values():
+            routes_by_product.setdefault(transformation.output_type, []).append(transformation)
+
+        waste_need_by_product = {}
+        for output_type in sorted(routes_by_product, key=lambda output_type: output_type.value):
+            routes = routes_by_product[output_type]
+            demand = national_demand.get(output_type.value, 0.0)
+            mean_efficiency = sum(route.conversion_efficiency for route in routes) / len(routes)
+            if demand > 0 and mean_efficiency > 0:
+                waste_need_by_product[output_type] = demand / mean_efficiency
+        total_need = sum(waste_need_by_product.values())
+        if total_need <= 0:
+            return {}
+
+        share_by_waste_type = {}
+        for output_type, need in waste_need_by_product.items():
+            input_types = sorted(
+                {route.input_type for route in routes_by_product[output_type]},
+                key=lambda waste_type: waste_type.value,
+            )
+            weights = {waste_type: national_volume_by_type.get(waste_type, 0.0) for waste_type in input_types}
+            total_weight = sum(weights.values())
+            if total_weight <= 0:
+                weights = {waste_type: 1.0 for waste_type in input_types}
+                total_weight = float(len(input_types))
+            for waste_type, weight in weights.items():
+                share_by_waste_type[waste_type] = (
+                    share_by_waste_type.get(waste_type, 0.0) + (need / total_need) * (weight / total_weight)
+                )
+        return {waste_type: share for waste_type, share in share_by_waste_type.items() if share > 0}
 
     def _prime_waste_storage(self, transformations, region: RegionType, market_share: float) -> dict:
         """Prime waste storage to ~2 weeks of producible throughput (ADR 0002, Phase C).

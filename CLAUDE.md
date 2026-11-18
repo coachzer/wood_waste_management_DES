@@ -22,7 +22,7 @@ Baseline outputs go to `outputs/baseline/{scenario}/{policy}__{strategy}/`. MFA 
 ## Known failure modes
 
 - **Reproducibility: sort enum sets.** A given seed must yield byte-identical run JSONs across separate process invocations. Before iterating a set of `WasteType`/`OutputType` on a path that drives ordered work (collection allocation, signal creation, storage priming), `sorted(..., key=lambda e: e.value)` it and pass an ordered `List`. Keep it a `List` downstream. Enum members hash by `id()`, which `PYTHONHASHSEED` does not control, so an unsorted set of enums iterates in per-process memory order and breaks reproducibility without any error. Backstops are `tests/test_enum_set_ordering.py` and `tests/test_determinism.py`.
-- **Pull policy deadlock.** Under pull, treatment must trigger collection. If treatment never requests waste, collectors stall. Check that `TreatmentOperator._should_trigger_collection_based_on_strategy()` fires (threshold logic is in `core/strategies/stock_strategy.py`).
+- **Pull policy deadlock.** Under pull, treatment must trigger collection. If treatment never requests waste, collectors stall. Check that `TreatmentOperator._order_volumes_by_waste_type()` returns orders (threshold logic is in `core/strategies/stock_strategy.py`).
 - **PUSH ignores signals.** In PUSH mode, generators still emit Kanban signals but collectors ignore them and collect by volume. Under PULL, signals are consumed in insertion order with no priority weighting.
 - **ABC prioritization is always on.** `BiogenicCarbonABCAnalyzer` (`core/abc_analysis.py`) feeds `TreatmentOperator._get_prioritized_transformations()`. It has no enable flag and no per-scenario setting.
 
