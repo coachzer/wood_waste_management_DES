@@ -3,13 +3,25 @@ from dataclasses import dataclass, field
 from typing import Dict, Tuple, Optional
 from .recording import EntityStatusRecorder
 from .enums import WasteType, RegionType, EntityStatus, OutputType
+from .units import (
+    CubicMetres,
+    DailyProbability,
+    Days,
+    Fraction,
+    KilogramsCO2e,
+    KilogramsCO2ePerCubicMetre,
+    KilowattHoursPerKilogram,
+)
 
 @dataclass
 class FailureConfig:
-    """Configuration for entity failure rates and durations"""
-    probability: float
-    min_duration: float
-    max_duration: float
+    """Configuration for entity failure rates and durations.
+
+    The duration bounds apply separately to the FAILED outage and to the RECOVERING ramp.
+    """
+    probability: DailyProbability
+    min_duration: Days
+    max_duration: Days
 
 @dataclass(init=False)
 class OperationalEntity:
@@ -164,18 +176,18 @@ class WasteTransformation:
 
     input_type: WasteType
     output_type: OutputType
-    conversion_efficiency: float
-    energy_required: float
+    conversion_efficiency: Fraction
+    energy_required: KilowattHoursPerKilogram
 
 @dataclass
 class Vehicle:
     """Data class to represent a transport vehicle"""
     id: str
-    capacity: float
+    capacity: CubicMetres
     current_region: RegionType
     in_transit: bool = False
-    current_load: float = 0.0
-    current_load_by_type: Dict[WasteType, float] = field(default_factory=dict)
+    current_load: CubicMetres = 0.0
+    current_load_by_type: Dict[WasteType, CubicMetres] = field(default_factory=dict)
     destination: Optional[RegionType] = None
     estimated_arrival: Optional[float] = None
 
@@ -183,8 +195,8 @@ class Vehicle:
 class CollectionCenter(OperationalEntity):
     """Data class to represent a waste collection center"""
     region: RegionType
-    waste_storage_capacity: float
-    current_storage: Dict[WasteType, float]
+    waste_storage_capacity: CubicMetres
+    current_storage: Dict[WasteType, CubicMetres]
     coordinates: Tuple[float, float]
 
     def __init__(self, region: RegionType, waste_storage_capacity: float,
@@ -201,16 +213,16 @@ class CollectionCenter(OperationalEntity):
 @dataclass
 class ProductStorage:
     """Data class to represent storage for finished products"""
-    capacity: Dict[OutputType, float]
-    current_storage: Dict[OutputType, float]
+    capacity: Dict[OutputType, CubicMetres]
+    current_storage: Dict[OutputType, CubicMetres]
 
 @dataclass
 class ABCClassification:
     """ABC classification result for a product"""
     product_type: str
-    biogenic_carbon_per_unit: float
-    demand_volume: float
-    total_biogenic_impact: float
+    biogenic_carbon_per_unit: KilogramsCO2ePerCubicMetre
+    demand_volume: CubicMetres
+    total_biogenic_impact: KilogramsCO2e
     abc_class: str
     cumulative_percentage: float
     priority_weight: float

@@ -1,7 +1,11 @@
 from enum import Enum, auto
 
 class EntityStatus(Enum):
-    """Status of operational entities in the system."""
+    """Status of operational entities in the system.
+
+    OPERATIONAL works at full efficiency. FAILED does no work. RECOVERING works at an
+    efficiency that ramps from RECOVERING_BASE_EFFICIENCY back to full.
+    """
     OPERATIONAL = auto()
     FAILED = auto()
     RECOVERING = auto()

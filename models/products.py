@@ -1,15 +1,17 @@
 from typing import Dict, Optional
 from dataclasses import dataclass
 
+from .units import KilogramsCO2ePerCubicMetre, KilogramsPerCubicMetre
+
 
 @dataclass
 class ProductSpecification:
     """Product specifications including density, wood content, and biogenic stock"""
     product_type: str
-    density_min: float
-    density_max: float
+    density_min: KilogramsPerCubicMetre
+    density_max: KilogramsPerCubicMetre
     wood_content_percent: float
-    biogenic_carbon_stock: float
+    biogenic_carbon_stock: KilogramsCO2ePerCubicMetre
     description: str
     
     @property
