@@ -1,4 +1,4 @@
-"""A completed inter-region transfer is charged like a collection trip (ADR 0034)."""
+"""A completed inter-region transfer is charged like a collection trip over road km (ADR 0034, 0038)."""
 from types import SimpleNamespace
 
 import pytest
@@ -6,6 +6,7 @@ import pytest
 from config.constants import (
     COLLECTION_COST_PER_KM_PER_M3,
     KILOGRAMS_PER_TONNE,
+    ROAD_CIRCUITY_FACTOR,
     TRANSPORT_EMISSIONS_PER_TON_KM,
     WASTE_DENSITIES,
 )
@@ -53,7 +54,7 @@ def test_completed_transfer_charges_the_vehicle_owner():
 
     CollectorCompany._handle_completed_transport(owner, transport)
 
-    distance = get_distance(RegionType.GORENJSKA, RegionType.OSREDNJESLOVENSKA)
+    distance = get_distance(RegionType.GORENJSKA, RegionType.OSREDNJESLOVENSKA) * ROAD_CIRCUITY_FACTOR
     assert destination.collection_center.current_storage[WASTE] == 40.0
     assert monitor.costs == [("col_owner", pytest.approx(50.0 + distance * COLLECTION_COST_PER_KM_PER_M3 * 40.0))]
     tonnes = 40.0 * WASTE_DENSITIES[WASTE] / KILOGRAMS_PER_TONNE

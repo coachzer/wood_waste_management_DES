@@ -23,6 +23,9 @@ WASTE_HOLDING_COST_PER_M3_PER_DAY = 0.005
 # estimate uses a flat per-km rate (no volume known yet).
 COLLECTION_COST_PER_KM_PER_M3 = 0.1  # realized: distance * this * collected volume
 ESTIMATED_COLLECTION_COST_PER_KM = 0.5  # pre-trip estimate: distance * this
+# Road km per great-circle km for transport cost and emissions (ADR 0038). Separate from the
+# scenario's transportation_time, which scales travel time only (ADR 0015).
+ROAD_CIRCUITY_FACTOR = 1.35
 
 # Standard waste densities in kg/m³ based on EWC codes and industry data
 WASTE_DENSITIES = {

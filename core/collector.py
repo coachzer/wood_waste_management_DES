@@ -9,6 +9,7 @@ from config.constants import (
     SAME_REGION_DISTANCE_VARIATION_RANGE,
     LOCAL_COLLECTION_RATIO,
     COLLECTION_COST_PER_KM_PER_M3,
+    ROAD_CIRCUITY_FACTOR,
     ESTIMATED_COLLECTION_COST_PER_KM,
     COLLECTOR_DEGRADATION_FLOOR,
     COLLECTOR_TIME_DEGRADATION_RATE_PER_DAY,
@@ -154,8 +155,8 @@ class CollectorCompany(OperationalEntity):
 
         Drawn from Normal(mean, std) of the scenario's transportation_time,
         clamped to at least 1.0 -- a road cannot be shorter than the
-        great-circle line. Affects travel time only; cost and emissions stay
-        on the great-circle distance.
+        great-circle line. Affects travel time only; cost and emissions use
+        ROAD_CIRCUITY_FACTOR (ADR 0038).
         """
         if not self.uncertainty_set:
             return 1.0
@@ -210,11 +211,15 @@ class CollectorCompany(OperationalEntity):
         return collection_cost
 
     def _record_trip_cost_and_emissions(self, load_by_type, distance):
-        """Charge one loaded trip: fixed trip cost plus per km per m3, and ton-km emissions."""
-        trip_cost = self.transport_cost + (distance * COLLECTION_COST_PER_KM_PER_M3 * sum(load_by_type.values()))
+        """Charge one loaded trip: fixed trip cost plus per road km per m3, and ton-km emissions.
+
+        ``distance`` is great-circle; cost and emissions use road km (ADR 0038).
+        """
+        road_distance = distance * ROAD_CIRCUITY_FACTOR
+        trip_cost = self.transport_cost + (road_distance * COLLECTION_COST_PER_KM_PER_M3 * sum(load_by_type.values()))
         emissions = sum(
             volume_m3 * (WASTE_DENSITIES[waste_type] / KILOGRAMS_PER_TONNE)
-            * distance * TRANSPORT_EMISSIONS_PER_TON_KM
+            * road_distance * TRANSPORT_EMISSIONS_PER_TON_KM
             for waste_type, volume_m3 in sorted(
                 load_by_type.items(), key=lambda item: item[0].value
             )
