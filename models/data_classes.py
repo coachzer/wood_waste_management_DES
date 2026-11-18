@@ -27,7 +27,6 @@ class FailureConfig:
 class OperationalEntity:
     """Base class for entities that can experience failures"""
 
-    _failure_counts = {}
     status: EntityStatus
     failure_time: Optional[float]
     recovery_time: Optional[float]
@@ -43,6 +42,7 @@ class OperationalEntity:
         recorder (closes the circular import).
         """
         self.status = EntityStatus.OPERATIONAL
+        self.failure_count = 0
         self.failure_time = None
         self.recovery_time = None
         self.waste_monitor = waste_monitor
@@ -52,11 +52,6 @@ class OperationalEntity:
         seed_sequence = seed if isinstance(seed, np.random.SeedSequence) else np.random.SeedSequence(seed)
         [failure_seed] = seed_sequence.spawn(1)
         self.policy_independent_failure_rng = np.random.default_rng(failure_seed)
-
-    @classmethod
-    def get_failure_stats(cls):
-        """Get failure statistics"""
-        return cls._failure_counts.copy()
 
     def start_failure_process(self, env) -> None:
         """Start the daily failure clock when the entity has a failure_config.
@@ -86,10 +81,7 @@ class OperationalEntity:
 
         if self.status == EntityStatus.OPERATIONAL:
             if self.policy_independent_failure_rng.random() < failure_probability:
-                entity_type = self.__class__.__name__
-                if entity_type not in self._failure_counts:
-                    self._failure_counts[entity_type] = 0
-                self._failure_counts[entity_type] += 1
+                self.failure_count += 1
 
                 self.status = EntityStatus.FAILED
                 self.failure_start_time = current_time
@@ -98,7 +90,7 @@ class OperationalEntity:
                 if hasattr(self, 'waste_monitor') and self.waste_monitor:
                     self.waste_monitor.record_entity_status(self, current_time)
 
-                print(f"FAILURE: {entity_type} {getattr(self, 'name', 'unknown')} failed at time {current_time}")
+                print(f"FAILURE: {self.__class__.__name__} {getattr(self, 'name', 'unknown')} failed at time {current_time}")
                 return True
 
         elif self.status == EntityStatus.FAILED:

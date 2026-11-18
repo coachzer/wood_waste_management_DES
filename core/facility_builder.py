@@ -2,7 +2,7 @@ import numpy as np
 from simpy import Environment
 from models.facility_data import FacilityDataManager
 from models.enums import RegionType, WasteType, OutputType, normalize_waste_type
-from models.data_classes import OperationalEntity, WasteTransformation
+from models.data_classes import WasteTransformation
 from models.transformations import TRANSFORMATION_CATALOGUE, WASTE_TO_OUTPUT_TYPES
 from core.generator import WasteGenerator
 from core.collector import CollectorCompany
@@ -316,9 +316,16 @@ class FacilityBuilder:
         return transformations
 
     def print_failure_analysis(self):
-        stats = OperationalEntity.get_failure_stats()
+        entities_by_type = {
+            "WasteGenerator": self.state.generators,
+            "CollectorCompany": self.state.collectors,
+            "TreatmentOperator": self.state.treatment_operators,
+        }
         print("\n=== FAILURE ANALYSIS ===")
-        for entity_type, total_failures in stats.items():
+        for entity_type, entities in entities_by_type.items():
+            total_failures = sum(entity.failure_count for entity in entities)
+            if total_failures == 0:
+                continue
             count = self.facility_counts.get(entity_type, 0)
             if count > 0:
                 rate = total_failures / count

@@ -11,7 +11,6 @@ from config.constants import (
 )
 from utils.seasonality import seasonal_factor
 from core.transport_manager import PointToPointTransport
-from models.data_classes import OperationalEntity
 from models.enums import RegionType, OutputType, InventoryPolicy, StockStrategy
 from persistence.serialization import HISTORY_KEYS
 from models.state import SimulationState
@@ -28,8 +27,6 @@ class SimulationManager:
     """Manages complete simulation lifecycle - setup, execution, and monitoring"""
     
     def __init__(self, seed=None):
-        OperationalEntity._failure_counts.clear()
-
         self.seed = seed
 
         self.state = SimulationState()
