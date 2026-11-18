@@ -1,20 +1,12 @@
 """Bootstrap-cycle guard for ``models.data_classes``.
 
 Locks in the property that ``models.data_classes`` imports cleanly *in
-isolation*, with no ``config`` submodule pre-imported. The hazard is a
-``config <-> models.data_classes`` import cycle:
-
-    models/data_classes.py  imports  config.constants
-        -> running any config submodule runs config/__init__ first
-        -> config/__init__ imports config.base_config
-        -> config.base_config imports  models.data_classes  (FailureConfig)
-
-When ``config`` is imported first the loop happens to resolve, but when
-``models.data_classes`` is imported FIRST -- as a lone test method does -- the
-back-edge reaches a half-initialized ``models.data_classes`` and raises
-``ImportError: cannot import name 'FailureConfig'``. The historical workaround
-was "always run the full suite" (so ``config`` is imported first); this guard
-exists so that workaround can be retired.
+isolation*, with no ``config`` submodule pre-imported. ``models.data_classes``
+imports ``config.constants`` at module top, which runs ``config/__init__`` first.
+If ``config/__init__`` ever re-exports from ``config.base_config`` again, the
+import loops back into a half-initialized ``models.data_classes``
+(``config.base_config`` imports ``FailureConfig``) and raises
+``ImportError: cannot import name 'FailureConfig'``. This guard fails then.
 
 It MUST run as a real subprocess with a clean interpreter: an in-process import
 cannot reproduce the bug because by then ``config`` is already in ``sys.modules``.
