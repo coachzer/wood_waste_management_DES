@@ -80,7 +80,7 @@ class ServingCollector(FakeCollector):
     def _find_available_vehicle(self):
         return True
 
-    def collect_from_generator(self, generator, requested_volume=None):
+    def collect_from_generator(self, generator, requested_volume=None, waste_type=None):
         self.collected_from.append(generator.name)
 
 

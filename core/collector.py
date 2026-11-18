@@ -175,7 +175,7 @@ class CollectorCompany(OperationalEntity):
         travel_time_days = travel_time_hours / 24.0
         return travel_time_days, distance
 
-    def _dispatch_vehicle_for_collection(self, vehicle, generator, target_volume):
+    def _dispatch_vehicle_for_collection(self, vehicle, generator, target_volume, waste_type=None):
         """Complete vehicle collection process with proper storage and overflow handling"""
         current_time = self.env.now
 
@@ -187,7 +187,7 @@ class CollectorCompany(OperationalEntity):
 
         yield self.env.timeout(travel_time)
 
-        collected_amount, collected_waste = self._perform_collection_at_site(generator, target_volume)
+        collected_amount, collected_waste = self._perform_collection_at_site(generator, target_volume, waste_type)
 
         if collected_amount > 0:
 
@@ -232,9 +232,13 @@ class CollectorCompany(OperationalEntity):
 
         return collection_cost
 
-    def _perform_collection_at_site(self, generator, target_volume):
-        """Perform actual waste collection at generator site with proper constraint checking"""
+    def _perform_collection_at_site(self, generator, target_volume, waste_type=None):
+        """Collect at the generator site; only ``waste_type`` when a signal names one (ADR 0028)."""
         active_streams = self._filter_active_waste_streams(generator)
+        if waste_type is not None:
+            active_streams = {
+                stream_type: stream for stream_type, stream in active_streams.items() if stream_type == waste_type
+            }
 
         if not active_streams:
             return 0, {}
@@ -433,7 +437,9 @@ class CollectorCompany(OperationalEntity):
             if matching_generators:
                 for generator in matching_generators:
                     if self._find_available_vehicle():
-                        self.collect_from_generator(generator, requested_volume=signal.get('volume'))
+                        self.collect_from_generator(
+                            generator, requested_volume=signal.get('volume'), waste_type=waste_type_enum
+                        )
 
                         self.kanban_manager.acknowledge_signal(signal['id'])
                         break
@@ -505,14 +511,13 @@ class CollectorCompany(OperationalEntity):
         else:
             return False
 
-    def collect_from_generator(self, generator, requested_volume=None):
+    def collect_from_generator(self, generator, requested_volume=None, waste_type=None):
         """Vehicle-based collection with proper overflow handling and storage management.
 
-        ``requested_volume`` (PULL, ADR 0002 Phase E) bounds the pickup to the
-        volume the downstream kanban signal actually asked for, so the collector
-        replenishes to demand rather than grabbing a full vehicle load every
-        trip. Without it (autonomous / PUSH collection) the pickup is the
-        physical maximum, as before.
+        ``requested_volume`` and ``waste_type`` (PULL, ADR 0002 Phase E, ADR 0028)
+        bound the pickup to what the kanban signal asked for: that volume of
+        that type. Without them (PUSH) the pickup is the physical maximum of
+        every stream.
         """
         if self.status == EntityStatus.FAILED:
             return self.env.process(self._dummy_process(0))
@@ -535,8 +540,12 @@ class CollectorCompany(OperationalEntity):
             available_vehicle.in_transit = False
             return self.env.process(self._dummy_process(0))
 
+        if waste_type is not None:
+            available_at_generator = generator.waste_streams[waste_type].volume
+        else:
+            available_at_generator = generator.current_storage
         clamps = [
-            generator.current_storage,
+            available_at_generator,
             self.collection_capacity_per_tick_m3,
             available_vehicle.capacity,
             collection_center_available,
@@ -549,7 +558,9 @@ class CollectorCompany(OperationalEntity):
             available_vehicle.in_transit = False
             return self.env.process(self._dummy_process(0))
 
-        return self.env.process(self._dispatch_vehicle_for_collection(available_vehicle, generator, target_volume))
+        return self.env.process(
+            self._dispatch_vehicle_for_collection(available_vehicle, generator, target_volume, waste_type)
+        )
 
     def _dummy_process(self, return_value):
         """Helper for SimPy process returns"""
