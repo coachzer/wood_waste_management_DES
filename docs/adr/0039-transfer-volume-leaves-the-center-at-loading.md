@@ -66,3 +66,34 @@ the sign. Emissions stay higher for PULL under every rule.
 
 The MFA "Stock at day 365" sink now includes the queued volume as collector stock, so the PUSH
 collector node should close up to vehicles still on the road. Not re-checked here.
+
+## Correction 2026-11-19: the robustness range was misread
+
+The paragraph above misreads its own source. In `.scratch/agy-review/robustness/summary.txt`
+(seeds 1-10, d91732b), PULL minus PUSH total cost under the rules that price drains and transfers
+alike is:
+
+| Fallback order | Rule | ON_DEMAND | REORDER_50 | REORDER_90 |
+|---|---|---|---|---|
+| Region order (current code) | As run | +0.06 [+0.04, +0.08] | +0.05 [+0.01, +0.10] | +0.10 [+0.07, +0.13] |
+| Region order (current code) | One fee per trip, both kinds | +0.13 [+0.11, +0.16] | +0.03 [-0.01, +0.07] | +0.10 [+0.07, +0.13] |
+| Region order (current code) | No fee on drains or transfers | +0.20 [+0.18, +0.22] | -0.01 [-0.05, +0.03] | +0.08 [+0.05, +0.11] |
+| Nearest first | As run | +0.06 [+0.02, +0.09] | +0.13 [+0.09, +0.17] | +0.13 [+0.11, +0.14] |
+| Nearest first | One fee per trip, both kinds | +0.17 [+0.14, +0.20] | +0.13 [+0.09, +0.17] | +0.15 [+0.13, +0.16] |
+| Nearest first | No fee on drains or transfers | +0.22 [+0.19, +0.25] | +0.07 [+0.03, +0.11] | +0.11 [+0.10, +0.13] |
+
+With the current region-order fallback, REORDER_50 has a negative point estimate when neither kind
+pays a fee, and ON_DEMAND reaches +0.20M. The range is -0.01 to +0.20M, not +0.03 to +0.17M.
+PULL is dearer under every symmetric rule only with a nearest-first fallback. Emissions stay higher
+for PULL under all of them.
+
+The "one fee per trip" rows are biased against PUSH. The probe groups transfers by the vehicle's
+owner instead of by origin and destination, so it leaves some PUSH transfer fees unbatched. Per the
+agy round-2 review, that is about 0.14M on seed 1 ON_DEMAND (not rerun here). Those rows understate
+PULL minus PUSH.
+
+The same review found that the reservation can go stale. `queued_volume` sums each request's
+volume as queued. If local or fallback intake drains the sending center before a vehicle loads,
+the reservation can exceed the stock and hold back stock that arrives later. On seed 1 PUSH
+ON_DEMAND this happens on 766 ticks, about 2,084 m3 (agy's count, not rerun here). Loading still
+clips to stock, so nothing is over-shipped.
