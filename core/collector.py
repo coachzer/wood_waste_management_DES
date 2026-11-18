@@ -5,6 +5,8 @@ from config.constants import (
     KILOGRAMS_PER_TONNE,
     WASTE_DENSITIES,
     TRAVEL_SPEED_KMH,
+    SAME_REGION_COLLECTION_DISTANCE_KM,
+    SAME_REGION_DISTANCE_VARIATION_RANGE,
     LOCAL_COLLECTION_RATIO,
     COLLECTION_COST_PER_KM_PER_M3,
     ESTIMATED_COLLECTION_COST_PER_KM,
@@ -155,9 +157,8 @@ class CollectorCompany(OperationalEntity):
         """Calculate travel time to generator (simplified)"""
 
         if generator.region_type == self.region_type:
-            base_distance = 10.0
-            distance_variation = self.rng.uniform(0.5, 1.5)
-            distance = base_distance * distance_variation
+            distance_variation = self.rng.uniform(*SAME_REGION_DISTANCE_VARIATION_RANGE)
+            distance = SAME_REGION_COLLECTION_DISTANCE_KM * distance_variation
         else:
             distance = get_distance(self.region_type, generator.region_type)
 

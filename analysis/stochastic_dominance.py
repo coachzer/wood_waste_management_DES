@@ -20,6 +20,8 @@ from itertools import combinations
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from config.constants import SSD_FLOATING_ACCUMULATION_RELATIVE_TOLERANCE
+
 from ._kpi_shared import (
     DEFAULT_METRICS,
     KPI_SENSE,
@@ -28,8 +30,6 @@ from ._kpi_shared import (
 )
 
 KPI_SENSES: Dict[str, str] = {metric: KPI_SENSE[metric] for metric in DEFAULT_METRICS}
-
-SSD_RELATIVE_TOLERANCE = 1e-9
 
 MINIMUM_SAMPLES = 2
 
@@ -87,7 +87,7 @@ def first_order_dominance(
 def second_order_dominance(
     samples_a: List[float],
     samples_b: List[float],
-    relative_tolerance: float = SSD_RELATIVE_TOLERANCE,
+    relative_tolerance: float = SSD_FLOATING_ACCUMULATION_RELATIVE_TOLERANCE,
 ) -> Optional[str]:
     """Return ``"a"`` if A SSD B, ``"b"`` if B SSD A, else ``None``.
 
@@ -137,7 +137,7 @@ def second_order_dominance(
 def dominance_relation(
     samples_a: List[float],
     samples_b: List[float],
-    relative_tolerance: float = SSD_RELATIVE_TOLERANCE,
+    relative_tolerance: float = SSD_FLOATING_ACCUMULATION_RELATIVE_TOLERANCE,
 ) -> Tuple[str, Optional[str]]:
     """Strongest dominance order between two samples and its winner.
 
@@ -158,7 +158,7 @@ def dominance_relation(
 def build_dominance_report(
     scenario_dir: Path,
     metrics: Optional[List[str]] = None,
-    relative_tolerance: float = SSD_RELATIVE_TOLERANCE,
+    relative_tolerance: float = SSD_FLOATING_ACCUMULATION_RELATIVE_TOLERANCE,
 ) -> List[dict]:
     """One row per (metric, combo-pair): the dominance order, winner and sense.
 
@@ -208,7 +208,7 @@ def build_dominance_report(
 def write_dominance_report(
     scenario_dir,
     metrics: Optional[List[str]] = None,
-    relative_tolerance: float = SSD_RELATIVE_TOLERANCE,
+    relative_tolerance: float = SSD_FLOATING_ACCUMULATION_RELATIVE_TOLERANCE,
 ) -> Optional[Path]:
     """Write ``stochastic_dominance.csv`` for a scenario and return its path.
 

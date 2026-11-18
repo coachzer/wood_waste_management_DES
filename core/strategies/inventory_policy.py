@@ -14,7 +14,13 @@ from __future__ import annotations
 
 from typing import Callable, List, Protocol, TYPE_CHECKING
 
-from config.constants import COLLECTOR_UTILIZATION_CEILING
+from config.constants import (
+    COLLECTOR_UTILIZATION_CEILING,
+    PULL_COLLECTOR_NO_SIGNAL_THRESHOLD_FLOOR,
+    PULL_COLLECTOR_NO_SIGNAL_THRESHOLD_REDUCTION,
+    PUSH_COLLECTOR_THRESHOLD_BUFFER,
+    PUSH_ON_DEMAND_GENERATOR_SIGNAL_STORAGE_SHARE,
+)
 
 if TYPE_CHECKING:
     from core.strategies.stock_strategy import StockStrategyProtocol
@@ -71,7 +77,7 @@ class PushPolicy:
     def collector_should_collect(
         self, utilization, adaptive_threshold, non_market_signals_fn
     ) -> bool:
-        push_threshold = min(COLLECTOR_UTILIZATION_CEILING, adaptive_threshold + 0.10)
+        push_threshold = min(COLLECTOR_UTILIZATION_CEILING, adaptive_threshold + PUSH_COLLECTOR_THRESHOLD_BUFFER)
         return utilization < push_threshold
 
     def collector_efficiency(self, stock_strategy, utilization, signals, base) -> float:
@@ -81,7 +87,7 @@ class PushPolicy:
     def ondemand_generator_should_signal(
         self, current_storage, capacity, active_signals_fn
     ) -> bool:
-        return current_storage > capacity * 0.1
+        return current_storage > capacity * PUSH_ON_DEMAND_GENERATOR_SIGNAL_STORAGE_SHARE
 
     def propagates_reorder_signals_upstream(self) -> bool:
         return False
@@ -101,7 +107,10 @@ class PullPolicy:
     ) -> bool:
         if non_market_signals_fn():
             return utilization < COLLECTOR_UTILIZATION_CEILING
-        pull_threshold = max(0.15, adaptive_threshold - 0.15)
+        pull_threshold = max(
+            PULL_COLLECTOR_NO_SIGNAL_THRESHOLD_FLOOR,
+            adaptive_threshold - PULL_COLLECTOR_NO_SIGNAL_THRESHOLD_REDUCTION,
+        )
         return utilization < pull_threshold
 
     def collector_efficiency(self, stock_strategy, utilization, signals, base) -> float:

@@ -17,6 +17,33 @@ from __future__ import annotations
 from typing import Callable, List, Protocol, TYPE_CHECKING
 
 from config.constants import (
+    ON_DEMAND_COLLECTOR_BASE_THRESHOLD,
+    ON_DEMAND_COLLECTOR_THRESHOLD_GROWTH_PER_DAY,
+    ON_DEMAND_COLLECTOR_MAX_THRESHOLD_GROWTH,
+    ON_DEMAND_PUSH_IDLE_UTILIZATION,
+    ON_DEMAND_PUSH_IDLE_EFFICIENCY_MULTIPLIER,
+    ON_DEMAND_PUSH_BUSY_UTILIZATION,
+    ON_DEMAND_PUSH_BUSY_EFFICIENCY_MULTIPLIER,
+    ON_DEMAND_PULL_NO_SIGNAL_EFFICIENCY_MULTIPLIER,
+    ON_DEMAND_PULL_MAX_SIGNAL_BOOST,
+    ON_DEMAND_PULL_STRAIN_UTILIZATION,
+    ON_DEMAND_PULL_STRAIN_PER_EXCESS_UTILIZATION,
+    COLLECTOR_EFFICIENCY_BOOST_PER_PENDING_SIGNAL,
+    REORDER_50_OPTIMAL_UTILIZATION_LOW,
+    REORDER_50_OPTIMAL_UTILIZATION_HIGH,
+    REORDER_50_PUSH_UNDERUTILIZATION_PENALTY_RATE,
+    REORDER_50_PUSH_OVERUTILIZATION_PENALTY_RATE,
+    REORDER_50_PULL_SIGNALLED_EFFICIENCY_MULTIPLIER,
+    REORDER_50_PULL_NO_SIGNAL_EFFICIENCY_MULTIPLIER,
+    REORDER_90_OPTIMAL_UTILIZATION_LOW,
+    REORDER_90_OPTIMAL_UTILIZATION_HIGH,
+    REORDER_90_OPTIMAL_UTILIZATION,
+    REORDER_90_PUSH_OPTIMAL_EFFICIENCY_MULTIPLIER,
+    REORDER_90_PUSH_PENALTY_PER_DISTANCE_FROM_OPTIMAL,
+    REORDER_90_PUSH_MAX_PENALTY,
+    REORDER_90_PULL_MAX_SIGNAL_BONUS,
+    REORDER_90_PULL_BUFFER_UTILIZATION,
+    REORDER_90_PULL_BUFFER_PENALTY_RATE,
     PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_50,
     PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_90,
 )
@@ -88,14 +115,17 @@ class OnDemandStrategy:
     Lean buffers, responsiveness over utilization."""
 
     def collector_adaptive_threshold(self, base_time: float) -> float:
-        time_factor = min(0.3, base_time * 0.001)
-        return 0.10 + time_factor
+        time_factor = min(
+            ON_DEMAND_COLLECTOR_MAX_THRESHOLD_GROWTH,
+            base_time * ON_DEMAND_COLLECTOR_THRESHOLD_GROWTH_PER_DAY,
+        )
+        return ON_DEMAND_COLLECTOR_BASE_THRESHOLD + time_factor
 
     def collector_push_efficiency(self, utilization: float, base: float) -> float:
-        if utilization < 0.1:
-            return base * 1.05
-        elif utilization > 0.8:
-            return base * 0.95
+        if utilization < ON_DEMAND_PUSH_IDLE_UTILIZATION:
+            return base * ON_DEMAND_PUSH_IDLE_EFFICIENCY_MULTIPLIER
+        elif utilization > ON_DEMAND_PUSH_BUSY_UTILIZATION:
+            return base * ON_DEMAND_PUSH_BUSY_EFFICIENCY_MULTIPLIER
         else:
             return base
 
@@ -103,12 +133,16 @@ class OnDemandStrategy:
         self, utilization: float, signals: int, base: float
     ) -> float:
         if signals == 0:
-            return base * 0.98
+            return base * ON_DEMAND_PULL_NO_SIGNAL_EFFICIENCY_MULTIPLIER
         else:
-            signal_boost = min(0.15, signals * 0.02)
+            signal_boost = min(
+                ON_DEMAND_PULL_MAX_SIGNAL_BOOST, signals * COLLECTOR_EFFICIENCY_BOOST_PER_PENDING_SIGNAL
+            )
 
-            if utilization > 0.95:
-                strain = (utilization - 0.95) * 2.0
+            if utilization > ON_DEMAND_PULL_STRAIN_UTILIZATION:
+                strain = (
+                    (utilization - ON_DEMAND_PULL_STRAIN_UTILIZATION) * ON_DEMAND_PULL_STRAIN_PER_EXCESS_UTILIZATION
+                )
                 return base * (1.0 + signal_boost) * (1.0 - strain)
             else:
                 return base * (1.0 + signal_boost)
@@ -130,22 +164,26 @@ class Reorder50Strategy(_ReorderStrategy):
     _reorder_fraction = PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_50
 
     def collector_push_efficiency(self, utilization: float, base: float) -> float:
-        if 0.3 <= utilization <= 0.7:
+        if REORDER_50_OPTIMAL_UTILIZATION_LOW <= utilization <= REORDER_50_OPTIMAL_UTILIZATION_HIGH:
             return base * 1.0
-        elif utilization < 0.3:
-            underutilization_penalty = (0.3 - utilization) * 0.2
+        elif utilization < REORDER_50_OPTIMAL_UTILIZATION_LOW:
+            underutilization_penalty = (
+                (REORDER_50_OPTIMAL_UTILIZATION_LOW - utilization) * REORDER_50_PUSH_UNDERUTILIZATION_PENALTY_RATE
+            )
             return base * (1.0 - underutilization_penalty)
         else:
-            overutilization_penalty = (utilization - 0.7) * 0.15
+            overutilization_penalty = (
+                (utilization - REORDER_50_OPTIMAL_UTILIZATION_HIGH) * REORDER_50_PUSH_OVERUTILIZATION_PENALTY_RATE
+            )
             return base * (1.0 - overutilization_penalty)
 
     def collector_pull_efficiency(
         self, utilization: float, signals: int, base: float
     ) -> float:
-        if signals > 0 and 0.3 <= utilization <= 0.7:
-            return base * 1.05
+        if signals > 0 and REORDER_50_OPTIMAL_UTILIZATION_LOW <= utilization <= REORDER_50_OPTIMAL_UTILIZATION_HIGH:
+            return base * REORDER_50_PULL_SIGNALLED_EFFICIENCY_MULTIPLIER
         elif signals == 0:
-            return base * 0.97
+            return base * REORDER_50_PULL_NO_SIGNAL_EFFICIENCY_MULTIPLIER
         else:
             return base
 
@@ -156,22 +194,25 @@ class Reorder90Strategy(_ReorderStrategy):
     _reorder_fraction = PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_90
 
     def collector_push_efficiency(self, utilization: float, base: float) -> float:
-        if 0.8 <= utilization <= 0.9:
-            return base * 1.05
+        if REORDER_90_OPTIMAL_UTILIZATION_LOW <= utilization <= REORDER_90_OPTIMAL_UTILIZATION_HIGH:
+            return base * REORDER_90_PUSH_OPTIMAL_EFFICIENCY_MULTIPLIER
         else:
-            distance_from_optimal = abs(utilization - 0.85)
-            penalty = min(0.3, distance_from_optimal * 0.5)
+            distance_from_optimal = abs(utilization - REORDER_90_OPTIMAL_UTILIZATION)
+            penalty = min(
+                REORDER_90_PUSH_MAX_PENALTY,
+                distance_from_optimal * REORDER_90_PUSH_PENALTY_PER_DISTANCE_FROM_OPTIMAL,
+            )
             return base * (1.0 - penalty)
 
     def collector_pull_efficiency(
         self, utilization: float, signals: int, base: float
     ) -> float:
-        signal_bonus = min(0.1, signals * 0.02)
+        signal_bonus = min(REORDER_90_PULL_MAX_SIGNAL_BONUS, signals * COLLECTOR_EFFICIENCY_BOOST_PER_PENDING_SIGNAL)
 
-        if utilization > 0.5:
+        if utilization > REORDER_90_PULL_BUFFER_UTILIZATION:
             buffer_bonus = 1.0
         else:
-            buffer_penalty = (0.5 - utilization) * 0.1
+            buffer_penalty = (REORDER_90_PULL_BUFFER_UTILIZATION - utilization) * REORDER_90_PULL_BUFFER_PENALTY_RATE
             buffer_bonus = 1.0 - buffer_penalty
 
         return base * (1.0 + signal_bonus) * buffer_bonus
