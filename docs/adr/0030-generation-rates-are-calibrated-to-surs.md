@@ -37,7 +37,7 @@ also include invented values.
 
 Mean over seeds 1-10, Baseline:
 
-| Combo | Service, % | Collection, % | Uncollected, m3 | Cost, M | Emissions, t CO2e |
+| Combo | Service, % | Collection, % | Uncollected, m3 | Cost, model currency M | Emissions, t CO2e |
 |---|---|---|---|---|---|
 | PUSH ON_DEMAND | 99.98 | 61.8 | 54,148 | 17.9 | 584 |
 | PUSH REORDER_50 | 99.99 | 71.0 | 2,049 | 18.4 | 663 |
@@ -54,5 +54,6 @@ Mean over seeds 1-10, Baseline:
   sells less.
 - The PULL shortfall sits in the western operators (gorenjska, goriska, obalno_kraska,
   primorskonotranjska), and MDF is hit hardest (21-27% served on seed 1, REORDER_90). Cause not
-  identified. Ruled out: waste stranded in another region's center, since every operator's signals
+  identified. Ruled out: missing local feedstock, since every western region still generates MDF
+  inputs (8.5-37 t/day, 3 of 6 MDF codes or more). Also ruled out: waste stranded in another region's center, since every operator's signals
   are served by its own region's collectors. At pomurska, PULL drains the same as PUSH.
