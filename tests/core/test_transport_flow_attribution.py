@@ -11,13 +11,16 @@ from models.data_classes import Vehicle
 from models.enums import RegionType, WasteType
 
 
-def _collector(name, region_type, vehicles):
-    return SimpleNamespace(name=name, region_type=region_type, vehicles=vehicles)
+def _collector(name, region_type, vehicles, stock=0.0):
+    return SimpleNamespace(
+        name=name, region_type=region_type, vehicles=vehicles,
+        collection_center=SimpleNamespace(current_storage={WasteType.CONSTRUCTION_WOOD_17_02_01: stock}),
+    )
 
 
 def test_flow_from_a_borrowed_vehicle_names_the_origin_collector():
     flows = []
-    origin = _collector("col_origin", RegionType.GORENJSKA, [])
+    origin = _collector("col_origin", RegionType.GORENJSKA, [], stock=10.0)
     lender = _collector(
         "col_lender", RegionType.PODRAVSKA,
         [Vehicle(id="v1", capacity=50.0, current_region=RegionType.PODRAVSKA)],

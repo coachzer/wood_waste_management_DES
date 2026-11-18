@@ -537,13 +537,7 @@ class CollectorCompany(OperationalEntity):
             requester_id=self.name
         )
 
-        success = self.transport_manager.request_transport(request)
-
-        if success:
-            self.collection_center.current_storage[waste_type] -= volume
-            return True
-        else:
-            return False
+        return self.transport_manager.request_transport(request)
 
     def collect_from_generator(self, generator, requested_volume=None, waste_type=None):
         """Vehicle-based collection with proper overflow handling and storage management.

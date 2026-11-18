@@ -34,24 +34,6 @@ class SimulationState:
                 if vehicle.in_transit:
                     yield vehicle
 
-    def pending_reposition_volume_by_origin(self) -> dict:
-        """Repositioning volume debited from its origin but not yet on a vehicle.
-
-        ``transfer_waste_to_region`` removes the volume from the origin collection
-        center at request time; it waits in the shared transport manager's queue
-        until a vehicle frees up, logged nowhere else. Keyed by origin collector.
-        """
-        pending = {}
-        seen_managers = set()
-        for collector in self.collectors:
-            manager = collector.transport_manager
-            if id(manager) in seen_managers:
-                continue
-            seen_managers.add(id(manager))
-            for request in manager.pending_requests:
-                pending[request.requester_id] = pending.get(request.requester_id, 0.0) + request.volume
-        return pending
-
     def scheduled_reposition_volume_by_destination(self) -> dict:
         """Repositioning volume on a vehicle, logged as inflow but not yet deposited.
 

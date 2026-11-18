@@ -67,8 +67,14 @@ class PointToPointTransport:
         processed_requests = []
         
         for request in self.pending_requests:
+            loadable_volume = self._loadable_volume(request)
+            if loadable_volume <= 0:
+                processed_requests.append(request)
+                continue
             vehicle_info = self.find_available_vehicle(request.origin)
             if vehicle_info:
+                request.volume = loadable_volume
+                self._origin_collector(request).collection_center.current_storage[request.waste_type] -= loadable_volume
                 transport = self._create_transport(request, vehicle_info, current_time)
                 if transport:
                     scheduled_transports.append(transport)
@@ -79,6 +85,14 @@ class PointToPointTransport:
         
         return scheduled_transports
     
+    def _origin_collector(self, request: TransportRequest):
+        return next(c for c in self.state.collectors if c.name == request.requester_id)
+
+    def _loadable_volume(self, request: TransportRequest) -> float:
+        """Volume still at the sending center. Queued volume stays there until a vehicle loads it."""
+        stock = self._origin_collector(request).collection_center.current_storage[request.waste_type]
+        return min(request.volume, stock)
+
     def _create_transport(self, request: TransportRequest, vehicle_info: Dict, current_time: float) -> Optional[Dict]:
         """Create a transport job from a request"""
         vehicle = vehicle_info["vehicle"]

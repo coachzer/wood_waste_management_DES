@@ -161,14 +161,12 @@ class MassBalanceMonitor:
 
         ``inflow`` is every transport flow targeting the collector (collection
         plus cross-region reposition-in); ``outflow`` every flow sourced from it
-        (treatment intake plus reposition-out). Cross-region reposition still in
-        the pipeline at check time is added to ``out``: volume debited from this
-        center but still queued for a vehicle, and volume logged as inflow here
-        but still on a vehicle. Final-only by intent.
+        (treatment intake plus reposition-out). Cross-region reposition logged as
+        inflow here but still on a vehicle is added to ``out``. Reposition still
+        queued for a vehicle is in the origin's ``current_storage``. Final-only by intent.
         """
         state = self.registry.state
         landfilled_by_entity = self.registry.landfilled_by_entity()
-        pending_by_origin = state.pending_reposition_volume_by_origin()
         in_flight_by_destination = state.scheduled_reposition_volume_by_destination()
         violations = []
         for collector in (self.registry.collectors or []):
@@ -185,7 +183,7 @@ class MassBalanceMonitor:
             current = sum(collector.collection_center.current_storage.values())
             landfilled = landfilled_by_entity.get(name, 0.0)
 
-            in_pipeline = pending_by_origin.get(name, 0.0) + in_flight_by_destination.get(name, 0.0)
+            in_pipeline = in_flight_by_destination.get(name, 0.0)
 
             lhs = initial + inflow
             rhs = outflow + current + landfilled + in_pipeline
@@ -222,9 +220,9 @@ class MassBalanceMonitor:
         ``treated_intake`` is ``processed_volumes`` (the corrected ADR 0009
         intake); ``landfilled`` is the single funnel through
         ``handle_storage_event``, read from the landfill ledger. A mismatch means raw waste appeared or vanished
-        without a recorded reason. ``in_transit`` covers loaded vehicles plus
-        repositioning volume debited from its origin but still queued for a
-        vehicle. Final-only by intent.
+        without a recorded reason. ``in_transit`` covers loaded vehicles.
+        Repositioning still queued for a vehicle stays in its origin center.
+        Final-only by intent.
         """
         state = self.registry.state
         generators = self.registry.generators or []
@@ -238,7 +236,7 @@ class MassBalanceMonitor:
         in_transit = sum(
             sum(vehicle.current_load_by_type.values())
             for vehicle in state.iter_outbound_vehicles()
-        ) + sum(state.pending_reposition_volume_by_origin().values())
+        )
         collection_center_storage = sum(
             sum(collector.collection_center.current_storage.values())
             for collector in collectors
