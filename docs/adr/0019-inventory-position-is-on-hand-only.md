@@ -3,6 +3,8 @@
 Date: 2026-06-11
 Status: accepted
 
+> NOTE (2026-11-18): For treatment, on-hand is the classical inventory position, because treatment intake is drained from collectors within the tick and nothing it ordered is still on the way (ADR 0027). Treatment also now reorders against a demand-sized level per waste type, not capacity (ADR 0026, ADR 0027).
+
 > NOTE (2026-11-18): ADR 0021 changed treatment signalling: signals now reach empty local collectors at full volume, so the on-hand-only reorder reads here interact with that volume rule.
 
 ## Context

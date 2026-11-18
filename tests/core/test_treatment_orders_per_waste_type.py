@@ -13,13 +13,15 @@ from tests.core.test_operating_clock import _treatment
 
 EARLY_TYPE = WasteType.CONSTRUCTION_WOOD_17_02_01
 LATE_TYPE = sorted(WasteType, key=lambda waste_type: waste_type.value)[-1]
-STORAGE_CAPACITY_M3 = 1_000.0
+ORDER_UP_TO_LEVEL_M3 = 1_000.0
+STORAGE_CAPACITY_M3 = 100 * ORDER_UP_TO_LEVEL_M3
 
 
 def _operator(strategy, on_hand):
     return SimpleNamespace(
         waste_storage=dict(on_hand),
         waste_storage_capacity=STORAGE_CAPACITY_M3,
+        order_up_to_level_m3=ORDER_UP_TO_LEVEL_M3,
         order_share_by_waste_type={EARLY_TYPE: 0.5, LATE_TYPE: 0.5},
         stock_strategy_behavior=build_stock_strategy(strategy),
     )
@@ -35,6 +37,8 @@ def _operator(strategy, on_hand):
 def test_each_type_reorders_below_the_strategy_fraction_of_its_own_level(strategy, late_on_hand, orders_late):
     # The early type is far over its level, so total storage is above every
     # total-based reorder point; only a per-type trigger orders the late type.
+    # Storage capacity is 100 times S, so levels taken from capacity order every
+    # case.
     operator = _operator(strategy, {EARLY_TYPE: 900.0, LATE_TYPE: late_on_hand})
 
     orders = TreatmentOperator._order_volumes_by_waste_type(operator)

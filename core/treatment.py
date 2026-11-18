@@ -47,6 +47,7 @@ class TreatmentOperator(OperationalEntity):
         finished_goods_capacity: Optional[Dict[OutputType, float]] = None,
         initial_waste_storage: Optional[Dict[WasteType, float]] = None,
         order_share_by_waste_type: Optional[Dict[WasteType, float]] = None,
+        order_up_to_level_m3: Optional[float] = None,
         market_share: float = 0.0,
         stock_strategy: StockStrategy = None,
         inventory_policy: InventoryPolicy = None,
@@ -96,6 +97,9 @@ class TreatmentOperator(OperationalEntity):
         if order_share_by_waste_type is None:
             raise ValueError("order_share_by_waste_type is required for TreatmentOperator (ADR 0026)")
         self.order_share_by_waste_type = dict(order_share_by_waste_type)
+        if order_up_to_level_m3 is None:
+            raise ValueError("order_up_to_level_m3 is required for TreatmentOperator (ADR 0027)")
+        self.order_up_to_level_m3 = order_up_to_level_m3
         self._waste_storage = dict.fromkeys(WasteType, 0.0)
         if initial_waste_storage:
             for waste_type, volume in initial_waste_storage.items():
@@ -186,14 +190,16 @@ class TreatmentOperator(OperationalEntity):
     def _order_volumes_by_waste_type(self) -> Dict[WasteType, float]:
         """Multi-item (s, S) order: one order-up-to level per input type (ADR 0026).
 
-        A type's level is its share of waste storage capacity. It reorders when
+        A type's level is its share of ``order_up_to_level_m3`` (ADR 0027). It reorders when
         its on-hand stock is below the strategy fraction of its level (ON_DEMAND:
-        any shortfall) and orders the gap to its level. An empty result means no
-        order this tick.
+        any shortfall, so the order is lot-for-lot) and orders the gap to its
+        level. An empty result means no order this tick. Inventory position is
+        on-hand stock: intake is drained from collectors within the tick, so
+        nothing ordered is still on the way.
         """
         orders = {}
         for waste_type in sorted(self.order_share_by_waste_type, key=lambda waste_type: waste_type.value):
-            level = self.waste_storage_capacity * self.order_share_by_waste_type[waste_type]
+            level = self.order_up_to_level_m3 * self.order_share_by_waste_type[waste_type]
             on_hand = self.waste_storage.get(waste_type, 0.0)
             if self.stock_strategy_behavior.treatment_should_reorder(on_hand, level) and level > on_hand:
                 orders[waste_type] = level - on_hand

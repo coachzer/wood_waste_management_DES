@@ -62,6 +62,7 @@ def _treatment(env, inventory_policy=InventoryPolicy.PUSH, state=None, kanban_ma
         finished_goods_capacity={OutputType.OSB: 10_000.0, OutputType.PARTICLE_BOARD: 10_000.0},
         initial_waste_storage={CONSTRUCTION: 20_000.0},
         order_share_by_waste_type={CONSTRUCTION: 1.0},
+        order_up_to_level_m3=TREATMENT_STORAGE_M3,
         stock_strategy=StockStrategy.REORDER_50,
         inventory_policy=inventory_policy,
         state=state or SimulationState(),

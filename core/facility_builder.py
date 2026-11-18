@@ -9,7 +9,14 @@ from core.collector import CollectorCompany
 from core.treatment import TreatmentOperator
 from instrumentation.waste_monitor import WasteMonitor
 from utils.unit_conversion import convert_generation_rates_to_volume
+import math
+
+from utils.seasonality import seasonal_factor_standard_deviation
 from config.constants import (
+    CONSUMPTION_INTERVAL_DAYS,
+    OPERATING_TICK_DAYS,
+    SAFETY_STOCK_Z,
+    TREATMENT_REPLENISHMENT_LEAD_TIME_DAYS,
     WEEKS_PER_YEAR,
     FINISHED_GOODS_BUFFER_WEEKS,
     WASTE_STORAGE_PRIMING_WEEKS,
@@ -145,6 +152,9 @@ class FacilityBuilder:
         finished_goods_capacity = self._finished_goods_capacity(transformations, market_share)
         initial_waste_storage = self._prime_waste_storage(transformations, region, market_share)
         order_share_by_waste_type = self._order_share_by_waste_type(transformations)
+        order_up_to_level_m3 = self._order_up_to_level(
+            transformations, market_share, proc_data.waste_storage_capacity
+        )
 
         if stock_strategy is None and hasattr(self.uncertainty_set, 'stock_strategy'):
             stock_strategy = self.uncertainty_set.stock_strategy
@@ -176,6 +186,7 @@ class FacilityBuilder:
             finished_goods_capacity=finished_goods_capacity,
             initial_waste_storage=initial_waste_storage,
             order_share_by_waste_type=order_share_by_waste_type,
+            order_up_to_level_m3=order_up_to_level_m3,
             market_share=market_share,
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
@@ -213,6 +224,41 @@ class FacilityBuilder:
             for output_type in producible_outputs
             if output_type.value in national_demand
         }
+
+    def _order_up_to_level(self, transformations, market_share: float, waste_storage_capacity: float) -> float:
+        """Treatment order-up-to level S in waste m3 (ADR 0027), the same for PUSH and PULL.
+
+        ``D`` is the waste needed per consumption interval to make this
+        operator's share of producible demand, at the blended conversion
+        efficiency. Demand arrives once per interval, so the protection period
+        covers at least one whole interval. ``sigma`` is the seasonal spread
+        of ``D``, the only demand variation in the model. Clamped at storage
+        capacity.
+        """
+        if not transformations:
+            return 0.0
+        efficiencies = [transformation.conversion_efficiency for transformation in transformations.values()]
+        blended_efficiency = sum(efficiencies) / len(efficiencies)
+        national_demand = self.facility_manager.demand
+        producible_products = sorted(
+            {transformation.output_type.value for transformation in transformations.values()}
+        )
+        producible_annual_demand = sum(
+            national_demand.get(product, 0.0) for product in producible_products
+        )
+        waste_per_interval = market_share * (producible_annual_demand / WEEKS_PER_YEAR) / blended_efficiency
+        protection_intervals = max(
+            1,
+            math.ceil(
+                (TREATMENT_REPLENISHMENT_LEAD_TIME_DAYS + OPERATING_TICK_DAYS) / CONSUMPTION_INTERVAL_DAYS
+            ),
+        )
+        standard_deviation_per_interval = waste_per_interval * seasonal_factor_standard_deviation()
+        order_up_to_level = (
+            waste_per_interval * protection_intervals
+            + SAFETY_STOCK_Z * standard_deviation_per_interval * math.sqrt(protection_intervals)
+        )
+        return min(waste_storage_capacity, order_up_to_level)
 
     def _order_share_by_waste_type(self, transformations) -> dict:
         """Each input type's share of the treatment order-up-to level (ADR 0026).

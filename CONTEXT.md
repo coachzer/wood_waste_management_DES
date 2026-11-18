@@ -106,23 +106,29 @@ Three variants:
 
 - `ON_DEMAND`: signal upstream lot-for-lot. Every waste
   consumption triggers a signal for the replacement volume.
-- `REORDER_50`: signal upstream when `waste_storage` drops below
-  50% of `waste_storage_capacity`.
-- `REORDER_90`: signal upstream when `waste_storage` drops below
-  90% of capacity.
+- `REORDER_50`: signal upstream when a waste type's stock drops
+  below 50% of its order-up-to level.
+- `REORDER_90`: signal upstream when a waste type's stock drops
+  below 90% of its order-up-to level.
 
 Strategy gates waste-side decisions only, meaning when upstream
 signals fire. It does not gate `finished_goods` production. In
 **PUSH**, production triggers on periodic polling of the
 operator's own waste state against the same threshold. In
 **PULL**, production triggers when a **Consumption Event**
-arrives, whatever the strategy. The strategy parameter sets the
-reorder point (`s` in `(s, S)` notation). The order-up-to level
-is `S = waste_storage_capacity`. When the threshold is breached,
-the signal volume is
-`waste_storage_capacity - current_waste_storage` (order up to
-full capacity). Under this rule ON_DEMAND is lot-for-lot:
-s = S = capacity, signal_volume = amount-just-consumed.
+arrives, whatever the strategy. Treatment runs one `(s, S)` per input waste type
+(ADR 0026). The order-up-to level `S` is sized from demand, not
+storage capacity: one consumption interval of waste need plus
+`z = 1.645` seasonal standard deviations, the same for PUSH and
+PULL (ADR 0027). Each type's level is its share of `S`, from
+product need and the national generation mix. The strategy sets
+the reorder point as a fraction of that level: ON_DEMAND `s = S`,
+REORDER_50 `s = 0.5 S`, REORDER_90 `s = 0.9 S`. When a type is
+below its `s`, it orders the gap to its level, so ON_DEMAND is
+lot-for-lot: it orders back what was consumed. Inventory position
+is on-hand stock, because treatment drains collectors within the
+tick. Generator and collector thresholds still use storage
+capacity.
 _Avoid_: reorder policy (overloaded),
 inventory policy (that's PUSH/PULL)
 

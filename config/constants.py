@@ -127,6 +127,14 @@ TRAVEL_SPEED_KMH = 50.0
 WEEKS_PER_YEAR = 52  # annual demand is spread across this many consumption ticks
 CONSUMPTION_INTERVAL_DAYS = 7  # the market consumes finished goods weekly
 
+# Treatment order-up-to level S (ADR 0027): S = D*n + z*sigma*sqrt(n), with D the
+# waste needed per consumption interval, n the consumption intervals in the
+# protection period (lead time + review period, at least one), and sigma the
+# seasonal standard deviation of D. Treatment intake is drained from collectors
+# within the tick, so the replenishment lead time is zero.
+SAFETY_STOCK_Z = 1.645  # 95% cycle service level
+TREATMENT_REPLENISHMENT_LEAD_TIME_DAYS = 0.0
+
 # Inventory priming (ADR 0002, Phase C). Finished-goods capacity per product is
 # sized to FINISHED_GOODS_BUFFER_WEEKS of that product's expected consumption;
 # initial inventory starts at INITIAL_INVENTORY_FRACTION of capacity, and
