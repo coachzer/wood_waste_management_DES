@@ -60,5 +60,6 @@ Paired over 20 seeds, PULL after minus PULL before (95% interval):
 - PULL and PUSH differ in collector thresholds and efficiency curves, so the comparison is confounded
   beyond information flow. The PULL efficiency bonus counts the whole shared signal bus.
 - Generator signals carry no `target_region`, so other regions' collectors drop 21-66% of them.
+  Fixed by ADR 0023, which stops collectors deleting signals they cannot serve.
 - The PULL production backlog absorbs `attempted` with no expiry or cap.
 - Signal expiry uses `<=` with a 1-day maximum age. Treatment signals are first seen at exactly age 1.0.

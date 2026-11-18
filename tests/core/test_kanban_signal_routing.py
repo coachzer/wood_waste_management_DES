@@ -3,7 +3,8 @@
 Treatment signals carry a target_region so that only the collector in the
 operator's own region reads and acknowledges them.  Every other PULL collector
 on the shared bus must skip them and leave them for the intended recipient.
-Signals without a target_region (generator-sourced) pass through any region.
+Signals without a target_region (generator-sourced) pass through any region, and a
+collector that cannot serve one leaves it on the bus for one that can.
 """
 from types import SimpleNamespace
 
@@ -65,13 +66,62 @@ def test_right_region_collector_consumes_treatment_signal():
         "right-region collector should propagate upstream and ack"
 
 
-def test_unaddressed_signal_passes_through_any_region():
+class ServingCollector(FakeCollector):
+    """A collector whose prioritized generators include the signalling generator."""
+
+    def __init__(self, region_type, kanban_manager, generator):
+        super().__init__(region_type, kanban_manager)
+        self.generator = generator
+        self.collected_from = []
+
+    def _get_prioritized_generators(self):
+        return [self.generator]
+
+    def _find_available_vehicle(self):
+        return True
+
+    def collect_from_generator(self, generator, requested_volume=None):
+        self.collected_from.append(generator.name)
+
+
+def _generator(name, region_type):
+    return SimpleNamespace(
+        name=name, region_type=region_type, waste_streams={WASTE: SimpleNamespace(volume=50.0)}
+    )
+
+
+def _bus_with_generator_signal():
     km = KanbanManager()
     km.add_signal(waste_type=WASTE, timestamp=1.0, volume=100,
-                  source_id="gen-1", source_type="generator")  # target_region defaults to None
-    collector = FakeCollector(RegionType.GORENJSKA, km)
+                  source_id="gen-1", source_type="generator")
+    return km
+
+
+def test_unaddressed_signal_reaches_a_collector_in_another_region():
+    km = _bus_with_generator_signal()
+    collector = ServingCollector(RegionType.GORENJSKA, km, _generator("gen-1", RegionType.PODRAVSKA))
 
     CollectorCompany._process_kanban_signals(collector, _pending_non_market(km))
 
-    assert _pending_non_market(km) == [], \
-        "an unaddressed signal must not be blocked by the region filter"
+    assert collector.collected_from == ["gen-1"]
+    assert _pending_non_market(km) == []
+
+
+def test_collector_that_cannot_serve_a_generator_signal_leaves_it_on_the_bus():
+    km = _bus_with_generator_signal()
+    remote = FakeCollector(RegionType.GORENJSKA, km)
+
+    CollectorCompany._process_kanban_signals(remote, _pending_non_market(km))
+
+    assert len(_pending_non_market(km)) == 1
+
+
+def test_generator_signal_left_by_a_remote_collector_is_served_by_the_local_one():
+    km = _bus_with_generator_signal()
+    remote = FakeCollector(RegionType.GORENJSKA, km)
+    local = ServingCollector(RegionType.PODRAVSKA, km, _generator("gen-1", RegionType.PODRAVSKA))
+
+    CollectorCompany._process_kanban_signals(remote, _pending_non_market(km))
+    CollectorCompany._process_kanban_signals(local, _pending_non_market(km))
+
+    assert local.collected_from == ["gen-1"]

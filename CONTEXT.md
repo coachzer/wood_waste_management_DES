@@ -91,6 +91,8 @@ production. Production causes upstream waste demand when the
 strategy threshold is crossed. Upstream waste demand causes
 collector activity, but only while the collector's collection
 center is below the collector utilization ceiling (ADR 0022).
+A collector that cannot serve a generator's signal leaves it for
+one that can (ADR 0023).
 No process polls `finished_goods` on its own.
 Structurally this is lot-for-lot downstream and an `(s, S)`
 policy upstream.

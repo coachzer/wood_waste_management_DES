@@ -441,7 +441,7 @@ class CollectorCompany(OperationalEntity):
                         break
                     else:
                         break
-            else:
+            elif source_type != "generator":
                 if source_type == "treatment":
                     self._propagate_signal_to_generators(signal, current_time)
 
