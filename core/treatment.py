@@ -275,22 +275,20 @@ class TreatmentOperator(OperationalEntity):
         state = self.state
 
         local_collectors = [
-            c for c in state.collectors 
-            if (c.region_type == self.region_type and 
+            c for c in state.collectors
+            if (c.region_type == self.region_type and
                 c.inventory_policy.is_pull() and
-                c.availability and 
-                c.collection_center.current_storage.get(waste_type, 0) > 0) 
+                c.availability)
         ]
 
+        # An empty collector is exactly the one that must pass the demand on to
+        # generators, so the signal is not gated on its stock of this waste type.
         for collector in local_collectors:
-            available_volume = collector.collection_center.current_storage.get(waste_type, 0)
-            signal_volume = min(needed_volume, available_volume)
-
-            if signal_volume > 0:
+            if needed_volume > 0:
                 collector.kanban_manager.add_signal(
                     waste_type=waste_type,
                     timestamp=current_time,
-                    volume=signal_volume,
+                    volume=needed_volume,
                     source_id=self.name,
                     source_type="treatment",
                     target_region=self.region_type,
