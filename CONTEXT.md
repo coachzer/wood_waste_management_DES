@@ -170,9 +170,11 @@ _Avoid_: consumption signal, market order
 
 **PULL Production Backlog**:
 A PULL **Treatment Operator**'s per-product volume still to
-produce. Each **Market Signal** adds the `attempted` of the
-tick's **Consumption Events** for that operator (skipping
-`no_capability`). Each daily operating tick produces against it,
+produce. It starts at **Finished Goods** capacity minus initial
+stock. Each **Market Signal** adds the `consumed` of the tick's
+**Consumption Events** for that operator, so finished goods plus
+backlog stays at capacity: base-stock with lost sales, up to the
+level PUSH produces up to (ADR 0029). Each daily operating tick produces against it,
 limited by processing capacity, waste on hand and the
 **Finished Goods** headroom clamp, and draws it down by what was
 made. Unmet volume carries forward with no expiry, because one

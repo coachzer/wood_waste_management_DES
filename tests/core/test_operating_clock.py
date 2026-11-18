@@ -240,23 +240,40 @@ def test_collector_decides_every_tick_without_jitter():
 # --- PULL Production Backlog --------------------------------------------------
 
 
-def _pull_operator_with_one_week_of_osb_demand(env, attempted):
+def _pull_operator_at_target(env):
+    """A PULL operator whose finished goods are full, so its backlog is empty."""
     state = SimulationState()
     kanban_manager = KanbanManager()
     operator = _treatment(
         env, inventory_policy=InventoryPolicy.PULL, state=state, kanban_manager=kanban_manager
     )
+    for output_type, capacity in operator.finished_goods.capacity.items():
+        operator.finished_goods.current_storage[output_type] = capacity
+    operator.pull_production_backlog_m3_by_product = dict.fromkeys(
+        operator.pull_production_backlog_m3_by_product, 0.0
+    )
+    return operator, state, kanban_manager
+
+
+def _sell_osb(operator, state, kanban_manager, attempted, consumed):
+    """One market tick at day 0, as ``_market_consumption_process`` records it."""
+    operator.finished_goods.current_storage[OutputType.OSB] -= consumed
     state.record_consumption_event(
         operator_name=operator.name,
         product="osb",
         attempted=attempted,
-        consumed=0.0,
-        reason="stockout",
+        consumed=consumed,
+        reason="stockout" if consumed < attempted else None,
         timestamp=0.0,
     )
     kanban_manager.add_signal(
         waste_type=None, timestamp=0.0, volume=attempted, source_id=operator.name, source_type="market"
     )
+
+
+def _pull_operator_with_one_week_of_osb_demand(env, attempted):
+    operator, state, kanban_manager = _pull_operator_at_target(env)
+    _sell_osb(operator, state, kanban_manager, attempted, consumed=attempted)
     return operator, state
 
 
@@ -311,3 +328,34 @@ def test_pull_operator_absorbs_market_signal_while_failed():
 
     env.run(until=6)
     assert operator.product_volumes["osb"] == pytest.approx(500.0)
+
+
+def test_pull_backlog_starts_at_the_finished_goods_gap():
+    """Finished goods start half-full; the backlog holds the other half (ADR 0029).
+
+    Mutation check (red): start the backlog empty -> nothing is produced without a sale.
+    """
+    env = simpy.Environment()
+    operator = _treatment(env, inventory_policy=InventoryPolicy.PULL, kanban_manager=KanbanManager())
+
+    env.run(until=60)
+
+    for output_type, capacity in operator.finished_goods.capacity.items():
+        assert operator.finished_goods.current_storage[output_type] == pytest.approx(capacity)
+        assert operator.pull_production_backlog_m3_by_product[output_type.value] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_pull_backlog_replaces_what_was_sold_not_what_was_asked():
+    """A lost sale does not come back, so only the consumed volume is remade (ADR 0029).
+
+    Mutation check (red): add ``event["attempted"]`` in ``_absorb_market_signals`` ->
+    the 300 m3 that was never sold sticks in the backlog.
+    """
+    env = simpy.Environment()
+    operator, state, kanban_manager = _pull_operator_at_target(env)
+    _sell_osb(operator, state, kanban_manager, attempted=500.0, consumed=200.0)
+
+    env.run(until=14)
+
+    assert operator.product_volumes["osb"] == pytest.approx(200.0)
+    assert operator.pull_production_backlog_m3_by_product["osb"] == pytest.approx(0.0, abs=1e-6)

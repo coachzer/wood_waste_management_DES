@@ -251,9 +251,8 @@ class SimulationManager:
         shortfall as ``stockout``. Every attempt is logged via
         ``record_consumption_event``.
 
-        PULL operators additionally receive a market kanban signal carrying their
-        producible attempted volume (ADR 0002, Phase E) -- ``attempted``, not
-        ``consumed``, so an emptied inventory does not starve future production.
+        PULL operators additionally receive a market kanban signal (ADR 0002, Phase E).
+        Their backlog replaces the ``consumed`` volume it references (ADR 0029).
         """
         national_demand = self.facility_manager.demand
         while True:

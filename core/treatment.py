@@ -111,8 +111,6 @@ class TreatmentOperator(OperationalEntity):
             "osb": 0.0
         }
         self.expected_output_volume_from_intake_m3 = 0.0
-        self.pull_production_backlog_m3_by_product: Dict[str, float] = {}
-
         finished_goods_capacity = finished_goods_capacity or {}
         self.finished_goods = ProductStorage(
             capacity=finished_goods_capacity,
@@ -121,6 +119,11 @@ class TreatmentOperator(OperationalEntity):
                 for output_type in OutputType
             }
         )
+        self.pull_production_backlog_m3_by_product: Dict[str, float] = {
+            output_type.value: finished_goods_capacity.get(output_type, 0.0)
+            - self.finished_goods.current_storage[output_type]
+            for output_type in sorted(OutputType, key=lambda output_type: output_type.value)
+        }
 
         self.transformations = transformations or self._default_transformations()
 
@@ -320,8 +323,11 @@ class TreatmentOperator(OperationalEntity):
 
         ADR 0002 (Phase E): PULL production is event-triggered. The operator scans
         its own unacknowledged Market Signals, reads the Consumption Events they
-        reference, and adds each producible product's ``attempted`` volume to the
-        PULL Production Backlog (ADR 0020). Runs every tick, FAILED ticks
+        reference, and adds each producible product's ``consumed`` volume to the
+        PULL Production Backlog (ADR 0020, ADR 0029). The backlog starts at
+        finished-goods capacity minus initial stock, so finished goods plus
+        backlog stays at capacity: a base-stock rule with lost sales, replacing
+        what was sold up to the level PUSH produces up to. Runs every tick, FAILED ticks
         included: an outage stops production, not the order book, so a signal is
         never pruned unread.
         """
@@ -341,7 +347,7 @@ class TreatmentOperator(OperationalEntity):
             ):
                 product = event["product"]
                 self.pull_production_backlog_m3_by_product[product] = (
-                    self.pull_production_backlog_m3_by_product.get(product, 0.0) + event["attempted"]
+                    self.pull_production_backlog_m3_by_product.get(product, 0.0) + event["consumed"]
                 )
 
         for signal in market_signals:
