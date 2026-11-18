@@ -362,17 +362,12 @@ class CollectorCompany(OperationalEntity):
             self.efficiency = self.get_operational_efficiency()
 
     def update_efficiency(self):
-        """Efficiency update"""
+        """Equipment aging only; the same for every policy and strategy (ADR 0025)."""
         current_time = self.env.now
-        utilization = self._calculate_utilization()
-
-        kanban_signals = len(self.kanban_manager.get_signals(self.env.now))
-
-        self.efficiency = self._calculate_efficiency_multiplier(
-            utilization, kanban_signals, current_time
+        self.efficiency = max(
+            COLLECTOR_DEGRADATION_FLOOR,
+            1.0 - (current_time * COLLECTOR_TIME_DEGRADATION_RATE_PER_DAY),
         )
-
-        self.efficiency = max(0.3, min(1.2, self.efficiency))
 
     def collection_loop(self):
         """Periodically collect waste from generators based on strategy"""
@@ -677,18 +672,6 @@ class CollectorCompany(OperationalEntity):
         total_capacity = self.collection_center.waste_storage_capacity
         return (
             sum(storage_dict.values()) / total_capacity if total_capacity > 0 else 0.0
-        )
-
-    def _calculate_efficiency_multiplier(
-        self, utilization: float, kanban_signals: int, base_time: float
-    ) -> float:
-        """Calculate efficiency multiplier based on policy and strategy"""
-        base_degradation = max(
-            COLLECTOR_DEGRADATION_FLOOR,
-            1.0 - (base_time * COLLECTOR_TIME_DEGRADATION_RATE_PER_DAY),
-        )
-        return self.inventory_policy_behavior.collector_efficiency(
-            self.stock_strategy_behavior, utilization, kanban_signals, base_degradation
         )
 
     @staticmethod

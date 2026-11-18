@@ -125,12 +125,12 @@ def test_push_should_collect_uses_buffered_threshold_without_signals():
     assert policy.collector_should_collect(0.65, 0.50, _boom) is False
 
 
-def test_pull_should_collect_short_circuits_on_signals():
+def test_pull_collects_only_against_signals():
+    # Kanban: no signal, no movement (ADR 0025). An empty collection center
+    # with no signal must still stay idle.
     policy = PullPolicy()
     assert policy.collector_should_collect(0.70, 0.50, lambda: ["s"]) is True
-    # Otherwise PULL uses the lowered threshold = max(0.15, adaptive - 0.15).
-    assert policy.collector_should_collect(0.30, 0.50, lambda: []) is True
-    assert policy.collector_should_collect(0.40, 0.50, lambda: []) is False
+    assert policy.collector_should_collect(0.0, 0.50, lambda: []) is False
 
 
 def test_pull_signals_do_not_force_collection_at_the_utilization_ceiling():
@@ -146,26 +146,3 @@ def test_policy_production_and_signal_propagation_flags():
     assert PullPolicy().propagates_reorder_signals_upstream() is True
     assert PushPolicy().treatment_is_demand_driven() is False
     assert PullPolicy().treatment_is_demand_driven() is True
-
-
-def test_policy_clamps_before_delegating_efficiency_curve():
-    # The policy owns clamping; verify out-of-range inputs reach the strategy
-    # already clamped by checking the curve's clamped-boundary behavior.
-    captured = {}
-
-    class _SpyStrategy:
-        def collector_push_efficiency(self, utilization, base):
-            captured["util"] = utilization
-            return base
-
-        def collector_pull_efficiency(self, utilization, signals, base):
-            captured["util"] = utilization
-            captured["signals"] = signals
-            return base
-
-    PushPolicy().collector_efficiency(_SpyStrategy(), utilization=1.5, signals=3, base=1.0)
-    assert captured["util"] == 1.0  # clamped to [0, 1]
-
-    PullPolicy().collector_efficiency(_SpyStrategy(), utilization=-0.2, signals=-4, base=1.0)
-    assert captured["util"] == 0.0
-    assert captured["signals"] == 0  # clamped to >= 0

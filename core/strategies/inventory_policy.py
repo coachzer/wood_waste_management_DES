@@ -5,25 +5,20 @@ Each concrete class owns the policy-specific decisions that used to live in
 the collector and treatment process modules. Methods take primitive values plus
 lazy callables for the branches that read kanban signals, so PUSH never reads them.
 
-The policy owns the PUSH/PULL utilization/signal clamping for the collector
-efficiency curve and delegates the strategy-specific shape to the stock
-strategy, matching the original ``_calculate_efficiency_multiplier`` split.
+Only the collection trigger differs between the policies. Collector efficiency
+is the same for both (ADR 0025).
 """
 
 from __future__ import annotations
 
-from typing import Callable, List, Protocol, TYPE_CHECKING
+from typing import Callable, List, Protocol
 
 from config.constants import (
     COLLECTOR_UTILIZATION_CEILING,
-    PULL_COLLECTOR_NO_SIGNAL_THRESHOLD_FLOOR,
-    PULL_COLLECTOR_NO_SIGNAL_THRESHOLD_REDUCTION,
     PUSH_COLLECTOR_THRESHOLD_BUFFER,
     PUSH_ON_DEMAND_GENERATOR_SIGNAL_STORAGE_SHARE,
 )
 
-if TYPE_CHECKING:
-    from core.strategies.stock_strategy import StockStrategyProtocol
 from models.enums import InventoryPolicy
 
 
@@ -43,15 +38,6 @@ class InventoryPolicyProtocol(Protocol):
         """The collector's per-cycle decision to collect."""
         ...
 
-    def collector_efficiency(
-        self,
-        stock_strategy: "StockStrategyProtocol",
-        utilization: float,
-        signals: int,
-        base: float,
-    ) -> float:
-        """Clamp inputs for this policy, then apply the strategy efficiency curve."""
-        ...
 
     def ondemand_generator_should_signal(
         self, current_storage: float, capacity: float, active_signals_fn: Callable[[], List]
@@ -80,9 +66,6 @@ class PushPolicy:
         push_threshold = min(COLLECTOR_UTILIZATION_CEILING, adaptive_threshold + PUSH_COLLECTOR_THRESHOLD_BUFFER)
         return utilization < push_threshold
 
-    def collector_efficiency(self, stock_strategy, utilization, signals, base) -> float:
-        utilization = max(0.0, min(1.0, utilization))
-        return stock_strategy.collector_push_efficiency(utilization, base)
 
     def ondemand_generator_should_signal(
         self, current_storage, capacity, active_signals_fn
@@ -105,18 +88,10 @@ class PullPolicy:
     def collector_should_collect(
         self, utilization, adaptive_threshold, non_market_signals_fn
     ) -> bool:
-        if non_market_signals_fn():
-            return utilization < COLLECTOR_UTILIZATION_CEILING
-        pull_threshold = max(
-            PULL_COLLECTOR_NO_SIGNAL_THRESHOLD_FLOOR,
-            adaptive_threshold - PULL_COLLECTOR_NO_SIGNAL_THRESHOLD_REDUCTION,
-        )
-        return utilization < pull_threshold
+        if not non_market_signals_fn():
+            return False
+        return utilization < COLLECTOR_UTILIZATION_CEILING
 
-    def collector_efficiency(self, stock_strategy, utilization, signals, base) -> float:
-        utilization = max(0.0, min(1.0, utilization))
-        signals = max(0, signals)
-        return stock_strategy.collector_pull_efficiency(utilization, signals, base)
 
     def ondemand_generator_should_signal(
         self, current_storage, capacity, active_signals_fn
