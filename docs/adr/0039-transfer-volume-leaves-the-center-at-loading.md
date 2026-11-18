@@ -56,12 +56,13 @@ total cost moves a further -0.02M [-0.04, -0.00]; nothing else moves beyond nois
 
 PULL minus PUSH narrows. Total cost: +0.06 [+0.04, +0.08] / +0.05 [+0.01, +0.09] /
 +0.10 [+0.07, +0.13] M. Emissions: +14 / +24 / +23 t (ON_DEMAND / REORDER_50 / REORDER_90).
-PULL is still dearer and dirtier than PUSH in every strategy, but the margin is small. adv-2 of
-the round-1 agy review (`.scratch/agy-review/round1/adv-2/REPORT.md`, seed 1 at d8a92dc) found two
-trip-pricing artefacts that each move it by more than this: one fixed trip cost per waste type
-per drain or transfer, and a fallback drain that visits collectors in region enum order instead
-of nearest first. Correcting one without the other can flip the sign. The sign is not robust
-until both are settled.
+PULL is still dearer and dirtier than PUSH in every strategy, but the margin is small. The
+round-1 agy review found two trip-pricing artefacts: one fixed trip cost per waste type per drain or
+transfer, and a fallback drain that visits collectors in region enum order instead of nearest first.
+Re-pricing seeds 1-10 under alternative rules (`.scratch/agy-review/robustness/summary.txt`) keeps
+PULL dearer under every rule that treats drains and transfers alike (+0.03 to +0.17M; REORDER_50 not
+significant under two rules). Only dropping the fee on drains while keeping it on transfers flips
+the sign. Emissions stay higher for PULL under every rule.
 
 The MFA "Stock at day 365" sink now includes the queued volume as collector stock, so the PUSH
 collector node should close up to vehicles still on the road. Not re-checked here.
