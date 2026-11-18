@@ -37,3 +37,24 @@ types can be starved. A proportional split would change waste composition and is
 - No existing result changes. All 60 reference runs (seeds 1-10, six combos) are byte-identical in
   every monitor key except the new `total_uncollected` series and the new KPI.
 - A generation path that drops or invents waste now trips an armed run.
+
+## Rates use potential generation
+
+`collection_rate_pct` and `overall_efficiency_pct` now divide by potential generation
+(`total_potential_generated_m3`, new KPI), so uncollected waste counts against them. The waste
+monitor's efficiency summary and the summary and temporal-comparison plots use the same denominator.
+`total_generated_m3` still reports committed generation.
+
+Mean over seeds 1-10, Baseline:
+
+| Combo | Collection rate, % | Overall efficiency, % |
+|---|---|---|
+| PUSH ON_DEMAND | 52.5 -> 25.5 | 6.1 -> 2.9 |
+| PUSH REORDER_50 | 51.7 -> 25.3 | 6.3 -> 3.1 |
+| PUSH REORDER_90 | 58.1 -> 32.0 | 5.6 -> 3.1 |
+| PULL ON_DEMAND | 55.5 -> 28.7 | 5.6 -> 2.9 |
+| PULL REORDER_50 | 54.9 -> 30.0 | 5.4 -> 3.0 |
+| PULL REORDER_90 | 56.1 -> 31.1 | 5.3 -> 2.9 |
+
+No other KPI or monitor key moved. The MFA plot still draws committed generation and has no
+uncollected flow (open, with `.scratch/mfa-plot-redesign`).

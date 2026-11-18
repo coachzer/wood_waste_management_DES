@@ -75,7 +75,7 @@ def create_summary_dashboard(results: List[Dict], output_dir: str):
         processing_history = monitor_data['processing_history']
         event_history = monitor_data['event_history']
 
-        total_generated = sum(last_cumulative_by_entity(generation_history, 'total_generated').values())
+        total_generated = sum(last_cumulative_by_entity(generation_history, 'total_potential_generated').values())
         total_collected = sum(last_cumulative_by_entity(collection_history, 'collected_volumes').values())
         total_processed = sum(last_cumulative_by_entity(processing_history, 'processed.total').values())
 

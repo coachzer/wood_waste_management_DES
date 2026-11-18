@@ -426,7 +426,7 @@ def _extract_efficiency_metrics(results: List[Dict]) -> List[Dict]:
 def _calculate_collection_metrics(monitor_data: Dict) -> Dict:
     """Calculate collection efficiency metrics"""
     total_generated = sum(
-        last_cumulative_by_entity(monitor_data.get('generation_history', {}), 'total_generated').values()
+        last_cumulative_by_entity(monitor_data.get('generation_history', {}), 'total_potential_generated').values()
     )
     total_collected = sum(
         last_cumulative_by_entity(monitor_data.get('collection_history', {}), 'collected_volumes').values()

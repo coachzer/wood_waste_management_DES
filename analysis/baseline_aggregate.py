@@ -24,6 +24,7 @@ from instrumentation.history_store import (
 
 _SUMMARY_METRICS = [
     "total_generated_m3",
+    "total_potential_generated_m3",
     "total_collected_m3",
     "total_processed_m3",
     "collection_rate_pct",
@@ -140,6 +141,7 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
 
     total_generated = _sum_last_nested(gen_hist, "total_generated")
     total_uncollected = _sum_last_nested(gen_hist, "total_uncollected")
+    total_potential_generated = _sum_last_nested(gen_hist, "total_potential_generated")
     total_collected = _sum_last_nested(col_hist, "collected_volumes")
 
     total_processed = 0.0
@@ -149,13 +151,13 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
             total_processed += float(series[-1])
 
     collection_rate = (
-        (total_collected / total_generated * 100.0) if total_generated > 0 else 0.0
+        (total_collected / total_potential_generated * 100.0) if total_potential_generated > 0 else 0.0
     )
     processing_rate = (
         (total_processed / total_collected * 100.0) if total_collected > 0 else 0.0
     )
     overall_eff = (
-        (total_processed / total_generated * 100.0) if total_generated > 0 else 0.0
+        (total_processed / total_potential_generated * 100.0) if total_potential_generated > 0 else 0.0
     )
 
     sys_evt = evt_hist.get("system_events", {})
@@ -245,6 +247,7 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "total_generated_m3": total_generated,
+        "total_potential_generated_m3": total_potential_generated,
         "total_collected_m3": total_collected,
         "total_processed_m3": total_processed,
         "collection_rate_pct": collection_rate,

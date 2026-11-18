@@ -169,7 +169,7 @@ class WasteMonitor:
 
     def calculate_efficiency_metrics(self) -> Dict[str, float]:
         """Calculate system-wide efficiency metrics"""
-        total_generated = self._sum_totals(self.store.generation_history, "total_generated")
+        total_generated = self._sum_totals(self.store.generation_history, "total_potential_generated")
         total_collected = self._sum_totals(self.store.collection_history, "collected_volumes")
 
         total_processed = 0
