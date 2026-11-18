@@ -85,10 +85,10 @@ class TreatmentOperator(OperationalEntity):
         self.energy_consumption = energy_consumption
         self.operational_costs = operational_costs
         self.environmental_impact = environmental_impact
-        self.processing_capacity = per_tick_capacity(
+        self.processing_capacity_per_tick_m3 = per_tick_capacity(
             self.waste_storage_capacity * PROCESSING_CAPACITY_FRACTION, self.processing_time
         )
-        self.initial_processing_capacity = self.processing_capacity
+        self.initial_processing_capacity_per_tick_m3 = self.processing_capacity_per_tick_m3
         self.region = region
         self.region_type = RegionType[region.upper().replace('-', '_')]
         self.market_share = market_share
@@ -102,8 +102,8 @@ class TreatmentOperator(OperationalEntity):
             "particle_board": 0.0,
             "osb": 0.0
         }
-        self.expected_output_volume = 0.0
-        self.pull_production_backlog: Dict[str, float] = {}
+        self.expected_output_volume_from_intake_m3 = 0.0
+        self.pull_production_backlog_m3_by_product: Dict[str, float] = {}
 
         finished_goods_capacity = finished_goods_capacity or {}
         self.finished_goods = ProductStorage(
@@ -310,11 +310,11 @@ class TreatmentOperator(OperationalEntity):
         """Scale processing capacity by status-driven operational efficiency."""
         match self.status:
             case EntityStatus.FAILED | EntityStatus.RECOVERING:
-                self.processing_capacity = (
-                    self.initial_processing_capacity * self.get_operational_efficiency()
+                self.processing_capacity_per_tick_m3 = (
+                    self.initial_processing_capacity_per_tick_m3 * self.get_operational_efficiency()
                 )
             case EntityStatus.OPERATIONAL:
-                self.processing_capacity = self.initial_processing_capacity
+                self.processing_capacity_per_tick_m3 = self.initial_processing_capacity_per_tick_m3
 
     def _process_available_waste(self):
         """Processes waste based on prioritized transformations."""
@@ -348,8 +348,8 @@ class TreatmentOperator(OperationalEntity):
                 and event["reason"] != "no_capability"
             ):
                 product = event["product"]
-                self.pull_production_backlog[product] = (
-                    self.pull_production_backlog.get(product, 0.0) + event["attempted"]
+                self.pull_production_backlog_m3_by_product[product] = (
+                    self.pull_production_backlog_m3_by_product.get(product, 0.0) + event["attempted"]
                 )
 
         for signal in market_signals:
@@ -368,13 +368,13 @@ class TreatmentOperator(OperationalEntity):
         """
         for (input_type, output_type), transformation in self._get_prioritized_transformations():
             product = output_type.value.lower()
-            remaining = self.pull_production_backlog.get(product, 0.0)
+            remaining = self.pull_production_backlog_m3_by_product.get(product, 0.0)
             if remaining <= 0 or self.waste_storage.get(input_type, 0) <= 0:
                 continue
             produced = self._process_waste_transformation(
                 input_type, output_type, transformation, output_cap=remaining
             )
-            self.pull_production_backlog[product] = remaining - produced
+            self.pull_production_backlog_m3_by_product[product] = remaining - produced
 
     def run_facility(self):
         """Main process loop for the treatment facility."""
@@ -422,7 +422,7 @@ class TreatmentOperator(OperationalEntity):
 
         clamps = [
             self.waste_storage[input_type],
-            self.processing_capacity,
+            self.processing_capacity_per_tick_m3,
             headroom / efficiency,
         ]
         if output_cap is not None:
@@ -439,7 +439,7 @@ class TreatmentOperator(OperationalEntity):
         if output_type in final_products:
             self.finished_goods.current_storage[output_type] += output_amount
 
-            self.expected_output_volume += amount_to_process * efficiency
+            self.expected_output_volume_from_intake_m3 += amount_to_process * efficiency
 
             if output_type == OutputType.MDF:
                 self.product_volumes["mdf"] += output_amount

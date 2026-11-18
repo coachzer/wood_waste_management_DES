@@ -37,12 +37,12 @@ def _collector(noop_waste_monitor):
 def test_site_pickup_is_capped_by_scaled_capacity_not_its_square(noop_waste_monitor):
     """With efficiency 0.5 the loop sets capacity 50; a pickup takes 50, not 25.
 
-    Mutation check (red): restore ``self.collection_capacity * self.efficiency``
+    Mutation check (red): restore ``self.collection_capacity_per_tick_m3 * self.efficiency``
     in ``_perform_collection_at_site`` -> the pickup is 25.
     """
     collector = _collector(noop_waste_monitor)
     collector.efficiency = 0.5
-    collector.collection_capacity = 100.0 * collector.efficiency  # as collection_loop sets it
+    collector.collection_capacity_per_tick_m3 = 100.0 * collector.efficiency  # as collection_loop sets it
 
     generator = SimpleNamespace(
         name="generator-1",

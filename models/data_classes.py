@@ -39,7 +39,7 @@ class OperationalEntity:
         self.rng = np.random.default_rng(seed)
         seed_sequence = seed if isinstance(seed, np.random.SeedSequence) else np.random.SeedSequence(seed)
         [failure_seed] = seed_sequence.spawn(1)
-        self.failure_rng = np.random.default_rng(failure_seed)
+        self.policy_independent_failure_rng = np.random.default_rng(failure_seed)
 
     @classmethod
     def get_failure_stats(cls):
@@ -73,7 +73,7 @@ class OperationalEntity:
         """
 
         if self.status == EntityStatus.OPERATIONAL:
-            if self.failure_rng.random() < failure_probability:
+            if self.policy_independent_failure_rng.random() < failure_probability:
                 entity_type = self.__class__.__name__
                 if entity_type not in self._failure_counts:
                     self._failure_counts[entity_type] = 0
@@ -145,7 +145,7 @@ class OperationalEntity:
     def _get_recovery_duration(self):
         """Draw an outage or recovery-ramp duration from the failure config."""
         if self.failure_config:
-            return self.failure_rng.uniform(
+            return self.policy_independent_failure_rng.uniform(
                 self.failure_config.min_duration,
                 self.failure_config.max_duration
             )

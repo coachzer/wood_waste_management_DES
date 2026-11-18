@@ -91,10 +91,10 @@ class CollectorCompany(OperationalEntity):
         self.inventory_policy_behavior = build_inventory_policy(inventory_policy)
         self.transport_manager = transport_manager or PointToPointTransport()
         self.collection_frequency = collection_frequency
-        self.initial_collection_capacity = per_tick_capacity(
+        self.initial_collection_capacity_per_tick_m3 = per_tick_capacity(
             collection_capacity, collection_frequency
         )
-        self.collection_capacity = self.initial_collection_capacity
+        self.collection_capacity_per_tick_m3 = self.initial_collection_capacity_per_tick_m3
         self.initial_transport_cost = transport_cost
         self.transport_cost = transport_cost
         self.last_collection_cost = 0.0
@@ -113,7 +113,7 @@ class CollectorCompany(OperationalEntity):
         )
 
         self.vehicle_capacity = (
-            vehicle_capacity if vehicle_capacity is not None else self.initial_collection_capacity
+            vehicle_capacity if vehicle_capacity is not None else self.initial_collection_capacity_per_tick_m3
         )
         self.vehicles = [
             Vehicle(
@@ -239,7 +239,7 @@ class CollectorCompany(OperationalEntity):
 
             collectible_amount = min(
                 stream.volume,
-                self.collection_capacity,
+                self.collection_capacity_per_tick_m3,
                 remaining_capacity
             )
 
@@ -377,7 +377,7 @@ class CollectorCompany(OperationalEntity):
                 yield self.env.timeout(OPERATING_TICK_DAYS)
                 continue
 
-            self.collection_capacity = self.initial_collection_capacity * self.efficiency
+            self.collection_capacity_per_tick_m3 = self.initial_collection_capacity_per_tick_m3 * self.efficiency
             self.transport_cost = min(100, self.initial_transport_cost * (2 - self.efficiency))
 
             yield self.env.timeout(OPERATING_TICK_DAYS)
@@ -537,7 +537,7 @@ class CollectorCompany(OperationalEntity):
 
         clamps = [
             generator.current_storage,
-            self.collection_capacity,
+            self.collection_capacity_per_tick_m3,
             available_vehicle.capacity,
             collection_center_available,
         ]
@@ -720,7 +720,7 @@ class CollectorCompany(OperationalEntity):
         if not generators_with_waste:
             return []
 
-        total_collection_capacity = self.collection_capacity
+        total_collection_capacity = self.collection_capacity_per_tick_m3
 
         same_region_generators = [
             g for g in generators_with_waste if g.region_type == self.region_type

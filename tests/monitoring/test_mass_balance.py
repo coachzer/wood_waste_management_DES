@@ -40,7 +40,7 @@ def make_operator(name, produced, storage, expected_output=None):
         finished_goods=finished_goods,
     )
     if expected_output is not None:
-        operator.expected_output_volume = expected_output
+        operator.expected_output_volume_from_intake_m3 = expected_output
     return operator
 
 
@@ -97,7 +97,7 @@ def test_valid_invariant_does_not_raise():
 #
 # Per treatment operator, the bridge relates the two otherwise-independent
 # ledgers: the output expected from intake (intake x efficiency, accumulated
-# into expected_output_volume) must equal the finished-goods actually deposited
+# into expected_output_volume_from_intake_m3) must equal the finished-goods actually deposited
 # (sum of product_volumes). A wrong efficiency or mis-scaled yield breaks the
 # bridge without disturbing either single-ledger invariant.
 
@@ -349,7 +349,7 @@ def test_yield_bridge_trips_on_halved_yield(monkeypatch):
     deposit from BOTH product ledgers (``finished_goods`` and
     ``product_volumes``) keeps the product invariant internally consistent --
     exactly the Probe 4 failure shape that slips past both single-ledger
-    invariants -- while intake (and thus ``expected_output_volume``) stays
+    invariants -- while intake (and thus ``expected_output_volume_from_intake_m3``) stays
     untouched, so only the armed yield bridge can catch the divergence and
     must abort the run (surfaced as ``SystemExit`` whose cause is a
     ``MassBalanceViolation``). Slow: a full 365-day, 12-region simulation.

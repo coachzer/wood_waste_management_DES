@@ -105,7 +105,7 @@ def test_treatment_annual_capacity_equals_data_period_capacity(monkeypatch, tick
     expected_annual = (
         TREATMENT_STORAGE_M3 * PROCESSING_CAPACITY_FRACTION * SIMULATION_DURATION / PROCESSING_TIME_DAYS
     )
-    assert operator.processing_capacity * SIMULATION_DURATION / tick_days == pytest.approx(expected_annual)
+    assert operator.processing_capacity_per_tick_m3 * SIMULATION_DURATION / tick_days == pytest.approx(expected_annual)
 
 
 def test_treatment_capacity_unchanged_by_storage_expansion():
@@ -116,27 +116,27 @@ def test_treatment_capacity_unchanged_by_storage_expansion():
     capacity grows by 500 * fraction / 24 per expansion.
     """
     operator = _treatment(simpy.Environment())
-    per_tick_before = operator.processing_capacity
+    per_tick_before = operator.processing_capacity_per_tick_m3
 
     _cost, action = handle_storage_event(operator, {CONSTRUCTION: 10_000.0})
     operator._apply_status_throughput_effects()
 
     assert action == "expand_storage"
     assert operator.waste_storage_capacity == TREATMENT_STORAGE_M3 + EXPANSION_SIZE_M3
-    assert operator.processing_capacity == pytest.approx(per_tick_before)
+    assert operator.processing_capacity_per_tick_m3 == pytest.approx(per_tick_before)
 
 
 def test_treatment_recovering_ramp_scales_the_per_tick_capacity():
     """RECOVERING runs at efficiency x the per-tick (not per-24-day) capacity."""
     operator = _treatment(simpy.Environment())
-    per_tick = operator.initial_processing_capacity
+    per_tick = operator.initial_processing_capacity_per_tick_m3
     operator.status = EntityStatus.RECOVERING
     operator.recovery_progress = 0.5
 
     operator._apply_status_throughput_effects()
 
     ramp_efficiency = RECOVERING_BASE_EFFICIENCY + (1.0 - RECOVERING_BASE_EFFICIENCY) * 0.5
-    assert operator.processing_capacity == pytest.approx(per_tick * ramp_efficiency)
+    assert operator.processing_capacity_per_tick_m3 == pytest.approx(per_tick * ramp_efficiency)
 
 
 def test_collector_annual_capacity_equals_data_period_capacity():
@@ -147,7 +147,7 @@ def test_collector_annual_capacity_equals_data_period_capacity():
     """
     collector = _collector(simpy.Environment())
 
-    assert _annual(collector.initial_collection_capacity) == pytest.approx(
+    assert _annual(collector.initial_collection_capacity_per_tick_m3) == pytest.approx(
         COLLECTION_CAPACITY_M3 * SIMULATION_DURATION / COLLECTION_FREQUENCY_DAYS
     )
     assert collector.collection_center.waste_storage_capacity == 2 * COLLECTION_CAPACITY_M3
@@ -266,7 +266,7 @@ def test_pull_week_of_demand_on_one_day_is_produced_over_later_ticks():
     Event, so Lost Sales and Service Level stay defined by the market log.
 
     Mutation check (red): zero the backlog after each tick's production
-    (``self.pull_production_backlog[product] = 0.0``) -> only day 0's output.
+    (``self.pull_production_backlog_m3_by_product[product] = 0.0``) -> only day 0's output.
     """
     env = simpy.Environment()
     one_tick_output = (
@@ -281,7 +281,7 @@ def test_pull_week_of_demand_on_one_day_is_produced_over_later_ticks():
 
     assert produced_on_signal_day == pytest.approx(one_tick_output)
     assert operator.product_volumes["osb"] == pytest.approx(attempted)
-    assert operator.pull_production_backlog["osb"] == pytest.approx(0.0, abs=1e-6)
+    assert operator.pull_production_backlog_m3_by_product["osb"] == pytest.approx(0.0, abs=1e-6)
     assert len(state.consumption_events) == 1
 
 

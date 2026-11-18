@@ -280,9 +280,9 @@ class MassBalanceMonitor:
         The product and waste invariants each close independently; neither
         relates intake to output. This check is the bridge between them:
 
-            expected_output_volume == sum(product_volumes.values())
+            expected_output_volume_from_intake_m3 == sum(product_volumes.values())
 
-        ``expected_output_volume`` accumulates ``intake x efficiency`` at each
+        ``expected_output_volume_from_intake_m3`` accumulates ``intake x efficiency`` at each
         transformation, independent of the deposit path. A wrong conversion
         efficiency or mis-scaled yield makes deposited output diverge from this
         intake-derived expectation and trips here, where the single-ledger
@@ -293,7 +293,7 @@ class MassBalanceMonitor:
         """
         violations = []
         for operator in self.registry.operators:
-            expected = getattr(operator, "expected_output_volume", 0.0)
+            expected = getattr(operator, "expected_output_volume_from_intake_m3", 0.0)
             produced = sum(operator.product_volumes.values())
             delta = expected - produced
             self.telemetry.append(
