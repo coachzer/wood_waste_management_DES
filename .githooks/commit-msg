@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Enforces the commit convention in CLAUDE.md.
+message_file="$1"
+subject="$(head -n 1 "$message_file")"
+
+case "$subject" in
+  Merge\ *|Revert\ *|fixup!*|squash!*) exit 0 ;;
+esac
+
+fail() { echo "commit-msg: $1" >&2; echo "  subject: $subject" >&2; exit 1; }
+
+pattern='^(feat|fix|docs|test|refactor|chore)(\([a-z0-9_-]+\))?: [A-Z]'
+[[ "$subject" =~ $pattern ]] || fail "expected 'type(scope): Imperative subject' with type in feat|fix|docs|test|refactor|chore"
+(( ${#subject} <= 72 )) || fail "subject is ${#subject} chars, limit is 72"
+
+type="${subject%%[(:]*}"
+if [[ "$type" =~ ^(feat|fix|refactor)$ ]]; then
+  result_paths="$(git diff --cached --name-only | grep -E '^(core|models|analysis|config|data|utils)/' || true)"
+  if [[ -n "$result_paths" ]] && ! grep -qE '^Affects: .+' "$message_file"; then
+    fail "$type touching simulation code needs an 'Affects: <what shifted>' trailer (use 'Affects: none' if results are unchanged)"
+  fi
+fi
