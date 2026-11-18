@@ -30,6 +30,7 @@ _SUMMARY_METRICS = [
     "processing_rate_pct",
     "overall_efficiency_pct",
     "landfill_volume_m3",
+    "uncollected_volume_m3",
     "expansion_volume_m3",
     "total_emissions_kgco2e",
     "collection_transport_cost",
@@ -138,6 +139,7 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
     final_summary = monitor_data.get("final_summary", {})
 
     total_generated = _sum_last_nested(gen_hist, "total_generated")
+    total_uncollected = _sum_last_nested(gen_hist, "total_uncollected")
     total_collected = _sum_last_nested(col_hist, "collected_volumes")
 
     total_processed = 0.0
@@ -249,6 +251,7 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         "processing_rate_pct": processing_rate,
         "overall_efficiency_pct": overall_eff,
         "landfill_volume_m3": landfill_volume,
+        "uncollected_volume_m3": total_uncollected,
         "expansion_volume_m3": expansion_volume,
         "total_emissions_kgco2e": total_emissions,
         "collection_transport_cost": collection_transport_cost,

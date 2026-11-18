@@ -203,6 +203,7 @@ class HistoryStore:
                 "efficiency": [],
                 "total_generated": {},
                 "total_potential_generated": {},
+                "total_uncollected": {},
                 "storage_utilization": [],
                 "status": [],
                 "holding_costs": [],

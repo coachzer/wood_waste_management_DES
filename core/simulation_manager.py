@@ -201,6 +201,7 @@ class SimulationManager:
         self.mass_balance_monitor.check_waste_system(self.env.now)
         self.mass_balance_monitor.check_collection_centers(self.env.now)
         self.mass_balance_monitor.check_yield_bridge(self.env.now)
+        self.mass_balance_monitor.check_generators(self.env.now)
         self._print_final_status()
 
     def get_monitor_data(self) -> Dict[str, Any]:

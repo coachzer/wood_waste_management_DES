@@ -274,6 +274,47 @@ class MassBalanceMonitor:
             raise MassBalanceViolation(message)
         logging.warning(message)
 
+    def check_generators(self, timestamp: Optional[float] = None) -> None:
+        """Check that every generator accounts for all the waste it generated.
+
+        Per generator and waste type:
+
+            total_potential_generated == total_generated + total_uncollected
+
+        ``total_generated`` is the waste that entered generator storage.
+        ``total_uncollected`` is the waste generated while storage was full,
+        which leaves the modelled system without a destination (ADR 0024).
+        Both accumulate separately, so a generation path that drops or invents
+        waste trips here.
+        """
+        violations = []
+        for generator in self.registry.generators or []:
+            for waste_type, potential in generator.total_potential_generated.items():
+                accounted = (
+                    generator.total_generated[waste_type]
+                    + generator.total_uncollected[waste_type]
+                )
+                delta = potential - accounted
+                self.telemetry.append(
+                    (timestamp, generator.name, f"generation/{waste_type.value}", potential, accounted, delta)
+                )
+                if not math.isclose(
+                    potential, accounted, rel_tol=RELATIVE_TOLERANCE, abs_tol=ABSOLUTE_TOLERANCE
+                ):
+                    violations.append(
+                        f"{generator.name}/{waste_type.value}: potential={potential:.6f} "
+                        f"accounted={accounted:.6f} delta={delta:.6f}"
+                    )
+
+        if not violations:
+            return
+        message = (
+            f"Generator mass-balance violated at t={timestamp}: " + "; ".join(violations)
+        )
+        if self.raise_on_violation:
+            raise MassBalanceViolation(message)
+        logging.warning(message)
+
     def check_yield_bridge(self, timestamp: Optional[float] = None) -> None:
         """Check the waste->product yield bridge, per treatment operator (G1).
 

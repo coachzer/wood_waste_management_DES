@@ -304,6 +304,18 @@ separately. System-level service level aggregates them.
 _Avoid_: stockout
 (as a general term; use the specific reason tags)
 
+**Uncollected Waste**:
+Waste a generator produces while its storage is full. Generation
+is offered every period (**potential generation**), but only the
+part that fits in storage enters the system (**committed
+generation**). The rest is uncollected. It leaves the modelled
+system with no known destination, so it carries no landfill cost
+or emissions. It is counted per generator and waste type, and the
+generator mass balance checks
+`potential = committed + uncollected` (ADR 0024).
+_Avoid_: landfill (landfill is overflow after collection),
+lost waste
+
 **Consumption Distribution**:
 Each **Treatment Operator**'s share of weekly
 **Market Consumption** is proportional to its processing capacity

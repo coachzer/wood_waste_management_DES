@@ -83,6 +83,7 @@ class WasteGenerator(OperationalEntity):
         }
 
         self.total_potential_generated = dict(self.total_generated)
+        self.total_uncollected = {waste_type: 0.0 for waste_type in waste_streams.keys()}
 
         self.history_size = HISTORY_BUFFER_SIZE
         self.history_index = 0
@@ -240,7 +241,8 @@ class WasteGenerator(OperationalEntity):
 
             self.total_potential_generated[waste_type] += potential_volume
 
-            generated_volume = min(potential_volume, available_storage)
+            generated_volume = max(0.0, min(potential_volume, available_storage))
+            self.total_uncollected[waste_type] += potential_volume - generated_volume
             if generated_volume > 0:
                 self._update_waste_stream(
                     waste_type, generated_volume, current_time, self.history_index

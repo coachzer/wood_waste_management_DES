@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from models.enums import InventoryPolicy, OutputType, StockStrategy
+from models.enums import InventoryPolicy, OutputType, StockStrategy, WasteType
 from instrumentation.history_store import HistoryStore
 from instrumentation.mass_balance import (
     EntityRegistry,
@@ -497,3 +497,30 @@ def test_queued_and_in_flight_reposition_balance_both_waste_checks():
 
     monitor.check_collection_centers()  # must not raise
     monitor.check_waste_system()  # must not raise
+
+
+def _generator_with_generation(potential, entered_storage, uncollected):
+    waste_type = WasteType.CONSTRUCTION_WOOD_17_02_01
+    return SimpleNamespace(
+        name="gen-1",
+        total_potential_generated={waste_type: potential},
+        total_generated={waste_type: entered_storage},
+        total_uncollected={waste_type: uncollected},
+    )
+
+
+def _generator_check_monitor(generator):
+    return MassBalanceMonitor(
+        EntityRegistry(state=SimpleNamespace(), operators=[], generators=[generator])
+    )
+
+
+def test_generation_split_into_stored_and_uncollected_balances():
+    _generator_check_monitor(_generator_with_generation(100.0, 60.0, 40.0)).check_generators()
+
+
+def test_generation_that_vanishes_between_potential_and_storage_raises():
+    monitor = _generator_check_monitor(_generator_with_generation(100.0, 60.0, 0.0))
+
+    with pytest.raises(MassBalanceViolation, match="Generator mass-balance"):
+        monitor.check_generators()

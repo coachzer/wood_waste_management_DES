@@ -64,6 +64,7 @@ def make_generator_stub(
 
     total_generated = {waste_type: 0.0 for waste_type in waste_generation_rates}
     total_potential_generated = {waste_type: 0.0 for waste_type in waste_generation_rates}
+    total_uncollected = {waste_type: 0.0 for waste_type in waste_generation_rates}
 
     # generation_history needed by _update_waste_stream
     history_size = 10
@@ -89,6 +90,7 @@ def make_generator_stub(
         waste_streams=waste_streams,
         total_generated=total_generated,
         total_potential_generated=total_potential_generated,
+        total_uncollected=total_uncollected,
         generation_history=generation_history,
         efficiency=1.0,
         status=status,
@@ -131,8 +133,8 @@ def test_potential_generation_accrues_even_when_storage_is_full():
 
     expected_potential = base_rate * seasonal * 1.0 * 1.0  # efficiency=1, factor=1
     assert stub.total_potential_generated[CONSTRUCTION] == pytest.approx(expected_potential)
-    # Nothing committed
     assert stub.total_generated[CONSTRUCTION] == 0.0
+    assert stub.total_uncollected[CONSTRUCTION] == pytest.approx(expected_potential)
     assert stub.current_storage == capacity
 
 
@@ -178,6 +180,8 @@ def test_type_exceeding_available_storage_is_capped_at_headroom():
     # Potential recorded for both types at full offered volume (ADR 0005 floor)
     assert stub.total_potential_generated[CONSTRUCTION] == pytest.approx(8.0)
     assert stub.total_potential_generated[PACKAGING] == pytest.approx(15.0)
+    assert stub.total_uncollected[CONSTRUCTION] == pytest.approx(0.0)
+    assert stub.total_uncollected[PACKAGING] == pytest.approx(13.0)
 
     # Zero-headroom edge: once storage is full, a third type generates exactly 0
     import types

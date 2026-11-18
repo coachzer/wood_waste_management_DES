@@ -130,7 +130,7 @@ def test_ensure_generation_materializes_the_generation_schema():
     store.ensure_generation("gen-1")
     assert set(store.generation_history["gen-1"]) == {
         "timestamps", "volumes", "efficiency", "total_generated",
-        "total_potential_generated", "storage_utilization", "status",
+        "total_potential_generated", "total_uncollected", "storage_utilization", "status",
         "holding_costs",
     }
 
