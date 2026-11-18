@@ -3,6 +3,8 @@
 Date: 2026-06-11
 Status: accepted
 
+> NOTE (2026-11-18): ADR 0021 changed treatment signalling: signals now reach empty local collectors at full volume, so the on-hand-only reorder reads here interact with that volume rule.
+
 ## Context
 
 Every reorder decision in the simulation, at treatment, collector or generator, reads the on-hand

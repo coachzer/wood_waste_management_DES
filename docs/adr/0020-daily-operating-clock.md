@@ -3,6 +3,8 @@
 Date: 2026-09-28
 Status: accepted
 
+> NOTE (2026-11-18): the stage-1 results below describe the code before ADR 0021, which stopped FAILED operators ordering waste and changed treatment signalling. They are no longer a reference for current behaviour.
+
 ## Context
 
 Before this change each active entity looped on the period the region data sizes its capacity in:
