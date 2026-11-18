@@ -26,3 +26,31 @@ def test_generator_node_reports_potential_generation_and_overflow_reaches_the_si
     assert labels == ["gen_a\n1.0k m³", "Uncollected\n400.0 m³"]
     assert list(zip(sources, targets, values)) == [(0, 1, 400.0)]
     assert len(x) == len(y) == len(labels)
+
+
+def test_outlet_and_end_stock_are_sinks():
+    """ADR 0036. Mutation check (red): drop the Outlet or Stock at day 365 sink."""
+    generation_history = {
+        "gen_a": {
+            "total_potential_generated": {"17 02 01": [500.0], "20 03 07": [300.0]},
+            "total_uncollected": {"17 02 01": [0.0], "20 03 07": [0.0]},
+            "total_outlet": {"17 02 01": [0.0], "20 03 07": [300.0]},
+        }
+    }
+    collector = SimpleNamespace(name="col_a", collection_center=SimpleNamespace(current_storage={"17 02 01": 150.0}))
+    state = SimpleNamespace(
+        transport_flows=[{"source_name": "gen_a", "target_name": "col_a", "volume": 200.0,
+                          "transport_method": "collection_vehicle"}],
+        treatment_operators=[],
+        generators=[SimpleNamespace(name="gen_a", current_storage=300.0)],
+        collectors=[collector],
+    )
+    generators, sinks, _, treatments, products = get_volumes(generation_history, {}, {}, state)
+
+    labels, _, sources, targets, values, _, x, y = create_sankey(
+        generators, sinks, {"col_a": 200.0}, treatments, products, state
+    )
+
+    assert labels == ["gen_a\n800.0 m³", "col_a\n200.0 m³", "Outlet\n300.0 m³", "Stock at day 365\n450.0 m³"]
+    assert sorted(zip(sources, targets, values)) == [(0, 1, 200.0), (0, 2, 300.0), (0, 3, 300.0), (1, 3, 150.0)]
+    assert len(x) == len(y) == len(labels)
