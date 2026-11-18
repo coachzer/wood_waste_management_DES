@@ -85,22 +85,13 @@ class TreatmentOperator(OperationalEntity):
         self.energy_consumption = energy_consumption
         self.operational_costs = operational_costs
         self.environmental_impact = environmental_impact
-        # processing_time is the period the region data sizes capacity over
-        # (PROCESSING_CAPACITY_FRACTION of storage per processing_time days); the
-        # operator acts every OPERATING_TICK_DAYS on that period's per-tick share,
-        # so annual capacity is independent of the tick (ADR 0020). Fixed at
-        # construction: storage expansions never raised processing capacity.
         self.processing_capacity = per_tick_capacity(
             self.waste_storage_capacity * PROCESSING_CAPACITY_FRACTION, self.processing_time
         )
         self.initial_processing_capacity = self.processing_capacity
         self.region = region
         self.region_type = RegionType[region.upper().replace('-', '_')]
-        # Share of national market demand presented each consumption tick,
-        # proportional to processing capacity; set by SimulationManager (ADR 0002).
         self.market_share = market_share
-        # Waste storage primed to ~2 weeks of producible throughput (ADR 0002,
-        # Phase C); collection self-corrects the mix within ~2 weeks.
         self._waste_storage = dict.fromkeys(WasteType, 0.0)
         if initial_waste_storage:
             for waste_type, volume in initial_waste_storage.items():
@@ -111,19 +102,9 @@ class TreatmentOperator(OperationalEntity):
             "particle_board": 0.0,
             "osb": 0.0
         }
-        # Yield-bridge accumulator (G1): cumulative intake x efficiency, reconciled
-        # against deposited product_volumes by MassBalanceMonitor.check_yield_bridge.
         self.expected_output_volume = 0.0
-        # PULL Production Backlog (ADR 0020): per-product output volume still owed
-        # to Consumption Events already absorbed from Market Signals. A week's
-        # demand arrives on one day but capacity accrues daily, so the unmet part
-        # carries to later ticks instead of being dropped. Internal to the
-        # operator: never feeds back into the Consumption Event log.
         self.pull_production_backlog: Dict[str, float] = {}
 
-        # Finished-goods inventory: per-product capacity sized to a fixed demand
-        # buffer, primed to INITIAL_INVENTORY_FRACTION of capacity (ADR 0002, Phase
-        # C). Capacity covers only producible products; others stay at zero.
         finished_goods_capacity = finished_goods_capacity or {}
         self.finished_goods = ProductStorage(
             capacity=finished_goods_capacity,
@@ -135,8 +116,6 @@ class TreatmentOperator(OperationalEntity):
 
         self.transformations = transformations or self._default_transformations()
 
-        # ABC prioritization is always on (ADR 0002, Phase F): biogenic-carbon
-        # priority weights feed the transformation scorer unconditionally.
         self.abc_priority_map = {}
         self._initialize_abc_priorities(abc_demand_config_path)
 
@@ -235,7 +214,6 @@ class TreatmentOperator(OperationalEntity):
         while True:
             current_time = self.env.now
 
-            # A FAILED operator is down: it neither produces nor orders waste.
             if self.status == EntityStatus.FAILED:
                 yield self.env.timeout(OPERATING_TICK_DAYS)
                 continue
@@ -281,8 +259,6 @@ class TreatmentOperator(OperationalEntity):
                 c.availability)
         ]
 
-        # An empty collector is exactly the one that must pass the demand on to
-        # generators, so the signal is not gated on its stock of this waste type.
         for collector in local_collectors:
             if needed_volume > 0:
                 collector.kanban_manager.add_signal(
@@ -308,9 +284,6 @@ class TreatmentOperator(OperationalEntity):
             product_key = output_type.value.lower()
             abc_priority = self.abc_priority_map.get(product_key, 0.5)
 
-            # Finished-goods shortfall in [0, 1]: full buffer scores 0, empty
-            # buffer scores 1. A zero-capacity output contributes no shortfall
-            # rather than dividing by zero.
             capacity = self.finished_goods.capacity.get(output_type, 0.0)
             if capacity > 0:
                 current = self.finished_goods.current_storage[output_type]
@@ -367,10 +340,6 @@ class TreatmentOperator(OperationalEntity):
         if not market_signals:
             return
 
-        # Matched by (operator, signal timestamp). Ticks land on exact multiples
-        # of CONSUMPTION_INTERVAL_DAYS and each signal shares its events'
-        # timestamp, so float equality is safe. no_capability events are skipped:
-        # the operator has no transformation that could ever draw them down.
         signal_timestamps = {signal["timestamp"] for signal in market_signals}
         for event in self.state.consumption_events:
             if (
@@ -420,9 +389,6 @@ class TreatmentOperator(OperationalEntity):
                 yield self.env.timeout(OPERATING_TICK_DAYS)
                 continue
 
-            # PUSH produces autonomously from available waste (supply-driven);
-            # PULL produces only against its backlog of consumption events
-            # (demand-driven). ADR 0002, Phase E.
             if demand_driven:
                 self._produce_for_backlog()
             else:
@@ -450,10 +416,6 @@ class TreatmentOperator(OperationalEntity):
 
         efficiency = min(self._get_transformation_efficiency(transformation), 1.0)
 
-        # Per-output finished-goods headroom clamp (ADR 0002, Phase C). Production
-        # is throttled per output type so a saturated buffer for one product never
-        # stalls or overflows another. With no overflow there is no silent product
-        # discard and no secondary storage buffer.
         headroom = self.finished_goods.capacity.get(output_type, 0.0) - self.finished_goods.current_storage[output_type]
         if headroom <= 0:
             return 0.0
@@ -477,16 +439,14 @@ class TreatmentOperator(OperationalEntity):
         if output_type in final_products:
             self.finished_goods.current_storage[output_type] += output_amount
 
-            # Yield-bridge expectation (G1): derived from intake, independent of
-            # the output_amount path above, so the two diverge if a yield is wrong.
             self.expected_output_volume += amount_to_process * efficiency
 
             if output_type == OutputType.MDF:
-                self.product_volumes["mdf"] += output_amount # m³
+                self.product_volumes["mdf"] += output_amount
             elif output_type == OutputType.PARTICLE_BOARD:
-                self.product_volumes["particle_board"] += output_amount # m³
+                self.product_volumes["particle_board"] += output_amount
             elif output_type == OutputType.OSB:
-                self.product_volumes["osb"] += output_amount # m³
+                self.product_volumes["osb"] += output_amount
         else:
             logging.warning(f"[{self.name}] Unclassified output: {output_amount:.2f} m³ of {output_type.value} from {input_type.value}")
 
@@ -549,13 +509,10 @@ class TreatmentOperator(OperationalEntity):
         local_portion = required_waste * LOCAL_COLLECTION_RATIO
         cross_region_portion = required_waste * (1.0 - LOCAL_COLLECTION_RATIO)
 
-        # 1. Local collection
         remaining_local = self._collect_from_local(local_portion, input_waste_types, collected_waste)
 
-        # 2. Cross-region collection
         remaining_cross_region = self._collect_from_cross_region(cross_region_portion, input_waste_types, collected_waste)
 
-        # 3. Fallback collection
         total_remaining = remaining_local + remaining_cross_region
         if total_remaining > 0:
             self._collect_with_fallback(total_remaining, input_waste_types, collected_waste)
@@ -621,7 +578,6 @@ class TreatmentOperator(OperationalEntity):
         for waste_type, volume in available_waste.items():
             if volume > 0:
 
-                # Call transport system
                 success = collector.transfer_waste_to_region(
                     waste_type, volume, self.region_type
                 )

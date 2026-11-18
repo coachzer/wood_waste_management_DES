@@ -21,9 +21,6 @@ from models.products import ProductDataManager
 from .avoided_emissions import total_produced_by_product
 
 
-# Output products carrying a biogenic-carbon stored credit, in display order.
-# Mirrors the avoided-emissions product order so the two carbon lines read in
-# parallel under the shared `carbon` namespace.
 _PRODUCTS = ("mdf", "particle_board", "osb")
 
 
@@ -41,8 +38,6 @@ def _biogenic_stock_by_product() -> Dict[str, float]:
     return stock
 
 
-# Snapshot once at import: the specifications are hardcoded in
-# ``ProductDataManager``, so rebuilding the manager per call buys nothing.
 _BIOGENIC_STOCK_BY_PRODUCT = _biogenic_stock_by_product()
 
 

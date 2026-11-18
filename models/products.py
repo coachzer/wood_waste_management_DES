@@ -6,10 +6,10 @@ from dataclasses import dataclass
 class ProductSpecification:
     """Product specifications including density, wood content, and biogenic stock"""
     product_type: str
-    density_min: float  # kg/m³
-    density_max: float  # kg/m³
-    wood_content_percent: float  # percentage of wood content
-    biogenic_carbon_stock: float  # total biogenic stock for 1 m³ of product
+    density_min: float
+    density_max: float
+    wood_content_percent: float
+    biogenic_carbon_stock: float
     description: str
     
     @property
@@ -64,6 +64,5 @@ class ProductDataManager:
             )
         }
     
-    # Access methods
     def get_product_specification(self, product_type: str) -> Optional[ProductSpecification]:
         return self.product_specifications.get(product_type)

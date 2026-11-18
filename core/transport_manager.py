@@ -38,13 +38,11 @@ class PointToPointTransport:
     def find_available_vehicle(self, origin: RegionType) -> Optional[Dict]:
         """Find an available vehicle at or near the origin"""
         state = self.state
-        # Look for vehicles in the origin region first
         for collector in state.collectors:
             for vehicle in collector.vehicles:
                 if not vehicle.in_transit and vehicle.current_region == origin:
                     return {"vehicle": vehicle, "collector": collector}
         
-        # If none found, look for nearest available vehicle
         min_distance = float('inf')
         best_option = None
         
@@ -97,7 +95,6 @@ class PointToPointTransport:
         
         arrival_time = pickup_time + travel_time
         
-        # Update vehicle status
         vehicle.in_transit = True
         vehicle.destination = request.destination
         vehicle.estimated_arrival = arrival_time
@@ -105,9 +102,6 @@ class PointToPointTransport:
         vehicle.current_load_by_type = {request.waste_type: request.volume}
 
         state = self.state
-        # Cross-region repositioning is physical movement between two collectors'
-        # collection centers (ADR 0009), logged collector -> collector so no
-        # bullwhip echelon reads it as treatment intake.
         destination_collector = next(
             (c for c in state.collectors
              if c.region_type == request.destination),
@@ -115,10 +109,6 @@ class PointToPointTransport:
         )
         target_name = destination_collector.name if destination_collector else request.requester_id
 
-        # The source is the ORIGIN collector that decremented its own storage
-        # (named by requester_id), NOT the carrier -- find_available_vehicle may
-        # borrow a vehicle from another region, and sourcing on it would
-        # mis-attribute the outflow and break the per-collection-center identity.
         self.state.track_transport_flow(
             source_type="collector",
             source_name=request.requester_id,

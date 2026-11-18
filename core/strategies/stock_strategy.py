@@ -88,16 +88,14 @@ class OnDemandStrategy:
     Lean buffers, responsiveness over utilization."""
 
     def collector_adaptive_threshold(self, base_time: float) -> float:
-        # Gradually increase threshold over time to trigger more collections.
-        time_factor = min(0.3, base_time * 0.001)  # Caps at 30%
-        return 0.10 + time_factor  # Start at 10%, grow to 40%
+        time_factor = min(0.3, base_time * 0.001)
+        return 0.10 + time_factor
 
     def collector_push_efficiency(self, utilization: float, base: float) -> float:
-        # Efficiency depends more on responsiveness than utilization.
         if utilization < 0.1:
-            return base * 1.05  # Slight bonus for staying lean
+            return base * 1.05
         elif utilization > 0.8:
-            return base * 0.95  # Penalty for accumulating too much
+            return base * 0.95
         else:
             return base
 
@@ -105,30 +103,22 @@ class OnDemandStrategy:
         self, utilization: float, signals: int, base: float
     ) -> float:
         if signals == 0:
-            # No demand - minor efficiency loss (idle resources)
             return base * 0.98
         else:
-            # More signals = better utilization of ON_DEMAND capabilities
-            signal_boost = min(0.15, signals * 0.02)  # Up to 15% efficiency gain
+            signal_boost = min(0.15, signals * 0.02)
 
-            # Only physical constraints should limit efficiency
-            if utilization > 0.95:  # Very close to physical limits
-                strain = (utilization - 0.95) * 2.0  # Max 10% penalty at 100%
+            if utilization > 0.95:
+                strain = (utilization - 0.95) * 2.0
                 return base * (1.0 + signal_boost) * (1.0 - strain)
             else:
                 return base * (1.0 + signal_boost)
 
     def treatment_should_reorder(self, current_total: float, capacity: float) -> bool:
-        # ON_DEMAND sets the reorder point ``s`` to full capacity (fires whenever
-        # storage is not full).
         return current_total < capacity
 
     def generator_should_signal(
         self, current_storage, capacity, inventory_policy, active_signals_fn
     ) -> bool:
-        # The ON_DEMAND signal trigger depends on the policy: PUSH signals on
-        # substantial waste, PULL only when downstream demand exists. Delegating
-        # keeps the policy as the single owner of that distinction.
         return inventory_policy.ondemand_generator_should_signal(
             current_storage, capacity, active_signals_fn
         )
@@ -140,26 +130,22 @@ class Reorder50Strategy(_ReorderStrategy):
     _reorder_fraction = PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_50
 
     def collector_push_efficiency(self, utilization: float, base: float) -> float:
-        # Prefers moderate utilization (30-70% range).
         if 0.3 <= utilization <= 0.7:
-            return base * 1.0  # Normal efficiency
+            return base * 1.0
         elif utilization < 0.3:
-            # Penalty for underutilization
-            underutilization_penalty = (0.3 - utilization) * 0.2  # Up to 6% penalty
+            underutilization_penalty = (0.3 - utilization) * 0.2
             return base * (1.0 - underutilization_penalty)
         else:
-            # Penalty for overutilization
-            overutilization_penalty = (utilization - 0.7) * 0.15  # Up to 4.5% penalty
+            overutilization_penalty = (utilization - 0.7) * 0.15
             return base * (1.0 - overutilization_penalty)
 
     def collector_pull_efficiency(
         self, utilization: float, signals: int, base: float
     ) -> float:
-        # Balanced approach.
         if signals > 0 and 0.3 <= utilization <= 0.7:
-            return base * 1.05  # Sweet spot
+            return base * 1.05
         elif signals == 0:
-            return base * 0.97  # Slight penalty for no demand signals
+            return base * 0.97
         else:
             return base
 
@@ -170,25 +156,22 @@ class Reorder90Strategy(_ReorderStrategy):
     _reorder_fraction = PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_90
 
     def collector_push_efficiency(self, utilization: float, base: float) -> float:
-        # Sweet spot around 85% utilization (80-90% range).
         if 0.8 <= utilization <= 0.9:
-            return base * 1.05  # Optimal efficiency
+            return base * 1.05
         else:
-            # Smooth degradation away from sweet spot
             distance_from_optimal = abs(utilization - 0.85)
-            penalty = min(0.3, distance_from_optimal * 0.5)  # Max 30% penalty
+            penalty = min(0.3, distance_from_optimal * 0.5)
             return base * (1.0 - penalty)
 
     def collector_pull_efficiency(
         self, utilization: float, signals: int, base: float
     ) -> float:
-        # Benefits from signals but maintains buffer.
-        signal_bonus = min(0.1, signals * 0.02)  # Up to 10% bonus
+        signal_bonus = min(0.1, signals * 0.02)
 
         if utilization > 0.5:
-            buffer_bonus = 1.0  # Good buffer maintained
+            buffer_bonus = 1.0
         else:
-            buffer_penalty = (0.5 - utilization) * 0.1  # Penalty for low buffer
+            buffer_penalty = (0.5 - utilization) * 0.1
             buffer_bonus = 1.0 - buffer_penalty
 
         return base * (1.0 + signal_bonus) * buffer_bonus

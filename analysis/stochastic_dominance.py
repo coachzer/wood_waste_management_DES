@@ -27,19 +27,10 @@ from ._kpi_shared import (
     load_combo_kpis,
 )
 
-# Per-KPI sense annotation only (the dominance math is sense-free). The senses
-# live in the shared ``KPI_SENSE`` map; this report annotates exactly its
-# headline metrics, and discovered namespace metrics stay blank (mixed sense).
 KPI_SENSES: Dict[str, str] = {metric: KPI_SENSE[metric] for metric in DEFAULT_METRICS}
 
-# Relative tolerance for the second-order (integrated-CDF) comparison: its
-# accumulation carries ~1e-13 floating rounding noise (the first-order comparison
-# is exact multiples of 1/n and needs none). Scaled by the KPI's value range so
-# it stays a fixed relative slack regardless of magnitude.
 SSD_RELATIVE_TOLERANCE = 1e-9
 
-# Minimum replications per configuration to treat its KPI samples as a
-# distribution. One value is a point mass, not a distribution to dominate.
 MINIMUM_SAMPLES = 2
 
 
@@ -73,8 +64,8 @@ def first_order_dominance(
     grid = sorted(set(samples_a) | set(samples_b))
     n_a, n_b = len(samples_a), len(samples_b)
 
-    a_cdf_never_above = True  # F_A <= F_B everywhere (necessary, not sufficient, for A larger)
-    a_cdf_below_somewhere = False  # F_A < F_B somewhere -> strict for A
+    a_cdf_never_above = True
+    a_cdf_below_somewhere = False
     b_cdf_never_above = True
     for x in grid:
         cdf_a = sum(1 for sample in samples_a if sample <= x) / n_a
@@ -84,7 +75,6 @@ def first_order_dominance(
         elif cdf_a < cdf_b:
             a_cdf_below_somewhere = True
             b_cdf_never_above = False
-    # b_cdf_below_somewhere is exactly "F_A above somewhere", i.e. not a_never_above.
     b_cdf_below_somewhere = not a_cdf_never_above
 
     if a_cdf_never_above and a_cdf_below_somewhere:
@@ -115,19 +105,18 @@ def second_order_dominance(
 
     integral_a = 0.0
     integral_b = 0.0
-    a_integral_never_above = True  # integral F_A <= integral F_B everywhere -> A larger
+    a_integral_never_above = True
     a_integral_below_somewhere = False
     b_integral_never_above = True
     b_integral_below_somewhere = False
     previous = grid[0]
     for x in grid:
         width = x - previous
-        # F is right-continuous: on [previous, x) it equals the CDF at `previous`.
         cdf_a_left = sum(1 for sample in samples_a if sample <= previous) / n_a
         cdf_b_left = sum(1 for sample in samples_b if sample <= previous) / n_b
         integral_a += cdf_a_left * width
         integral_b += cdf_b_left * width
-        difference = integral_a - integral_b  # integral F_A - integral F_B
+        difference = integral_a - integral_b
         if difference > tolerance:
             a_integral_never_above = False
         elif difference < -tolerance:

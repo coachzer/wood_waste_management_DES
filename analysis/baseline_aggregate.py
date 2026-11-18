@@ -22,8 +22,6 @@ from instrumentation.history_store import (
 )
 
 
-# Marginal KPIs aggregated into summary.csv, in display order. The nested
-# `bullwhip` namespace is appended generically afterward (issue 06).
 _SUMMARY_METRICS = [
     "total_generated_m3",
     "total_collected_m3",
@@ -92,9 +90,6 @@ def summary_rows(kpis_list: List[Dict[str, Any]], alpha: float = 0.05) -> List[s
             f"{metric},{mean:.6g},{stdev:.6g},{lo:.6g},{hi:.6g},{len(vals)}"
         )
 
-    # Generic pass: aggregate whatever keys exist in each nested namespace so new
-    # variants flow through with no wiring here (issue 06). Keys are discovered as
-    # an insertion-ordered union across replications, surviving a partial dict.
     for namespace in _GENERIC_NAMESPACES:
         namespace_keys: Dict[str, None] = {}
         for k in kpis_list:
@@ -107,8 +102,6 @@ def summary_rows(kpis_list: List[Dict[str, Any]], alpha: float = 0.05) -> List[s
                 if (k.get(namespace) or {}).get(key) is not None
             ]
             if not vals:
-                # Degenerate across every replication: emit the row anyway with
-                # count 0 and blank stats so the namespace stays discoverable.
                 rows.append(f"{namespace}.{key},,,,,0")
                 continue
             mean, stdev, lo, hi = _mean_ci(vals, alpha)
@@ -132,8 +125,6 @@ def _sum_last_nested(histories: Dict[str, Any], key: str) -> float:
 
 
 def _sum_series(series: Any) -> float:
-    # Cost series hold the cost incurred per tracking step (not a running
-    # cumulative), so the entity total is the sum over the whole series.
     return float(sum(series)) if isinstance(series, list) else 0.0
 
 
@@ -165,11 +156,6 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         (total_processed / total_generated * 100.0) if total_generated > 0 else 0.0
     )
 
-    # Storage-overflow outcomes (VIZ-REVIEW T9): landfill from the per-entity
-    # landfill ledger (the same record the mass-balance discard term reads),
-    # expansion from the system-event stream. Together they decompose
-    # storage_overflow_cost along the expand-vs-landfill boundary in
-    # handle_storage_event (ADR 0013).
     sys_evt = evt_hist.get("system_events", {})
     landfill_volume = total_landfilled_volume(landfill_hist)
     landfill_cost = total_landfill_cost(landfill_hist)
@@ -178,10 +164,6 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
 
     total_emissions = total_emissions_kgco2e(env_hist)
 
-    # System cost (section 4.4): total system cost across collection/transport,
-    # processing, storage overflow, and waste-side inventory holding. Each
-    # entity's per-step cost series is summed; the four component totals add
-    # to total_system_cost.
     collection_transport_cost = sum(
         _sum_series(hist.get("total_costs")) for hist in col_hist.values()
     )
@@ -190,10 +172,6 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         for hist in proc_hist.values()
     )
     storage_overflow_cost = landfill_cost + expansion_cost
-    # Holding cost accrues daily on stored waste at all three echelons
-    # (generator / collector / treatment waste storage) in its own
-    # ``holding_costs`` series, kept separate so the transport and processing
-    # components stay pure.
     holding_cost = (
         sum(_sum_series(hist.get("holding_costs")) for hist in gen_hist.values())
         + sum(_sum_series(hist.get("holding_costs")) for hist in col_hist.values())
@@ -209,7 +187,6 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         + holding_cost
     )
 
-    # Storage utilizations
     max_collector_util = 0.0
     for hist in col_hist.values():
         series = hist.get("storage_utilization", [])
@@ -231,8 +208,6 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
                 max_processor_finished_goods_util, float(max(finished_goods_util))
             )
 
-    # Continuous market-consumption service levels (ADR 0002). None when no
-    # consumption was attempted (undefined, not zero); fractions -> percent.
     def _pct(fraction):
         return fraction * 100.0 if fraction is not None else None
 
@@ -243,9 +218,6 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         for product_name, value in (final_summary.get("consumption_service_by_product") or {}).items()
     }
 
-    # Throughput bullwhip (ADR 0004-0007), post-hoc from the run logs, under a
-    # `bullwhip` namespace so later slices extend it without rewiring this dict.
-    # See analysis/bullwhip.py for what each key measures.
     transport_flows = monitor_data.get("transport_flows", [])
     consumption_events = monitor_data.get("consumption_events", [])
     treatment_stage, collector_stage = stage_bullwhip(
@@ -297,17 +269,10 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         "no_capability_lost_m3": float(final_summary.get("no_capability_lost") or 0.0),
         "stockout_lost_m3": float(final_summary.get("stockout_lost") or 0.0),
         "bullwhip": bullwhip,
-        # Lead and residence times (Little's Law, C4): per-stage WIP, throughput,
-        # and residence, post-hoc from monitor history.
         "residence": flow_time_metrics(monitor_data),
-        # Carbon credits (ADR 0011), production-weighted, reported beside
-        # total_emissions_kgco2e and never netted: avoided emissions (C11) and
-        # biogenic carbon stored (C10). Distinct key prefixes keep them apart.
         "carbon": {
             **avoided_emissions_metrics(monitor_data),
             **biogenic_carbon_metrics(monitor_data),
         },
-        # Entity availability (cleanup task #61): pooled OPERATIONAL-time share
-        # per echelon, the first consumer of entity_status_history.
         "availability": availability_metrics(monitor_data),
     }

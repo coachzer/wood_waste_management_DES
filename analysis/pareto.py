@@ -25,9 +25,6 @@ from typing import Dict, Iterable, List, Tuple
 
 from ._kpi_shared import KPI_SENSE
 
-# The objective vector: each entry is ``(summary.csv metric key, sense)``. The
-# metric *selection* is this report's objective definition and stays in-module;
-# the senses come from the shared ``KPI_SENSE`` map in ``_kpi_shared``.
 OBJECTIVES: List[Tuple[str, str]] = [
     (metric, KPI_SENSE[metric])
     for metric in (
@@ -133,7 +130,7 @@ def read_objective_point(
     means: Dict[str, float] = {}
     with open(summary_csv_path, "r", encoding="utf-8", newline="") as handle:
         reader = csv.reader(handle)
-        next(reader, None)  # skip header: metric,mean,stdev,ci95_low,ci95_high,count
+        next(reader, None)
         for row in reader:
             if len(row) < 2 or row[0] not in wanted:
                 continue
@@ -245,9 +242,6 @@ if __name__ == "__main__":
     print(f"Wrote {report}")
     _print_frontier_summary(report_rows)
 
-    # Companion Pareto frontier PDF. Imported lazily so a missing optional
-    # plotting dependency only skips the plot with a note -- the CSV above still
-    # stands as the analysis artifact.
     try:
         from visualization.pareto_visualization import write_pareto_plot
 

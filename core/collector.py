@@ -88,9 +88,6 @@ class CollectorCompany(OperationalEntity):
         self.stock_strategy_behavior = build_stock_strategy(stock_strategy)
         self.inventory_policy_behavior = build_inventory_policy(inventory_policy)
         self.transport_manager = transport_manager or PointToPointTransport()
-        # collection_capacity is the region data's volume per collection_frequency
-        # days; the collector acts every OPERATING_TICK_DAYS on that period's
-        # per-tick share, so annual capacity is independent of the tick (ADR 0020).
         self.collection_frequency = collection_frequency
         self.initial_collection_capacity = per_tick_capacity(
             collection_capacity, collection_frequency
@@ -106,7 +103,6 @@ class CollectorCompany(OperationalEntity):
 
         self.collection_center = CollectionCenter(
             region=self.region_type,
-            # A stock, not a flow: two data periods of collection, not two ticks.
             waste_storage_capacity=collection_capacity * 2,
             current_storage=dict.fromkeys(WasteType, 0.0),
             coordinates=(
@@ -114,10 +110,6 @@ class CollectorCompany(OperationalEntity):
             ),
         )
 
-        # Per-trip vehicle capacity. Callers pass it explicitly (FacilityBuilder
-        # uses the per-tick collection capacity, so each vehicle's annual
-        # throughput equals the annual collection capacity, as before the daily
-        # clock); the fallback keeps that same per-tick sizing (ADR 0020).
         self.vehicle_capacity = (
             vehicle_capacity if vehicle_capacity is not None else self.initial_collection_capacity
         )
@@ -163,12 +155,10 @@ class CollectorCompany(OperationalEntity):
         """Calculate travel time to generator (simplified)"""
 
         if generator.region_type == self.region_type:
-            # Same region: assume 10-30km average within region
-            base_distance = 10.0  # km average within region
-            distance_variation = self.rng.uniform(0.5, 1.5)  # 10-30km range
+            base_distance = 10.0
+            distance_variation = self.rng.uniform(0.5, 1.5)
             distance = base_distance * distance_variation
         else:
-            # Different region: use full inter-region distance
             distance = get_distance(self.region_type, generator.region_type)
 
         travel_time_hours = distance * self._sample_transport_circuity() / TRAVEL_SPEED_KMH
@@ -199,10 +189,6 @@ class CollectorCompany(OperationalEntity):
             collection_cost = self.transport_cost + (distance * COLLECTION_COST_PER_KM_PER_M3 * collected_amount)
             self.last_collection_cost = collection_cost
 
-            # Transport emissions: each stream's volume is converted to mass at its
-            # own bulk density (WASTE_DENSITIES, kg/m³) before the per-ton-km factor
-            # applies (ADR 0013). Sorted by WasteType.value so the summation order is
-            # deterministic across processes (CRN guard).
             emissions = sum(
                 volume_m3 * (WASTE_DENSITIES[waste_type] / KILOGRAMS_PER_TONNE)
                 * distance * TRANSPORT_EMISSIONS_PER_TON_KM
@@ -264,7 +250,7 @@ class CollectorCompany(OperationalEntity):
             return 0, {}
 
         allowed_collections, overflow = check_storage_capacity(
-            {},  # We're checking just vehicle capacity
+            {},
             potential_collections,
             target_volume
         )
@@ -274,7 +260,6 @@ class CollectorCompany(OperationalEntity):
                 generator, potential_collections, allowed_collections
             )
 
-        # Process the actual collections
         collected_waste = {}
         total_collected = 0
 
@@ -320,9 +305,6 @@ class CollectorCompany(OperationalEntity):
         else:
             overflow_amount = total_to_add - available_space
 
-            # handle_storage_event decides expand vs landfill; on the expand branch
-            # store what now fits and landfill the remainder, so every collected m3
-            # is stored or landfilled, none silently dropped (ADR 0009).
             _cost, action = handle_storage_event(
                 self, split_overflow_by_type(collected_waste, overflow_amount)
             )
@@ -350,11 +332,9 @@ class CollectorCompany(OperationalEntity):
             current_time = self.env.now
 
             try:
-                # Process new transport requests
                 new_transports = self.transport_manager.process_requests(current_time)
                 self.active_transports.extend(new_transports)
 
-                # Check completed transports
                 completed = self._check_completed_transports(current_time)
 
                 for transport in completed:
@@ -382,7 +362,6 @@ class CollectorCompany(OperationalEntity):
             utilization, kanban_signals, current_time
         )
 
-        # Clamp efficiency
         self.efficiency = max(0.3, min(1.2, self.efficiency))
 
     def collection_loop(self):
@@ -397,13 +376,9 @@ class CollectorCompany(OperationalEntity):
                 yield self.env.timeout(OPERATING_TICK_DAYS)
                 continue
 
-            # collection_capacity is the efficiency-scaled capacity; every
-            # consumer reads it directly so efficiency is applied exactly once.
             self.collection_capacity = self.initial_collection_capacity * self.efficiency
             self.transport_cost = min(100, self.initial_transport_cost * (2 - self.efficiency))
 
-            # No cadence jitter on the daily clock (ADR 0020): the old
-            # uniform(1, 4)-day jitter would stretch a 1-day tick to 2-5 days.
             yield self.env.timeout(OPERATING_TICK_DAYS)
 
             if not self.should_collect():
@@ -416,25 +391,14 @@ class CollectorCompany(OperationalEntity):
             if self.inventory_policy_behavior.should_process_kanban_signals(kanban_signals):
                 self._process_kanban_signals(kanban_signals)
             else:
-                # Regular collection based on policy
                 self._unified_collection_strategy()
 
     def _process_kanban_signals(self, signals):
         """Process signals with acknowledgment and cross-region support"""
         for signal in signals:
-            # Market signals (source_type="market") are downstream demand for
-            # treatment production (ADR 0002, Phase E), not waste-collection
-            # requests; collectors must not consume them or they starve the
-            # treatment operator's production loop (its sole consumer).
             if signal.get('source_type') == "market":
                 continue
 
-            # Treatment signals are addressed to one region (the operator's own).
-            # The shared bus means every PULL collector reads every signal, so an
-            # unaddressed signal could be consumed by the wrong region's collector,
-            # which would propagate uselessly and ack it before the intended
-            # collector ever sees it (ADR 0018). Skip signals not meant for us;
-            # leave them on the bus for the collector they are addressed to.
             target_region = signal.get('target_region')
             if target_region is not None and target_region != self.region_type:
                 continue
@@ -481,7 +445,6 @@ class CollectorCompany(OperationalEntity):
                 if source_type == "treatment":
                     self._propagate_signal_to_generators(signal, current_time)
 
-                # Acknowledge the signal to prevent it from staying active forever
                 self.kanban_manager.acknowledge_signal(signal['id'])
 
     def _propagate_signal_to_generators(self, signal, current_time):
@@ -507,10 +470,6 @@ class CollectorCompany(OperationalEntity):
             )
 
     def should_collect(self) -> bool:
-        # The non-market signal read is wrapped in a callable because
-        # ``get_signals`` prunes stale signals as a side effect: only the PULL
-        # path consulted it, so PUSH must not trigger it. The adaptive threshold
-        # is pure, so computing it eagerly is observationally identical.
         return self.inventory_policy_behavior.collector_should_collect(
             utilization=self._calculate_utilization(),
             adaptive_threshold=self.stock_strategy_behavior.collector_adaptive_threshold(self.env.now),
@@ -540,7 +499,6 @@ class CollectorCompany(OperationalEntity):
         success = self.transport_manager.request_transport(request)
 
         if success:
-            # Remove from our storage immediately (it's now "in transit")
             self.collection_center.current_storage[waste_type] -= volume
             return True
         else:
@@ -607,14 +565,11 @@ class CollectorCompany(OperationalEntity):
             if generator.current_storage <= 0:
                 continue
 
-            # Check vehicle availability
             if not self._find_available_vehicle():
                 break
 
-            # Start collection (async process)
             self.collect_from_generator(generator)
 
-            # Estimate cost based on distance
             _, distance = self._calculate_travel_time_to_generator(generator)
             estimated_cost = self.transport_cost + (distance * ESTIMATED_COLLECTION_COST_PER_KM)
             total_cost += estimated_cost
@@ -789,7 +744,7 @@ class CollectorCompany(OperationalEntity):
         if other_region_generators and cross_region_target > 0:
             closest_regions = get_closest_regions(
                 self.region_type, n=3
-            )  # Get top 3 closest
+            )
 
             for region_type, distance in closest_regions:
                 region_generators = [

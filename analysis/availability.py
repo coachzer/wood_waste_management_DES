@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-# Status-history category key per echelon, in reporting order.
 _ECHELON_CATEGORIES = (
     ("generator", "generators"),
     ("collector", "collectors"),

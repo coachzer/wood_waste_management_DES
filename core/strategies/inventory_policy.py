@@ -73,7 +73,7 @@ class PushPolicy:
     def collector_should_collect(
         self, utilization, adaptive_threshold, non_market_signals_fn
     ) -> bool:
-        push_threshold = min(COLLECTOR_UTILIZATION_CEILING, adaptive_threshold + 0.10)  # +10% buffer for PUSH
+        push_threshold = min(COLLECTOR_UTILIZATION_CEILING, adaptive_threshold + 0.10)
         return utilization < push_threshold
 
     def collector_efficiency(self, stock_strategy, utilization, signals, base) -> float:
@@ -83,7 +83,6 @@ class PushPolicy:
     def ondemand_generator_should_signal(
         self, current_storage, capacity, active_signals_fn
     ) -> bool:
-        # PUSH ON_DEMAND: signal when we have substantial waste.
         return current_storage > capacity * 0.1
 
     def propagates_reorder_signals_upstream(self) -> bool:
@@ -102,16 +101,12 @@ class PullPolicy:
     def collector_should_collect(
         self, utilization, adaptive_threshold, non_market_signals_fn
     ) -> bool:
-        # Market signals are downstream demand for treatment, not collection
-        # requests (ADR 0002, Phase E); the caller has already filtered them out.
         if non_market_signals_fn():
             return utilization < COLLECTOR_UTILIZATION_CEILING
-        # PULL uses much lower thresholds.
-        pull_threshold = max(0.15, adaptive_threshold - 0.15)  # -15% for lean operation
+        pull_threshold = max(0.15, adaptive_threshold - 0.15)
         return utilization < pull_threshold
 
     def collector_efficiency(self, stock_strategy, utilization, signals, base) -> float:
-        # Clamp utilization and signals to reasonable ranges.
         utilization = max(0.0, min(1.0, utilization))
         signals = max(0, signals)
         return stock_strategy.collector_pull_efficiency(utilization, signals, base)
@@ -119,7 +114,6 @@ class PullPolicy:
     def ondemand_generator_should_signal(
         self, current_storage, capacity, active_signals_fn
     ) -> bool:
-        # PULL ON_DEMAND: only signal if we have waste AND downstream demand exists.
         return bool(active_signals_fn()) and current_storage > 0
 
     def propagates_reorder_signals_upstream(self) -> bool:

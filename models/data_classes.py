@@ -7,9 +7,9 @@ from .enums import WasteType, RegionType, EntityStatus, OutputType
 @dataclass
 class FailureConfig:
     """Configuration for entity failure rates and durations"""
-    probability: float  # Daily probability of failure, rolled once per day
-    min_duration: float  # Minimum duration in days of the FAILED outage and, separately, the RECOVERING ramp
-    max_duration: float  # Maximum duration in days of the FAILED outage and, separately, the RECOVERING ramp
+    probability: float
+    min_duration: float
+    max_duration: float
 
 @dataclass(init=False)
 class OperationalEntity:
@@ -37,9 +37,6 @@ class OperationalEntity:
         self.failure_config = failure_config
         self.downtime_duration = 1.0
         self.rng = np.random.default_rng(seed)
-        # Failure draws get their own stream so their count is policy-invariant:
-        # the daily failure roll never shares a generator with the policy-dependent
-        # draws on ``rng``, so every combo at a seed faces the same failure history.
         seed_sequence = seed if isinstance(seed, np.random.SeedSequence) else np.random.SeedSequence(seed)
         [failure_seed] = seed_sequence.spawn(1)
         self.failure_rng = np.random.default_rng(failure_seed)
@@ -140,12 +137,9 @@ class OperationalEntity:
         if self.status == EntityStatus.OPERATIONAL:
             return 1.0
         elif self.status == EntityStatus.RECOVERING:
-            # Imported function-locally to avoid a config<->data_classes
-            # bootstrap cycle. See tests/test_import_isolation.py.
             from config.constants import RECOVERING_BASE_EFFICIENCY
             return RECOVERING_BASE_EFFICIENCY + ((1.0 - RECOVERING_BASE_EFFICIENCY) * self.recovery_progress)
         else:
-            # FAILED entities do no work: their main-loop tick is skipped.
             return 0.0
 
     def _get_recovery_duration(self):
@@ -170,19 +164,17 @@ class WasteTransformation:
 
     input_type: WasteType
     output_type: OutputType
-    conversion_efficiency: float  # Percentage of input mass converted to output
-    energy_required: float  # Energy required per unit mass (kWh/kg)
+    conversion_efficiency: float
+    energy_required: float
 
 @dataclass
 class Vehicle:
     """Data class to represent a transport vehicle"""
     id: str
-    capacity: float  # Storage capacity in m³
+    capacity: float
     current_region: RegionType
     in_transit: bool = False
-    current_load: float = 0.0  # Current load in m³ (total across waste types)
-    # Per-waste-type breakdown of current_load (m³); sums to current_load. Read by
-    # the waste-side mass-balance invariant to total waste in transit by type.
+    current_load: float = 0.0
     current_load_by_type: Dict[WasteType, float] = field(default_factory=dict)
     destination: Optional[RegionType] = None
     estimated_arrival: Optional[float] = None
@@ -191,8 +183,8 @@ class Vehicle:
 class CollectionCenter(OperationalEntity):
     """Data class to represent a waste collection center"""
     region: RegionType
-    waste_storage_capacity: float # Storage capacity in m³
-    current_storage: Dict[WasteType, float] # Current storage in m³ per waste type
+    waste_storage_capacity: float
+    current_storage: Dict[WasteType, float]
     coordinates: Tuple[float, float]
 
     def __init__(self, region: RegionType, waste_storage_capacity: float,
@@ -209,16 +201,16 @@ class CollectionCenter(OperationalEntity):
 @dataclass
 class ProductStorage:
     """Data class to represent storage for finished products"""
-    capacity: Dict[OutputType, float]  # Capacity in m³ per product type (ADR 0002, Phase C)
-    current_storage: Dict[OutputType, float] # Current storage in m³ per product type
+    capacity: Dict[OutputType, float]
+    current_storage: Dict[OutputType, float]
 
 @dataclass
 class ABCClassification:
     """ABC classification result for a product"""
     product_type: str
-    biogenic_carbon_per_unit: float  # kg CO2eq/m3
-    demand_volume: float  # m3
-    total_biogenic_impact: float  # Total kg CO2eq
+    biogenic_carbon_per_unit: float
+    demand_volume: float
+    total_biogenic_impact: float
     abc_class: str
     cumulative_percentage: float
     priority_weight: float

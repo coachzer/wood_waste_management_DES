@@ -47,14 +47,12 @@ def time_weighted_average(
         return None
 
     area = 0.0
-    # Flat extrapolation before the first sample (level held constant from t=0).
     previous_time, previous_level = 0.0, points[0][1]
     for time, level in points:
         time = min(max(time, 0.0), horizon)
         if time > previous_time:
             area += (previous_level + level) / 2.0 * (time - previous_time)
         previous_time, previous_level = time, level
-    # Flat extrapolation after the last sample to the horizon.
     if horizon > previous_time:
         area += previous_level * (horizon - previous_time)
     return area / horizon

@@ -6,7 +6,6 @@ their own copy and the output mappings had drifted apart.
 """
 from models.enums import OutputType, WasteType
 
-# (conversion_efficiency, energy_required) per input waste type.
 TRANSFORMATION_CATALOGUE = {
     WasteType.CONSTRUCTION_WOOD_17_02_01: (0.98, 0.90),
     WasteType.WOODEN_PACKAGING_15_01_03: (0.88, 0.95),
@@ -18,7 +17,6 @@ TRANSFORMATION_CATALOGUE = {
     WasteType.OTHER_WOOD_WASTE_03_01_99: (0.85, 0.65),
 }
 
-# Output products each input waste type may become.
 WASTE_TO_OUTPUT_TYPES = {
     WasteType.CONSTRUCTION_WOOD_17_02_01: [
         OutputType.PARTICLE_BOARD,

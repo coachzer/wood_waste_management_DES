@@ -28,25 +28,18 @@ class SimulationManager:
     """Manages complete simulation lifecycle - setup, execution, and monitoring"""
     
     def __init__(self, seed=None):
-        # Reset cross-run state: the OperationalEntity failure counts are
-        # process-global, so they must be cleared per run.
         OperationalEntity._failure_counts.clear()
 
         self.seed = seed
 
-        # Simulation state -- one fresh instance per run, injected into the
-        # transport manager, facility builder, and every entity it builds.
         self.state = SimulationState()
 
-        # Core simulation components
         self.env = simpy.Environment()
         self.waste_monitor = WasteMonitor(self.env)
         self.transport_manager = PointToPointTransport(state=self.state)
 
-        # Kanban
         self.kanban_manager = KanbanManager()
 
-        # Data and building components
         self.facility_manager = FacilityDataManager()
         self.facility_builder = None
         
@@ -62,16 +55,10 @@ class SimulationManager:
         policy/strategy combo is the experimental grid axis, passed separately.
         """
         try:
-            # Load facility data
             self.facility_manager.load_data()
             
-            # Create facility builder with scenario configuration
             uncertainty_set = scenario_config.to_uncertainty_set()
 
-            # The transport manager is constructed in __init__ before the
-            # scenario is known; hand it the uncertainty set here so
-            # repositioning trips apply the mean road-circuity factor
-            # (ADR 0015).
             self.transport_manager.uncertainty_set = uncertainty_set
 
             self.facility_builder = FacilityBuilder(
@@ -85,12 +72,10 @@ class SimulationManager:
                 seed=self.seed
             )
             
-            # Build all facilities
             generators, collectors, processors = self._build_all_facilities(
                 inventory_policy, stock_strategy
             )
 
-            # Initialize simulation state
             self.state.initialize(generators, collectors, processors)
             
             print("Initialized simulation with:")
@@ -111,8 +96,6 @@ class SimulationManager:
         collectors = []
         processors = []
 
-        # Total processing capacity across all regions, used to apportion each
-        # operator's market share of national demand (ADR 0002).
         total_processor_capacity = self._total_processor_capacity()
 
         for region in RegionType:
@@ -120,21 +103,18 @@ class SimulationManager:
             if not facilities:
                 continue
                 
-            # Build generators for this region
             for gen_data in facilities.generators:
                 generator = self.facility_builder.create_generator(
                     gen_data, region, stock_strategy, inventory_policy
                 )
                 generators.append(generator)
 
-            # Build collectors for this region
             for col_data in facilities.collectors:
                 collector = self.facility_builder.create_collector(
                     col_data, region, stock_strategy, inventory_policy
                 )
                 collectors.append(collector)
 
-            # Build processors for this region
             for proc_data in facilities.processors:
                 market_share = (
                     proc_data.waste_storage_capacity / total_processor_capacity
@@ -184,7 +164,6 @@ class SimulationManager:
         runs raise on a broken invariant; batch Monte Carlo passes ``False`` so
         one bad seed warns and continues instead of aborting the batch.
         """
-        # Start monitoring process
         self.env.process(
             self.waste_monitor.monitor_system_process(
                 self.state.generators,
@@ -193,12 +172,8 @@ class SimulationManager:
             )
         )
 
-        # Start weekly market consumption of finished goods
         self.env.process(self._market_consumption_process())
 
-        # Mass-balance safety net (ADR 0002, Phase E.5): construct now, at t=0, so
-        # the snapshot captures the primed finished-goods inventory. Started after
-        # market consumption so the same-tick check runs once consumption settles.
         self.mass_balance_monitor = MassBalanceMonitor(
             EntityRegistry(
                 state=self.state,
@@ -226,7 +201,6 @@ class SimulationManager:
         print(f"Starting simulation for {SIMULATION_DURATION} time units...")
         self.env.run(until=SIMULATION_DURATION)
         self.mass_balance_monitor.check_final(self.env.now)
-        # Final-only waste-side invariants on the drained run (see their docstrings).
         self.mass_balance_monitor.check_waste_system(self.env.now)
         self.mass_balance_monitor.check_collection_centers(self.env.now)
         self.mass_balance_monitor.check_yield_bridge(self.env.now)
@@ -234,21 +208,13 @@ class SimulationManager:
 
     def get_monitor_data(self) -> Dict[str, Any]:
         """Extract all relevant monitoring data"""
-        # Each history key names both the export entry and the HistoryStore
-        # property it is read from, so the persisted raw-payload list and this
-        # export are driven by the same tuple.
         monitor_data: Dict[str, Any] = {
             key: getattr(self.waste_monitor.store, f"get_{key}")
             for key in HISTORY_KEYS
         }
         monitor_data.update({
-            # Raw run logs for post-hoc analysis (e.g. bullwhip, ADR 0004),
-            # consumed in process by extract_kpis.
             'transport_flows': self.state.transport_flows,
             'consumption_events': self.state.consumption_events,
-            # Static per-entity waste-storage capacities, so residence KPIs
-            # (Little's Law, C4) recover absolute generator/collector inventory
-            # from the monitors' utilization-percent series.
             'storage_capacities': {
                 'generators': {
                     generator.name: generator.waste_storage_capacity
@@ -261,7 +227,6 @@ class SimulationManager:
             },
             'final_summary': {
                 'simulation_time': self.env.now,
-                # Continuous market-consumption service-level metrics (ADR 0002).
                 'full_service_level': self.state.full_service_level,
                 'operational_service_level': self.state.operational_service_level,
                 'total_attempted_consumption': self.state.total_attempted_consumption,

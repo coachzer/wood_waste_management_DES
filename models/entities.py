@@ -7,7 +7,7 @@ from .data_classes import FailureConfig, OperationalEntity
 class Generator(OperationalEntity):
     """Waste generator entity"""
     id: str
-    waste_generation_rates: Dict[str, float]  # EWC code -> tonne/day
+    waste_generation_rates: Dict[str, float]
     generation_frequency: float
     waste_storage_capacity: float
     efficiency: float
@@ -34,7 +34,7 @@ class Generator(OperationalEntity):
 class Collector(OperationalEntity):
     """Waste collector entity"""
     id: str
-    waste_types: List[str]  # EWC codes
+    waste_types: List[str]
     collection_capacity: float
     collection_frequency: float
     transport_cost: float
@@ -64,8 +64,8 @@ class Collector(OperationalEntity):
 class Processor(OperationalEntity):
     """Treatment/processing facility"""
     id: str
-    input_types: List[str]  # EWC codes that can be processed
-    output_types: List[str]  # Products that can be produced
+    input_types: List[str]
+    output_types: List[str]
     processing_time: float
     waste_storage_capacity: float
     energy_consumption: float = 1.0

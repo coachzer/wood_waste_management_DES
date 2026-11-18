@@ -6,12 +6,11 @@ class KanbanManager:
     def __init__(self):
         self.signals: List[Dict[str, Any]] = []
         self.max_signal_age = KANBAN_SIGNAL_MAX_AGE_DAYS
-        self.acknowledged_signals = set()  # Track processed signals
+        self.acknowledged_signals = set()
 
     def add_signal(self, waste_type, timestamp, volume=0, source_id=None, source_type=None, target_region=None):
         signal_id = f"{source_id}_{waste_type}_{timestamp}"
 
-        # Avoid duplicate signals
         if signal_id not in self.acknowledged_signals:
             self.signals.append({
                 'id': signal_id,

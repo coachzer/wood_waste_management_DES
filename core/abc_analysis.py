@@ -1,4 +1,3 @@
-# python -m core.abc_analysis
 import json
 from typing import Dict, List
 from models.data_classes import ABCClassification
@@ -67,16 +66,15 @@ class BiogenicCarbonABCAnalyzer:
             cumulative_impact += abs(item['total_biogenic_impact'])
             cumulative_percentage = (cumulative_impact / total_absolute_impact) * 100
             
-            # Determine ABC class
             if cumulative_percentage <= a_threshold:
                 abc_class = 'A'
-                priority_weight = 1.0  # Highest priority
+                priority_weight = 1.0
             elif cumulative_percentage <= b_threshold:
                 abc_class = 'B'
-                priority_weight = 0.7  # Medium priority
+                priority_weight = 0.7
             else:
                 abc_class = 'C'
-                priority_weight = 0.4  # Lower priority
+                priority_weight = 0.4
             
             classifications.append(ABCClassification(
                 product_type=item['product_type'],
@@ -100,7 +98,6 @@ class BiogenicCarbonABCAnalyzer:
         report.append("=" * 80)
         report.append("")
         
-        # Summary section
         report.append("EXECUTIVE SUMMARY")
         report.append("-" * 40)
         
@@ -139,7 +136,6 @@ class BiogenicCarbonABCAnalyzer:
         report.append("STRATEGIC RECOMMENDATIONS")
         report.append("-" * 40)
         
-        # Class A recommendations
         class_a_products = [item.product_type for item in classifications if item.abc_class == 'A']
         if class_a_products:
             report.append(f"CLASS A (High Priority): {', '.join(class_a_products)}")
@@ -149,7 +145,6 @@ class BiogenicCarbonABCAnalyzer:
             report.append("• These products provide the highest biogenic carbon storage impact")
             report.append("")
         
-        # Class B recommendations  
         class_b_products = [item.product_type for item in classifications if item.abc_class == 'B']
         if class_b_products:
             report.append(f"CLASS B (Medium Priority): {', '.join(class_b_products)}")
@@ -158,7 +153,6 @@ class BiogenicCarbonABCAnalyzer:
             report.append("• Consider as backup capacity when Class A demand is met")
             report.append("")
         
-        # Class C recommendations
         class_c_products = [item.product_type for item in classifications if item.abc_class == 'C']
         if class_c_products:
             report.append(f"CLASS C (Lower Priority): {', '.join(class_c_products)}")
@@ -167,7 +161,6 @@ class BiogenicCarbonABCAnalyzer:
             report.append("• Monitor for potential demand changes")
             report.append("")
         
-        # Carbon storage insights
         report.append("BIOGENIC CARBON INSIGHTS")
         report.append("-" * 40)
         

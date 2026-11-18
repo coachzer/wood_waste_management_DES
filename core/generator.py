@@ -82,10 +82,6 @@ class WasteGenerator(OperationalEntity):
             for waste_type in waste_streams.keys()
         }
 
-        # Potential (pre-saturation) generation: the volume the exogenous source
-        # offered each tick before the storage-headroom cap, policy-invariant and
-        # the basis for the bullwhip source-variance floor (ADR 0005). Mirrors
-        # total_generated's keys and initial-stock baseline.
         self.total_potential_generated = dict(self.total_generated)
 
         self.history_size = HISTORY_BUFFER_SIZE
@@ -100,7 +96,6 @@ class WasteGenerator(OperationalEntity):
             for waste_type in waste_streams.keys()
         }
 
-        # Start waste generation process
         self.action = env.process(self.generate_waste())
         self.start_failure_process(env)
 
@@ -140,16 +135,13 @@ class WasteGenerator(OperationalEntity):
         self._generate_waste_for_period(seasonal_factor, current_time)
 
         if self.current_storage > self.waste_storage_capacity:
-            self._handle_overflow(force_landfill=False)  # try expansion first
+            self._handle_overflow(force_landfill=False)
 
         self._handle_inventory_signaling(current_time)
 
     def _handle_inventory_signaling(self, current_time):
         """Signal for collection based on stock strategy and current inventory levels"""
 
-        # The downstream-signal read is wrapped in a callable because
-        # ``get_signals`` prunes stale signals as a side effect: only the
-        # PULL ON_DEMAND branch consulted it, so it must not fire on the others.
         if self.stock_strategy_behavior.generator_should_signal(
             current_storage=self.current_storage,
             capacity=self.waste_storage_capacity,
@@ -220,7 +212,6 @@ class WasteGenerator(OperationalEntity):
                 force_landfill=force_landfill
             )
 
-            # Capacity may have expanded inside handle_storage_event; read it fresh
             effective_capacity = self.waste_storage_capacity
 
             if total_current > effective_capacity:
@@ -247,8 +238,6 @@ class WasteGenerator(OperationalEntity):
         ):
             potential_volume = base_rate * seasonal_factor * daily_factor * self.efficiency
 
-            # Record the source-offered volume before the storage cap (ADR 0005
-            # floor), accumulated for every waste type and consuming no RNG.
             self.total_potential_generated[waste_type] += potential_volume
 
             generated_volume = min(potential_volume, available_storage)

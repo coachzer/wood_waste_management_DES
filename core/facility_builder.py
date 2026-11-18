@@ -38,8 +38,6 @@ class FacilityBuilder:
         self.kanban_manager = kanban_manager
         self.state = state
         self.seed_sequence = np.random.SeedSequence(seed)
-        # Built-entity counts per type, read by print_failure_analysis. Instance
-        # state so a fresh builder starts at zero -- no cross-run reset needed.
         self.facility_counts = {
             'WasteGenerator': 0,
             'CollectorCompany': 0,
@@ -53,7 +51,6 @@ class FacilityBuilder:
         
         waste_streams = convert_generation_rates_to_volume(gen_data.waste_generation_rates)
 
-        # Convert initial stock from tonnes to m³ 
         initial_stock = None
         if gen_data.initial_stock:
             initial_stock_ewc = convert_generation_rates_to_volume(gen_data.initial_stock)
@@ -119,8 +116,6 @@ class FacilityBuilder:
             waste_types=waste_types_enum,
             collection_capacity=col_data.collection_capacity,
             collection_frequency=col_data.collection_frequency,
-            # Explicit, not the collector's fallback: one vehicle carries one
-            # tick's collection capacity per trip (ADR 0020).
             vehicle_capacity=per_tick_capacity(
                 col_data.collection_capacity, col_data.collection_frequency
             ),

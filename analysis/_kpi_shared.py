@@ -28,9 +28,6 @@ def t_ci_margin(n: int, stdev: float, alpha: float) -> float:
     """
     return float(stats.t.ppf(1 - alpha / 2, n - 1)) * stdev / math.sqrt(n)
 
-# Curated headline KPIs compared by default in the paired and stochastic-dominance
-# reports. Restricting the set keeps each metric's comparison family small (so the
-# Holm correction stays powerful) and lines the two artifacts up one-to-one.
 DEFAULT_METRICS = [
     "service_level_full_pct",
     "service_level_operational_pct",
@@ -42,10 +39,6 @@ DEFAULT_METRICS = [
     "collection_rate_pct",
 ]
 
-# Per-KPI sense: "max" = larger is better, "min" = larger is worse. The one
-# encoding behind both the stochastic-dominance sense annotation and the Pareto
-# objective vector (cleanup task #46); each report selects the keys it needs.
-# Discovered namespace metrics are intentionally absent -- their sense is mixed.
 KPI_SENSE: Dict[str, str] = {
     "service_level_full_pct": "max",
     "service_level_operational_pct": "max",
@@ -58,12 +51,6 @@ KPI_SENSE: Dict[str, str] = {
     "total_system_cost": "min",
 }
 
-# Nested KPI sub-dicts ``extract_kpis`` emits, ridden generically as flat
-# ``{namespace}.{key}`` metrics with no per-key wiring (issue 06). ``bullwhip``
-# (ADR 0004), ``residence`` (Little's Law, C4), ``carbon`` (ADR 0011),
-# ``availability`` (entity status history, cleanup task #61),
-# ``service_level_full_by_product_pct`` (per-product full Service Level,
-# VIZ-REVIEW T8; keys are the demand.json product names).
 _GENERIC_NAMESPACES = (
     "bullwhip",
     "residence",

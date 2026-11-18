@@ -15,7 +15,6 @@ class SimulationState:
         self.collectors = []
         self.treatment_operators = []
         self.transport_flows = []
-        # Market consumption event log (demand-as-consumption model, ADR 0002)
         self.consumption_events = []
 
     def initialize(self, generators, collectors, treatment_operators):
