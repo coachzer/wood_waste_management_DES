@@ -107,11 +107,12 @@ class PointToPointTransport:
              if c.region_type == request.destination),
             None
         )
-        target_name = destination_collector.name if destination_collector else request.requester_id
+        origin_collector_name = request.requester_id
+        target_name = destination_collector.name if destination_collector else origin_collector_name
 
         self.state.track_transport_flow(
             source_type="collector",
-            source_name=request.requester_id,
+            source_name=origin_collector_name,
             target_type="collector",
             target_name=target_name,
             waste_type=request.waste_type,
