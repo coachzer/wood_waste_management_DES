@@ -19,6 +19,9 @@ def _create_waste_type_mapping(generation_rates_tonnes: Dict[str, float]) -> Dic
     """Helper to create waste type mapping from EWC codes."""
     waste_type_mapping = {}
     for ewc_code in generation_rates_tonnes.keys():
+        if isinstance(ewc_code, WasteType):
+            waste_type_mapping[ewc_code] = ewc_code
+            continue
         try:
             normalized_code = ewc_code.replace(" ", "_").upper()
             # Find the corresponding WasteType enum
@@ -33,7 +36,7 @@ def _create_waste_type_mapping(generation_rates_tonnes: Dict[str, float]) -> Dic
     return waste_type_mapping
 
 def convert_generation_rates_to_volume(
-    generation_rates_tonnes: Dict[str, float], 
+    generation_rates_tonnes: Dict["str | WasteType", float],
     waste_type_mapping: Optional[Dict[str, WasteType]] = None
 ) -> Dict[WasteType, float]:
     """
