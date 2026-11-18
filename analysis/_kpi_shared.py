@@ -13,6 +13,7 @@ importing it can never reintroduce a project-internal cycle.
 
 import json
 import math
+from enum import StrEnum
 from pathlib import Path
 from typing import Dict, List
 
@@ -39,16 +40,21 @@ DEFAULT_METRICS = [
     "collection_rate_pct",
 ]
 
-KPI_SENSE: Dict[str, str] = {
-    "service_level_full_pct": "max",
-    "service_level_operational_pct": "max",
-    "stockout_lost_m3": "min",
-    "total_consumed_m3": "max",
-    "landfill_volume_m3": "min",
-    "total_emissions_kgco2e": "min",
-    "overall_efficiency_pct": "max",
-    "collection_rate_pct": "max",
-    "total_system_cost": "min",
+class KpiSense(StrEnum):
+    LARGER_IS_BETTER = "max"
+    LARGER_IS_WORSE = "min"
+
+
+KPI_SENSE: Dict[str, KpiSense] = {
+    "service_level_full_pct": KpiSense.LARGER_IS_BETTER,
+    "service_level_operational_pct": KpiSense.LARGER_IS_BETTER,
+    "stockout_lost_m3": KpiSense.LARGER_IS_WORSE,
+    "total_consumed_m3": KpiSense.LARGER_IS_BETTER,
+    "landfill_volume_m3": KpiSense.LARGER_IS_WORSE,
+    "total_emissions_kgco2e": KpiSense.LARGER_IS_WORSE,
+    "overall_efficiency_pct": KpiSense.LARGER_IS_BETTER,
+    "collection_rate_pct": KpiSense.LARGER_IS_BETTER,
+    "total_system_cost": KpiSense.LARGER_IS_WORSE,
 }
 
 _GENERIC_NAMESPACES = (

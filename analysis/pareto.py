@@ -23,7 +23,7 @@ import csv
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
-from ._kpi_shared import KPI_SENSE
+from ._kpi_shared import KPI_SENSE, KpiSense
 
 OBJECTIVES: List[Tuple[str, str]] = [
     (metric, KPI_SENSE[metric])
@@ -43,9 +43,9 @@ def _goodness(value: float, sense: str) -> float:
     ">= on all, > on at least one", with no per-objective sense branching in the
     comparison itself.
     """
-    if sense == "max":
+    if sense == KpiSense.LARGER_IS_BETTER:
         return value
-    if sense == "min":
+    if sense == KpiSense.LARGER_IS_WORSE:
         return -value
     raise ValueError(f"Unknown objective sense {sense!r} (expected 'max' or 'min')")
 

@@ -25,11 +25,12 @@ from config.constants import SSD_FLOATING_ACCUMULATION_RELATIVE_TOLERANCE
 from ._kpi_shared import (
     DEFAULT_METRICS,
     KPI_SENSE,
+    KpiSense,
     _discovered_namespace_metrics,
     load_combo_kpis,
 )
 
-KPI_SENSES: Dict[str, str] = {metric: KPI_SENSE[metric] for metric in DEFAULT_METRICS}
+KPI_SENSES: Dict[str, KpiSense] = {metric: KPI_SENSE[metric] for metric in DEFAULT_METRICS}
 
 MINIMUM_SAMPLES = 2
 
@@ -251,12 +252,12 @@ def _print_dominance_summary(rows: List[dict]) -> None:
         if row["metric"] != current_metric:
             current_metric = row["metric"]
             sense = KPI_SENSES.get(current_metric, "")
-            sense_note = f" [larger is {'better' if sense == 'max' else 'worse'}]" if sense else ""
+            sense_note = f" [larger is {'better' if sense == KpiSense.LARGER_IS_BETTER else 'worse'}]" if sense else ""
             print(f"\n  {current_metric}{sense_note}:")
         loser = row["combo_b"] if row["dominant_combo"] == row["combo_a"] else row["combo_a"]
         better = ""
         if row["sense"]:
-            better = " (better)" if row["sense"] == "max" else " (worse)"
+            better = " (better)" if row["sense"] == KpiSense.LARGER_IS_BETTER else " (worse)"
         print(
             f"    {row['dominant_combo']} {row['dominance_order']}-dominates {loser}"
             f"  larger{better}; n={row['n_a']}/{row['n_b']}"
