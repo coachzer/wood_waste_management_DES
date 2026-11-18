@@ -548,12 +548,15 @@ class TreatmentOperator(OperationalEntity):
         return collected_waste
 
     def _drain_collectors(self, collectors, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
-        """Drain pre-filtered collectors via the local intake path until satisfied."""
+        """Drain pre-filtered collectors via the local intake path until satisfied. A drain
+        from another region is charged as one loaded trip over the distance (ADR 0037)."""
         remaining = amount_to_collect
         for collector in collectors:
             if remaining <= 0: break
 
             drained = collector.provide_waste_for_treatment(remaining, waste_types, treatment_name=self.name)
+            if drained and collector.region_type != self.region_type:
+                collector._record_trip_cost_and_emissions(drained, get_distance(collector.region_type, self.region_type))
 
             for waste_type, amount in drained.items():
                 collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
