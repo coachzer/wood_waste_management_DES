@@ -42,7 +42,8 @@ Paired over 20 seeds, PULL after minus PULL before (95% interval):
   already full. The PULL-minus-PUSH landfill gap widens. PUSH has no landfill in these runs. This is an
   open problem, not an accepted trade-off. The likely cause is that collectors deposit concurrent
   dispatches and cross-region arrivals without a capacity check (one-seed evidence, not yet confirmed
-  over seeds).
+  over seeds). ADR 0022 found the cause: PULL signals forced collection into full centers.
+  Capacity checks on arrivals did not help.
 - **PUSH changes too**, because the FAILED fix applies to both policies. The change in PUSH full service
   is within noise (ON_DEMAND +0.52 [-0.40, +1.43], REORDER_50 -0.12 [-0.31, +0.07], REORDER_90 +0.23
   [-0.15, +0.61]). Any comparison must pair PUSH and PULL from the same code version.
