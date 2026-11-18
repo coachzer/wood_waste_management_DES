@@ -15,6 +15,8 @@ make obvious:
 
 import pytest
 
+from config.constants import COLLECTOR_UTILIZATION_CEILING
+
 from core.strategies import (
     OnDemandStrategy,
     Reorder50Strategy,
@@ -127,11 +129,24 @@ def test_push_should_collect_uses_buffered_threshold_without_signals():
 
 def test_pull_should_collect_short_circuits_on_signals():
     policy = PullPolicy()
-    # Pending non-market signals force collection regardless of utilization.
-    assert policy.collector_should_collect(0.99, 0.50, lambda: ["s"]) is True
+    assert policy.collector_should_collect(0.70, 0.50, lambda: ["s"]) is True
     # Otherwise PULL uses the lowered threshold = max(0.15, adaptive - 0.15).
     assert policy.collector_should_collect(0.30, 0.50, lambda: []) is True
     assert policy.collector_should_collect(0.40, 0.50, lambda: []) is False
+
+
+def test_pull_signals_do_not_force_collection_at_the_utilization_ceiling():
+    policy = PullPolicy()
+    ceiling = COLLECTOR_UTILIZATION_CEILING
+    assert policy.collector_should_collect(ceiling - 0.01, 0.50, lambda: ["s"]) is True
+    assert policy.collector_should_collect(ceiling, 0.50, lambda: ["s"]) is False
+    assert policy.collector_should_collect(0.99, 0.50, lambda: ["s"]) is False
+
+
+def test_pull_reads_signals_even_above_the_ceiling():
+    reads = []
+    PullPolicy().collector_should_collect(0.99, 0.50, lambda: reads.append(1) or ["s"])
+    assert reads == [1]
 
 
 def test_policy_production_and_signal_propagation_flags():

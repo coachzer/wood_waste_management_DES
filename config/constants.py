@@ -91,6 +91,8 @@ OPERATING_TICK_DAYS = 1.0
 # older copies would only let a collector act on superseded gaps.
 KANBAN_SIGNAL_MAX_AGE_DAYS = OPERATING_TICK_DAYS
 
+COLLECTOR_UTILIZATION_CEILING = 0.80
+
 # Transformation-selection scoring (ADR 0002, Phase F). The ABC priority weight
 # enters the score at this multiplier, making it the dominant term (CONTEXT.md
 # "ABC Classification"); the input-availability term saturates at 1.0 once

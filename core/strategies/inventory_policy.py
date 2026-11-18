@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import Callable, List, Protocol, TYPE_CHECKING
 
+from config.constants import COLLECTOR_UTILIZATION_CEILING
+
 if TYPE_CHECKING:
     from core.strategies.stock_strategy import StockStrategyProtocol
 from models.enums import InventoryPolicy
@@ -71,7 +73,7 @@ class PushPolicy:
     def collector_should_collect(
         self, utilization, adaptive_threshold, non_market_signals_fn
     ) -> bool:
-        push_threshold = min(0.80, adaptive_threshold + 0.10)  # +10% buffer for PUSH
+        push_threshold = min(COLLECTOR_UTILIZATION_CEILING, adaptive_threshold + 0.10)  # +10% buffer for PUSH
         return utilization < push_threshold
 
     def collector_efficiency(self, stock_strategy, utilization, signals, base) -> float:
@@ -103,7 +105,7 @@ class PullPolicy:
         # Market signals are downstream demand for treatment, not collection
         # requests (ADR 0002, Phase E); the caller has already filtered them out.
         if non_market_signals_fn():
-            return True
+            return utilization < COLLECTOR_UTILIZATION_CEILING
         # PULL uses much lower thresholds.
         pull_threshold = max(0.15, adaptive_threshold - 0.15)  # -15% for lean operation
         return utilization < pull_threshold
