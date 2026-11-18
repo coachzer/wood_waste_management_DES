@@ -12,6 +12,7 @@ from .bullwhip import (
 )
 from .availability import availability_metrics
 from .flow_times import flow_time_metrics
+from .outlet import outlet_destination_metrics
 from .avoided_emissions import avoided_emissions_metrics
 from .biogenic_carbon import biogenic_carbon_metrics
 from ._kpi_shared import _GENERIC_NAMESPACES, t_ci_margin
@@ -28,6 +29,8 @@ _SUMMARY_METRICS = [
     "total_collected_m3",
     "total_processed_m3",
     "collection_rate_pct",
+    "collection_rate_all_generation_pct",
+    "outlet_volume_m3",
     "processing_rate_pct",
     "overall_efficiency_pct",
     "landfill_volume_m3",
@@ -142,6 +145,8 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
     total_generated = _sum_last_nested(gen_hist, "total_generated")
     total_uncollected = _sum_last_nested(gen_hist, "total_uncollected")
     total_potential_generated = _sum_last_nested(gen_hist, "total_potential_generated")
+    total_outlet = _sum_last_nested(gen_hist, "total_outlet")
+    treatable_potential_generated = total_potential_generated - total_outlet
     total_collected = _sum_last_nested(col_hist, "collected_volumes")
 
     total_processed = 0.0
@@ -151,13 +156,16 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
             total_processed += float(series[-1])
 
     collection_rate = (
+        (total_collected / treatable_potential_generated * 100.0) if treatable_potential_generated > 0 else 0.0
+    )
+    collection_rate_all_generation = (
         (total_collected / total_potential_generated * 100.0) if total_potential_generated > 0 else 0.0
     )
     processing_rate = (
         (total_processed / total_collected * 100.0) if total_collected > 0 else 0.0
     )
     overall_eff = (
-        (total_processed / total_potential_generated * 100.0) if total_potential_generated > 0 else 0.0
+        (total_processed / treatable_potential_generated * 100.0) if treatable_potential_generated > 0 else 0.0
     )
 
     sys_evt = evt_hist.get("system_events", {})
@@ -251,6 +259,9 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         "total_collected_m3": total_collected,
         "total_processed_m3": total_processed,
         "collection_rate_pct": collection_rate,
+        "collection_rate_all_generation_pct": collection_rate_all_generation,
+        "outlet_volume_m3": total_outlet,
+        "outlet_by_destination": outlet_destination_metrics(gen_hist),
         "processing_rate_pct": processing_rate,
         "overall_efficiency_pct": overall_eff,
         "landfill_volume_m3": landfill_volume,

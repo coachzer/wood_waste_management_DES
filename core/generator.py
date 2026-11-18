@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from config.constants import HISTORY_BUFFER_SIZE
 from utils.seasonality import seasonal_factor
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
@@ -27,7 +27,8 @@ class WasteGenerator(OperationalEntity):
         kanban_manager = None,
         state = None,
         failure_config = None,
-        seed = None
+        seed = None,
+        accepted_waste_types: Optional[List[WasteType]] = None,
     ):
         self.uncertainty_set = uncertainty_set
 
@@ -84,6 +85,11 @@ class WasteGenerator(OperationalEntity):
 
         self.total_potential_generated = dict(self.total_generated)
         self.total_uncollected = {waste_type: 0.0 for waste_type in waste_streams.keys()}
+        self.outlet_waste_types = frozenset(
+            waste_type for waste_type in waste_streams
+            if accepted_waste_types is not None and waste_type not in accepted_waste_types
+        )
+        self.total_outlet = {waste_type: 0.0 for waste_type in waste_streams.keys()}
 
         self.history_size = HISTORY_BUFFER_SIZE
         self.history_index = 0
@@ -242,6 +248,10 @@ class WasteGenerator(OperationalEntity):
             potential_volume = base_rate * seasonal_factor * daily_factor * self.efficiency
 
             self.total_potential_generated[waste_type] += potential_volume
+
+            if waste_type in self.outlet_waste_types:
+                self.total_outlet[waste_type] += potential_volume
+                continue
 
             generated_volume = max(0.0, min(potential_volume, available_storage))
             self.total_uncollected[waste_type] += potential_volume - generated_volume

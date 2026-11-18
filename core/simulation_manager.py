@@ -11,7 +11,7 @@ from config.constants import (
 )
 from utils.seasonality import seasonal_factor
 from core.transport_manager import PointToPointTransport
-from models.enums import RegionType, OutputType, InventoryPolicy, StockStrategy
+from models.enums import RegionType, OutputType, InventoryPolicy, StockStrategy, WasteType
 from persistence.serialization import HISTORY_KEYS
 from models.state import SimulationState
 from instrumentation.waste_monitor import WasteMonitor
@@ -94,6 +94,7 @@ class SimulationManager:
         processors = []
 
         total_processor_capacity = self._total_processor_capacity()
+        accepted_waste_types = self._nationally_accepted_waste_types()
 
         for region in RegionType:
             facilities = self.facility_manager.get_region_facilities(region)
@@ -102,7 +103,8 @@ class SimulationManager:
                 
             for gen_data in facilities.generators:
                 generator = self.facility_builder.create_generator(
-                    gen_data, region, stock_strategy, inventory_policy
+                    gen_data, region, stock_strategy, inventory_policy,
+                    accepted_waste_types=accepted_waste_types,
                 )
                 generators.append(generator)
 
@@ -125,6 +127,17 @@ class SimulationManager:
                 processors.append(processor)
 
         return generators, collectors, processors
+
+    def _nationally_accepted_waste_types(self) -> List[WasteType]:
+        """Waste types at least one processor in the country accepts. Generators send every
+        other type to the outlet (ADR 0036)."""
+        accepted = set()
+        for region in RegionType:
+            facilities = self.facility_manager.get_region_facilities(region)
+            if facilities:
+                for proc_data in facilities.processors:
+                    accepted.update(proc_data.input_types)
+        return sorted(accepted, key=lambda waste_type: waste_type.value)
 
     def _total_processor_capacity(self) -> float:
         """Sum of waste storage capacity across every processor in every region.

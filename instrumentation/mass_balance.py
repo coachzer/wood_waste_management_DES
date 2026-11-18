@@ -279,11 +279,13 @@ class MassBalanceMonitor:
 
         Per generator and waste type:
 
-            total_potential_generated == total_generated + total_uncollected
+            total_potential_generated == total_generated + total_uncollected + total_outlet
 
         ``total_generated`` is the waste that entered generator storage.
         ``total_uncollected`` is the waste generated while storage was full,
         which leaves the modelled system without a destination (ADR 0024).
+        ``total_outlet`` is waste of a type no processor accepts, which leaves
+        at the generator without entering storage (ADR 0036).
         Both accumulate separately, so a generation path that drops or invents
         waste trips here.
         """
@@ -293,6 +295,7 @@ class MassBalanceMonitor:
                 accounted = (
                     generator.total_generated[waste_type]
                     + generator.total_uncollected[waste_type]
+                    + generator.total_outlet[waste_type]
                 )
                 delta = potential - accounted
                 self.telemetry.append(

@@ -63,6 +63,7 @@ _GENERIC_NAMESPACES = (
     "carbon",
     "availability",
     "service_level_full_by_product_pct",
+    "outlet_by_destination",
 )
 
 

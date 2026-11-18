@@ -499,13 +499,14 @@ def test_queued_and_in_flight_reposition_balance_both_waste_checks():
     monitor.check_waste_system()  # must not raise
 
 
-def _generator_with_generation(potential, entered_storage, uncollected):
+def _generator_with_generation(potential, entered_storage, uncollected, outlet=0.0):
     waste_type = WasteType.CONSTRUCTION_WOOD_17_02_01
     return SimpleNamespace(
         name="gen-1",
         total_potential_generated={waste_type: potential},
         total_generated={waste_type: entered_storage},
         total_uncollected={waste_type: uncollected},
+        total_outlet={waste_type: outlet},
     )
 
 
@@ -524,3 +525,8 @@ def test_generation_that_vanishes_between_potential_and_storage_raises():
 
     with pytest.raises(MassBalanceViolation, match="Generator mass-balance"):
         monitor.check_generators()
+
+
+def test_generation_sent_to_the_outlet_balances():
+    """ADR 0036. Mutation check (red): leave total_outlet out of the generator balance."""
+    _generator_check_monitor(_generator_with_generation(100.0, 0.0, 0.0, outlet=100.0)).check_generators()

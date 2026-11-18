@@ -49,6 +49,7 @@ def make_generator_stub(
     status=EntityStatus.OPERATIONAL,
     uncertainty_set=None,
     region=None,
+    outlet_waste_types=(),
 ):
     """Build a minimal SimpleNamespace that satisfies ``_generate_waste_for_period``.
 
@@ -91,6 +92,8 @@ def make_generator_stub(
         total_generated=total_generated,
         total_potential_generated=total_potential_generated,
         total_uncollected=total_uncollected,
+        outlet_waste_types=frozenset(outlet_waste_types),
+        total_outlet={waste_type: 0.0 for waste_type in waste_generation_rates},
         generation_history=generation_history,
         efficiency=1.0,
         status=status,
@@ -281,3 +284,25 @@ def test_handle_overflow_caps_storage_and_scales_streams_proportionally():
     )
     assert total_removed == pytest.approx(pre_overflow_total - capacity)
     assert total_stored + total_removed == pytest.approx(pre_overflow_total)
+
+
+def test_outlet_type_leaves_without_taking_storage():
+    """ADR 0036: a type no processor accepts goes to the outlet and leaves storage to the rest.
+
+    Mutation check (red): drop the outlet branch, so the outlet type fills storage first.
+    """
+    stub = make_generator_stub(
+        waste_generation_rates={PACKAGING: 8.0, CONSTRUCTION: 10.0},
+        waste_storage_capacity=10.0,
+        outlet_waste_types=[PACKAGING],
+    )
+
+    WasteGenerator._generate_waste_for_period(stub, 1.0, 0.0)
+
+    assert stub.total_outlet[PACKAGING] == pytest.approx(8.0)
+    assert stub.total_generated[PACKAGING] == 0.0
+    assert stub.total_uncollected[PACKAGING] == 0.0
+    assert stub.total_potential_generated[PACKAGING] == pytest.approx(8.0)
+    assert stub.total_generated[CONSTRUCTION] == pytest.approx(10.0)
+    assert stub.total_uncollected[CONSTRUCTION] == 0.0
+    assert stub.current_storage == pytest.approx(10.0)

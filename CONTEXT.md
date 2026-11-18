@@ -332,6 +332,19 @@ generator mass balance checks
 _Avoid_: landfill (landfill is overflow after collection),
 lost waste
 
+**Outlet Waste**:
+Waste of a code that no **Treatment Operator** in the country
+accepts. It never enters generator storage. It leaves at the
+generator to treatment outside the model, so it carries no cost
+or emissions and is the same under PUSH and PULL. It is reported
+split by where SURS sends that code (recycling, energy recovery,
+other recovery, disposal); the model does not route it. The
+generator mass balance checks
+`potential = committed + uncollected + outlet` (ADR 0036).
+**Collection rate** is collected over potential minus outlet;
+the rate over all generation is reported alongside.
+_Avoid_: untreatable waste, rejected waste
+
 **Consumption Distribution**:
 Each **Treatment Operator**'s share of weekly
 **Market Consumption** is proportional to its processing capacity

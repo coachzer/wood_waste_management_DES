@@ -204,6 +204,7 @@ class HistoryStore:
                 "total_generated": {},
                 "total_potential_generated": {},
                 "total_uncollected": {},
+                "total_outlet": {},
                 "storage_utilization": [],
                 "status": [],
                 "holding_costs": [],

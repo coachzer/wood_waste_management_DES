@@ -51,7 +51,8 @@ class FacilityBuilder:
             'TreatmentOperator': 0
         }
 
-    def create_generator(self, gen_data, region: RegionType, stock_strategy=None, inventory_policy=None) -> WasteGenerator:
+    def create_generator(self, gen_data, region: RegionType, stock_strategy=None, inventory_policy=None,
+                         accepted_waste_types=None) -> WasteGenerator:
         """Create a single waste generator"""
         if gen_data.waste_storage_capacity <= 0:
             raise ValueError(f"Storage capacity must be positive, got {gen_data.waste_storage_capacity}")
@@ -95,7 +96,8 @@ class FacilityBuilder:
             kanban_manager=self.kanban_manager,
             state=self.state,
             failure_config=self.uncertainty_set.generator_failure if self.uncertainty_set else None,
-            seed=child_seed
+            seed=child_seed,
+            accepted_waste_types=accepted_waste_types,
         )
 
     def create_collector(self, col_data, region: RegionType, stock_strategy=None, inventory_policy=None) -> CollectorCompany:

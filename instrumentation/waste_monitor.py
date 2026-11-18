@@ -37,6 +37,7 @@ class WasteMonitor:
                 history["total_generated"][waste_type] = []
                 history["total_potential_generated"][waste_type] = []
                 history["total_uncollected"][waste_type] = []
+                history["total_outlet"][waste_type] = []
 
             history["volumes"][waste_type].append(stream.volume)
             history["total_generated"][waste_type].append(
@@ -47,6 +48,9 @@ class WasteMonitor:
             )
             history["total_uncollected"][waste_type].append(
                 generator.total_uncollected[waste_type]
+            )
+            history["total_outlet"][waste_type].append(
+                generator.total_outlet[waste_type]
             )
 
         history["efficiency"].append(generator.efficiency)
