@@ -213,6 +213,22 @@ def _print_frontier_summary(rows: List[dict]) -> None:
         print(f"  {row['config']}  ({objective_str})")
 
 
+def _write_optional_pareto_plot(target: Path, root: bool) -> None:
+    """Write the companion Pareto plot, or note why it was skipped.
+
+    Plotting is an optional dependency, so it is imported here and any failure
+    only skips the plot. The CSV report is the analysis artifact.
+    """
+    try:
+        from visualization.pareto_visualization import write_pareto_plot
+
+        plot = write_pareto_plot(target, root=root)
+        if plot is not None:
+            print(f"Wrote {plot}")
+    except Exception as exc:
+        print(f"(skipped Pareto plot: {exc})")
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -242,11 +258,4 @@ if __name__ == "__main__":
     print(f"Wrote {report}")
     _print_frontier_summary(report_rows)
 
-    try:
-        from visualization.pareto_visualization import write_pareto_plot
-
-        plot = write_pareto_plot(target, root=args.root)
-        if plot is not None:
-            print(f"Wrote {plot}")
-    except Exception as exc:
-        print(f"(skipped Pareto plot: {exc})")
+    _write_optional_pareto_plot(target, root=args.root)
