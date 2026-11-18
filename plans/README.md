@@ -2,7 +2,7 @@
 
 The improve skill generated these plans on 2026-06-11 against commit `105eacc`. It ran a standard-depth audit over all nine categories and re-verified subagent findings against the code before planning. The session ran non-interactively, so it planned the highest-value findings by default. The maintainer should review this selection and can reject any plan by marking it REJECTED below.
 
-Execute the plans in the order below unless the dependencies say otherwise. Each executor reads the plan fully before starting, honors its STOP conditions, and updates its row when done. The test command for everything is `/mnt/c/Python313/python.exe -m pytest tests/ -q`, because the WSL `python3` has no dependencies installed.
+Execute the plans in the order below unless the dependencies say otherwise. Each executor reads the plan fully before starting, honors its STOP conditions, and updates its row when done. The test command for everything is `.venv/bin/python -m pytest tests/ -q`. The Windows `python.exe` breaks on the `plots` symlink.
 
 ## Execution order and status
 
