@@ -53,7 +53,19 @@ Mean over seeds 1-10, Baseline:
   REORDER strategies served 100%. PULL is cheaper and emits less only because it collects and
   sells less.
 - The PULL shortfall sits in the western operators (gorenjska, goriska, obalno_kraska,
-  primorskonotranjska), and MDF is hit hardest (21-27% served on seed 1, REORDER_90). Cause not
-  identified. Ruled out: missing local feedstock, since every western region still generates MDF
-  inputs (8.5-37 t/day, 3 of 6 MDF codes or more). Also ruled out: waste stranded in another region's center, since every operator's signals
-  are served by its own region's collectors. At pomurska, PULL drains the same as PUSH.
+  primorskonotranjska), and MDF is hit hardest (21-27% served on seed 1, REORDER_90). Likely
+  cause, from probes in `.scratch/agy-needs/` (seed 1-2, not yet in the model):
+  - Little local feedstock. The processors don't accept 15 01 01 or 20 01 38, so the western
+    regions generate only 0.04-4.4 t/day of MDF inputs they take, against 29 t/day in
+    jugovzhodna_slovenija.
+  - PULL treatment signals go only to the local collector, so a deficit region never asks a
+    surplus region.
+  - Each collector has 3 vehicles, and signals are served in code order, so tiny 02 01 07 and
+    03 01 01 orders use them up first.
+  Probe results:
+  - With both signal fixes applied, PULL serves 100%.
+  - Removing generator storage triggers under PULL without those fixes drops service to 64%
+    (REORDER_90).
+  Ruled out: waste stranded in another region's center, and the cross-region drain share. An
+  earlier version of this ADR also ruled out missing local feedstock. That was wrong, because it
+  counted codes the processors don't accept.
