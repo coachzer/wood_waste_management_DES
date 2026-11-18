@@ -1,3 +1,4 @@
+"""Biogenic-carbon ABC classification of products. Run ``python -m core.abc_analysis`` to print the report."""
 import json
 from typing import Dict, List
 from models.data_classes import ABCClassification
