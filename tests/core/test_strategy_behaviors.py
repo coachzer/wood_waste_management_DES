@@ -8,9 +8,7 @@ make obvious:
 
 1. The factories map every enum selector to the right concrete class (so adding
    a strategy is one class plus one mapping entry, zero process-module edits).
-2. The lazy ``get_signals`` callables only fire on the exact paths the original
-   inlined code consulted them -- ``get_signals`` prunes stale signals as a side
-   effect, so an over-eager call would silently break reproducibility.
+2. PUSH paths never consult the signal callables, so PUSH ignores signals.
 """
 
 import pytest
@@ -141,12 +139,6 @@ def test_pull_signals_do_not_force_collection_at_the_utilization_ceiling():
     assert policy.collector_should_collect(ceiling - 0.01, 0.50, lambda: ["s"]) is True
     assert policy.collector_should_collect(ceiling, 0.50, lambda: ["s"]) is False
     assert policy.collector_should_collect(0.99, 0.50, lambda: ["s"]) is False
-
-
-def test_pull_reads_signals_even_above_the_ceiling():
-    reads = []
-    PullPolicy().collector_should_collect(0.99, 0.50, lambda: reads.append(1) or ["s"])
-    assert reads == [1]
 
 
 def test_policy_production_and_signal_propagation_flags():

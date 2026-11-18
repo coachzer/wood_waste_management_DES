@@ -24,8 +24,9 @@ A PULL collector services pending signals only while its collection center is be
 `COLLECTOR_UTILIZATION_CEILING = 0.80`. Without pending signals it keeps its lower PULL threshold.
 PUSH now reads the same constant for its existing 0.80 cap, so its behaviour is unchanged.
 
-The signal read still happens before the ceiling check, because `KanbanManager.get_signals` prunes
-the bus as it reads (open issue 04 in the same folder).
+The signal read still happens before the ceiling check. When this ADR was written,
+`KanbanManager.get_signals` pruned the bus as it read, so the order mattered. Reads have since become
+pure (pruning moved to `add_signal`), and the order no longer affects results.
 
 ## Consequences
 

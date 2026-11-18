@@ -3,9 +3,7 @@
 Each concrete class owns the policy-specific decisions that used to live in
 ``if self.inventory_policy == ...`` / ``match self.inventory_policy`` blocks in
 the collector and treatment process modules. Methods take primitive values plus
-lazy callables for the few branches where the original code only read kanban
-signals on one policy path (``get_signals`` mutates by pruning stale signals, so
-it must fire exactly when the original did, no sooner).
+lazy callables for the branches that read kanban signals, so PUSH never reads them.
 
 The policy owns the PUSH/PULL utilization/signal clamping for the collector
 efficiency curve and delegates the strategy-specific shape to the stock

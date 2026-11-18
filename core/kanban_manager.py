@@ -9,6 +9,7 @@ class KanbanManager:
         self.acknowledged_signals = set()
 
     def add_signal(self, waste_type, timestamp, volume=0, source_id=None, source_type=None, target_region=None):
+        self.clean_old_signals(timestamp)
         signal_id = f"{source_id}_{waste_type}_{timestamp}"
 
         if signal_id not in self.acknowledged_signals:
@@ -36,7 +37,12 @@ class KanbanManager:
         self.acknowledged_signals &= remaining_ids
 
     def get_signals(self, current_time=None):
-        """Get non-acknowledged, non-expired signals"""
-        if current_time:
-            self.clean_old_signals(current_time)
-        return [s for s in self.signals if s['id'] not in self.acknowledged_signals]
+        """Get non-acknowledged signals, and only unexpired ones when ``current_time`` is given.
+
+        Reading never mutates the bus. Expired signals are pruned when a new signal is added.
+        """
+        return [
+            signal for signal in self.signals
+            if signal['id'] not in self.acknowledged_signals
+            and (current_time is None or current_time - signal['timestamp'] <= self.max_signal_age)
+        ]
