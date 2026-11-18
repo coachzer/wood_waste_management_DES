@@ -126,8 +126,9 @@ the reorder point as a fraction of that level: ON_DEMAND `s = S`,
 REORDER_50 `s = 0.5 S`, REORDER_90 `s = 0.9 S`. When a type is
 below its `s`, it orders the gap to its level, so ON_DEMAND is
 lot-for-lot: it orders back what was consumed. Inventory position
-is on-hand stock, because treatment drains collectors within the
-tick. Generator and collector thresholds still use storage
+is on-hand stock. This equals the classical position when the local
+center holds the type (typically PUSH), because treatment drains
+collectors within the tick. Generator and collector thresholds still use storage
 capacity.
 _Avoid_: reorder policy (overloaded),
 inventory policy (that's PUSH/PULL)

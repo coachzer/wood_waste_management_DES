@@ -19,8 +19,11 @@ protection period plus safety stock. It is not a physical limit.
   parameters, not from a run, so PUSH and PULL get the same S. On seed 1 the parameter value is
   within 8% of measured consumption.
 - `n` is the number of consumption intervals in the protection period (lead time + review
-  period), at least 1. The lead time is 0, because `trigger_collection` drains collectors within
-  the tick and no other path adds to treatment storage. The review period is the daily tick.
+  period), at least 1. The lead time is taken as 0, because `trigger_collection` drains
+  collectors within the tick. That holds when the local collection center holds the type
+  (typically PUSH). Under PULL with an empty center, the order becomes a signal, a vehicle round
+  trip and a later drain, and the on-hand position posts the same gap again each day. The same S
+  for both policies is kept as a deliberate choice. The review period is the daily tick.
   Demand arrives in weekly lumps, so the protection period is one whole interval.
 - `sigma = D * 0.141`, the standard deviation of the quarterly seasonal factor (amplitude 0.2).
   Market demand has no other variation.
@@ -32,7 +35,7 @@ still trigger at different stock levels.
 
 ON_DEMAND is lot-for-lot: `s = S`, and the order is the gap, which is what was consumed.
 
-Inventory position is on-hand stock (lead time 0), so ADR 0019 stands for treatment, with a note.
+Inventory position is on-hand stock, so ADR 0019 stands for treatment, with a note.
 
 ## Consequences
 

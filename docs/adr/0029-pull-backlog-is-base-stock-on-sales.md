@@ -23,7 +23,7 @@ finished goods, the backlog is the full capacity.
 
 ## Consequences
 
-Paired change against ADR 0028, seeds 1-10, Baseline. PUSH is unchanged (identical runs).
+Paired change against ADR 0028, seeds 1-10, Baseline. PUSH is unchanged (identical run fingerprints).
 
 | Combo | Service level, % | Collection rate, % | Total system cost, EUR |
 |---|---|---|---|

@@ -17,7 +17,7 @@ none and still take every stream.
 
 ## Consequences
 
-Paired change against ADR 0027, seeds 1-10, Baseline. PUSH is unchanged (identical runs).
+Paired change against ADR 0027, seeds 1-10, Baseline. PUSH is unchanged (identical run fingerprints).
 
 | Combo | Service level, % | Collection rate, % | Total system cost, EUR |
 |---|---|---|---|
@@ -38,10 +38,12 @@ This fix does not move it. Probes on pomurska, seed 1 (`.scratch/methodology/pul
   first gives +2.1 points [-0.8, +5.0], and ignoring generator signals gives +0.3 [-2.9, +3.6].
   Ignoring them also cuts REORDER collection by 19 points.
 - Served treatment signals stay in their own region, so no waste is stranded in another center.
-- What differs is trip size. ON_DEMAND orders back one day's consumption per type, so a PULL
-  treatment trip carries 29 m3 on average, against 1,350 m3 for a PUSH trip and 537 m3 for a
-  PULL REORDER_90 trip, with 3 vehicles per collector. That points to a transport limit under
-  lot-for-lot PULL. Not confirmed: vehicle occupancy and lead time were not measured directly.
+- Vehicles are not the limit either. Ignoring generator signals frees about 350 trips a year at
+  pomurska without moving service, and PUSH ON_DEMAND serves 100% with the same 5-7% free vehicles.
+
+Cause not identified. Lead: pomurska ordered 19,678 m3 of 15 01 03 and drained 1,163 m3. PUSH
+ordered 3,331 m3 and drained 2,602 m3. Part of the ordered figure is the same unfilled gap posted
+again each day.
 
 Whether a generator's full-storage call counts as a PULL trigger is part of the policy
 definition and is left as it is (CLAUDE.md).
