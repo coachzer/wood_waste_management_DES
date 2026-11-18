@@ -129,6 +129,9 @@ def test_record_emission_rejects_an_unknown_kind():
 # --- The invariant: one ledger, two readers, one number --------------------
 
 
+FORCED_OVERFLOW_COLLECTION_CENTER_CAPACITY_M3 = 200.0
+
+
 def test_mass_balance_and_kpi_read_the_same_landfill_ledger():
     """On a real run, the raw-waste discard term the mass-balance monitor closed
     its identities with equals ``extract_kpis``' ``landfill_volume_m3`` -- both
@@ -138,8 +141,9 @@ def test_mass_balance_and_kpi_read_the_same_landfill_ledger():
     executes the armed waste-side invariants (``raise_on_violation=True``), so a
     ledger that under-reports trips ``MassBalanceViolation`` before the
     comparison is reached. The ``> 0`` guard keeps the equality from closing
-    trivially on a run that never landfilled (PULL: on the daily clock
-    the PUSH combos at this seed landfill nothing, ADR 0020).
+    trivially on a run that never landfilled. Since ADR 0023 no Baseline combo
+    landfills, so the run shrinks every collection center to
+    ``FORCED_OVERFLOW_COLLECTION_CENTER_CAPACITY_M3`` to force overflow.
 
     Mutation checks (red): (a) in ``extract_kpis`` read ``landfill_volume``
     from ``event_history`` again -> 0 != ledger total; (b) make
@@ -156,6 +160,8 @@ def test_mass_balance_and_kpi_read_the_same_landfill_ledger():
     manager.initialize_entities(
         get_scenario_config("Baseline"), InventoryPolicy.PULL, StockStrategy.ON_DEMAND
     )
+    for collector in manager.state.collectors:
+        collector.collection_center.waste_storage_capacity = FORCED_OVERFLOW_COLLECTION_CENTER_CAPACITY_M3
     manager.setup_processes(raise_on_violation=True)
     manager.run_simulation()
 
