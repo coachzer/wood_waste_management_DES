@@ -43,3 +43,8 @@ Seeds 1-10, Baseline, PULL after minus before (paired, 95% CI):
 - Collection rate moves by at most 0.13 points. PULL still collects about 13% of generation.
 - Treatment-anchored bullwhip falls (-0.89 ON_DEMAND, -0.19 REORDER_90). Collector-anchored and
   collector-stage bullwhip rise by 2-3 and 0.6-0.75. Those collector metrics are still unvalidated.
+- The lower collection transport cost is not explained. It does not come from more unpriced
+  movement: the share of treatment intake drained from another region's collector through
+  `_collect_with_fallback`, with no transport cost, time or emissions, is 72.0% before and 72.3%
+  after on seed 1 PULL ON_DEMAND (`.scratch/fixb-mfa/`). That unpriced drain predates this ADR and
+  is open (`.scratch/fixb-mfa/ISSUE-unpriced-fallback-drain.md`).
