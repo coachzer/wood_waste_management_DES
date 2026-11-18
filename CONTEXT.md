@@ -95,6 +95,9 @@ A PULL generator never calls for pickup on its own stock, however
 full it is (ADR 0032), so only waste some operator ordered moves.
 A collector serves treatment orders first, largest first, and only
 the newest order per operator and waste type (ADR 0031).
+When its region holds less than the order, the operator also
+signals the region with the largest generator stock of that type,
+for the deficit (ADR 0033).
 A PULL collector with no signal does not collect at all, however
 empty its collection center is (ADR 0025).
 No process polls `finished_goods` on its own.

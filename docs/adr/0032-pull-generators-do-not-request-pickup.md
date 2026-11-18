@@ -43,4 +43,4 @@ Seeds 1-10, Baseline, PULL minus PUSH (paired, 95% CI), with ADR 0031:
   +12.6.
 - PULL ON_DEMAND still serves 99.3%. The probe in `.scratch/agy-needs/` shows that signalling a
   surplus region closes the gap (agy's Fix B). That fix would let each operator see every
-  generator's stock nationwide, so it was not adopted.
+  generator's stock nationwide, so it was not adopted here. ADR 0033 adds it.

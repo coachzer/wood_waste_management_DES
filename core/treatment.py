@@ -265,6 +265,36 @@ class TreatmentOperator(OperationalEntity):
                     target_region=self.region_type,
                 )
 
+        local_stock = sum(c.collection_center.current_storage.get(waste_type, 0.0) for c in local_collectors) + sum(
+            g.waste_streams[waste_type].volume
+            for g in state.generators
+            if g.region_type == self.region_type and waste_type in g.waste_streams
+        )
+        deficit = needed_volume - local_stock
+        surplus_region = self._region_with_largest_generator_stock(waste_type)
+        if deficit <= 0 or surplus_region is None:
+            return
+        for collector in state.collectors:
+            if collector.region_type == surplus_region and collector.inventory_policy.is_pull() and collector.availability:
+                collector.kanban_manager.add_signal(
+                    waste_type=waste_type,
+                    timestamp=current_time,
+                    volume=deficit,
+                    source_id=self.name,
+                    source_type="treatment",
+                    target_region=surplus_region,
+                )
+
+    def _region_with_largest_generator_stock(self, waste_type):
+        """Another region whose generators hold the most of waste_type, or None (ADR 0033)."""
+        surplus_region, largest_stock = None, 0.0
+        for generator in self.state.generators:
+            if generator.region_type == self.region_type or waste_type not in generator.waste_streams:
+                continue
+            if generator.waste_streams[waste_type].volume > largest_stock:
+                surplus_region, largest_stock = generator.region_type, generator.waste_streams[waste_type].volume
+        return surplus_region
+
     def _get_prioritized_transformations(self):
         """Get transformations sorted by priority based on current system state.
 
