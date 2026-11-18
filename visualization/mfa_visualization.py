@@ -17,8 +17,11 @@ NODE_COLORS = {
     'generator': '#2ecc71',    # Green
     'collector': '#3498db',    # Blue
     'treatment': '#9b59b6',    # Purple
-    'product': '#e67e22'       # Orange
+    'product': '#e67e22',      # Orange
+    'uncollected': '#c0392b',  # Red
 }
+UNCOLLECTED_NODE_NAME = "Uncollected"
+UNCOLLECTED_NODE_POSITION = (0.33, 0.95)
 
 
 def format_volume(volume: float) -> str:
@@ -43,9 +46,11 @@ def _get_product_volumes(state) -> Dict:
     return totals
 
 def get_volumes(generation_history: Dict, collection_history: Dict, processing_history: Dict, state):
-    """Calculate volumes for each stage - now includes all treatment storage types"""
+    """Volumes per stage. Generators report potential generation, and the part that
+    overflowed their storage is returned separately as uncollected (ADR 0024)."""
     return (
-        last_cumulative_by_entity(generation_history, "total_generated"),
+        last_cumulative_by_entity(generation_history, "total_potential_generated"),
+        last_cumulative_by_entity(generation_history, "total_uncollected"),
         last_cumulative_by_entity(collection_history, "collected_volumes"),
         last_cumulative_by_entity(processing_history, "processed.total"),
         _get_product_volumes(state)
@@ -90,6 +95,7 @@ LINK_COLORS = {
     "inter_region_transport": "rgba(230, 126, 34, 0.7)",  # collector -> collector (orange)
     "treatment_intake": "rgba(155, 89, 182, 0.4)",        # collector -> treatment (purple)
 }
+UNCOLLECTED_LINK_COLOR = "rgba(192, 57, 43, 0.4)"         # generator -> uncollected (red)
 PRODUCT_LINK_COLOR = "rgba(128, 128, 128, 0.4)"           # treatment -> product (neutral grey)
 
 
@@ -128,7 +134,7 @@ def _create_flows(transport_flows: list, labels: list):
 
     return sources, targets, values, link_colors
 
-def create_sankey(generator_volumes: Dict, collector_volumes: Dict,
+def create_sankey(generator_volumes: Dict, uncollected_volumes: Dict, collector_volumes: Dict,
                   treatment_volumes: Dict, product_volumes: Dict, state):
     min_volume = MFA_MIN_NODE_VOLUME_M3
     generators = _filter_volumes(generator_volumes, min_volume)
@@ -160,7 +166,23 @@ def create_sankey(generator_volumes: Dict, collector_volumes: Dict,
                 targets.append(prod_start + p_idx)
                 values.append(vol)
                 link_colors.append(PRODUCT_LINK_COLOR)
-    
+
+    uncollected_links = [
+        (list(generators).index(name), volume)
+        for name, volume in sorted(uncollected_volumes.items())
+        if name in generators and volume >= MFA_MIN_FLOW_VOLUME_M3
+    ]
+    uncollected_total = sum(volume for _, volume in uncollected_links)
+    if uncollected_total >= min_volume:
+        uncollected_index = len(labels)
+        labels.append(f"{UNCOLLECTED_NODE_NAME}\n{format_volume(uncollected_total)}")
+        node_colors.append(NODE_COLORS['uncollected'])
+        for generator_index, volume in uncollected_links:
+            sources.append(generator_index)
+            targets.append(uncollected_index)
+            values.append(volume)
+            link_colors.append(UNCOLLECTED_LINK_COLOR)
+
     n_gen = len(generators)
     n_col = len(collectors)
     n_treat = len(treatments)
@@ -170,7 +192,10 @@ def create_sankey(generator_volumes: Dict, collector_volumes: Dict,
     y = []
     for count in (n_gen, n_col, n_treat, n_prod):
         y += [(i+1)/(count+1) for i in range(count)]
-    
+    if len(labels) > len(x):
+        x.append(UNCOLLECTED_NODE_POSITION[0])
+        y.append(UNCOLLECTED_NODE_POSITION[1])
+
     return labels, node_colors, sources, targets, values, link_colors, x, y
 
 def create_material_flow_analysis(generation_history: Dict, collection_history: Dict,
@@ -188,12 +213,12 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
             suffix = f"_{scenario_name}_{inventory_policy}_{stock_strategy}"
         save_path = f"{PLOTS_ROOT}/material_flow_analysis{suffix}.html"
 
-    gen_vol, col_vol, treat_vol, prod_vol = get_volumes(
+    gen_vol, uncollected_vol, col_vol, treat_vol, prod_vol = get_volumes(
         generation_history, collection_history, processing_history, state
     )
 
     labels, node_colors, sources, targets, values, link_colors, x, y = create_sankey(
-        gen_vol, col_vol, treat_vol, prod_vol, state
+        gen_vol, uncollected_vol, col_vol, treat_vol, prod_vol, state
     )
 
     fig = go.Figure(data=[go.Sankey(
@@ -233,7 +258,8 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
             "<span style='color:#2ecc71'>&#9632;</span> collection&nbsp;&nbsp;&nbsp;"
             "<span style='color:#e67e22'>&#9632;</span> inter-region transit&nbsp;&nbsp;&nbsp;"
             "<span style='color:#9b59b6'>&#9632;</span> treatment intake&nbsp;&nbsp;&nbsp;"
-            "<span style='color:#808080'>&#9632;</span> production"
+            "<span style='color:#808080'>&#9632;</span> production&nbsp;&nbsp;&nbsp;"
+            "<span style='color:#c0392b'>&#9632;</span> uncollected (storage overflow)"
         ),
         xref="paper", yref="paper", x=0.0, y=-0.1,
         xanchor="left", showarrow=False, font={"size": 10}
