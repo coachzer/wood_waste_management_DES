@@ -37,5 +37,8 @@ uncollected volume are unchanged in every combo; only cost and emissions move.
 | PULL REORDER_50 | +268,189 | +31,813 |
 | PULL REORDER_90 | +314,370 | +32,273 |
 
-Most cross-region intake still bypasses this path through the treatment fallback drain, which is
-fixed in ADR 0035.
+Most cross-region intake still bypasses this path. The treatment fallback drains remote collectors
+directly, unpriced and instantly (72% of PULL intake on seed 1). Sending it through priced transfers
+was tried and dropped PULL service by about 48 points: orders count only stock on hand, so operators
+re-ordered waste already on the road, and a transfer removes volume from the sender before a vehicle
+takes it. Fixing that needs inventory position and reserved transfers, which is open work.
