@@ -235,6 +235,11 @@ class TreatmentOperator(OperationalEntity):
         while True:
             current_time = self.env.now
 
+            # A FAILED operator is down: it neither produces nor orders waste.
+            if self.status == EntityStatus.FAILED:
+                yield self.env.timeout(OPERATING_TICK_DAYS)
+                continue
+
             if self._should_trigger_collection_based_on_strategy():
                 signal_volume = self._get_reorder_quantity()
                 if signal_volume > 0:
