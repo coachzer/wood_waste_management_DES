@@ -196,31 +196,8 @@ class CollectorCompany(OperationalEntity):
             yield self.env.timeout(travel_time)
 
             self._add_to_collection_center(collected_waste)
-            collection_cost = self.transport_cost + (distance * COLLECTION_COST_PER_KM_PER_M3 * collected_amount)
+            collection_cost = self._record_trip_cost_and_emissions(collected_waste, distance)
             self.last_collection_cost = collection_cost
-
-            emissions = sum(
-                volume_m3 * (WASTE_DENSITIES[waste_type] / KILOGRAMS_PER_TONNE)
-                * distance * TRANSPORT_EMISSIONS_PER_TON_KM
-                for waste_type, volume_m3 in sorted(
-                    collected_waste.items(), key=lambda item: item[0].value
-                )
-            )
-
-            if hasattr(self, 'waste_monitor') and self.waste_monitor:
-                self.waste_monitor.update_entity_costs(
-                    entity_name=self.name,
-                    entity_type=self.facility_type,
-                    energy_cost=0.0,
-                    processing_cost=0.0,
-                    transport_cost=collection_cost
-                )
-                self.waste_monitor.record_emission(
-                    entity_name=self.name,
-                    kind="transport_emissions",
-                    kgco2e=emissions,
-                    timestamp=self.env.now,
-                )
         else:
             yield self.env.timeout(travel_time)
             collection_cost = self.transport_cost
@@ -231,6 +208,33 @@ class CollectorCompany(OperationalEntity):
         vehicle.destination = self.region_type
 
         return collection_cost
+
+    def _record_trip_cost_and_emissions(self, load_by_type, distance):
+        """Charge one loaded trip: fixed trip cost plus per km per m3, and ton-km emissions."""
+        trip_cost = self.transport_cost + (distance * COLLECTION_COST_PER_KM_PER_M3 * sum(load_by_type.values()))
+        emissions = sum(
+            volume_m3 * (WASTE_DENSITIES[waste_type] / KILOGRAMS_PER_TONNE)
+            * distance * TRANSPORT_EMISSIONS_PER_TON_KM
+            for waste_type, volume_m3 in sorted(
+                load_by_type.items(), key=lambda item: item[0].value
+            )
+        )
+
+        if hasattr(self, 'waste_monitor') and self.waste_monitor:
+            self.waste_monitor.update_entity_costs(
+                entity_name=self.name,
+                entity_type=self.facility_type,
+                energy_cost=0.0,
+                processing_cost=0.0,
+                transport_cost=trip_cost
+            )
+            self.waste_monitor.record_emission(
+                entity_name=self.name,
+                kind="transport_emissions",
+                kgco2e=emissions,
+                timestamp=self.env.now,
+            )
+        return trip_cost
 
     def _perform_collection_at_site(self, generator, target_volume, waste_type=None):
         """Collect at the generator site; only ``waste_type`` when a signal names one (ADR 0028)."""
@@ -666,6 +670,10 @@ class CollectorCompany(OperationalEntity):
             target_collector.collection_center.current_storage[
                 transport["waste_type"]
             ] += transport["volume"]
+        transport["collector"]._record_trip_cost_and_emissions(
+            {transport["waste_type"]: transport["volume"]},
+            get_distance(transport["origin"], transport["destination"]),
+        )
 
     def _check_completed_transports(self, current_time: float) -> List[Dict]:
         """Identify completed transports and update vehicle status"""
