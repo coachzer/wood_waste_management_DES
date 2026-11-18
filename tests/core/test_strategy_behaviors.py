@@ -99,15 +99,9 @@ def test_ondemand_generator_signal_push_uses_storage_threshold():
     assert strategy.generator_should_signal(10.0, 100.0, PushPolicy(), _boom) is False
 
 
-def test_ondemand_generator_signal_pull_needs_downstream_demand():
-    strategy = OnDemandStrategy()
-    assert strategy.generator_should_signal(
-        5.0, 100.0, PullPolicy(), lambda: ["signal"]
-    ) is True
-    # No downstream signals -> no upstream signal even with waste on hand.
-    assert strategy.generator_should_signal(
-        50.0, 100.0, PullPolicy(), lambda: []
-    ) is False
+def test_only_push_generators_request_pickup():
+    assert PushPolicy().generators_request_pickup() is True
+    assert PullPolicy().generators_request_pickup() is False
 
 
 # --- inventory policy ------------------------------------------------------

@@ -39,10 +39,14 @@ class InventoryPolicyProtocol(Protocol):
         ...
 
 
+    def generators_request_pickup(self) -> bool:
+        """Whether a generator may call for pickup on its own stock (ADR 0032)."""
+        ...
+
     def ondemand_generator_should_signal(
         self, current_storage: float, capacity: float, active_signals_fn: Callable[[], List]
     ) -> bool:
-        """ON_DEMAND generator signal trigger (policy-specific half of the dispatch)."""
+        """ON_DEMAND generator signal trigger. Read only when generators request pickup."""
         ...
 
     def propagates_reorder_signals_upstream(self) -> bool:
@@ -66,6 +70,8 @@ class PushPolicy:
         push_threshold = min(COLLECTOR_UTILIZATION_CEILING, adaptive_threshold + PUSH_COLLECTOR_THRESHOLD_BUFFER)
         return utilization < push_threshold
 
+    def generators_request_pickup(self) -> bool:
+        return True
 
     def ondemand_generator_should_signal(
         self, current_storage, capacity, active_signals_fn
@@ -92,11 +98,8 @@ class PullPolicy:
             return False
         return utilization < COLLECTOR_UTILIZATION_CEILING
 
-
-    def ondemand_generator_should_signal(
-        self, current_storage, capacity, active_signals_fn
-    ) -> bool:
-        return bool(active_signals_fn()) and current_storage > 0
+    def generators_request_pickup(self) -> bool:
+        return False
 
     def propagates_reorder_signals_upstream(self) -> bool:
         return True

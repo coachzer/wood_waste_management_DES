@@ -142,6 +142,8 @@ class WasteGenerator(OperationalEntity):
 
     def _handle_inventory_signaling(self, current_time):
         """Signal for collection based on stock strategy and current inventory levels"""
+        if not self.inventory_policy_behavior.generators_request_pickup():
+            return
 
         if self.stock_strategy_behavior.generator_should_signal(
             current_storage=self.current_storage,
