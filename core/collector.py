@@ -29,6 +29,15 @@ from utils.capacity_utils import (
 from core.kanban_manager import KanbanManager
 from core.strategies import build_stock_strategy, build_inventory_policy
 
+
+def _is_market_signal(signal) -> bool:
+    return signal.get('source_type') == "market"
+
+
+def _is_addressed_to_other_region(signal, region_type) -> bool:
+    target_region = signal.get('target_region')
+    return target_region is not None and target_region != region_type
+
 class CollectorCompany(OperationalEntity):
     """A company that collects waste from generators"""
 
@@ -385,10 +394,7 @@ class CollectorCompany(OperationalEntity):
             if not self.should_collect():
                 continue
 
-            kanban_signals = [
-                s for s in self.kanban_manager.get_signals(self.env.now)
-                if s.get('source_type') != "market"
-            ]
+            kanban_signals = self._non_market_signals()
             if self.inventory_policy_behavior.should_process_kanban_signals(kanban_signals):
                 self._process_kanban_signals(kanban_signals)
             else:
@@ -397,11 +403,7 @@ class CollectorCompany(OperationalEntity):
     def _process_kanban_signals(self, signals):
         """Process signals with acknowledgment and cross-region support"""
         for signal in signals:
-            if signal.get('source_type') == "market":
-                continue
-
-            target_region = signal.get('target_region')
-            if target_region is not None and target_region != self.region_type:
+            if _is_market_signal(signal) or _is_addressed_to_other_region(signal, self.region_type):
                 continue
 
             waste_type_enum = signal['waste_type']
@@ -474,11 +476,14 @@ class CollectorCompany(OperationalEntity):
         return self.inventory_policy_behavior.collector_should_collect(
             utilization=self._calculate_utilization(),
             adaptive_threshold=self.stock_strategy_behavior.collector_adaptive_threshold(self.env.now),
-            non_market_signals_fn=lambda: [
-                s for s in self.kanban_manager.get_signals(self.env.now)
-                if s.get('source_type') != "market"
-            ],
+            non_market_signals_fn=self._non_market_signals,
         )
+
+    def _non_market_signals(self):
+        return [
+            signal for signal in self.kanban_manager.get_signals(self.env.now)
+            if not _is_market_signal(signal)
+        ]
 
     def transfer_waste_to_region(self, waste_type: WasteType, volume: float, destination: RegionType) -> bool:
         """Updated method using point-to-point transport"""
