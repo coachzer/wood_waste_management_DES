@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 from core.collector import CollectorCompany
 from core.transport_manager import PointToPointTransport, TransportRequest
+from core.treatment import TreatmentOperator
 from models.data_classes import Vehicle
 from models.enums import RegionType, WasteType
 
@@ -66,3 +67,14 @@ def test_a_request_with_no_stock_left_is_dropped():
 
     assert transport_manager.process_requests(current_time=0.0) == []
     assert transport_manager.pending_requests == []
+
+
+def test_a_new_transfer_cannot_claim_volume_an_earlier_queued_transfer_already_claimed():
+    """Queued volume is still center stock, so a second request would count it again and the
+    treatment would treat the order as met while only one vehicle can load it."""
+    origin, transport_manager = _world(origin_stock=100.0, vehicles=[])
+    CollectorCompany.transfer_waste_to_region(origin, WASTE, 70.0, RegionType.OSREDNJESLOVENSKA)
+
+    available = TreatmentOperator._get_available_waste_from_collector(None, origin, 100.0, [WASTE])
+
+    assert available == {WASTE: 30.0}

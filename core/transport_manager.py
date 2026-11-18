@@ -31,6 +31,11 @@ class PointToPointTransport:
             return 1.0
         return max(1.0, self.uncertainty_set.transportation_time[0])
 
+    def queued_volume(self, requester_id: str, waste_type: WasteType) -> float:
+        """Volume of this waste type that queued requests from this collector have claimed."""
+        return sum(request.volume for request in self.pending_requests
+                   if request.requester_id == requester_id and request.waste_type == waste_type)
+
     def request_transport(self, request: TransportRequest) -> bool:
         self.pending_requests.append(request)
         return True

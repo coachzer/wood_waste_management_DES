@@ -629,7 +629,8 @@ class TreatmentOperator(OperationalEntity):
             if remaining_capacity <= 0:
                 break
 
-            available_in_storage = collector.collection_center.current_storage[waste_type]
+            available_in_storage = (collector.collection_center.current_storage[waste_type]
+                                    - collector.transport_manager.queued_volume(collector.name, waste_type))
             if available_in_storage > 0:
                 can_take = min(available_in_storage, remaining_capacity)
                 available_waste[waste_type] = can_take
