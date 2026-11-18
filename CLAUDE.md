@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Use the terms of the domain glossary exactly as defined in @CONTEXT.md
+Read `CONTEXT.md` (the domain glossary) before naming a domain concept, writing about the model, or changing simulation logic, and use its terms exactly.
 
 ## Project overview
 
