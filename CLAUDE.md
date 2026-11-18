@@ -46,7 +46,11 @@ Baseline outputs go to `outputs/baseline/{scenario}/{policy}__{strategy}/`. MFA 
 - **Variable naming.** Verbose and descriptive, never abbreviated (`waste_storage_capacity`, not `wsc`).
 - **No emojis** in code or comments.
 - **Surgical changes.** Touch only what the task needs. For adjacent working code that could be refactored, open a ticket. If a review check fails, stop and open an issue instead of expanding scope.
-- **Commits.** Imperative mood, under 72 chars, no colon after the verb (`Add`, `Fix`, `Refactor`, `Update`, `Remove`, `Improve`). The body, after a blank line, explains *why*, not *what*. A commit that needs a semicolon is probably two commits.
+- **Commits.** `type(scope): Imperative subject`, under 72 chars. Types: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`. Scope is optional (a module name such as `treatment`). The subject verb says what changed and does not repeat the type. The body, after a blank line, explains *why*, not *what*. A `feat`, `fix` or `refactor` that can change simulation results needs an `Affects: <what shifted>` trailer. A commit that needs a semicolon is probably two commits.
+
+## Ask first
+
+- `outputs/` (Monte Carlo runs), `paper-draft/`, `.scratch/` and `HANDOFF.md` are not in git. Ask before deleting or overwriting anything in them.
 
 ## Adding new waste types or products
 
