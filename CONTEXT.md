@@ -89,7 +89,9 @@ the `finished_goods` level. Strategy does not target a downstream
 buffer. The signal chain is causal. Consumption causes
 production. Production causes upstream waste demand when the
 strategy threshold is crossed. Upstream waste demand causes
-collector activity. No process polls `finished_goods` on its own.
+collector activity, but only while the collector's collection
+center is below the collector utilization ceiling (ADR 0022).
+No process polls `finished_goods` on its own.
 Structurally this is lot-for-lot downstream and an `(s, S)`
 policy upstream.
 _Avoid_: reactive, demand-driven (too vague)
