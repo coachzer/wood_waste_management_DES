@@ -35,8 +35,10 @@ Seeds 1-10, Baseline, PULL minus PUSH (paired, 95% CI), with ADR 0031:
 
 - PULL collects 13% of generation in every strategy, about what treatment converts. PUSH collects
   61-88%, and most of it waits in collection centers.
-- The PULL uncollected volume (231-239k m3, 23-24%) is waste nobody ordered. About half of
-  generation is a code no processor accepts.
+- Under PULL, 87% of generation is never ordered. On seed 1, about 63% of generation is still in
+  generator storage at day 365, and 23-24% overflowed it and counts as uncollected (ADR 0024). The
+  uncollected KPI therefore depends on generator storage capacity (1.0M m3, about 380 days of
+  generation), which is not calibrated. About half of generation is a code no processor accepts.
 - Treatment-anchored bullwhip, PULL minus PUSH, fell to +1.3, +0.16 and +0.25, from +8.3, +5.1 and
   +12.6.
 - PULL ON_DEMAND still serves 99.3%. The probe in `.scratch/agy-needs/` shows that signalling a
