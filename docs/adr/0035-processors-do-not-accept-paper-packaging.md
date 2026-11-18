@@ -29,8 +29,12 @@ Seeds 1-10, Baseline, after minus before (paired, 95% CI), against ADR 0034:
 
 - Service is unchanged: demand is met from the wood codes. The ADR 0031-0033 results were measured
   with 15 01 01 accepted. Service does not depend on it, but their cost and uncollected figures did.
-- Processed volume falls 1-2% (1.5k-2.7k m3), but processing cost falls about 5%. Not explained
-  yet. Processing cost is per m3 at each operator's rate, so the volume may have shifted between
-  operators. This was not checked.
+- Processed volume falls 1-2% (1.5k-2.7k m3), but processing cost falls about 5%. The cause is the
+  feedstock mix, not a shift between operators. Processing cost includes energy, charged per m3 at
+  the transformation's `energy_required`. Without 15 01 01, intake moves to sawdust 03 01 05
+  (energy 0.50) and away from wooden packaging 15 01 03 (0.95). Seed 1 PUSH ON_DEMAND: 03 01 05
+  26.0k to 44.6k m3, 15 01 03 26.1k to 15.3k m3. Energy cost falls 0.79M and operational cost
+  0.21M, against 0.93M observed. Per-operator volumes fall evenly (2-4%). Why intake reallocates
+  to sawdust rather than pro rata was not traced.
 - Collection rate falls 0.15-0.8 points. Treatment-anchored bullwhip moves by less than 0.5.
 - 15 01 01 is now generated but no processor accepts it. ADR 0036 handles such codes.
