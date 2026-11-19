@@ -20,14 +20,11 @@ SAWDUST = WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05
 PAPER = WasteType.PAPER_PACKAGING_15_01_01
 
 
-def make_entity(state, monitor=False, capacity=1000.0, name="collector-1"):
+def make_entity(state, monitor=None, capacity=1000.0, name="collector-1"):
     """A storage-bearing entity stand-in handle_storage_event can act on.
 
     ``monitor`` is the shared ``noop_waste_monitor`` stub so the recording
-    calls have somewhere to go. ``monitor=False`` omits the ``waste_monitor``
-    attribute entirely (not merely None) -- the guard-asymmetry regression
-    below needs ``hasattr`` itself to be false, the shape a real entity never
-    has but the guard must survive.
+    calls have somewhere to go, or None for a monitor-less entity.
     """
     entity = SimpleNamespace(
         name=name,
@@ -37,9 +34,8 @@ def make_entity(state, monitor=False, capacity=1000.0, name="collector-1"):
         waste_storage_capacity=capacity,
         expansion_count=0,
         landfill_count=0,
+        waste_monitor=monitor,
     )
-    if monitor is not False:
-        entity.waste_monitor = monitor
     return entity
 
 

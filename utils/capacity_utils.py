@@ -170,7 +170,7 @@ def handle_storage_event(entity, composition: Dict[WasteType, float], force_land
 
         emissions = total_volume * LANDFILL_EMISSIONS_PER_M3_KG
 
-        if hasattr(entity, 'waste_monitor') and entity.waste_monitor:
+        if entity.waste_monitor:
             entity.waste_monitor.record_landfill(
                 entity_name=entity.name,
                 composition=composition,
@@ -190,7 +190,7 @@ def handle_storage_event(entity, composition: Dict[WasteType, float], force_land
         entity.expansion_count = expansion_count + 1
         entity.expansion_costs = getattr(entity, 'expansion_costs', 0) + expansion_cost
 
-        if hasattr(entity, 'waste_monitor') and entity.waste_monitor:
+        if entity.waste_monitor:
             entity.waste_monitor.track_expansion(
                 volume=total_volume,
                 cost_incurred=expansion_cost,

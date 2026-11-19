@@ -80,6 +80,7 @@ class WasteGenerator(OperationalEntity):
             if accepted_waste_types is not None and waste_type not in accepted_waste_types
         )
         self.total_outlet = {waste_type: 0.0 for waste_type in waste_streams.keys()}
+        self._original_rates: Optional[Dict[WasteType, float]] = None
 
         self.action = env.process(self.generate_waste())
         self.start_failure_process(env)
@@ -87,18 +88,18 @@ class WasteGenerator(OperationalEntity):
     def _apply_status_throughput_effects(self):
         """Scale generation rates by status, restoring originals on recovery."""
         if self.status == EntityStatus.FAILED:
-            if not hasattr(self, '_original_rates'):
+            if self._original_rates is None:
                 self._original_rates = self.waste_generation_rates.copy()
             self.waste_generation_rates = {wt: r * self.get_operational_efficiency() for wt, r in self._original_rates.items()}
         elif self.status == EntityStatus.RECOVERING:
-            if hasattr(self, '_original_rates'):
+            if self._original_rates is not None:
                 self.efficiency = self.get_operational_efficiency()
                 self.waste_generation_rates = {wt: r * self.efficiency for wt, r in self._original_rates.items()}
         elif self.status == EntityStatus.OPERATIONAL:
-            if hasattr(self, '_original_rates'):
+            if self._original_rates is not None:
                 self.efficiency = 1.0
-                self.waste_generation_rates = self._original_rates.copy()
-                delattr(self, '_original_rates')
+                self.waste_generation_rates = self._original_rates
+                self._original_rates = None
 
     def generate_waste(self):
         """Generate waste with optimized calculations and failure handling, including Kanban pull logic"""

@@ -87,7 +87,7 @@ class OperationalEntity:
                 self.failure_start_time = current_time
                 self.downtime_duration = self._get_recovery_duration()
 
-                if hasattr(self, 'waste_monitor') and self.waste_monitor:
+                if self.waste_monitor:
                     self.waste_monitor.record_entity_status(self, current_time)
 
                 print(f"FAILURE: {self.__class__.__name__} {getattr(self, 'name', 'unknown')} failed at time {current_time}")
@@ -100,7 +100,7 @@ class OperationalEntity:
                 self.recovery_duration = self._get_recovery_duration()
                 self.recovery_progress = 0.0
 
-                if hasattr(self, 'waste_monitor') and self.waste_monitor:
+                if self.waste_monitor:
                     self.waste_monitor.record_entity_status(self, current_time)
 
         elif self.status == EntityStatus.RECOVERING:
@@ -109,7 +109,7 @@ class OperationalEntity:
 
             if self.recovery_progress >= 1.0:
                 self.status = EntityStatus.OPERATIONAL
-                if hasattr(self, 'waste_monitor') and self.waste_monitor:
+                if self.waste_monitor:
                     self.waste_monitor.record_entity_status(self, current_time)
                 self.recovery_start_time = None
                 self.recovery_duration = None
