@@ -8,7 +8,7 @@ import simpy
 from core.transport_manager import PointToPointTransport
 from models.enums import RegionType, WasteType
 from models.state import SimulationState
-from tests.core.factories import make_collector
+from tests.core.factories import make_collector, make_treatment
 
 WASTE = WasteType.CONSTRUCTION_WOOD_17_02_01
 
@@ -69,8 +69,10 @@ def test_a_new_transfer_cannot_claim_volume_an_earlier_queued_transfer_already_c
     """Queued volume is still center stock, so a second request would count it again and the
     treatment would treat the order as met while only one vehicle can load it."""
     origin, _ = _origin(noop_waste_monitor, origin_stock=100.0)
+    treatment = make_treatment(origin.env, noop_waste_monitor,
+                               order_share_by_waste_type={WASTE: 1.0}, order_up_to_level_m3=100.0)
 
     origin.transfer_waste_to_region(WASTE, 70.0, RegionType.OSREDNJESLOVENSKA)
 
     assert origin.collection_center.current_storage[WASTE] == 100.0
-    assert origin.transferable_volume(WASTE) == 30.0
+    assert treatment._get_available_waste_from_collector(origin, 100.0, [WASTE]) == {WASTE: 30.0}
