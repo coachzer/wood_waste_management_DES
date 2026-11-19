@@ -9,18 +9,18 @@ from core.collector import CollectorCompany
 from core.transport_manager import PointToPointTransport, TransportRequest
 from core.treatment import TreatmentOperator
 from models.data_classes import Vehicle
-from models.enums import RegionType, WasteType
+from models.enums import EntityStatus, RegionType, WasteType
 
 WASTE = WasteType.CONSTRUCTION_WOOD_17_02_01
 
 
 def _world(origin_stock, vehicles):
     origin = SimpleNamespace(
-        name="col_origin", region_type=RegionType.GORENJSKA, vehicles=vehicles,
+        name="col_origin", region_type=RegionType.GORENJSKA, vehicles=vehicles, status=EntityStatus.OPERATIONAL,
         collection_center=SimpleNamespace(current_storage={WASTE: origin_stock}),
     )
     destination = SimpleNamespace(
-        name="col_destination", region_type=RegionType.OSREDNJESLOVENSKA, vehicles=[],
+        name="col_destination", region_type=RegionType.OSREDNJESLOVENSKA, vehicles=[], status=EntityStatus.OPERATIONAL,
         collection_center=SimpleNamespace(current_storage={WASTE: 0.0}),
     )
     state = SimpleNamespace(collectors=[origin, destination], track_transport_flow=lambda **flow: None)

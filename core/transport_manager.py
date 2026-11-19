@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import List, Dict, Optional
 from config.constants import TRAVEL_SPEED_KMH
-from models.enums import RegionType, WasteType
+from models.enums import EntityStatus, RegionType, WasteType
 from models.distances import get_distance
 
 @dataclass
@@ -31,6 +31,10 @@ class PointToPointTransport:
             return 1.0
         return max(1.0, self.uncertainty_set.transportation_time[0])
 
+    def travel_time_days(self, from_region: RegionType, to_region: RegionType) -> float:
+        """Road travel time between two regions, in days."""
+        return get_distance(from_region, to_region) * self._mean_transport_circuity() / TRAVEL_SPEED_KMH / 24.0
+
     def queued_volume(self, requester_id: str, waste_type: WasteType) -> float:
         """Volume of this waste type that queued requests from this collector have claimed."""
         return sum(request.volume for request in self.pending_requests
@@ -41,9 +45,9 @@ class PointToPointTransport:
         return True
     
     def find_available_vehicle(self, origin: RegionType) -> Optional[Dict]:
-        """Find an available vehicle at or near the origin"""
-        state = self.state
-        for collector in state.collectors:
+        """Find an idle vehicle at or near the origin. A FAILED collector's vehicles take no new jobs."""
+        operating_collectors = [c for c in self.state.collectors if c.status != EntityStatus.FAILED]
+        for collector in operating_collectors:
             for vehicle in collector.vehicles:
                 if not vehicle.in_transit and vehicle.current_region == origin:
                     return {"vehicle": vehicle, "collector": collector}
@@ -51,7 +55,7 @@ class PointToPointTransport:
         min_distance = float('inf')
         best_option = None
         
-        for collector in state.collectors:
+        for collector in operating_collectors:
             for vehicle in collector.vehicles:
                 if not vehicle.in_transit:
                     distance = get_distance(vehicle.current_region, origin)
@@ -103,14 +107,11 @@ class PointToPointTransport:
         vehicle = vehicle_info["vehicle"]
         collector = vehicle_info["collector"]
         
-        circuity = self._mean_transport_circuity()
-        distance = get_distance(request.origin, request.destination)
-        travel_time = distance * circuity / TRAVEL_SPEED_KMH / 24.0
+        travel_time = self.travel_time_days(request.origin, request.destination)
 
         pickup_time = current_time
         if vehicle.current_region != request.origin:
-            pickup_distance = get_distance(vehicle.current_region, request.origin)
-            pickup_time += pickup_distance * circuity / TRAVEL_SPEED_KMH / 24.0
+            pickup_time += self.travel_time_days(vehicle.current_region, request.origin)
         
         arrival_time = pickup_time + travel_time
         

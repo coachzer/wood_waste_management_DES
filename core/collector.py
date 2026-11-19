@@ -135,6 +135,7 @@ class CollectorCompany(OperationalEntity):
         ]
 
         self.active_transports = []
+        self.returning_vehicles = []
 
         self.collected_waste = dict.fromkeys(WasteType, 0.0)
 
@@ -661,7 +662,7 @@ class CollectorCompany(OperationalEntity):
             (
                 c
                 for c in self.state.collectors
-                if c.region_type == transport["vehicle"].current_region
+                if c.region_type == transport["destination"]
             ),
             None,
         )
@@ -675,18 +676,31 @@ class CollectorCompany(OperationalEntity):
         )
 
     def _check_completed_transports(self, current_time: float) -> List[Dict]:
-        """Identify completed transports and update vehicle status"""
+        """Identify delivered transports, send their vehicles home empty, and free vehicles back home.
+
+        The return leg takes road travel time and is covered by the fixed trip cost (ADR 0040).
+        """
         completed = []
         for transport in self.active_transports:
             if current_time >= transport["arrival_time"]:
                 vehicle = transport["vehicle"]
-                vehicle.in_transit = False
+                home_region = transport["collector"].region_type
                 vehicle.current_load = 0
                 vehicle.current_load_by_type = {}
+                vehicle.current_region = transport["destination"]
+                vehicle.destination = home_region
+                vehicle.estimated_arrival = transport["arrival_time"] + self.transport_manager.travel_time_days(
+                    transport["destination"], home_region)
+                self.returning_vehicles.append(vehicle)
+                completed.append(transport)
+
+        for vehicle in list(self.returning_vehicles):
+            if current_time >= vehicle.estimated_arrival:
+                vehicle.in_transit = False
                 vehicle.current_region = vehicle.destination
                 vehicle.destination = None
                 vehicle.estimated_arrival = None
-                completed.append(transport)
+                self.returning_vehicles.remove(vehicle)
         return completed
 
     def _filter_active_waste_streams(self, generator) -> Dict[WasteType, any]:

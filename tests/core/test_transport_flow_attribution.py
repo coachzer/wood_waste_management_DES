@@ -8,12 +8,12 @@ from types import SimpleNamespace
 
 from core.transport_manager import PointToPointTransport, TransportRequest
 from models.data_classes import Vehicle
-from models.enums import RegionType, WasteType
+from models.enums import EntityStatus, RegionType, WasteType
 
 
 def _collector(name, region_type, vehicles, stock=0.0):
     return SimpleNamespace(
-        name=name, region_type=region_type, vehicles=vehicles,
+        name=name, region_type=region_type, vehicles=vehicles, status=EntityStatus.OPERATIONAL,
         collection_center=SimpleNamespace(current_storage={WasteType.CONSTRUCTION_WOOD_17_02_01: stock}),
     )
 
