@@ -102,14 +102,15 @@ def test_treatment_capacity_unchanged_by_storage_expansion():
     """An EXPANSION_SIZE_M3 storage expansion does not raise processing capacity.
 
     Mutation check (red): derive processing capacity from the live
-    ``waste_storage_capacity`` in ``_apply_status_throughput_effects`` ->
+    ``waste_storage_capacity`` in the per-tick throughput update ->
     capacity grows by 500 * fraction / 24 per expansion.
     """
-    operator = _treatment(simpy.Environment())
+    env = simpy.Environment()
+    operator = _treatment(env)
     per_tick_before = operator.processing_capacity_per_tick_m3
 
     _cost, action = handle_storage_event(operator, {CONSTRUCTION: 10_000.0})
-    operator._apply_status_throughput_effects()
+    env.run(until=OPERATING_TICK_DAYS / 2)
 
     assert action == "expand_storage"
     assert operator.waste_storage_capacity == TREATMENT_STORAGE_M3 + EXPANSION_SIZE_M3

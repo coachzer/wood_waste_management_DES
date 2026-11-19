@@ -2,14 +2,17 @@
 import json
 from types import SimpleNamespace
 
+import simpy
+
 from config.base_config import ScenarioConfig
+from config.constants import OPERATING_TICK_DAYS
 from core.abc_analysis import abc_priority_weights
 from core.collector import CollectorCompany
 from core.kanban_manager import KanbanManager
 from core.transport_manager import PointToPointTransport
 from core.treatment import TreatmentOperator
 from models.data_classes import WasteStream
-from models.enums import InventoryPolicy, OutputType, RegionType, StockStrategy, WasteType, sorted_by_value
+from models.enums import EntityStatus, InventoryPolicy, OutputType, RegionType, StockStrategy, WasteType, sorted_by_value
 from models.state import SimulationState
 from models.transformations import build_transformations
 
@@ -99,3 +102,74 @@ def make_generator_site(volume_by_type, name="generator-1", region_type=RegionTy
         },
         current_storage=sum(volume_by_type.values()),
     )
+
+
+def posted_treatment_orders(waste_monitor, stock_strategy, on_hand, order_share_by_waste_type,
+                            order_up_to_level_m3, waste_storage_capacity=100_000.0):
+    """The per-type reorder volumes a PULL operator signals to its local collector in its first tick.
+
+    The operator has no transformation routes, so nothing consumes ``on_hand``
+    before the order is computed.
+    """
+    env = simpy.Environment()
+    state = SimulationState()
+    collector = make_collector(env, waste_monitor, state=state, inventory_policy=InventoryPolicy.PULL)
+    state.collectors = [collector]
+    make_treatment(
+        env, waste_monitor, state=state, inventory_policy=InventoryPolicy.PULL,
+        stock_strategy=stock_strategy, initial_waste_storage=on_hand, transformations={},
+        order_share_by_waste_type=order_share_by_waste_type, order_up_to_level_m3=order_up_to_level_m3,
+        waste_storage_capacity=waste_storage_capacity,
+    )
+    env.run(until=OPERATING_TICK_DAYS / 2)
+    return {
+        signal["waste_type"]: signal["volume"]
+        for signal in collector.kanban_manager.get_signals()
+        if signal["source_type"] == "treatment"
+    }
+
+
+EMPTY_PULL_OPERATOR_ORDER_M3 = 100.0
+
+
+class RecordingKanbanManager(KanbanManager):
+    """A real bus that also keeps the timestamp of every signal posted, before age pruning."""
+
+    def __init__(self):
+        super().__init__()
+        self.posted_timestamps = []
+
+    def add_signal(self, waste_type, timestamp, **signal):
+        self.posted_timestamps.append(timestamp)
+        super().add_signal(waste_type, timestamp, **signal)
+
+
+def signal_recording_collector(region, stock):
+    """A collector stand-in that supplies nothing and records the signals it receives."""
+    return SimpleNamespace(
+        name=f"collector-{region.value}",
+        region_type=region,
+        is_operational=True,
+        status=EntityStatus.OPERATIONAL,
+        inventory_policy=InventoryPolicy.PULL,
+        collection_center=SimpleNamespace(current_storage=dict(stock)),
+        kanban_manager=RecordingKanbanManager(),
+        transferable_volume=lambda waste_type: 0.0,
+        provide_waste_for_treatment=lambda *args, **kwargs: {},
+    )
+
+
+def run_empty_pull_operator(waste_monitor, collectors, generators=(), days=0.5, status=EntityStatus.OPERATIONAL):
+    """Run a PULL operator holding no 17 02 01, so every tick orders EMPTY_PULL_OPERATOR_ORDER_M3 of it."""
+    env = simpy.Environment()
+    state = SimulationState()
+    state.collectors = list(collectors)
+    state.generators = list(generators)
+    operator = make_treatment(
+        env, waste_monitor, state=state, inventory_policy=InventoryPolicy.PULL, transformations={},
+        order_share_by_waste_type={WasteType.CONSTRUCTION_WOOD_17_02_01: 1.0},
+        order_up_to_level_m3=EMPTY_PULL_OPERATOR_ORDER_M3,
+    )
+    operator.status = status
+    env.run(until=days)
+    return operator

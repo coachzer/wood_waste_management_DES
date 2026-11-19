@@ -6,9 +6,8 @@ import pytest
 
 from config.constants import SAFETY_STOCK_Z, WEEKS_PER_YEAR
 from core.facility_builder import FacilityBuilder
-from core.strategies.stock_strategy import build_stock_strategy
-from core.treatment import TreatmentOperator
 from models.enums import OutputType, StockStrategy, WasteType
+from tests.core.factories import posted_treatment_orders
 from utils.seasonality import seasonal_factor_standard_deviation
 
 ORDER_UP_TO_LEVEL_M3 = 1_000.0
@@ -45,13 +44,11 @@ def test_order_up_to_level_is_clamped_at_storage_capacity():
     assert level == 500.0
 
 
-def test_on_demand_orders_back_exactly_what_was_consumed():
-    operator = SimpleNamespace(
-        waste_storage={WasteType.CONSTRUCTION_WOOD_17_02_01: ORDER_UP_TO_LEVEL_M3 - 37.0},
-        waste_storage_capacity=STORAGE_CAPACITY_M3,
-        order_up_to_level_m3=ORDER_UP_TO_LEVEL_M3,
+def test_on_demand_orders_back_exactly_what_was_consumed(noop_waste_monitor):
+    orders = posted_treatment_orders(
+        noop_waste_monitor, StockStrategy.ON_DEMAND,
+        on_hand={WasteType.CONSTRUCTION_WOOD_17_02_01: ORDER_UP_TO_LEVEL_M3 - 37.0},
         order_share_by_waste_type={WasteType.CONSTRUCTION_WOOD_17_02_01: 1.0},
-        stock_strategy_behavior=build_stock_strategy(StockStrategy.ON_DEMAND),
+        order_up_to_level_m3=ORDER_UP_TO_LEVEL_M3,
     )
-    orders = TreatmentOperator._order_volumes_by_waste_type(operator)
     assert orders == {WasteType.CONSTRUCTION_WOOD_17_02_01: pytest.approx(37.0)}
