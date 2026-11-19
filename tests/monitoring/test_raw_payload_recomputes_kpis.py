@@ -26,6 +26,7 @@ def _flat_round_trip(kpis):
     return flat
 
 
+@pytest.mark.slow
 def test_kpis_recomputed_from_the_raw_sidecar_match_the_live_run():
     manager = SimulationManager(seed=3)
     manager.initialize_entities(get_scenario_config("Baseline"), InventoryPolicy.PULL, StockStrategy.REORDER_50)

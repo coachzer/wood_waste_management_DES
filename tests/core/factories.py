@@ -1,5 +1,6 @@
 """Shared builders for core tests."""
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import simpy
@@ -18,7 +19,7 @@ from models.enums import EntityStatus, InventoryPolicy, OutputType, RegionType, 
 from models.state import SimulationState
 from models.transformations import build_transformations
 
-with open("data/demand.json") as demand_file:
+with open(Path(__file__).resolve().parents[2] / "data" / "demand.json") as demand_file:
     SHIPPED_ABC_PRIORITY_WEIGHTS = abc_priority_weights(json.load(demand_file)["national_demand"])
 
 
