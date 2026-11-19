@@ -192,7 +192,7 @@ def build_metric_table(path: Path, metrics: List[str]) -> List[dict]:
     return table
 
 
-def write_bullwhip_figure(path, filename: str = "bullwhip_comparison.pdf"):
+def write_bullwhip_figure(path):
     """Render and save the bullwhip-family PDF under scenario dir ``path``.
 
     Grouped bars (one group per CV^2-ratio key, one bar per combo) on a log
@@ -228,13 +228,13 @@ def write_bullwhip_figure(path, filename: str = "bullwhip_comparison.pdf"):
     )
     ax.legend(handles=_grouped_bar_legend(table), loc="best", fontsize=8)
     fig.tight_layout()
-    output_path = path / filename
+    output_path = path / "bullwhip_comparison.pdf"
     fig.savefig(output_path)
     plt.close(fig)
     return output_path
 
 
-def write_residence_figure(path, filename: str = "residence_comparison.pdf"):
+def write_residence_figure(path):
     """Render and save the residence-time PDF under scenario dir ``path``.
 
     Grouped bars of time-averaged residence days (Little's Law, ``W = L/λ``)
@@ -256,7 +256,7 @@ def write_residence_figure(path, filename: str = "residence_comparison.pdf"):
     ax.grid(True, axis="y", linestyle=":", alpha=0.5)
     ax.legend(handles=_grouped_bar_legend(table), loc="best", fontsize=8)
     fig.tight_layout()
-    output_path = path / filename
+    output_path = path / "residence_comparison.pdf"
     fig.savefig(output_path)
     plt.close(fig)
     return output_path
@@ -298,9 +298,7 @@ def product_label(metric: str) -> str:
     return product_name.replace("_", " ").capitalize()
 
 
-def write_service_by_product_figure(
-    path, filename: str = "service_by_product_comparison.pdf"
-):
+def write_service_by_product_figure(path):
     """Render and save the per-product service-level PDF under ``path``.
 
     Grouped bars (one group per product, one bar per combo) of the full
@@ -323,13 +321,13 @@ def write_service_by_product_figure(
     ax.grid(True, axis="y", linestyle=":", alpha=0.5)
     ax.legend(handles=_grouped_bar_legend(table), loc="best", fontsize=8)
     fig.tight_layout()
-    output_path = path / filename
+    output_path = path / "service_by_product_comparison.pdf"
     fig.savefig(output_path)
     plt.close(fig)
     return output_path
 
 
-def write_carbon_figure(path, filename: str = "carbon_comparison.pdf"):
+def write_carbon_figure(path):
     """Render and save the three-carbon-lines PDF under scenario dir ``path``.
 
     One bar group per combo, three bars per group — operational emissions,
@@ -376,7 +374,7 @@ def write_carbon_figure(path, filename: str = "carbon_comparison.pdf"):
     ax.grid(True, axis="y", linestyle=":", alpha=0.5)
     ax.legend(loc="best", fontsize=8)
     fig.tight_layout()
-    output_path = path / filename
+    output_path = path / "carbon_comparison.pdf"
     fig.savefig(output_path)
     plt.close(fig)
     return output_path

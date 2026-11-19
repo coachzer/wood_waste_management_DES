@@ -223,23 +223,18 @@ def build_pareto_figure(
     return fig
 
 
-def write_pareto_plot(
-    path,
-    root: bool = False,
-    objectives: List[Tuple[str, str]] = OBJECTIVES,
-    filename: str = "pareto_frontier.pdf",
-):
+def write_pareto_plot(path, root: bool = False):
     """Render and save the Pareto frontier PDF under ``path``.
 
     Returns the written ``Path``, or ``None`` if no ``summary.csv`` files
     exist under ``path``.
     """
     path = Path(path)
-    points = _build_points(path, root=root, objectives=objectives)
+    points = _build_points(path, root=root, objectives=OBJECTIVES)
     if not points:
         return None
     fig = build_pareto_figure(points)
-    output_path = path / filename
+    output_path = path / "pareto_frontier.pdf"
     fig.savefig(
         output_path,
         metadata={

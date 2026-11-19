@@ -168,7 +168,7 @@ def render_figure(points: List[dict]):
     return fig
 
 
-def write_policy_comparison_figure(path, filename: str = "policy_comparison.pdf"):
+def write_policy_comparison_figure(path):
     """Render and save the policy-comparison PDF under scenario dir ``path``.
 
     Returns the written ``Path``, or ``None`` if no ``summary.csv`` files exist
@@ -180,7 +180,7 @@ def write_policy_comparison_figure(path, filename: str = "policy_comparison.pdf"
     if not points:
         return None
     fig = render_figure(points)
-    output_path = path / filename
+    output_path = path / "policy_comparison.pdf"
     fig.savefig(
         output_path,
         metadata={

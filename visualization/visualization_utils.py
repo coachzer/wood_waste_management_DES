@@ -112,10 +112,6 @@ def extract_heatmap_matrix(history: Dict, value_selector) -> Dict:
         'z_values': z_matrix
     }
 
-def extract_storage_data(history: Dict, metric: str) -> Dict:
-    """Extract storage utilization data for heatmap"""
-    return extract_heatmap_matrix(history, lambda entity_data: entity_data.get(metric))
-
 def extract_processor_waste_storage_data(history: Dict) -> Dict:
     """Extract waste storage utilization for processors"""
     return extract_heatmap_matrix(

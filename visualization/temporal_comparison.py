@@ -36,10 +36,6 @@ def create_temporal_comparisons(results: List[Dict], output_dir: str):
     _create_efficiency_frontier_analysis(results, pareto_dir)
     _create_entity_status_view(results, temp_dir)
 
-def create_output_directory(output_dir: str):
-    """Create output directory if it doesn't exist"""
-    os.makedirs(output_dir, exist_ok=True)
-
 def extract_total_costs_from_monitor_data(monitor_data: Dict) -> Dict[str, float]:
     """Extract and aggregate total costs from all history sources in monitor data
 
@@ -145,14 +141,6 @@ def extract_environmental_impacts_by_category(monitor_data: Dict, category: str)
     
     return all_impacts_by_time
 
-def calculate_total_environmental_impact(monitor_data: Dict) -> float:
-    """Calculate total environmental impact across all categories and entities"""
-    return total_emissions_kgco2e(monitor_data.get('environmental_history', {}))
-
-def get_scenario_colors_and_symbols():
-    """Return the shared theme mappings: color per policy, symbol per strategy"""
-    return POLICY_COLORS, STRATEGY_SYMBOLS
-
 _METRIC_COMPARISON_SPECS = [
     {
         'subdir': "generation",
@@ -243,7 +231,7 @@ def _create_cost_comparison(results: List[Dict], output_dir: str):
 
 def _create_environmental_impact_comparison(results: List[Dict], output_dir: str):
     """Compare environmental impacts across scenarios over time"""
-    create_output_directory(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
     
     impact_categories = {
         'carbon_emissions': 'Carbon Emissions',
@@ -320,7 +308,7 @@ def _create_environmental_breakdown_comparison(results: List[Dict], output_dir: 
 
 def _create_efficiency_frontier_analysis(results: List[Dict], output_dir: str):
     """Create efficiency frontier analysis"""
-    create_output_directory(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
 
     scenario_data = _extract_efficiency_metrics(results)
     fig = _create_efficiency_subplot_figure()
@@ -402,7 +390,7 @@ def _extract_efficiency_metrics(results: List[Dict]) -> List[Dict]:
         all_costs_by_time = extract_total_costs_from_monitor_data(monitor_data)
         total_cost = sum(all_costs_by_time.values()) if all_costs_by_time else 0
         
-        total_environmental_impact = calculate_total_environmental_impact(monitor_data)
+        total_environmental_impact = total_emissions_kgco2e(monitor_data.get('environmental_history', {}))
         
         collection_metrics = _calculate_collection_metrics(monitor_data)
         processing_metrics = _calculate_processing_metrics(monitor_data, collection_metrics['total_collected'])
@@ -474,7 +462,7 @@ def _create_efficiency_subplot_figure():
 
 def _add_efficiency_scatter_plots(fig, scenario_data: List[Dict]):
     """Add scatter plots with consistent styling"""
-    colors, symbols = get_scenario_colors_and_symbols()
+    colors, symbols = POLICY_COLORS, STRATEGY_SYMBOLS
 
     subplot_configs = [
         {'x': 'total_cost', 'y': 'total_environmental_impact', 'row': 1, 'col': 1, 
@@ -541,7 +529,7 @@ def _update_all_subplot_styling(fig):
 
 def _add_cost_efficiency_bar_chart(fig, scenario_data: List[Dict]):
     """Add bar chart"""
-    colors, _ = get_scenario_colors_and_symbols()
+    colors = POLICY_COLORS
 
     sorted_data = sorted(
         scenario_data,

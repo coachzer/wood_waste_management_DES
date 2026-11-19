@@ -146,17 +146,13 @@ def build_paired_report(
     return rows
 
 
-def write_paired_comparison_report(
-    scenario_dir: Path,
-    metrics: Optional[List[str]] = None,
-    alpha: float = 0.05,
-) -> Optional[Path]:
+def write_paired_comparison_report(scenario_dir: Path, alpha: float = 0.05) -> Optional[Path]:
     """Write ``paired_comparison.csv`` for a scenario and return its path.
 
     Returns ``None`` when there is nothing to compare (no run files, or every
     combo has fewer than two shared replications).
     """
-    rows = build_paired_report(scenario_dir, metrics=metrics, alpha=alpha)
+    rows = build_paired_report(scenario_dir, alpha=alpha)
     if not rows:
         return None
 

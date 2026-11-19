@@ -147,11 +147,7 @@ def build_pareto_report(
     return rows
 
 
-def write_pareto_report(
-    path,
-    root: bool = False,
-    objectives: List[Tuple[str, str]] = OBJECTIVES,
-):
+def write_pareto_report(path, root: bool = False):
     """Write ``pareto_frontier.csv`` under ``path`` and return its ``Path``.
 
     Returns ``None`` when there is nothing to compare (no ``summary.csv`` files).
@@ -159,11 +155,11 @@ def write_pareto_report(
     the dataset root in ``--root`` mode.
     """
     path = Path(path)
-    rows = build_pareto_report(path, root=root, objectives=objectives)
+    rows = build_pareto_report(path, root=root)
     if not rows:
         return None
 
-    metric_columns = [metric for metric, _ in objectives]
+    metric_columns = [metric for metric, _ in OBJECTIVES]
     header = ["config"] + metric_columns + ["non_dominated"]
     lines = [",".join(header)]
     for row in rows:

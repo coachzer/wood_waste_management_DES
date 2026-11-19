@@ -207,7 +207,6 @@ def build_dominance_report(
 def write_dominance_report(
     scenario_dir,
     metrics: Optional[List[str]] = None,
-    relative_tolerance: float = SSD_FLOATING_ACCUMULATION_RELATIVE_TOLERANCE,
 ) -> Optional[Path]:
     """Write ``stochastic_dominance.csv`` for a scenario and return its path.
 
@@ -215,9 +214,7 @@ def write_dominance_report(
     has enough samples for any metric). Lives beside ``paired_comparison.csv``.
     """
     scenario_dir = Path(scenario_dir)
-    rows = build_dominance_report(
-        scenario_dir, metrics=metrics, relative_tolerance=relative_tolerance
-    )
+    rows = build_dominance_report(scenario_dir, metrics=metrics)
     if not rows:
         return None
 

@@ -11,7 +11,7 @@ from config.constants import (
     WIDE_EXPORT_WIDTH_PX,
 )
 from .visualization_utils import (
-    extract_storage_data,
+    extract_heatmap_matrix,
     extract_processor_waste_storage_data,
     extract_processor_finished_goods_storage_data,
     group_results_by_scenario_and_policy,
@@ -74,7 +74,9 @@ def _create_entity_storage_heatmaps_grouped(grouped_results: Dict, entity_type: 
 
     _create_grouped_storage_heatmaps(
         grouped_results,
-        extract_heatmap_data=lambda monitor_data: extract_storage_data(monitor_data[history_key], 'storage_utilization'),
+        extract_heatmap_data=lambda monitor_data: extract_heatmap_matrix(
+            monitor_data[history_key], lambda entity_data: entity_data.get('storage_utilization')
+        ),
         title_prefix=f"{entity_type.title()} Storage Utilization",
         colorbar_title="Storage Utilization (%)",
         y_axis_title="Entity",

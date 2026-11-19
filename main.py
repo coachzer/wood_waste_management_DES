@@ -3,7 +3,7 @@ from config.constants import BASELINE_OUTPUT_ROOT, DEFAULT_BASE_SEED, SCENARIO_C
 from core.simulation_manager import SimulationManager
 from models.enums import InventoryPolicy, StockStrategy
 from visualization.mfa_visualization import create_material_flow_analysis
-from visualization.scenario_comparison import ScenarioComparison
+from visualization.scenario_comparison import create_scenario_comparison
 from analysis.baseline_aggregate import extract_kpis, summary_rows
 from persistence.serialization import build_raw_payload, jsonify
 from analysis.paired_comparison import write_paired_comparison_report
@@ -110,22 +110,15 @@ def _run_baseline_replication_task(
         raise_on_violation=False,
     )
     kpis = extract_kpis(simulation_result["monitor_data"])
+    run_identity = {
+        key: simulation_result[key]
+        for key in ("base_scenario", "scenario_name", "inventory_policy", "stock_strategy", "seed")
+    }
 
     run_path = combo_dir / run_filename(replication_index)
     try:
         with open(run_path, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "base_scenario": simulation_result["base_scenario"],
-                    "scenario_name": simulation_result["scenario_name"],
-                    "inventory_policy": simulation_result["inventory_policy"],
-                    "stock_strategy": simulation_result["stock_strategy"],
-                    "seed": simulation_result["seed"],
-                    "kpis": kpis,
-                },
-                f,
-                separators=(",", ":"),
-            )
+            json.dump({**run_identity, "kpis": kpis}, f, separators=(",", ":"))
     except Exception as e:
         print(f"Warning: failed to write {run_path}: {e}")
 
@@ -140,15 +133,7 @@ def _run_baseline_replication_task(
     except Exception as e:
         print(f"Warning: failed to write {raw_path}: {e}")
 
-    return {
-        "base_scenario": simulation_result["base_scenario"],
-        "scenario_name": simulation_result["scenario_name"],
-        "inventory_policy": simulation_result["inventory_policy"],
-        "stock_strategy": simulation_result["stock_strategy"],
-        "seed": simulation_result["seed"],
-        "replication_index": replication_index,
-        "kpis": kpis,
-    }
+    return {**run_identity, "replication_index": replication_index, "kpis": kpis}
 
 
 def run_monte_carlo_baseline(
@@ -246,7 +231,7 @@ def run_monte_carlo_baseline(
                 )
                 summary_csv = combo_dir / SUMMARY_FILENAME
                 try:
-                    _write_combo_summary(summary_csv, combo_kpis)
+                    summary_csv.write_text("\n".join(summary_rows(combo_kpis)), encoding="utf-8")
                 except Exception as e:
                     print(
                         f"Warning: failed to write summary CSV for {combo_label(policy.value, strategy.value)}: {e}"
@@ -313,12 +298,6 @@ def run_monte_carlo_baseline(
     return results
 
 
-def _write_combo_summary(csv_path: Path, kpis_list: list[dict]) -> None:
-    # Thin writer over the pure `summary_rows` seam (issue 06): marginal KPIs
-    # plus the generic `bullwhip` namespace, each with a Student-t CI (ADR 0008).
-    csv_path.write_text("\n".join(summary_rows(kpis_list)), encoding="utf-8")
-
-
 def main():
     """Main simulation runner - orchestrates all scenario combinations"""
     start_time = time.time()
@@ -355,11 +334,7 @@ def main():
     print(f"\n{'='*60}")
     print("Creating scenario comparison visualizations")
     print(f"{'='*60}")
-    comparison = ScenarioComparison(results)
-    comparison.create_storage_heatmaps()
-    comparison.create_temporal_comparison()
-    comparison.create_cost_impact_comparison()
-    comparison.create_summary_dashboard()
+    create_scenario_comparison(results)
     print(f"Scenario comparison visualizations saved to {SCENARIO_COMPARISON_PLOTS_DIR}/")
 
     print(f"\n{'='*60}")
@@ -418,11 +393,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.mode == "baseline":
-        _ = run_monte_carlo_baseline(
+        run_monte_carlo_baseline(
             replications=args.replications,
             scenario_filter=args.scenario,
             out_root=args.out_root,
             workers=args.workers,
         )
     else:
-        all_results = main()
+        main()
