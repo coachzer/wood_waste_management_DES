@@ -29,8 +29,10 @@ class OperationalEntity:
     """Base class for entities that can experience failures"""
 
     status: EntityStatus
-    failure_time: Optional[float]
-    recovery_time: Optional[float]
+    failure_start_time: Optional[float]
+    recovery_start_time: Optional[float]
+    recovery_duration: Optional[float]
+    recovery_progress: float
     waste_monitor: Optional[EntityStatusRecorder]
     failure_config: Optional[FailureConfig]
     downtime_duration: float
@@ -44,8 +46,10 @@ class OperationalEntity:
         """
         self.status = EntityStatus.OPERATIONAL
         self.failure_count = 0
-        self.failure_time = None
-        self.recovery_time = None
+        self.failure_start_time = None
+        self.recovery_start_time = None
+        self.recovery_duration = None
+        self.recovery_progress = 0.0
         self.waste_monitor = waste_monitor
         self.failure_config = failure_config
         self.downtime_duration = 1.0
