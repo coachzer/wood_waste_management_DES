@@ -12,7 +12,7 @@ no strategy owns an efficiency curve.
 
 from __future__ import annotations
 
-from typing import Callable, List, Protocol, TYPE_CHECKING
+from typing import Protocol, TYPE_CHECKING
 
 from config.constants import (
     ON_DEMAND_COLLECTOR_BASE_THRESHOLD,
@@ -45,7 +45,6 @@ class StockStrategyProtocol(Protocol):
         current_storage: float,
         capacity: float,
         inventory_policy: "InventoryPolicyProtocol",
-        active_signals_fn: Callable[[], List],
     ) -> bool:
         """Whether the generator emits a collection signal this period."""
         ...
@@ -67,9 +66,7 @@ class _ReorderStrategy:
     def treatment_should_reorder(self, current_total: float, capacity: float) -> bool:
         return current_total < capacity * self._reorder_fraction
 
-    def generator_should_signal(
-        self, current_storage, capacity, inventory_policy, active_signals_fn
-    ) -> bool:
+    def generator_should_signal(self, current_storage, capacity, inventory_policy) -> bool:
         return current_storage >= capacity * self._reorder_fraction
 
 
@@ -92,12 +89,8 @@ class OnDemandStrategy:
     def treatment_should_reorder(self, current_total: float, capacity: float) -> bool:
         return current_total < capacity
 
-    def generator_should_signal(
-        self, current_storage, capacity, inventory_policy, active_signals_fn
-    ) -> bool:
-        return inventory_policy.ondemand_generator_should_signal(
-            current_storage, capacity, active_signals_fn
-        )
+    def generator_should_signal(self, current_storage, capacity, inventory_policy) -> bool:
+        return inventory_policy.ondemand_generator_should_signal(current_storage, capacity)
 
 
 class Reorder50Strategy(_ReorderStrategy):

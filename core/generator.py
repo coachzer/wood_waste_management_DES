@@ -133,7 +133,6 @@ class WasteGenerator(OperationalEntity):
             current_storage=self.current_storage,
             capacity=self.waste_storage_capacity,
             inventory_policy=self.inventory_policy_behavior,
-            active_signals_fn=lambda: self.kanban_manager.get_signals(current_time),
         ):
             self._kanban_signal(current_time)
 

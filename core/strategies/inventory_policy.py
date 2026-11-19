@@ -43,10 +43,8 @@ class InventoryPolicyProtocol(Protocol):
         """Whether a generator may call for pickup on its own stock (ADR 0032)."""
         ...
 
-    def ondemand_generator_should_signal(
-        self, current_storage: float, capacity: float, active_signals_fn: Callable[[], List]
-    ) -> bool:
-        """ON_DEMAND generator signal trigger. Read only when generators request pickup."""
+    def ondemand_generator_should_signal(self, current_storage: float, capacity: float) -> bool:
+        """ON_DEMAND generator signal trigger. Reached only when generators request pickup (PUSH)."""
         ...
 
     def propagates_reorder_signals_upstream(self) -> bool:
@@ -73,9 +71,7 @@ class PushPolicy:
     def generators_request_pickup(self) -> bool:
         return True
 
-    def ondemand_generator_should_signal(
-        self, current_storage, capacity, active_signals_fn
-    ) -> bool:
+    def ondemand_generator_should_signal(self, current_storage, capacity) -> bool:
         return current_storage > capacity * PUSH_ON_DEMAND_GENERATOR_SIGNAL_STORAGE_SHARE
 
     def propagates_reorder_signals_upstream(self) -> bool:

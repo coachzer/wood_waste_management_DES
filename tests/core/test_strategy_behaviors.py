@@ -78,23 +78,21 @@ def test_ondemand_treatment_trigger_fires_until_full():
 
 # --- generator signaling (double dispatch + laziness) ----------------------
 
-def test_reorder_generator_signal_ignores_policy_and_signals():
-    # Reorder strategies decide purely on storage vs fraction; the signal
-    # callable must never be touched (the original never read it here).
+def test_reorder_generator_signal_ignores_policy():
+    # Reorder strategies decide purely on storage vs fraction, under either policy.
     assert Reorder90Strategy().generator_should_signal(
-        90.0, 100.0, PullPolicy(), _boom
+        90.0, 100.0, PullPolicy()
     ) is True
     assert Reorder50Strategy().generator_should_signal(
-        49.0, 100.0, PullPolicy(), _boom
+        49.0, 100.0, PullPolicy()
     ) is False
 
 
 def test_ondemand_generator_signal_push_uses_storage_threshold():
-    # PUSH ON_DEMAND signals on substantial waste (> 10% capacity) and never
-    # consults downstream signals.
+    # PUSH ON_DEMAND signals on substantial waste (> 10% capacity).
     strategy = OnDemandStrategy()
-    assert strategy.generator_should_signal(11.0, 100.0, PushPolicy(), _boom) is True
-    assert strategy.generator_should_signal(10.0, 100.0, PushPolicy(), _boom) is False
+    assert strategy.generator_should_signal(11.0, 100.0, PushPolicy()) is True
+    assert strategy.generator_should_signal(10.0, 100.0, PushPolicy()) is False
 
 
 # --- inventory policy ------------------------------------------------------
