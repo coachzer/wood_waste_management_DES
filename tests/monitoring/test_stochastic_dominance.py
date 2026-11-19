@@ -12,8 +12,8 @@ is interpretation layered on top -- whether "larger" means "better" -- so these
 core tests are sense-free; sense annotation is checked at the report layer.
 """
 
+from analysis._kpi_shared import DEFAULT_METRICS, KPI_SENSE
 from analysis.stochastic_dominance import (
-    KPI_SENSES,
     build_dominance_report,
     dominance_relation,
     first_order_dominance,
@@ -166,7 +166,5 @@ def test_write_dominance_report_empty_dir_returns_none(tmp_path):
 def test_kpi_senses_cover_the_paired_default_metrics():
     # Every curated headline metric must have a documented sense so the report
     # can interpret "larger" as better or worse.
-    from analysis.stochastic_dominance import DEFAULT_METRICS
-
     for metric in DEFAULT_METRICS:
-        assert KPI_SENSES[metric] in ("max", "min")
+        assert KPI_SENSE[metric] in ("max", "min")

@@ -30,8 +30,6 @@ from ._kpi_shared import (
     load_combo_kpis,
 )
 
-KPI_SENSES: Dict[str, KpiSense] = {metric: KPI_SENSE[metric] for metric in DEFAULT_METRICS}
-
 MINIMUM_SAMPLES = 2
 
 
@@ -200,7 +198,7 @@ def build_dominance_report(
                     "n_b": len(samples_b),
                     "dominance_order": order,
                     "dominant_combo": dominant_combo,
-                    "sense": KPI_SENSES.get(metric, ""),
+                    "sense": KPI_SENSE.get(metric, ""),
                 }
             )
     return rows
@@ -251,7 +249,7 @@ def _print_dominance_summary(rows: List[dict]) -> None:
     for row in dominances:
         if row["metric"] != current_metric:
             current_metric = row["metric"]
-            sense = KPI_SENSES.get(current_metric, "")
+            sense = KPI_SENSE.get(current_metric, "")
             sense_note = f" [larger is {'better' if sense == KpiSense.LARGER_IS_BETTER else 'worse'}]" if sense else ""
             print(f"\n  {current_metric}{sense_note}:")
         loser = row["combo_b"] if row["dominant_combo"] == row["combo_a"] else row["combo_a"]
