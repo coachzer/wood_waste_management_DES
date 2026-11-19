@@ -40,9 +40,9 @@ class TreatmentOperator(OperationalEntity):
         kanban_manager: KanbanManager,
         finished_goods_capacity: Optional[Dict[OutputType, float]] = None,
         initial_waste_storage: Optional[Dict[WasteType, float]] = None,
-        order_share_by_waste_type: Optional[Dict[WasteType, float]] = None,
-        order_up_to_level_m3: Optional[float] = None,
         market_share: float = 0.0,
+        order_share_by_waste_type: Dict[WasteType, float],
+        order_up_to_level_m3: float,
         stock_strategy: StockStrategy,
         inventory_policy: InventoryPolicy,
         state,
@@ -76,11 +76,7 @@ class TreatmentOperator(OperationalEntity):
         self.initial_processing_capacity_per_tick_m3 = self.processing_capacity_per_tick_m3
         self.region_type = region_type
         self.market_share = market_share
-        if order_share_by_waste_type is None:
-            raise ValueError("order_share_by_waste_type is required for TreatmentOperator (ADR 0026)")
         self.order_share_by_waste_type = dict(order_share_by_waste_type)
-        if order_up_to_level_m3 is None:
-            raise ValueError("order_up_to_level_m3 is required for TreatmentOperator (ADR 0027)")
         self.order_up_to_level_m3 = order_up_to_level_m3
         self._waste_storage = dict.fromkeys(WasteType, 0.0)
         if initial_waste_storage:
