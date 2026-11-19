@@ -25,3 +25,17 @@ Outputs: `outputs/baseline/{scenario}/{policy}__{strategy}/`. Seeds are CRN: rep
 ## Done means
 
 `.venv/bin/python -m pytest --run-slow` passes (slow tests include determinism). Run it in the background.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on coachzer/wood_waste_management_DES, via `gh`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default labels (needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` and `docs/decisions.md` (one file, entries keyed by ADR number). See `docs/agents/domain.md`.

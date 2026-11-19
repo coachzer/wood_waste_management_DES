@@ -3,7 +3,7 @@
 A distribution-level comparison stronger than comparing means: it asks whether
 one configuration's whole empirical CDF sits above the other's. First-order (FSD)
 and second-order (SSD) are defined in the **Stochastic Dominance** glossary term
-(CONTEXT.md); the report names the strongest order that holds and carries the
+(GLOSSARY.md); the report names the strongest order that holds and carries the
 per-KPI *sense* as a separate annotation (the dominance math is sense-free, so
 KPIs without a documented sense still get a factual direction with a blank
 sense). It reads the same CRN-paired ``run_*.json`` set as

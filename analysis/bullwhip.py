@@ -11,7 +11,7 @@ wrappers anchored on the same consumption series. ``stage_bullwhip`` is the
 pooled decomposition (ADR 0006), ``pooled_anchored_bullwhip`` the pooled
 robustness variant (ADR 0007), and ``generation_floor_cv2`` the policy-invariant
 source-variance reference (ADR 0005). See those ADRs for the rationale behind
-each choice; the **Throughput Bullwhip** glossary term in CONTEXT.md defines the
+each choice; the **Throughput Bullwhip** glossary term in GLOSSARY.md defines the
 measure.
 """
 from __future__ import annotations

@@ -1,6 +1,6 @@
 # Decisions
 
-Design decisions still in force. Headings keep the ADR numbers that code, tests and CONTEXT.md cite. The code is the source of truth. Measured effects of each change are in git history, not here.
+Design decisions still in force. Headings keep the ADR numbers that code, tests and GLOSSARY.md cite. The code is the source of truth. Measured effects of each change are in git history, not here.
 
 ## 0002 Demand is continuous market consumption
 A weekly market process (`_market_consumption_process`, `CONSUMPTION_INTERVAL_DAYS`) draws finished goods down at a seasonal rate, operator by operator, by `market_share`. Unmet demand is a lost sale, not a backorder, so service level stays harsh enough to separate strategies. Finished-goods capacity is per product (`FINISHED_GOODS_BUFFER_WEEKS` of expected consumption), and PUSH produces up to the per-product headroom. PULL production is driven by market signals (0020, 0029).

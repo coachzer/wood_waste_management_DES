@@ -4,7 +4,7 @@ A post-hoc metric family: for each waste-side storage stage (generator,
 collection center, treatment) it reads the run's monitor history and computes
 time-average WIP, throughput, and residence time. It does not touch the
 simulation. The
-**Time-Weighted WIP (Little's Law)** glossary term (CONTEXT.md) defines the
+**Time-Weighted WIP (Little's Law)** glossary term (GLOSSARY.md) defines the
 measure. Reported under a ``residence`` namespace so it rides the generic MC
 aggregation + CRN machinery (issues 06/07). The arithmetic core
 (``time_weighted_average``, ``residence_time``) is a sim/IO-free unit-test seam;

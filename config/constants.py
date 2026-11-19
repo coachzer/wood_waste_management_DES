@@ -115,7 +115,7 @@ ON_DEMAND_COLLECTOR_MAX_THRESHOLD_GROWTH = 0.3
 SSD_FLOATING_ACCUMULATION_RELATIVE_TOLERANCE = 1e-9
 
 # Transformation-selection scoring (ADR 0002, Phase F). The ABC priority weight
-# enters the score at this multiplier, making it the dominant term (CONTEXT.md
+# enters the score at this multiplier, making it the dominant term (GLOSSARY.md
 # "ABC Classification"); the input-availability term saturates at 1.0 once
 # on-hand input waste reaches this volume.
 ABC_PRIORITY_SCORE_MULTIPLIER = 2.0

@@ -1,37 +1,22 @@
 # Domain docs
 
-How the engineering skills use this repo's domain documentation when they explore the codebase.
+How the engineering skills should read this repo's domain docs.
 
 ## Before exploring, read these
 
-- **`CONTEXT.md`** at the repo root, if it exists.
-- **`docs/adr/`**. Read the ADRs that touch the area you are about to work in.
+- `GLOSSARY.md` at the repo root.
+- `docs/decisions.md`: one file of decisions in force, each under a heading keyed by its ADR number (`## 0031 ...`). Read the entries that touch the area you are about to work in.
 
-If any of these files is missing, **proceed silently** and carry on with the task. Leave their creation to the producer skill. The producer skill (`/grill-with-docs`) creates them when a term or decision gets resolved.
+If one is missing, proceed silently.
 
-## File structure
+## Recording a new decision
 
-Single-context repo:
-
-```
-/
-├── CONTEXT.md
-├── docs/adr/
-│   ├── 0001-*.md
-│   └── 0002-*.md
-├── core/
-├── models/
-└── ...
-```
+Add an entry to `docs/decisions.md` with the next free number (`## NNNN Title`, 1-3 sentences: the decision and why). Do not create `docs/adr/`. When a decision is superseded, edit or remove its entry and say so in the "Dropped numbers" list at the end. History lives in git.
 
 ## Use the glossary's vocabulary
 
-When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`. Use the glossary term itself, never a synonym listed under its `_Avoid_` line.
+When your output names a domain concept (issue title, refactor proposal, hypothesis, test name), use the term as `GLOSSARY.md` defines it, never a synonym on an `_Avoid_` line. If the concept is missing, either you are inventing language (reconsider) or there is a real gap (note it for `/domain-modeling`).
 
-If the concept you need isn't in the glossary yet, ask why. Either you are inventing language the project does not use, so reconsider, or there is a real gap, so note it for `/grill-with-docs`.
+## Flag decision conflicts
 
-## Flag ADR conflicts
-
-If your output contradicts an existing ADR, say so openly, for example:
-
-> _Contradicts ADR-0007, but worth reopening because..._
+If your output contradicts a decision, say so: "Contradicts 0027, but worth reopening because..."

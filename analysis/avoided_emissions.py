@@ -3,7 +3,7 @@
 A post-hoc accounting metric: rescales the already-recorded cumulative production
 volume per output type by a fixed per-product Lao & Chang (2023) cradle-to-gate
 factor (biogenic-excluded). It does not touch the simulation. The **Avoided Emissions** glossary term
-(CONTEXT.md) defines the claim -- a recycling avoided-burden reported beside,
+(GLOSSARY.md) defines the claim -- a recycling avoided-burden reported beside,
 never netted against, ``total_emissions_kgco2e`` -- and ADR 0011 records why.
 Emitted under a ``carbon`` namespace so it rides the generic MC aggregation + CRN
 machinery (issues 06/07).
