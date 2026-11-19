@@ -84,3 +84,20 @@ def make_treatment(env, waste_monitor, **overrides):
     )
     fields.update(overrides)
     return TreatmentOperator(**fields)
+
+
+def make_generator_site(volume_by_type, name="generator-1", region_type=RegionType.PODRAVSKA):
+    """The generator fields a collector pickup reads: name, region and per-type streams."""
+    from types import SimpleNamespace
+
+    from models.data_classes import WasteStream
+
+    return SimpleNamespace(
+        name=name,
+        region_type=region_type,
+        waste_streams={
+            waste_type: WasteStream(waste_type=waste_type, volume=volume)
+            for waste_type, volume in volume_by_type.items()
+        },
+        current_storage=sum(volume_by_type.values()),
+    )

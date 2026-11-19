@@ -1,6 +1,6 @@
 """Collection-center intake conserves mass on overflow (issue 11, Finding A).
 
-``_add_to_collection_center`` previously scaled stored waste down to the *old*
+Center intake previously scaled stored waste down to the *old*
 available space and then called ``handle_storage_event``; on the expand branch
 that grew capacity but never stored the overflow, silently dropping ~10% of
 collected waste on the Baseline seed. The corrected behavior conserves mass:
@@ -8,11 +8,10 @@ everything handed in is either stored (up to the possibly-expanded capacity) or
 landfilled -- nothing vanishes.
 """
 
-from types import SimpleNamespace
+import simpy
 
-from core.collector import CollectorCompany
+from tests.core.factories import make_collector, make_generator_site
 from models.enums import WasteType
-from models.state import SimulationState
 
 
 CONSTRUCTION = WasteType.CONSTRUCTION_WOOD_17_02_01
@@ -20,94 +19,56 @@ PACKAGING = WasteType.WOODEN_PACKAGING_15_01_03
 PAPER = WasteType.PAPER_PACKAGING_15_01_01  # 600 kg/m³ = the retired flat density
 
 
-class FakeCenter:
-    """Mirrors CollectionCenter's two fields the storage path touches."""
+def _dispatch_all_vehicles(monitor, volume_by_type):
+    """Send every vehicle at once to one generator; return (collector, landfilled).
 
-    def __init__(self, capacity, storage):
-        self.waste_storage_capacity = capacity
-        self.current_storage = dict(storage)
-
-
-class FakeCollector:
-    """A collector stand-in for _add_to_collection_center.
-
-    Replicates the real ``waste_storage_capacity`` property delegating to the
-    collection center, so an expansion inside handle_storage_event is visible
-    through both access paths exactly as on the real entity.
+    Each dispatch claims the center headroom it sees at t=0, so the vehicles that
+    unload later overflow the center. Per-tick capacity 2000, center 4000.
     """
-
-    facility_type = "collector"
-
-    def __init__(self, center, state, monitor, name="collector-1", region="podravska"):
-        self.collection_center = center
-        self.state = state
-        self.name = name
-        self.region = region
-        self.expansion_count = 0
-        self.env = SimpleNamespace(now=0.0)
-        self.waste_monitor = monitor
-
-    @property
-    def waste_storage_capacity(self):
-        return self.collection_center.waste_storage_capacity
-
-    @waste_storage_capacity.setter
-    def waste_storage_capacity(self, value):
-        self.collection_center.waste_storage_capacity = value
+    env = simpy.Environment()
+    collector = make_collector(
+        env, monitor, waste_types=list(volume_by_type),
+        collection_capacity=2000.0, collection_frequency=1,
+    )
+    generator = make_generator_site(volume_by_type)
+    for _ in collector.vehicles:
+        collector.collect_from_generator(generator)
+    env.run(until=0.9)
+    landfilled = monitor.store.landfilled_volume_by_entity().get(collector.name, 0.0)
+    return collector, landfilled
 
 
 def stored_total(collector):
     return sum(collector.collection_center.current_storage.values())
 
 
-def landfilled_total(monitor, name="collector-1"):
-    return monitor.store.landfilled_volume_by_entity().get(name, 0.0)
-
-
 def test_expand_branch_stores_overflow_and_landfills_remainder(ledger_waste_monitor):
-    """A large overflow takes the expand branch (capacity +500). The collected
-    mass must end up stored (up to the new capacity) plus landfilled -- not
-    dropped. Empty center, capacity 2000, 4000 handed in -> overflow 2000
-    (> ~1812, so expand): 2500 stored (full new capacity), 1500 landfilled.
+    """Three 2000 m3 loads into a 4000 m3 center overflow by 2000 (> ~1812, so
+    expand): capacity grows by 500, 4500 is stored and 1500 landfilled.
 
     Uses PAPER (600 kg/m³): per-type landfill cost (ADR 0013) only exceeds the
     expansion cost at this overflow for streams at/above the retired flat 0.6
-    density, so a denser stream is needed to still reach the expand branch under
-    test. The mass figures below are volume-based and density-independent."""
-    state = SimulationState()
-    collector = FakeCollector(FakeCenter(2000.0, {PAPER: 0.0}), state, ledger_waste_monitor)
+    density. The mass figures are volume-based and density-independent."""
+    collector, landfilled = _dispatch_all_vehicles(ledger_waste_monitor, {PAPER: 6000.0})
 
-    CollectorCompany._add_to_collection_center(collector, {PAPER: 4000.0})
-
-    assert collector.collection_center.waste_storage_capacity == 2500.0
-    assert stored_total(collector) == 2500.0
-    assert landfilled_total(ledger_waste_monitor) == 1500.0
-    # Conservation: nothing collected is silently dropped.
-    assert stored_total(collector) + landfilled_total(ledger_waste_monitor) == 4000.0
+    assert collector.collection_center.waste_storage_capacity == 4500.0
+    assert stored_total(collector) == 4500.0
+    assert landfilled == 1500.0
 
 
 def test_landfill_branch_conserves_mass(ledger_waste_monitor):
-    """A small overflow takes the landfill branch: what fits is stored, the
-    excess is landfilled and attributed -- still conserving mass."""
-    state = SimulationState()
-    collector = FakeCollector(FakeCenter(2000.0, {CONSTRUCTION: 0.0}), state, ledger_waste_monitor)
+    """A 100 m3 overflow takes the landfill branch: what fits is stored, the
+    excess is landfilled and attributed."""
+    collector, landfilled = _dispatch_all_vehicles(ledger_waste_monitor, {CONSTRUCTION: 4100.0})
 
-    CollectorCompany._add_to_collection_center(collector, {CONSTRUCTION: 2100.0})
-
-    assert collector.collection_center.waste_storage_capacity == 2000.0  # no expansion
-    assert stored_total(collector) == 2000.0
-    assert landfilled_total(ledger_waste_monitor) == 100.0
-    assert stored_total(collector) + landfilled_total(ledger_waste_monitor) == 2100.0
+    assert collector.collection_center.waste_storage_capacity == 4000.0
+    assert stored_total(collector) == 4000.0
+    assert landfilled == 100.0
 
 
 def test_no_overflow_stores_everything(ledger_waste_monitor):
     """Within capacity, all waste is stored and nothing is landfilled."""
-    state = SimulationState()
-    collector = FakeCollector(FakeCenter(2000.0, {CONSTRUCTION: 0.0, PACKAGING: 0.0}), state, ledger_waste_monitor)
-
-    CollectorCompany._add_to_collection_center(
-        collector, {CONSTRUCTION: 300.0, PACKAGING: 200.0}
-    )
+    collector, landfilled = _dispatch_all_vehicles(ledger_waste_monitor, {CONSTRUCTION: 300.0, PACKAGING: 200.0})
 
     assert stored_total(collector) == 500.0
-    assert landfilled_total(ledger_waste_monitor) == 0.0
+    assert landfilled == 0.0
