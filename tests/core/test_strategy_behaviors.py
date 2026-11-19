@@ -31,15 +31,25 @@ def _boom():
     raise AssertionError("signal callable must not be consulted on this path")
 
 
-def test_factories_map_every_selector_to_its_behavior_class():
-    assert {member: type(build_stock_strategy(member)) for member in StockStrategy} == {
-        StockStrategy.ON_DEMAND: OnDemandStrategy,
-        StockStrategy.REORDER_50: Reorder50Strategy,
-        StockStrategy.REORDER_90: Reorder90Strategy,
+def test_factories_map_every_selector_to_its_behavior():
+    # Treatment reorder decisions at 60% and 95% of storage tell the three apart.
+    assert {
+        member: (
+            build_stock_strategy(member).treatment_should_reorder(60.0, 100.0),
+            build_stock_strategy(member).treatment_should_reorder(95.0, 100.0),
+        )
+        for member in StockStrategy
+    } == {
+        StockStrategy.ON_DEMAND: (True, True),
+        StockStrategy.REORDER_50: (False, False),
+        StockStrategy.REORDER_90: (True, False),
     }
-    assert {member: type(build_inventory_policy(member)) for member in InventoryPolicy} == {
-        InventoryPolicy.PUSH: PushPolicy,
-        InventoryPolicy.PULL: PullPolicy,
+    assert {
+        member: build_inventory_policy(member).treatment_is_demand_driven()
+        for member in InventoryPolicy
+    } == {
+        InventoryPolicy.PUSH: False,
+        InventoryPolicy.PULL: True,
     }
 
 
