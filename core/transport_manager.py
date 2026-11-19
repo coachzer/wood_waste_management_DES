@@ -81,10 +81,8 @@ class PointToPointTransport:
             if vehicle_info:
                 request.volume = loadable_volume
                 self._origin_collector(request).collection_center.current_storage[request.waste_type] -= loadable_volume
-                transport = self._create_transport(request, vehicle_info, current_time)
-                if transport:
-                    scheduled_transports.append(transport)
-                    processed_requests.append(request)
+                scheduled_transports.append(self._create_transport(request, vehicle_info, current_time))
+                processed_requests.append(request)
         
         for request in processed_requests:
             self.pending_requests.remove(request)
@@ -99,7 +97,7 @@ class PointToPointTransport:
         stock = self._origin_collector(request).collection_center.current_storage[request.waste_type]
         return min(request.volume, stock)
 
-    def _create_transport(self, request: TransportRequest, vehicle_info: Dict, current_time: float) -> Optional[Dict]:
+    def _create_transport(self, request: TransportRequest, vehicle_info: Dict, current_time: float) -> Dict:
         """Create a transport job from a request"""
         vehicle = vehicle_info["vehicle"]
         collector = vehicle_info["collector"]

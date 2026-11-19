@@ -14,6 +14,7 @@ from config.constants import (
     PROCESSING_CAPACITY_FRACTION,
     CARBON_PRICE_EUR_PER_KG_CO2E,
     ABC_PRIORITY_SCORE_MULTIPLIER,
+    LOCAL_COLLECTION_RATIO,
     INPUT_AVAILABILITY_SATURATION_M3,
     OPERATING_TICK_DAYS,
 )
@@ -441,7 +442,6 @@ class TreatmentOperator(OperationalEntity):
 
     def request_waste_directly(self, required_waste: float, input_waste_types: List[WasteType]) -> Dict[WasteType, float]:
         """Request waste with local/cross-region routing split"""
-        from config.constants import LOCAL_COLLECTION_RATIO
         collected_waste = {}
         local_portion = required_waste * LOCAL_COLLECTION_RATIO
         cross_region_portion = required_waste * (1.0 - LOCAL_COLLECTION_RATIO)

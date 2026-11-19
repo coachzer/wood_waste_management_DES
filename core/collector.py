@@ -416,44 +416,25 @@ class CollectorCompany(OperationalEntity):
 
             waste_type_enum = signal['waste_type']
 
-            source_type = signal.get('source_type', 'generator')
-            source_id = signal.get('source_id', signal.get('generator_id'))
+            source_type = signal['source_type']
             current_time = self.env.now
 
-            matching_generators = []
-
-            match source_type:
-                case "generator":
-                    matching_generators = [
-                        g
-                        for g in self._get_prioritized_generators()
-                        if (
-                            g.name == source_id
-                            and waste_type_enum in g.waste_streams
-                            and g.waste_streams[waste_type_enum].volume > 0
-                        )
-                    ]
-                case _:
-                    matching_generators = [
-                        g
-                        for g in self._get_prioritized_generators()
-                        if (
-                            waste_type_enum in g.waste_streams
-                            and g.waste_streams[waste_type_enum].volume > 0
-                        )
-                    ]
+            matching_generators = [
+                g
+                for g in self._get_prioritized_generators()
+                if (
+                    (source_type != "generator" or g.name == signal['source_id'])
+                    and waste_type_enum in g.waste_streams
+                    and g.waste_streams[waste_type_enum].volume > 0
+                )
+            ]
 
             if matching_generators:
-                for generator in matching_generators:
-                    if self._find_available_vehicle():
-                        self.collect_from_generator(
-                            generator, requested_volume=signal.get('volume'), waste_type=waste_type_enum
-                        )
-
-                        self.kanban_manager.acknowledge_signal(signal['id'])
-                        break
-                    else:
-                        break
+                if self._find_available_vehicle():
+                    self.collect_from_generator(
+                        matching_generators[0], requested_volume=signal.get('volume'), waste_type=waste_type_enum
+                    )
+                    self.kanban_manager.acknowledge_signal(signal['id'])
             elif source_type != "generator":
                 if source_type == "treatment":
                     self._propagate_signal_to_generators(signal, current_time)
