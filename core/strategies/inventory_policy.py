@@ -97,6 +97,9 @@ class PullPolicy:
     def generators_request_pickup(self) -> bool:
         return False
 
+    def ondemand_generator_should_signal(self, current_storage, capacity) -> bool:
+        return False
+
     def propagates_reorder_signals_upstream(self) -> bool:
         return True
 
