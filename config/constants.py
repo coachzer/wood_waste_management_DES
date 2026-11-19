@@ -33,6 +33,12 @@ ESTIMATED_COLLECTION_COST_PER_KM = 0.5  # pre-trip estimate: distance * this
 # scenario's transportation_time, which scales travel time only (ADR 0015).
 ROAD_CIRCUITY_FACTOR = 1.35
 
+# Collector fleet and depot sizing. The fixed trip cost rises as efficiency falls,
+# up to the cap.
+COLLECTOR_TRIP_COST_CAP = 100
+COLLECTION_CENTER_CAPACITY_MULTIPLE = 2
+VEHICLES_PER_COLLECTOR = 3
+
 # Standard waste densities in kg/m³ based on EWC codes and industry data
 WASTE_DENSITIES = {
     WasteType.FORESTRY_WASTE_02_01_07: 350.0,

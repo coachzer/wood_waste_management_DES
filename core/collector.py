@@ -13,6 +13,9 @@ from config.constants import (
     COLLECTOR_DEGRADATION_FLOOR,
     COLLECTOR_TIME_DEGRADATION_RATE_PER_DAY,
     OPERATING_TICK_DAYS,
+    COLLECTOR_TRIP_COST_CAP,
+    COLLECTION_CENTER_CAPACITY_MULTIPLE,
+    VEHICLES_PER_COLLECTOR,
 )
 from core.transport_manager import PointToPointTransport, TransportRequest
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
@@ -80,7 +83,6 @@ class CollectorCompany(OperationalEntity):
         state,
         failure_config: Optional[FailureConfig],
         seed,
-        num_vehicles: int = 3,
         vehicle_capacity: Optional[float] = None,
     ):
         self.scenario = scenario
@@ -110,7 +112,7 @@ class CollectorCompany(OperationalEntity):
         self.region_type = region_type
 
         self.collection_center = CollectionCenter(
-            waste_storage_capacity=collection_capacity * 2,
+            waste_storage_capacity=collection_capacity * COLLECTION_CENTER_CAPACITY_MULTIPLE,
             current_storage=dict.fromkeys(WasteType, 0.0),
         )
 
@@ -123,7 +125,7 @@ class CollectorCompany(OperationalEntity):
                 capacity=self.vehicle_capacity,
                 current_region=self.region_type,
             )
-            for i in range(num_vehicles)
+            for i in range(VEHICLES_PER_COLLECTOR)
         ]
 
         self.active_transports = []
@@ -380,7 +382,7 @@ class CollectorCompany(OperationalEntity):
                 continue
 
             self.collection_capacity_per_tick_m3 = self.initial_collection_capacity_per_tick_m3 * self.efficiency
-            self.transport_cost = min(100, self.initial_transport_cost * (2 - self.efficiency))
+            self.transport_cost = min(COLLECTOR_TRIP_COST_CAP, self.initial_transport_cost * (2 - self.efficiency))
 
             yield self.env.timeout(OPERATING_TICK_DAYS)
 
