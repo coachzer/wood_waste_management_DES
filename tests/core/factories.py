@@ -11,6 +11,7 @@ from core.collector import CollectorCompany
 from core.generator import WasteGenerator
 from core.kanban_manager import KanbanManager
 from core.transport_manager import PointToPointTransport
+from instrumentation.waste_monitor import WasteMonitor
 from core.treatment import TreatmentOperator
 from models.data_classes import WasteStream
 from models.enums import EntityStatus, InventoryPolicy, OutputType, RegionType, StockStrategy, WasteType, sorted_by_value
@@ -157,6 +158,22 @@ def posted_treatment_orders(waste_monitor, stock_strategy, on_hand, order_share_
 
 
 EMPTY_PULL_OPERATOR_ORDER_M3 = 100.0
+
+
+class ChargeRecordingMonitor(WasteMonitor):
+    """A real monitor that also lists every transport charge and emission it receives."""
+
+    def __init__(self):
+        super().__init__()
+        self.costs, self.emissions = [], []
+
+    def update_entity_costs(self, entity_name, entity_type, transport_cost=0.0, **kwargs):
+        self.costs.append((entity_name, transport_cost))
+        super().update_entity_costs(entity_name, entity_type, transport_cost=transport_cost, **kwargs)
+
+    def record_emission(self, entity_name, kind, kgco2e, timestamp):
+        self.emissions.append((entity_name, kind, kgco2e))
+        super().record_emission(entity_name, kind, kgco2e, timestamp)
 
 
 class RecordingKanbanManager(KanbanManager):

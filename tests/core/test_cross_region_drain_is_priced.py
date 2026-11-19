@@ -1,38 +1,49 @@
 """A fallback drain from another region is charged as a loaded trip; a local drain is not (ADR 0037)."""
-import types
-from types import SimpleNamespace
+import pytest
+import simpy
 
-from core.treatment import TreatmentOperator
+from config.constants import COLLECTION_COST_PER_KM_PER_M3, LOCAL_COLLECTION_RATIO, ROAD_CIRCUITY_FACTOR
+from core.transport_manager import PointToPointTransport
 from models.distances import get_distance
 from models.enums import RegionType, WasteType
+from models.state import SimulationState
+from tests.core.factories import ChargeRecordingMonitor, make_collector, make_treatment
 
 WASTE = WasteType.CONSTRUCTION_WOOD_17_02_01
 HOME = RegionType.OSREDNJESLOVENSKA
-
-
-def _collector(region_type, stock, charges):
-    def provide(requested_amount, needed_types, treatment_name=None):
-        taken = min(stock, requested_amount)
-        return {WASTE: taken} if taken else {}
-    return SimpleNamespace(
-        region_type=region_type,
-        is_operational=True,
-        provide_waste_for_treatment=provide,
-        charge_trip=lambda load, distance: charges.append((region_type, load, distance)),
-    )
+REMOTE = RegionType.GORENJSKA
 
 
 def test_only_the_remote_drain_is_charged_over_its_distance():
-    """Mutation check (red): skip the charge, or charge local drains too."""
-    charges = []
-    local = _collector(HOME, 30.0, charges)
-    remote = _collector(RegionType.GORENJSKA, 500.0, charges)
-    operator = SimpleNamespace(name="proc_home", region_type=HOME, state=SimpleNamespace(collectors=[local, remote]))
-    operator._drain_collectors = types.MethodType(TreatmentOperator._drain_collectors, operator)
-    collected_waste = {}
+    """An operator asks for 100 m3; its local collector holds 30, a Gorenjska one holds 500.
 
-    remaining = TreatmentOperator._collect_with_fallback(operator, 100.0, [WASTE], collected_waste)
+    The local 80% share drains the 30 free of charge, the cross-region 20% is queued
+    as a transfer, and the fallback drains the missing 50 from Gorenjska as one
+    charged trip.
 
-    assert remaining == 0.0
-    assert collected_waste == {WASTE: 100.0}
-    assert charges == [(RegionType.GORENJSKA, {WASTE: 70.0}, get_distance(RegionType.GORENJSKA, HOME))]
+    Mutation check (red): skip the charge, or charge local drains too.
+    """
+    env = simpy.Environment()
+    monitor = ChargeRecordingMonitor()
+    state = SimulationState()
+    transport_manager = PointToPointTransport(state=state, road_circuity_mean=1.0)
+    local, remote = (
+        make_collector(env, monitor, name=name, region_type=region, state=state, transport_manager=transport_manager)
+        for name, region in (("col_home", HOME), ("col_remote", REMOTE))
+    )
+    state.collectors = [local, remote]
+    local.collection_center.current_storage[WASTE] = 30.0
+    remote.collection_center.current_storage[WASTE] = 500.0
+    operator = make_treatment(
+        env, monitor, name="proc_home", region_type=HOME, state=state, transformations={},
+        order_share_by_waste_type={WASTE: 1.0}, order_up_to_level_m3=100.0,
+    )
+
+    collected = operator.request_waste_directly(100.0, [WASTE])
+
+    assert LOCAL_COLLECTION_RATIO == 0.8
+    assert collected == {WASTE: pytest.approx(80.0)}
+    road_distance = get_distance(REMOTE, HOME) * ROAD_CIRCUITY_FACTOR
+    assert monitor.costs == [
+        ("col_remote", pytest.approx(remote.transport_cost + road_distance * COLLECTION_COST_PER_KM_PER_M3 * 50.0)),
+    ]
