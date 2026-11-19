@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import List, Dict, Optional
-from config.constants import TRAVEL_SPEED_KMH
+from config.constants import RESIDUE_TRANSFER_VOLUME_M3, TRAVEL_SPEED_KMH
 from models.enums import EntityStatus, RegionType, WasteType
 from models.distances import get_distance
 from utils.capacity_utils import store_with_overflow
@@ -98,8 +98,12 @@ class PointToPointTransport:
             fits = store_with_overflow(destination_collector, storage, transport["load_by_type"])
             for waste_type, volume in fits.items():
                 storage[waste_type] += volume
-        transport["collector"].charge_trip(
+        trip_cost = transport["collector"].charge_trip(
             dict(transport["load_by_type"]), get_distance(transport["origin"], transport["destination"]))
+        volume = sum(transport["load_by_type"].values())
+        if volume < RESIDUE_TRANSFER_VOLUME_M3:
+            self.state.record_residue_transfer(
+                source_name=transport["requester_id"], volume=volume, cost=trip_cost, timestamp=self.env.now)
 
     def find_available_vehicle(self, origin: RegionType) -> Optional[Dict]:
         """Find an idle vehicle at or near the origin. A FAILED collector's vehicles take no new jobs."""

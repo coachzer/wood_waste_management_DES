@@ -15,6 +15,7 @@ class SimulationState:
         self.collectors = []
         self.treatment_operators = []
         self.transport_flows = []
+        self.residue_transfers = []
         self.consumption_events = []
         self.transport_manager = None
 
@@ -65,6 +66,15 @@ class SimulationState:
             'volume': volume,
             'timestamp': timestamp,
             'transport_method': transport_method
+        })
+
+    def record_residue_transfer(self, source_name: str, volume: float, cost: float, timestamp: float) -> None:
+        """Record a delivered transfer under RESIDUE_TRANSFER_VOLUME_M3 and the trip cost it still paid."""
+        self.residue_transfers.append({
+            'source_name': source_name,
+            'volume': volume,
+            'cost': cost,
+            'timestamp': timestamp,
         })
 
     def record_consumption_event(self, operator_name: str, product: str,
