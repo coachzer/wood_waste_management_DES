@@ -57,6 +57,7 @@ class SimulationManager:
             self.transport_manager = PointToPointTransport(
                 state=self.state,
                 road_circuity_mean=scenario_config.transportation_time[0],
+                env=self.env,
             )
 
             self.facility_builder = FacilityBuilder(

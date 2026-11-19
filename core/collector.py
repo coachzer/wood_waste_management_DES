@@ -116,7 +116,6 @@ class CollectorCompany(OperationalEntity):
         ]
 
         self.active_transports = []
-        self.returning_vehicles = []
 
         self.collected_waste = dict.fromkeys(WasteType, 0.0)
 
@@ -290,19 +289,12 @@ class CollectorCompany(OperationalEntity):
             self.collection_center.current_storage[waste_type] += amount
 
     def manage_transport(self):
-        """Transport management using point-to-point system"""
+        """Daily sweep: dispatch transfers still waiting for a vehicle a local trip has since freed.
+
+        Transfers otherwise dispatch, deliver and free their vehicles as events (ADR 0041).
+        """
         while True:
-            current_time = self.env.now
-
-            new_transports = self.transport_manager.process_requests(current_time)
-            self.active_transports.extend(new_transports)
-
-            completed = self._check_completed_transports(current_time)
-
-            for transport in completed:
-                self._handle_completed_transport(transport)
-                self.active_transports.remove(transport)
-
+            self.transport_manager.schedule_dispatch()
             yield self.env.timeout(1.0)
 
     def _apply_status_throughput_effects(self):
@@ -443,13 +435,15 @@ class CollectorCompany(OperationalEntity):
         ]
 
     def transferable_volume(self, waste_type: WasteType) -> float:
-        """Stock of this waste type not yet claimed by a queued transfer."""
-        return (self.collection_center.current_storage[waste_type]
-                - self.transport_manager.queued_volume(self.name, waste_type))
+        """Stock of this waste type in the center. Volume held for a transfer has already left it (ADR 0041)."""
+        return self.collection_center.current_storage[waste_type]
 
-    def transfer_waste_to_region(self, waste_type: WasteType, volume: float, destination: RegionType):
-        """Queue a transfer; the volume stays in this center until a vehicle loads it."""
-        self.transport_manager.request_transport(TransportRequest(
+    def transfer_waste_to_region(self, waste_type: WasteType, volume: float, destination: RegionType) -> bool:
+        """Request a transfer. The volume, at most this center's stock, leaves the center now and is held for it (ADR 0041).
+
+        Returns False when nothing was held: no positive volume or no stock.
+        """
+        return self.transport_manager.request_transport(TransportRequest(
             origin=self.region_type,
             destination=destination,
             waste_type=waste_type,
@@ -567,52 +561,6 @@ class CollectorCompany(OperationalEntity):
                 )
 
         return provided_waste
-
-    def _handle_completed_transport(self, transport: Dict) -> None:
-        """Process a completed transport"""
-        target_collector = next(
-            (
-                c
-                for c in self.state.collectors
-                if c.region_type == transport["destination"]
-            ),
-            None,
-        )
-        if target_collector:
-            target_collector.collection_center.current_storage[
-                transport["waste_type"]
-            ] += transport["volume"]
-        transport["collector"].charge_trip(
-            {transport["waste_type"]: transport["volume"]},
-            get_distance(transport["origin"], transport["destination"]),
-        )
-
-    def _check_completed_transports(self, current_time: float) -> List[Dict]:
-        """Identify delivered transports, send their vehicles home empty, and free vehicles back home.
-
-        The return leg takes road travel time and is covered by the fixed trip cost (ADR 0040).
-        """
-        completed = []
-        for transport in self.active_transports:
-            if current_time >= transport["arrival_time"]:
-                vehicle = transport["vehicle"]
-                home_region = transport["collector"].region_type
-                vehicle.current_load_by_type = {}
-                vehicle.current_region = transport["destination"]
-                vehicle.destination = home_region
-                vehicle.estimated_arrival = transport["arrival_time"] + self.transport_manager.travel_time_days(
-                    transport["destination"], home_region)
-                self.returning_vehicles.append(vehicle)
-                completed.append(transport)
-
-        for vehicle in list(self.returning_vehicles):
-            if current_time >= vehicle.estimated_arrival:
-                vehicle.in_transit = False
-                vehicle.current_region = vehicle.destination
-                vehicle.destination = None
-                vehicle.estimated_arrival = None
-                self.returning_vehicles.remove(vehicle)
-        return completed
 
     def _filter_active_waste_streams(self, generator) -> Dict[WasteType, any]:
         """The generator's non-empty streams of waste types this collector handles."""

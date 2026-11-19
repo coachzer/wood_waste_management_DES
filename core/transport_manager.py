@@ -14,10 +14,22 @@ class TransportRequest:
     requester_id: str
 
 class PointToPointTransport:
-    def __init__(self, state, road_circuity_mean: float):
+    """Inter-region transfers between collection centers (ADR 0041).
+
+    A request holds its volume: it leaves the sending center at request time, so no other drain
+    can take it. Requests made in the same instant are dispatched together at the end of that
+    instant, one vehicle per (sending collector, destination) carrying every requested type.
+    Delivery happens at the arrival time and the vehicle is freed when it is back home, which
+    triggers the next dispatch. Without ``env`` (unit tests) nothing dispatches by itself;
+    call ``process_requests``.
+    """
+
+    def __init__(self, state, road_circuity_mean: float, env=None):
         self.state = state
         self.road_circuity_mean = road_circuity_mean
+        self.env = env
         self.pending_requests: List[TransportRequest] = []
+        self._dispatch_scheduled = False
 
     def _mean_transport_circuity(self) -> float:
         """Deterministic road-circuity factor on the great-circle distance.
@@ -33,14 +45,61 @@ class PointToPointTransport:
         """Road travel time between two regions, in days."""
         return get_distance(from_region, to_region) * self._mean_transport_circuity() / TRAVEL_SPEED_KMH / 24.0
 
-    def queued_volume(self, requester_id: str, waste_type: WasteType) -> float:
-        """Volume of this waste type that queued requests from this collector have claimed."""
-        return sum(request.volume for request in self.pending_requests
-                   if request.requester_id == requester_id and request.waste_type == waste_type)
+    def held_volume_by_requester(self) -> Dict[str, float]:
+        """Volume held for queued requests, by sending collector: out of its center, on no vehicle yet."""
+        held = {}
+        for request in self.pending_requests:
+            held[request.requester_id] = held.get(request.requester_id, 0.0) + request.volume
+        return held
 
-    def request_transport(self, request: TransportRequest):
+    def request_transport(self, request: TransportRequest) -> bool:
+        """Hold the requested volume (at most the center's stock) and queue it. False if none is left."""
+        stock = self._origin_collector(request).collection_center.current_storage
+        request.volume = min(request.volume, stock[request.waste_type])
+        if request.volume <= 0:
+            return False
+        stock[request.waste_type] -= request.volume
         self.pending_requests.append(request)
-    
+        self.schedule_dispatch()
+        return True
+
+    def schedule_dispatch(self) -> None:
+        """Dispatch at the end of the current instant, once, so same-instant requests travel together."""
+        if self.env is None or self._dispatch_scheduled:
+            return
+        self._dispatch_scheduled = True
+        self.env.process(self._deferred_dispatch())
+
+    def _deferred_dispatch(self):
+        yield self.env.timeout(0)
+        self._dispatch_scheduled = False
+        for transport in self.process_requests(self.env.now):
+            transport["collector"].active_transports.append(transport)
+            self.env.process(self._run_transfer(transport))
+
+    def _run_transfer(self, transport: Dict):
+        """Deliver at the arrival time, drive home empty, then free the vehicle and dispatch again."""
+        yield self.env.timeout(max(0.0, transport["arrival_time"] - self.env.now))
+        self.deliver(transport)
+        transport["collector"].active_transports.remove(transport)
+        vehicle = transport["vehicle"]
+        home_region = transport["collector"].region_type
+        vehicle.current_load_by_type = {}
+        vehicle.current_region = transport["destination"]
+        yield self.env.timeout(self.travel_time_days(transport["destination"], home_region))
+        vehicle.in_transit = False
+        vehicle.current_region = home_region
+        self.schedule_dispatch()
+
+    def deliver(self, transport: Dict) -> None:
+        """Unload into the destination center and charge the vehicle owner one trip (ADR 0034, 0038)."""
+        destination_collector = self._destination_collector(transport["destination"])
+        if destination_collector:
+            for waste_type, volume in transport["load_by_type"].items():
+                destination_collector.collection_center.current_storage[waste_type] += volume
+        transport["collector"].charge_trip(
+            dict(transport["load_by_type"]), get_distance(transport["origin"], transport["destination"]))
+
     def find_available_vehicle(self, origin: RegionType) -> Optional[Dict]:
         """Find an idle vehicle at or near the origin. A FAILED collector's vehicles take no new jobs."""
         operating_collectors = [c for c in self.state.collectors if c.status != EntityStatus.FAILED]
@@ -48,10 +107,10 @@ class PointToPointTransport:
             for vehicle in collector.vehicles:
                 if not vehicle.in_transit and vehicle.current_region == origin:
                     return {"vehicle": vehicle, "collector": collector}
-        
+
         min_distance = float('inf')
         best_option = None
-        
+
         for collector in operating_collectors:
             for vehicle in collector.vehicles:
                 if not vehicle.in_transit:
@@ -59,85 +118,77 @@ class PointToPointTransport:
                     if distance < min_distance:
                         min_distance = distance
                         best_option = {"vehicle": vehicle, "collector": collector}
-        
+
         return best_option
-    
+
     def process_requests(self, current_time: float) -> List[Dict]:
-        """Process pending transport requests and create transport jobs"""
+        """Load one idle vehicle per (sending collector, destination) with every queued type for it.
+
+        Groups with no idle vehicle stay queued, their volume still held.
+        """
         if not self.pending_requests:
             return []
-        
-        self.pending_requests.sort(key=lambda r: r.request_time)
-        
-        scheduled_transports = []
-        processed_requests = []
-        
+
+        self.pending_requests.sort(key=lambda request: request.request_time)
+        requests_by_route = {}
         for request in self.pending_requests:
-            loadable_volume = self._loadable_volume(request)
-            if loadable_volume <= 0:
-                processed_requests.append(request)
+            requests_by_route.setdefault((request.requester_id, request.destination), []).append(request)
+
+        scheduled_transports = []
+        for requests in requests_by_route.values():
+            vehicle_info = self.find_available_vehicle(requests[0].origin)
+            if not vehicle_info:
                 continue
-            vehicle_info = self.find_available_vehicle(request.origin)
-            if vehicle_info:
-                request.volume = loadable_volume
-                self._origin_collector(request).collection_center.current_storage[request.waste_type] -= loadable_volume
-                scheduled_transports.append(self._create_transport(request, vehicle_info, current_time))
-                processed_requests.append(request)
-        
-        for request in processed_requests:
-            self.pending_requests.remove(request)
-        
+            load_by_type = {}
+            for request in requests:
+                load_by_type[request.waste_type] = load_by_type.get(request.waste_type, 0.0) + request.volume
+            scheduled_transports.append(self._create_transport(requests[0], load_by_type, vehicle_info, current_time))
+            for request in requests:
+                self.pending_requests.remove(request)
+
         return scheduled_transports
-    
+
     def _origin_collector(self, request: TransportRequest):
         return next(c for c in self.state.collectors if c.name == request.requester_id)
 
-    def _loadable_volume(self, request: TransportRequest) -> float:
-        """Volume still at the sending center. Queued volume stays there until a vehicle loads it."""
-        stock = self._origin_collector(request).collection_center.current_storage[request.waste_type]
-        return min(request.volume, stock)
+    def _destination_collector(self, destination: RegionType):
+        return next((c for c in self.state.collectors if c.region_type == destination), None)
 
-    def _create_transport(self, request: TransportRequest, vehicle_info: Dict, current_time: float) -> Dict:
-        """Create a transport job from a request"""
+    def _create_transport(self, request: TransportRequest, load_by_type: Dict[WasteType, float],
+                          vehicle_info: Dict, current_time: float) -> Dict:
+        """Load the vehicle and log one collector-to-collector flow per type, attributed to the sender."""
         vehicle = vehicle_info["vehicle"]
         collector = vehicle_info["collector"]
-        
-        travel_time = self.travel_time_days(request.origin, request.destination)
 
         pickup_time = current_time
         if vehicle.current_region != request.origin:
             pickup_time += self.travel_time_days(vehicle.current_region, request.origin)
-        
-        arrival_time = pickup_time + travel_time
-        
-        vehicle.in_transit = True
-        vehicle.current_load_by_type = {request.waste_type: request.volume}
+        arrival_time = pickup_time + self.travel_time_days(request.origin, request.destination)
+        volume = sum(load_by_type.values())
 
-        state = self.state
-        destination_collector = next(
-            (c for c in state.collectors
-             if c.region_type == request.destination),
-            None
-        )
+        vehicle.in_transit = True
+        vehicle.current_load_by_type = dict(load_by_type)
+
+        destination_collector = self._destination_collector(request.destination)
         origin_collector_name = request.requester_id
         target_name = destination_collector.name if destination_collector else origin_collector_name
+        for waste_type, waste_volume in load_by_type.items():
+            self.state.track_transport_flow(
+                source_type="collector",
+                source_name=origin_collector_name,
+                target_type="collector",
+                target_name=target_name,
+                waste_type=waste_type,
+                volume=waste_volume,
+                timestamp=current_time,
+                transport_method="inter_region_transport"
+            )
 
-        self.state.track_transport_flow(
-            source_type="collector",
-            source_name=origin_collector_name,
-            target_type="collector",
-            target_name=target_name,
-            waste_type=request.waste_type,
-            volume=request.volume,
-            timestamp=current_time,
-            transport_method="inter_region_transport"
-        )
-        
-        transport = {
+        return {
             "vehicle": vehicle,
             "collector": collector,
-            "waste_type": request.waste_type,
-            "volume": request.volume,
+            "load_by_type": dict(load_by_type),
+            "volume": volume,
             "origin": request.origin,
             "destination": request.destination,
             "pickup_time": pickup_time,
@@ -145,4 +196,3 @@ class PointToPointTransport:
             "requester_id": request.requester_id,
             "target_name": target_name,
         }
-        return transport

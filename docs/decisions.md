@@ -107,14 +107,15 @@ In `_drain_collectors`, a drain from another region is charged as one loaded tri
 ## 0038 Transport cost and emissions use road distance
 `charge_trip` multiplies great-circle distance by `ROAD_CIRCUITY_FACTOR` (1.35). It is a constant, not the scenario's `transportation_time`, so stress scenarios that slow transport do not inflate fuel and cost. It is deterministic, so no extra RNG draws. No primary source backs the 1.35 value.
 
-## 0039 Transfer volume leaves the center when a vehicle loads it
-`PointToPointTransport.process_requests` debits the origin when it assigns a vehicle, loading `min(requested, stock)`. Queued volume stays in center stock. `_get_available_waste_from_collector` subtracts `queued_volume` so one cross-region request cannot claim the same stock twice.
-
 ## 0040 Transfer vehicles return home, and FAILED fleets take no transfers
 After delivery the vehicle drives home empty over road travel time and stays `in_transit` until it arrives. The leg has no per-km charge. `find_available_vehicle` skips vehicles of FAILED collectors, and a transfer already under way still delivers.
+
+## 0041 Transfers hold their volume at request time, consolidate per route, and run as events
+`PointToPointTransport.request_transport` takes the requested volume, at most the sending center's stock, out of the center at request time, so no other drain can take it, and `process_requests` sends one vehicle per route per instant carrying every queued type. Delivery happens at the arrival time, and `deliver` charges the vehicle owner one loaded trip (0034, 0038); the vehicle then drives home (0040). Held volume is in no center and on no vehicle, so both mass-balance checks count it through `SimulationState.held_transfer_volume_by_collector`.
 
 ## Dropped numbers
 
 - 0001 Run artifact directories: never implemented. No code writes `outputs/runs/`.
 - 0003 Architecture deepening sequence: a plan, now history. `SimulationState` injection landed and is documented in `models/state.py`.
 - 0012: never existed (the number was reserved for the freeze oracle ADR, since removed).
+- 0039 Transfer volume leaves the center when a vehicle loads it: superseded by 0041.

@@ -155,10 +155,11 @@ def make_center_collector(name, storage):
 
 
 def make_waste_state():
-    """A SimulationState stand-in: a transport-flow log, no reposition in flight."""
+    """A SimulationState stand-in: a transport-flow log, no reposition in flight or held."""
     return SimpleNamespace(
         transport_flows=[],
         scheduled_reposition_volume_by_destination=lambda: {},
+        held_transfer_volume_by_collector=lambda: {},
     )
 
 
@@ -247,10 +248,11 @@ def make_treatment_op(name, waste_storage, processed):
 
 
 def make_system_state(vehicles=()):
-    """A SimulationState stub exposing the in-transit iterator."""
+    """A SimulationState stub exposing the in-transit iterator, nothing held for transfer."""
     moving = list(vehicles)
     return SimpleNamespace(
         iter_outbound_vehicles=lambda: iter(moving),
+        held_transfer_volume_by_collector=lambda: {},
     )
 
 
@@ -401,12 +403,12 @@ def test_armed_invariants_hold_on_baseline_run():
 def test_queued_and_in_flight_reposition_balance_both_waste_checks():
     """Repositioning volume mid-pipeline at the end-of-run check is conserved.
 
-    A queued transfer stays in the origin center until a vehicle loads it, so
-    it is still ``current_storage``. Loaded volume rides a vehicle (flow logged
-    origin -> destination, not yet deposited). Neither the per-center nor the
-    system-wide identity may trip, and the queue must not be counted twice.
+    A queued transfer's volume is held: it left the origin center at request
+    time and is on no vehicle yet (ADR 0041). Loaded volume rides a vehicle
+    (flow logged origin -> destination, not yet deposited). Neither the
+    per-center nor the system-wide identity may trip.
 
-    Mutation checks (red): count the queued 300 as in transit as well, or drop
+    Mutation checks (red): drop held volume from either check, or drop
     ``scheduled_reposition_volume_by_destination`` from the per-center check
     -> MassBalanceViolation.
     """
@@ -443,7 +445,7 @@ def test_queued_and_in_flight_reposition_balance_both_waste_checks():
     # 1000 generated and collected into the origin center.
     generator.total_generated[waste_type] = 1000.0
     state.transport_flows.append(flow("gen-1", "col-origin", 1000.0))
-    # 300 queued for a vehicle and still in the center; 200 loaded and on a vehicle.
+    # 300 held for a queued transfer, out of the center; 200 loaded and on a vehicle.
     manager.pending_requests.append(
         TransportRequest(
             origin=RegionType.KOROSKA,
@@ -458,7 +460,7 @@ def test_queued_and_in_flight_reposition_balance_both_waste_checks():
     vehicle = SimpleNamespace(in_transit=True, current_load_by_type={waste_type: 200.0})
     origin.vehicles.append(vehicle)
     origin.active_transports.append({"volume": 200.0, "target_name": "col-destination"})
-    origin.collection_center.current_storage[waste_type] = 800.0
+    origin.collection_center.current_storage[waste_type] = 500.0
 
     monitor.check_collection_centers()  # must not raise
     monitor.check_waste_system()  # must not raise

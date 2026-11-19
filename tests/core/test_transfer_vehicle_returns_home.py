@@ -1,83 +1,91 @@
-"""A transfer vehicle drives home empty after delivering, and a FAILED collector's vehicles take no new jobs.
+"""A transfer delivers at its arrival time and frees its vehicle when it is back home (ADR 0040, 0041).
 
-Before this, a vehicle stayed wherever it delivered and the next transfer picked the nearest idle
-vehicle from any region, so vehicles drifted away from home and failed collectors kept hauling.
-
-Real collectors in Gorenjska (home) and Osrednjeslovenska (away) share one transport manager and
-run its daily tick. Road circuity is stretched so each leg takes 1.5 days: the transfer leaves
-at day 0, is delivered at the day-2 tick (arrival 1.5) and the vehicle is home by the day-3 tick
-(back at 3.0).
+ADR 0040 sent vehicles home but delivered and freed them on the daily tick, so a vehicle sat idle
+up to a day at each end of a trip. ADR 0041 runs both as events, and a freed vehicle takes the next
+queued transfer at once. A FAILED collector's vehicles take no new jobs; a trip under way finishes.
 """
 import pytest
-import simpy
 
 from config.constants import TRAVEL_SPEED_KMH
-from core.transport_manager import PointToPointTransport
+from core.collector import CollectorCompany
+from models.data_classes import Vehicle
 from models.distances import get_distance
-from models.enums import EntityStatus, RegionType, WasteType
-from models.state import SimulationState
-from tests.core.factories import make_collector
+from models.enums import EntityStatus
 
-WASTE = WasteType.CONSTRUCTION_WOOD_17_02_01
-HOME = RegionType.GORENJSKA
-AWAY = RegionType.OSREDNJESLOVENSKA
-LEG_DAYS = 1.5
+from tests.core.transfer_world import AWAY, HOME, OTHER_WASTE, WASTE, make_world
 
 
-def _world(waste_monitor):
-    """Home holds 100 m3 and queues a 40 m3 transfer to away."""
-    env = simpy.Environment()
-    state = SimulationState()
-    great_circle_days = get_distance(HOME, AWAY) / TRAVEL_SPEED_KMH / 24.0
-    transport_manager = PointToPointTransport(state=state, road_circuity_mean=LEG_DAYS / great_circle_days)
-    home, away = (
-        make_collector(env, waste_monitor, name=name, region_type=region, state=state,
-                       transport_manager=transport_manager)
-        for name, region in (("col_home", HOME), ("col_away", AWAY))
-    )
-    state.collectors = [home, away]
-    home.collection_center.current_storage[WASTE] = 100.0
-    home.transfer_waste_to_region(WASTE, 40.0, AWAY)
-    assert transport_manager.travel_time_days(HOME, AWAY) == pytest.approx(LEG_DAYS)
-    return env, home, away
+def _ship(world, waste_type=WASTE, volume=40.0):
+    CollectorCompany.transfer_waste_to_region(world.home, waste_type, volume, AWAY)
 
 
-def _busy(collector):
-    return [vehicle for vehicle in collector.vehicles if vehicle.in_transit]
+def test_delivery_happens_at_the_arrival_time_not_the_next_tick():
+    world = make_world()
+    _ship(world)
+    arrival = world.transport_manager.travel_time_days(HOME, AWAY)
+
+    world.env.run(until=arrival - 1e-9)
+    assert world.away.collection_center.current_storage[WASTE] == 0.0
+
+    world.env.run(until=arrival + 1e-9)
+    assert world.away.collection_center.current_storage[WASTE] == 40.0
+    assert world.home.active_transports == []
 
 
-def test_a_vehicle_that_delivered_elsewhere_stays_busy_until_it_has_driven_home(ledger_waste_monitor):
-    env, home, away = _world(ledger_waste_monitor)
+def test_the_vehicle_stays_busy_until_it_has_driven_home():
+    world = make_world()
+    [vehicle] = world.vehicles
+    _ship(world)
+    back_home_at = 2 * world.transport_manager.travel_time_days(HOME, AWAY)
 
-    env.run(until=2.5)
-    assert away.collection_center.current_storage[WASTE] == 40.0
-    [vehicle] = _busy(home)
-    assert vehicle.current_region == AWAY
+    world.env.run(until=back_home_at - 1e-9)
+    assert vehicle.in_transit and vehicle.current_region == AWAY
+    assert world.transport_manager.find_available_vehicle(HOME) is None
 
-    env.run(until=3.5)
-    assert not vehicle.in_transit
-    assert vehicle.current_region == HOME
-
-
-def test_a_failed_collectors_idle_vehicle_takes_no_transfer(ledger_waste_monitor):
-    env, home, away = _world(ledger_waste_monitor)
-    home.status = EntityStatus.FAILED
-
-    env.run(until=0.5)
-
-    assert _busy(home) == []
-    assert len(_busy(away)) == 1
-
-
-def test_a_transfer_under_way_when_its_collector_fails_still_delivers_and_the_vehicle_returns_home(
-    ledger_waste_monitor,
-):
-    env, home, away = _world(ledger_waste_monitor)
-    env.run(until=0.5)
-    [vehicle] = _busy(home)
-    home.status = EntityStatus.FAILED
-
-    env.run(until=10.5)
-
-    assert away.collection_center.current_storage[WASTE] == 40.0
+    world.env.run(until=back_home_at + 1e-9)
     assert not vehicle.in_transit and vehicle.current_region == HOME
+
+
+def test_a_vehicle_back_home_takes_the_waiting_transfer_at_once():
+    world = make_world()
+    _ship(world)
+    world.env.run(until=1e-9)
+    _ship(world, OTHER_WASTE, 10.0)  # queued: the only vehicle is out
+    back_home_at = 2 * world.transport_manager.travel_time_days(HOME, AWAY)
+
+    world.env.run(until=back_home_at + 1e-9)
+
+    [transport] = world.home.active_transports
+    assert transport["load_by_type"] == {OTHER_WASTE: 10.0}
+    assert transport["pickup_time"] == pytest.approx(back_home_at)
+
+
+def test_the_return_leg_takes_road_travel_time():
+    world = make_world(with_env=False)
+    world.transport_manager.road_circuity_mean = 1.35
+
+    assert world.transport_manager.travel_time_days(AWAY, HOME) == pytest.approx(
+        get_distance(AWAY, HOME) * 1.35 / TRAVEL_SPEED_KMH / 24.0)
+
+
+def test_a_failed_collectors_idle_vehicle_takes_no_transfer():
+    world = make_world()
+    spare = Vehicle(id="away_vehicle", capacity=500.0, current_region=AWAY)
+    world.away.vehicles.append(spare)
+    world.home.status = EntityStatus.FAILED
+
+    assert world.transport_manager.find_available_vehicle(HOME)["vehicle"] is spare
+
+
+def test_a_transfer_under_way_when_its_collector_fails_still_delivers_and_the_vehicle_returns_home():
+    world = make_world()
+    [vehicle] = world.vehicles
+    _ship(world)
+    world.env.run(until=1e-9)
+    world.home.status = EntityStatus.FAILED
+
+    world.env.run(until=30.0)
+
+    assert world.away.collection_center.current_storage[WASTE] == 40.0
+    assert not vehicle.in_transit and vehicle.current_region == HOME
+    assert world.transport_manager.find_available_vehicle(HOME) is None

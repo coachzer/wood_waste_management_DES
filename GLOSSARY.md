@@ -346,6 +346,18 @@ generator mass balance checks
 the rate over all generation is reported alongside.
 _Avoid_: untreatable waste, rejected waste
 
+**Transfer**:
+A cross-region move of waste from one collection center to
+another, inside the Collector echelon (ADR 0009). Its volume
+leaves the sending center when requested and is held until a
+vehicle loads it, so no other drain can take it. Every type a
+center sends to the same destination in one instant goes on one
+vehicle and pays one trip. Delivery happens at the arrival time,
+and the vehicle then drives home before taking the next transfer
+(ADR 0040, 0041). Held volume is in no center and on no vehicle,
+so the mass balance counts it separately.
+_Avoid_: shipment, repositioning order
+
 **Consumption Distribution**:
 Each **Treatment Operator**'s share of weekly
 **Market Consumption** is proportional to its processing capacity
