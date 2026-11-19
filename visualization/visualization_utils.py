@@ -11,16 +11,7 @@ def group_results_by_scenario_and_policy(results: List[Dict]) -> Dict:
     grouped_results = {}
 
     for result in results:
-        scenario_name = result['scenario_name']
-
-        if '_push_' in scenario_name:
-            base_scenario = scenario_name.split('_push_')[0]
-        elif '_pull_' in scenario_name:
-            base_scenario = scenario_name.split('_pull_')[0]
-        else:
-            base_scenario = scenario_name
-
-        key = (base_scenario, result['inventory_policy'])
+        key = (result['base_scenario'], result['inventory_policy'])
         if key not in grouped_results:
             grouped_results[key] = []
         grouped_results[key].append(result)

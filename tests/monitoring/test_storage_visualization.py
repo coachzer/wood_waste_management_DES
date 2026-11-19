@@ -17,6 +17,7 @@ from visualization.storage_visualization import create_storage_heatmaps
 def _single_combo_result():
     samples = {"timestamps": [0.0, 1.0], "storage_utilization": [10.0, 20.0]}
     return {
+        "base_scenario": "Baseline",
         "scenario_name": "Baseline_push_on_demand",
         "inventory_policy": "push",
         "stock_strategy": "on_demand",
