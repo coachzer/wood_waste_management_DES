@@ -1,7 +1,7 @@
 import numpy as np
 from simpy import Environment
 from models.facility_data import FacilityDataManager
-from models.enums import RegionType, WasteType, sorted_by_value
+from models.enums import RegionType, sorted_by_value
 from models.transformations import build_transformations
 from core.generator import WasteGenerator
 from core.collector import CollectorCompany
@@ -88,15 +88,13 @@ class FacilityBuilder:
     def create_collector(self, col_data, region: RegionType, stock_strategy, inventory_policy) -> CollectorCompany:
         """Create a single collector company"""
 
-        waste_types_enum = [WasteType(wtype) if not isinstance(wtype, WasteType) else wtype for wtype in col_data.waste_types]
-
         self.facility_counts['CollectorCompany'] += 1
         [child_seed] = self.seed_sequence.spawn(1)
 
         return CollectorCompany(
             env=self.env,
             name=col_data.id,
-            waste_types=waste_types_enum,
+            waste_types=col_data.waste_types,
             collection_capacity=col_data.collection_capacity,
             collection_frequency=col_data.collection_frequency,
             vehicle_capacity=per_tick_capacity(

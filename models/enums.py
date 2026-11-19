@@ -56,8 +56,7 @@ def normalize_waste_type(value) -> "WasteType | None":
     Accepts a WasteType (passed through), an EWC value ("03 01 05"), an
     underscore-separated code ("03_01_05"), or an enum member name in any
     case ("sawdust_shavings_cuttings_wood_03_01_05"). Returns None when
-    nothing matches. Single home for this normalization -- the collector
-    and the facility builder previously carried diverged private copies.
+    nothing matches.
     """
     if isinstance(value, WasteType):
         return value

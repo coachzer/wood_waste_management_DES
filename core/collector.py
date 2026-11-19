@@ -15,7 +15,7 @@ from config.constants import (
     OPERATING_TICK_DAYS,
 )
 from core.transport_manager import PointToPointTransport, TransportRequest
-from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy, normalize_waste_type
+from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
 from instrumentation.waste_monitor import WasteMonitor
 from models.data_classes import FailureConfig, Vehicle, CollectionCenter, OperationalEntity
 from config.base_config import ScenarioConfig
@@ -683,24 +683,12 @@ class CollectorCompany(OperationalEntity):
         return completed
 
     def _filter_active_waste_streams(self, generator) -> Dict[WasteType, any]:
-        """Filter and convert generator waste streams to valid WasteType enums"""
-        active_streams = {}
-
-        for waste_type_str, stream in generator.waste_streams.items():
-            if stream.volume <= 0:
-                continue
-
-            waste_type_enum = normalize_waste_type(waste_type_str)
-            if not waste_type_enum:
-                continue
-
-            if (
-                waste_type_enum in self.waste_types
-                or waste_type_enum.value in self.waste_types
-            ):
-                active_streams[waste_type_enum] = stream
-
-        return active_streams
+        """The generator's non-empty streams of waste types this collector handles."""
+        return {
+            waste_type: stream
+            for waste_type, stream in generator.waste_streams.items()
+            if stream.volume > 0 and waste_type in self.waste_types
+        }
 
     def _calculate_utilization(self) -> float:
         """Calculate storage utilization percentage"""
