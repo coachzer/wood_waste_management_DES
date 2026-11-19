@@ -1,46 +1,33 @@
 """Under PULL only demand moves waste: a full generator does not call for pickup (ADR 0032)."""
-from types import SimpleNamespace
-
 import pytest
+import simpy
 
-from core.generator import WasteGenerator
-from core.kanban_manager import KanbanManager
-from core.strategies.inventory_policy import build_inventory_policy
-from core.strategies.stock_strategy import build_stock_strategy
-from models.data_classes import WasteStream
 from models.enums import InventoryPolicy, StockStrategy, WasteType
+from tests.core.factories import make_waste_generator
 
 SAWDUST = WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05
 
 
-def _full_generator(policy, strategy):
-    generator = SimpleNamespace(
-        name="gen_gorenjska",
-        current_storage=1_000.0,
-        waste_storage_capacity=1_000.0,
-        waste_streams={SAWDUST: WasteStream(waste_type=SAWDUST, volume=1_000.0)},
-        kanban_manager=KanbanManager(),
-        inventory_policy_behavior=build_inventory_policy(policy),
-        stock_strategy_behavior=build_stock_strategy(strategy),
+def _signals_after_one_tick_full(waste_monitor, policy, strategy):
+    """A real generator starting at full storage runs its t=0 tick; returns the signals it posted."""
+    env = simpy.Environment()
+    generator = make_waste_generator(
+        env, waste_monitor, {SAWDUST: 0.0},
+        waste_storage_capacity=1_000.0, initial_stock={SAWDUST: 1_000.0},
+        inventory_policy=policy, stock_strategy=strategy,
     )
-    generator._kanban_signal = lambda current_time: WasteGenerator._kanban_signal(generator, current_time)
-    return generator
+    env.run(until=0.5)
+    return generator.kanban_manager.get_signals(0.0)
 
 
 @pytest.mark.parametrize("strategy", list(StockStrategy))
-def test_full_pull_generator_posts_nothing(strategy):
+def test_full_pull_generator_posts_nothing(ledger_waste_monitor, strategy):
     """Mutation check (red): drop the policy gate in _handle_inventory_signaling."""
-    generator = _full_generator(InventoryPolicy.PULL, strategy)
-
-    WasteGenerator._handle_inventory_signaling(generator, current_time=5.0)
-
-    assert generator.kanban_manager.get_signals(5.0) == []
+    assert _signals_after_one_tick_full(ledger_waste_monitor, InventoryPolicy.PULL, strategy) == []
 
 
 @pytest.mark.parametrize("strategy", list(StockStrategy))
-def test_full_push_generator_still_posts(strategy):
-    generator = _full_generator(InventoryPolicy.PUSH, strategy)
+def test_full_push_generator_still_posts(ledger_waste_monitor, strategy):
+    signals = _signals_after_one_tick_full(ledger_waste_monitor, InventoryPolicy.PUSH, strategy)
 
-    WasteGenerator._handle_inventory_signaling(generator, current_time=5.0)
-
-    assert [signal["source_type"] for signal in generator.kanban_manager.get_signals(5.0)] == ["generator"]
+    assert [(signal["source_type"], signal["volume"]) for signal in signals] == [("generator", 1_000.0)]

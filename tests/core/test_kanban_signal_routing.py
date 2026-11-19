@@ -5,125 +5,93 @@ operator's own region reads and acknowledges them.  Every other PULL collector
 on the shared bus must skip them and leave them for the intended recipient.
 Signals without a target_region (generator-sourced) pass through any region, and a
 collector that cannot serve one leaves it on the bus for one that can.
-"""
-from types import SimpleNamespace
 
-from core.collector import CollectorCompany
+Collectors are real PULL collectors sharing one bus; each reads it on its own tick.
+Pomurska lists Podravska among its closest regions, so it can serve a Podravska
+generator; Gorenjska does not, so it cannot.
+"""
+import simpy
+
 from core.kanban_manager import KanbanManager
-from models.enums import RegionType, WasteType
+from models.enums import InventoryPolicy, RegionType, WasteType
+from models.state import SimulationState
+from tests.core.factories import make_collector, make_generator_site
 
 WASTE = WasteType.CONSTRUCTION_WOOD_17_02_01
+GENERATOR_STOCK_M3 = 50.0
 
 
-class FakeCollector:
-    """Minimal stand-in for CollectorCompany._process_kanban_signals.
+def _run(waste_monitor, collector_regions, generator_regions=(), post_signal=None):
+    """Real PULL collectors on one bus, run past their day-1 tick. Returns (bus, generators by name)."""
+    env = simpy.Environment()
+    state = SimulationState()
+    kanban_manager = KanbanManager()
+    state.collectors = [
+        make_collector(
+            env, waste_monitor, state=state, name=f"collector-{region.value}", region_type=region,
+            inventory_policy=InventoryPolicy.PULL, kanban_manager=kanban_manager,
+            collection_capacity=1000.0, collection_frequency=1,
+        )
+        for region in collector_regions
+    ]
+    state.generators = [
+        make_generator_site({WASTE: GENERATOR_STOCK_M3}, name=f"gen-{index}", region_type=region)
+        for index, region in enumerate(generator_regions, start=1)
+    ]
+    post_signal(kanban_manager)
 
-    The method is called unbound -- CollectorCompany._process_kanban_signals(fake, ...)
-    -- so self resolves to this FakeCollector and self._propagate_signal_to_generators
-    resolves to the stub below (not the real method that needs self.state).
-    """
+    env.run(until=1.5)
 
-    def __init__(self, region_type, kanban_manager):
-        self.region_type = region_type
-        self.kanban_manager = kanban_manager
-        self.env = SimpleNamespace(now=1.0)
-
-    _signals_in_dispatch_order = CollectorCompany._signals_in_dispatch_order
-
-    def _get_prioritized_generators(self):
-        return []
-
-    def _propagate_signal_to_generators(self, signal, current_time):
-        pass  # stub: the real one reads self.state, which we do not provide
-
-
-def _pending_non_market(km):
-    """Non-acknowledged, non-market signals still on the bus."""
-    return [s for s in km.get_signals(1.0) if s.get('source_type') != "market"]
+    pending = [signal for signal in kanban_manager.get_signals(1.0) if signal.get("source_type") != "market"]
+    return pending, {generator.name: generator for generator in state.generators}
 
 
-def test_wrong_region_collector_does_not_consume_treatment_signal():
-    km = KanbanManager()
-    km.add_signal(waste_type=WASTE, timestamp=1.0, volume=100,
-                  source_id="treatment-A", source_type="treatment",
-                  target_region=RegionType.PODRAVSKA)
-    wrong = FakeCollector(RegionType.GORENJSKA, km)
-
-    CollectorCompany._process_kanban_signals(wrong, _pending_non_market(km))
-
-    assert len(_pending_non_market(km)) == 1, \
-        "wrong-region collector must leave the signal on the bus"
+def _treatment_signal_to_podravska(kanban_manager):
+    kanban_manager.add_signal(waste_type=WASTE, timestamp=1.0, volume=100,
+                              source_id="treatment-A", source_type="treatment",
+                              target_region=RegionType.PODRAVSKA)
 
 
-def test_right_region_collector_consumes_treatment_signal():
-    km = KanbanManager()
-    km.add_signal(waste_type=WASTE, timestamp=1.0, volume=100,
-                  source_id="treatment-A", source_type="treatment",
-                  target_region=RegionType.PODRAVSKA)
-    right = FakeCollector(RegionType.PODRAVSKA, km)
-
-    CollectorCompany._process_kanban_signals(right, _pending_non_market(km))
-
-    assert _pending_non_market(km) == [], \
-        "right-region collector should propagate upstream and ack"
+def _generator_signal(kanban_manager):
+    kanban_manager.add_signal(waste_type=WASTE, timestamp=1.0, volume=100,
+                              source_id="gen-1", source_type="generator")
 
 
-class ServingCollector(FakeCollector):
-    """A collector whose prioritized generators include the signalling generator."""
+def test_wrong_region_collector_does_not_consume_treatment_signal(ledger_waste_monitor):
+    pending, _ = _run(ledger_waste_monitor, [RegionType.GORENJSKA], post_signal=_treatment_signal_to_podravska)
 
-    def __init__(self, region_type, kanban_manager, generator):
-        super().__init__(region_type, kanban_manager)
-        self.generator = generator
-        self.collected_from = []
-
-    def _get_prioritized_generators(self):
-        return [self.generator]
-
-    def _find_available_vehicle(self):
-        return True
-
-    def collect_from_generator(self, generator, requested_volume=None, waste_type=None):
-        self.collected_from.append(generator.name)
+    assert len(pending) == 1, "wrong-region collector must leave the signal on the bus"
 
 
-def _generator(name, region_type):
-    return SimpleNamespace(
-        name=name, region_type=region_type, waste_streams={WASTE: SimpleNamespace(volume=50.0)}
+def test_right_region_collector_consumes_treatment_signal(ledger_waste_monitor):
+    pending, _ = _run(ledger_waste_monitor, [RegionType.PODRAVSKA], post_signal=_treatment_signal_to_podravska)
+
+    assert pending == [], "right-region collector should propagate upstream and ack"
+
+
+def test_unaddressed_signal_reaches_a_collector_in_another_region(ledger_waste_monitor):
+    pending, generators = _run(
+        ledger_waste_monitor, [RegionType.POMURSKA], [RegionType.PODRAVSKA], post_signal=_generator_signal,
     )
 
-
-def _bus_with_generator_signal():
-    km = KanbanManager()
-    km.add_signal(waste_type=WASTE, timestamp=1.0, volume=100,
-                  source_id="gen-1", source_type="generator")
-    return km
+    assert generators["gen-1"].waste_streams[WASTE].volume < GENERATOR_STOCK_M3
+    assert pending == []
 
 
-def test_unaddressed_signal_reaches_a_collector_in_another_region():
-    km = _bus_with_generator_signal()
-    collector = ServingCollector(RegionType.GORENJSKA, km, _generator("gen-1", RegionType.PODRAVSKA))
+def test_collector_that_cannot_serve_a_generator_signal_leaves_it_on_the_bus(ledger_waste_monitor):
+    pending, generators = _run(
+        ledger_waste_monitor, [RegionType.GORENJSKA], [RegionType.PODRAVSKA], post_signal=_generator_signal,
+    )
 
-    CollectorCompany._process_kanban_signals(collector, _pending_non_market(km))
-
-    assert collector.collected_from == ["gen-1"]
-    assert _pending_non_market(km) == []
-
-
-def test_collector_that_cannot_serve_a_generator_signal_leaves_it_on_the_bus():
-    km = _bus_with_generator_signal()
-    remote = FakeCollector(RegionType.GORENJSKA, km)
-
-    CollectorCompany._process_kanban_signals(remote, _pending_non_market(km))
-
-    assert len(_pending_non_market(km)) == 1
+    assert generators["gen-1"].waste_streams[WASTE].volume == GENERATOR_STOCK_M3
+    assert len(pending) == 1
 
 
-def test_generator_signal_left_by_a_remote_collector_is_served_by_the_local_one():
-    km = _bus_with_generator_signal()
-    remote = FakeCollector(RegionType.GORENJSKA, km)
-    local = ServingCollector(RegionType.PODRAVSKA, km, _generator("gen-1", RegionType.PODRAVSKA))
+def test_generator_signal_left_by_a_remote_collector_is_served_by_the_local_one(ledger_waste_monitor):
+    pending, generators = _run(
+        ledger_waste_monitor, [RegionType.GORENJSKA, RegionType.PODRAVSKA], [RegionType.PODRAVSKA],
+        post_signal=_generator_signal,
+    )
 
-    CollectorCompany._process_kanban_signals(remote, _pending_non_market(km))
-    CollectorCompany._process_kanban_signals(local, _pending_non_market(km))
-
-    assert local.collected_from == ["gen-1"]
+    assert generators["gen-1"].waste_streams[WASTE].volume < GENERATOR_STOCK_M3
+    assert pending == []

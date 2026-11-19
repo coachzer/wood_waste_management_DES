@@ -1,4 +1,4 @@
-"""Generator storage cap: all-or-nothing drop and mass-conservation invariants.
+"""Generator storage cap: headroom capping and mass-conservation invariants.
 
 Pins three failure modes in ``WasteGenerator``:
 
@@ -7,10 +7,8 @@ Pins three failure modes in ``WasteGenerator``:
    A future change that moves the accrual inside the capacity guard would silently
    couple the bullwhip floor to policy and break reproducibility across combos.
 
-2. When a type's potential exceeds available headroom the current code drops the
-   entire type -- zero is stored, not a partial fill. Plan 004 deliberately flips
-   this test to the capped-at-headroom semantics; until then, the all-or-nothing
-   drop is the documented behavior and must be pinned.
+2. When a type's potential exceeds available headroom it stores exactly the
+   headroom (plan 004), and a type that finds none stores nothing.
 
 3. ``_handle_overflow`` conserves mass: the volume it removes from streams is
    exactly the excess over capacity; nothing silently vanishes.
@@ -19,14 +17,26 @@ Pins three failure modes in ``WasteGenerator``:
 from types import SimpleNamespace
 
 import pytest
+import simpy
 
+from config.constants import OPERATING_TICK_DAYS
 from core.generator import WasteGenerator
 from models.data_classes import WasteStream
 from models.enums import EntityStatus, WasteType
+from tests.core.factories import make_waste_generator
 
 
 CONSTRUCTION = WasteType.CONSTRUCTION_WOOD_17_02_01
 PACKAGING = WasteType.WOODEN_PACKAGING_15_01_03
+BARK = WasteType.BARK_CORK_WASTE_03_01_01
+
+
+def run_one_generation_tick(waste_monitor, generation_rates, **overrides):
+    """A real generator after its t=0 tick (seasonal factor 1.0, unit daily factor)."""
+    env = simpy.Environment()
+    generator = make_waste_generator(env, waste_monitor, generation_rates, **overrides)
+    env.run(until=OPERATING_TICK_DAYS / 2)
+    return generator
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +104,7 @@ def make_generator_stub(
 # Tests
 # ---------------------------------------------------------------------------
 
-def test_potential_generation_accrues_even_when_storage_is_full():
+def test_potential_generation_accrues_even_when_storage_is_full(ledger_waste_monitor):
     """ADR 0005 floor: total_potential_generated grows by the full offered volume
     even when storage is completely full and nothing enters committed storage.
 
@@ -103,89 +113,40 @@ def test_potential_generation_accrues_even_when_storage_is_full():
     policies, coupling the bullwhip denominator to policy and invalidating the
     comparison.
     """
-    base_rate = 10.0
-    capacity = 100.0
-    stub = make_generator_stub(
-        waste_generation_rates={CONSTRUCTION: base_rate},
-        waste_storage_capacity=capacity,
-        current_storage=capacity,  # full -- no room
+    generator = run_one_generation_tick(
+        ledger_waste_monitor, {CONSTRUCTION: 10.0}, waste_storage_capacity=100.0,
+        initial_stock={CONSTRUCTION: 100.0},
     )
 
-    seasonal = 1.0
-    WasteGenerator._generate_waste_for_period(stub, seasonal)
-
-    expected_potential = base_rate * seasonal * 1.0 * 1.0  # efficiency=1, factor=1
-    assert stub.total_potential_generated[CONSTRUCTION] == pytest.approx(expected_potential)
-    assert stub.total_generated[CONSTRUCTION] == 0.0
-    assert stub.total_uncollected[CONSTRUCTION] == pytest.approx(expected_potential)
-    assert stub.current_storage == capacity
+    assert generator.total_potential_generated[CONSTRUCTION] == pytest.approx(100.0 + 10.0)
+    assert generator.total_generated[CONSTRUCTION] == 100.0
+    assert generator.total_uncollected[CONSTRUCTION] == pytest.approx(10.0)
+    assert generator.current_storage == 100.0
 
 
-def test_type_exceeding_available_storage_is_capped_at_headroom():
+def test_type_exceeding_available_storage_is_capped_at_headroom(ledger_waste_monitor):
     """Capped partial-fill: when a type's potential exceeds remaining headroom
     it generates exactly the available headroom, not zero and not the full
-    potential.
-
-    Plan 004 changed the all-or-nothing drop to min(potential, available).
-    This test documents that semantic and replaces the prior
-    test_type_exceeding_available_storage_generates_nothing.
+    potential (plan 004: min(potential, available)).
 
     Scenario: capacity=100, storage=90 (10 left).
     Type 1 potential=8 (fits in full -- uses 8 of 10).
     Type 2 potential=15 (exceeds the 2 remaining) -> capped at 2.
-    After both: current_storage == capacity.
-
-    Also checks the zero-headroom edge: once the first type exhausts all
-    headroom, a subsequent type with positive potential generates exactly 0
-    and _update_waste_stream is NOT called for it (no zero-volume churn).
+    Type 3 potential=5 finds no headroom left and stores nothing.
     """
-    capacity = 100.0
-    initial_storage = 90.0
-    stub = make_generator_stub(
-        waste_generation_rates={CONSTRUCTION: 8.0, PACKAGING: 15.0},
-        waste_storage_capacity=capacity,
-        current_storage=initial_storage,
+    generator = run_one_generation_tick(
+        ledger_waste_monitor, {CONSTRUCTION: 8.0, PACKAGING: 15.0, BARK: 5.0},
+        waste_storage_capacity=100.0, initial_stock={BARK: 90.0},
     )
 
-    WasteGenerator._generate_waste_for_period(stub, seasonal_factor=1.0)
+    assert generator.waste_streams[CONSTRUCTION].volume == pytest.approx(8.0)
+    assert generator.waste_streams[PACKAGING].volume == pytest.approx(2.0)
+    assert generator.waste_streams[BARK].volume == pytest.approx(90.0)
+    assert generator.current_storage == pytest.approx(100.0)
 
-    # Type 1 fits in full (8 <= 10 headroom)
-    assert stub.waste_streams[CONSTRUCTION].volume == pytest.approx(8.0)
-    assert stub.total_generated[CONSTRUCTION] == pytest.approx(8.0)
-
-    # Type 2 is capped at the 2 remaining m3 (not zero, not 15)
-    assert stub.waste_streams[PACKAGING].volume == pytest.approx(2.0)
-    assert stub.total_generated[PACKAGING] == pytest.approx(2.0)
-
-    # Storage must equal capacity -- all headroom consumed
-    assert stub.current_storage == pytest.approx(capacity)
-
-    # Potential recorded for both types at full offered volume (ADR 0005 floor)
-    assert stub.total_potential_generated[CONSTRUCTION] == pytest.approx(8.0)
-    assert stub.total_potential_generated[PACKAGING] == pytest.approx(15.0)
-    assert stub.total_uncollected[CONSTRUCTION] == pytest.approx(0.0)
-    assert stub.total_uncollected[PACKAGING] == pytest.approx(13.0)
-
-    # Zero-headroom edge: once storage is full, a third type generates exactly 0
-    import types
-    calls = []
-
-    def recording_update(self, waste_type, volume):
-        calls.append((waste_type, volume))
-
-    from models.enums import WasteType as WT
-    BARK = WT.BARK_CORK_WASTE_03_01_01
-    stub2 = make_generator_stub(
-        waste_generation_rates={BARK: 5.0},
-        waste_storage_capacity=capacity,
-        current_storage=capacity,  # no room at all
-    )
-    stub2._update_waste_stream = types.MethodType(recording_update, stub2)
-
-    WasteGenerator._generate_waste_for_period(stub2, seasonal_factor=1.0)
-
-    assert stub2.waste_streams[BARK].volume == pytest.approx(0.0)
-    assert calls == [], "_update_waste_stream must not be called when headroom is zero"
+    # Potential recorded for every type at full offered volume (ADR 0005 floor)
+    assert generator.total_potential_generated[PACKAGING] == pytest.approx(15.0)
+    assert generator.total_uncollected == pytest.approx({CONSTRUCTION: 0.0, PACKAGING: 13.0, BARK: 5.0})
 
 
 def test_update_waste_stream_increments_all_counters_atomically():
@@ -264,23 +225,20 @@ def test_handle_overflow_caps_storage_and_scales_streams_proportionally():
     assert total_stored + total_removed == pytest.approx(pre_overflow_total)
 
 
-def test_outlet_type_leaves_without_taking_storage():
+def test_outlet_type_leaves_without_taking_storage(ledger_waste_monitor):
     """ADR 0036: a type no processor accepts goes to the outlet and leaves storage to the rest.
 
     Mutation check (red): drop the outlet branch, so the outlet type fills storage first.
     """
-    stub = make_generator_stub(
-        waste_generation_rates={PACKAGING: 8.0, CONSTRUCTION: 10.0},
-        waste_storage_capacity=10.0,
-        outlet_waste_types=[PACKAGING],
+    generator = run_one_generation_tick(
+        ledger_waste_monitor, {PACKAGING: 8.0, CONSTRUCTION: 10.0},
+        waste_storage_capacity=10.0, accepted_waste_types=[CONSTRUCTION],
     )
 
-    WasteGenerator._generate_waste_for_period(stub, 1.0)
-
-    assert stub.total_outlet[PACKAGING] == pytest.approx(8.0)
-    assert stub.total_generated[PACKAGING] == 0.0
-    assert stub.total_uncollected[PACKAGING] == 0.0
-    assert stub.total_potential_generated[PACKAGING] == pytest.approx(8.0)
-    assert stub.total_generated[CONSTRUCTION] == pytest.approx(10.0)
-    assert stub.total_uncollected[CONSTRUCTION] == 0.0
-    assert stub.current_storage == pytest.approx(10.0)
+    assert generator.total_outlet[PACKAGING] == pytest.approx(8.0)
+    assert generator.total_generated[PACKAGING] == 0.0
+    assert generator.total_uncollected[PACKAGING] == 0.0
+    assert generator.total_potential_generated[PACKAGING] == pytest.approx(8.0)
+    assert generator.total_generated[CONSTRUCTION] == pytest.approx(10.0)
+    assert generator.total_uncollected[CONSTRUCTION] == 0.0
+    assert generator.current_storage == pytest.approx(10.0)

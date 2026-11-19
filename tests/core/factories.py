@@ -8,6 +8,7 @@ from config.base_config import ScenarioConfig
 from config.constants import OPERATING_TICK_DAYS
 from core.abc_analysis import abc_priority_weights
 from core.collector import CollectorCompany
+from core.generator import WasteGenerator
 from core.kanban_manager import KanbanManager
 from core.transport_manager import PointToPointTransport
 from core.treatment import TreatmentOperator
@@ -89,6 +90,32 @@ def make_treatment(env, waste_monitor, **overrides):
     )
     fields.update(overrides)
     return TreatmentOperator(**fields)
+
+
+def make_waste_generator(env, waste_monitor, generation_rates, **overrides):
+    """A real WasteGenerator in Podravska with exact (unit-factor) generation and no failures.
+
+    Its first generation tick runs at t=0, where the seasonal factor is 1.0.
+    """
+    fields = dict(
+        env=env,
+        name="generator-1",
+        waste_streams=generation_rates,
+        generation_frequency=OPERATING_TICK_DAYS,
+        waste_storage_capacity=1_000.0,
+        efficiency=1.0,
+        region_type=RegionType.PODRAVSKA,
+        scenario=deterministic_scenario(),
+        waste_monitor=waste_monitor,
+        stock_strategy=StockStrategy.REORDER_50,
+        inventory_policy=InventoryPolicy.PUSH,
+        kanban_manager=KanbanManager(),
+        state=SimulationState(),
+        failure_config=None,
+        seed=0,
+    )
+    fields.update(overrides)
+    return WasteGenerator(**fields)
 
 
 def make_generator_site(volume_by_type, name="generator-1", region_type=RegionType.PODRAVSKA):
