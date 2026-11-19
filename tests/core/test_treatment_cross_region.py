@@ -39,7 +39,7 @@ def _request_100(waste_monitor, stock_by_region):
         order_share_by_waste_type={CONSTRUCTION: 1.0}, order_up_to_level_m3=100.0,
     )
 
-    collected = operator.request_waste_directly(100.0, [CONSTRUCTION])
+    collected = operator.request_waste_directly(100.0, [CONSTRUCTION], remote_drain_loads={})
 
     queued = {request.origin: request.volume for request in transport_manager.pending_requests}
     return collected, queued

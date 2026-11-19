@@ -102,7 +102,7 @@ A completed transfer is charged through `CollectorCompany.charge_trip` like a co
 `SimulationManager._nationally_accepted_waste_types` is the union of processor inputs. Any other code goes to `total_outlet` at generation, not into storage, so `potential = committed + uncollected + outlet`. Collection rate and overall efficiency divide by potential minus outlet, and `collection_rate_all_generation_pct` keeps the old denominator. Outlet destinations use SURS shares (`data/outlet_destination_shares.json`) for reporting only, with no cost or emissions.
 
 ## 0037 The cross-region fallback drain is priced
-In `_drain_collectors`, a drain from another region is charged as one loaded trip through `charge_trip`. The drain still takes no travel time and no vehicle. That approximation remains.
+A drain from another region is charged as a loaded trip through `charge_trip`, and 0042 merges one collector's drains in a tick into one trip. The drain still takes no travel time and no vehicle. That approximation remains.
 
 ## 0038 Transport cost and emissions use road distance
 `charge_trip` multiplies great-circle distance by `ROAD_CIRCUITY_FACTOR` (1.35). It is a constant, not the scenario's `transportation_time`, so stress scenarios that slow transport do not inflate fuel and cost. It is deterministic, so no extra RNG draws. No primary source backs the 1.35 value.
@@ -112,6 +112,9 @@ After delivery the vehicle drives home empty over road travel time and stays `in
 
 ## 0041 Transfers hold their volume at request time, consolidate per route, and run as events
 `PointToPointTransport.request_transport` takes the requested volume, at most the sending center's stock, out of the center at request time, so no other drain can take it, and `process_requests` sends one vehicle per route per instant carrying every queued type. Delivery happens at the arrival time, and `deliver` charges the vehicle owner one loaded trip (0034, 0038); the vehicle then drives home (0040). Held volume is in no center and on no vehicle, so both mass-balance checks count it through `SimulationState.held_transfer_volume_by_collector`.
+
+## 0042 One drain trip per remote collector per treatment tick
+Within one `TreatmentOperator.trigger_collection` call, each drain from another region's collector adds to a per-collector load, and at the end of the call that collector is charged one loaded trip for the combined load over the distance to the operator. Draining several types from one collector therefore pays the fixed trip cost once. Volumes, drain order and unpriced local drains are unchanged.
 
 ## Dropped numbers
 

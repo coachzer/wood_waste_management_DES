@@ -1,4 +1,4 @@
-"""A fallback drain from another region is charged as a loaded trip; a local drain is not (ADR 0037)."""
+"""A fallback drain from another region is charged as a loaded trip; a local drain is not (ADR 0037, 0042)."""
 import pytest
 import simpy
 
@@ -39,9 +39,9 @@ def test_only_the_remote_drain_is_charged_over_its_distance():
         order_share_by_waste_type={WASTE: 1.0}, order_up_to_level_m3=100.0,
     )
 
-    collected = operator.request_waste_directly(100.0, [WASTE])
+    _stored, collected = operator.trigger_collection({WASTE: 100.0})
 
-    assert collected == {WASTE: pytest.approx(80.0)}
+    assert collected == pytest.approx(80.0)
     road_distance = get_distance(REMOTE, HOME) * ROAD_CIRCUITY_FACTOR
     assert monitor.costs == [
         ("col_remote", pytest.approx(remote.transport_cost + road_distance * COLLECTION_COST_PER_KM_PER_M3 * 50.0)),

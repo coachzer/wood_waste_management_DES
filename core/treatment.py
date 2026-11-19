@@ -435,42 +435,51 @@ class TreatmentOperator(OperationalEntity):
             timestamp=timestamp,
         )
 
-    def request_waste_directly(self, required_waste: float, input_waste_types: List[WasteType]) -> Dict[WasteType, float]:
-        """Request waste with local/cross-region routing split"""
+    def request_waste_directly(self, required_waste: float, input_waste_types: List[WasteType],
+                               remote_drain_loads: dict) -> Dict[WasteType, float]:
+        """Request waste with local/cross-region routing split.
+
+        Volume drained from another region's collector is added to ``remote_drain_loads``
+        (collector name -> (collector, load by type)); the caller charges each collector one trip for it.
+        """
         collected_waste = {}
         local_portion = required_waste * LOCAL_COLLECTION_RATIO
         cross_region_portion = required_waste * (1.0 - LOCAL_COLLECTION_RATIO)
 
-        remaining_local = self._collect_from_local(local_portion, input_waste_types, collected_waste)
+        remaining_local = self._collect_from_local(local_portion, input_waste_types, collected_waste, remote_drain_loads)
 
         remaining_cross_region = self._collect_from_cross_region(cross_region_portion, input_waste_types)
 
         total_remaining = remaining_local + remaining_cross_region
         if total_remaining > 0:
-            self._collect_with_fallback(total_remaining, input_waste_types, collected_waste)
+            self._collect_with_fallback(total_remaining, input_waste_types, collected_waste, remote_drain_loads)
 
         return collected_waste
 
-    def _drain_collectors(self, collectors, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
-        """Drain pre-filtered collectors via the local intake path until satisfied. A drain
-        from another region is charged as one loaded trip over the distance (ADR 0037)."""
+    def _drain_collectors(self, collectors, amount_to_collect: float, waste_types: List[WasteType],
+                          collected_waste: dict, remote_drain_loads: dict) -> float:
+        """Drain pre-filtered collectors via the local intake path until satisfied. A drain from
+        another region is added to ``remote_drain_loads``, to be charged as a loaded trip (ADR 0037, 0042)."""
         remaining = amount_to_collect
         for collector in collectors:
             if remaining <= 0: break
 
             drained = collector.provide_waste_for_treatment(remaining, waste_types, treatment_name=self.name)
             if drained and collector.region_type != self.region_type:
-                collector.charge_trip(drained, get_distance(collector.region_type, self.region_type))
+                _, load_by_type = remote_drain_loads.setdefault(collector.name, (collector, {}))
+                for waste_type, amount in drained.items():
+                    load_by_type[waste_type] = load_by_type.get(waste_type, 0.0) + amount
 
             for waste_type, amount in drained.items():
                 collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
                 remaining -= amount
         return remaining
 
-    def _collect_from_local(self, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
+    def _collect_from_local(self, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict,
+                            remote_drain_loads: dict) -> float:
         """Collect waste from local collectors."""
         local_collectors = [c for c in self.state.collectors if c.region_type == self.region_type and c.is_operational]
-        return self._drain_collectors(local_collectors, amount_to_collect, waste_types, collected_waste)
+        return self._drain_collectors(local_collectors, amount_to_collect, waste_types, collected_waste, remote_drain_loads)
 
     def _collect_from_cross_region(self, amount_to_collect: float, waste_types: List[WasteType]) -> float:
         """Reposition waste from cross-region collectors via transport.
@@ -499,10 +508,11 @@ class TreatmentOperator(OperationalEntity):
                 remaining -= amount
         return remaining
 
-    def _collect_with_fallback(self, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
+    def _collect_with_fallback(self, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict,
+                               remote_drain_loads: dict) -> float:
         """Collect waste from any available collector as a fallback."""
         all_collectors = [c for c in self.state.collectors if c.is_operational]
-        return self._drain_collectors(all_collectors, amount_to_collect, waste_types, collected_waste)
+        return self._drain_collectors(all_collectors, amount_to_collect, waste_types, collected_waste, remote_drain_loads)
 
     def _request_via_transport(self, collector, amount: float, waste_types: List[WasteType]) -> Dict[WasteType, float]:
         """Request waste via transport system"""
@@ -531,17 +541,23 @@ class TreatmentOperator(OperationalEntity):
         return available_waste
 
     def trigger_collection(self, order_volumes: Dict[WasteType, float]):
-        """Request each ordered waste type separately (ADR 0026).
+        """Request each ordered waste type separately (ADR 0026), and charge one trip per remote collector drained.
 
         A single request across all types lets the first sorted type with stock
-        fill the whole order, starving the types after it.
+        fill the whole order, starving the types after it. The per-type requests
+        are one pickup per collector, so each remote collector drained pays one
+        fixed trip cost for its combined load (ADR 0042).
         """
         collected_waste = {}
+        remote_drain_loads = {}
         for waste_type in sorted_by_value(order_volumes):
             if order_volumes[waste_type] <= 0:
                 continue
-            for collected_type, volume in self.request_waste_directly(order_volumes[waste_type], [waste_type]).items():
+            for collected_type, volume in self.request_waste_directly(
+                    order_volumes[waste_type], [waste_type], remote_drain_loads).items():
                 collected_waste[collected_type] = collected_waste.get(collected_type, 0.0) + volume
+        for collector, load_by_type in remote_drain_loads.values():
+            collector.charge_trip(load_by_type, get_distance(collector.region_type, self.region_type))
 
         if not collected_waste or sum(collected_waste.values()) == 0:
             return 0, 0

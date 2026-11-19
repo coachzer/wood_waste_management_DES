@@ -58,7 +58,7 @@ def test_treatment_that_collects_then_fails_on_one_day_records_failed():
         env, monitor, initial_waste_storage={PAPER: 0.0},
         order_share_by_waste_type={PAPER: 1.0}, order_up_to_level_m3=100.0,
     )
-    treatment.request_waste_directly = lambda volume, _types: {PAPER: volume}
+    treatment.request_waste_directly = lambda volume, _types, _remote_drain_loads: {PAPER: volume}
 
     def collect_then_fail_on_day_two():
         yield env.timeout(2)
