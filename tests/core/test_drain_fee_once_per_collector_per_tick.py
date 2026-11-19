@@ -32,8 +32,7 @@ def _remote_collector(name, region_type, charges):
     return SimpleNamespace(
         name=name, region_type=region_type, is_operational=True,
         provide_waste_for_treatment=provide_waste_for_treatment,
-        # An empty center offers nothing for transfer, so every volume comes through the fallback drain.
-        transferable_volume=lambda waste_type: 0.0,
+        collection_center=SimpleNamespace(current_storage=dict.fromkeys(WasteType, 0.0)),
         charge_trip=lambda load, distance: charges.append((name, dict(load), distance)),
     )
 

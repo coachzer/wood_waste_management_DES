@@ -155,7 +155,6 @@ def make_center_collector(name, storage):
 
 
 def make_waste_state():
-    """A SimulationState stand-in: a transport-flow log, no reposition in flight or held."""
     return SimpleNamespace(
         transport_flows=[],
         scheduled_reposition_volume_by_destination=lambda: {},
@@ -248,7 +247,6 @@ def make_treatment_op(name, waste_storage, processed):
 
 
 def make_system_state(vehicles=()):
-    """A SimulationState stub exposing the in-transit iterator, nothing held for transfer."""
     moving = list(vehicles)
     return SimpleNamespace(
         iter_outbound_vehicles=lambda: iter(moving),
@@ -412,19 +410,20 @@ def test_queued_and_in_flight_reposition_balance_both_waste_checks():
     ``scheduled_reposition_volume_by_destination`` from the per-center check
     -> MassBalanceViolation.
     """
+    import simpy
+
     from core.transport_manager import PointToPointTransport, TransportRequest
     from models.enums import RegionType, WasteType
     from models.state import SimulationState
 
     waste_type = WasteType.CONSTRUCTION_WOOD_17_02_01
     state = SimulationState()
-    manager = PointToPointTransport(state=state, road_circuity_mean=1.0)
+    manager = PointToPointTransport(state=state, road_circuity_mean=1.0, env=simpy.Environment())
 
     def collector(name):
         return SimpleNamespace(
             name=name,
             collection_center=SimpleNamespace(current_storage={waste_type: 0.0}),
-            transport_manager=manager,
             active_transports=[],
             vehicles=[],
         )
@@ -445,7 +444,6 @@ def test_queued_and_in_flight_reposition_balance_both_waste_checks():
     # 1000 generated and collected into the origin center.
     generator.total_generated[waste_type] = 1000.0
     state.transport_flows.append(flow("gen-1", "col-origin", 1000.0))
-    # 300 held for a queued transfer, out of the center; 200 loaded and on a vehicle.
     manager.pending_requests.append(
         TransportRequest(
             origin=RegionType.KOROSKA,

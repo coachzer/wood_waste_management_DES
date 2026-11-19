@@ -85,8 +85,6 @@ def test_order_shares_follow_product_need_and_national_mix():
 
     shares = builder._order_share_by_waste_type(transformations)
 
-    # Need is demand / mean volumetric yield of the product's routes (ADR 0043). OSB's need is
-    # split 3:1 by the mix; MDF's need goes to LATE_TYPE only.
     osb_need = 300.0 / ((volumetric_yield(0.5, EARLY_TYPE, OutputType.OSB) + volumetric_yield(0.5, LATE_TYPE, OutputType.OSB)) / 2)
     mdf_need = 100.0 / volumetric_yield(0.5, LATE_TYPE, OutputType.MDF)
     osb_fraction = osb_need / (osb_need + mdf_need)

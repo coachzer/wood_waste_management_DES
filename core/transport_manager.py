@@ -14,18 +14,9 @@ class TransportRequest:
     requester_id: str
 
 class PointToPointTransport:
-    """Inter-region transfers between collection centers (ADR 0041).
-
-    A request holds its volume: it leaves the sending center at request time, so no other drain
-    can take it. Requests made in the same instant are dispatched together at the end of that
-    instant, one vehicle per (sending collector, destination) carrying every requested type.
-    Delivery happens at the arrival time and the vehicle is freed when it is back home, which
-    triggers the next dispatch. Without ``env`` (unit tests) nothing dispatches by itself;
-    call ``process_requests``.
-    """
-
-    def __init__(self, state, road_circuity_mean: float, env=None):
+    def __init__(self, state, road_circuity_mean: float, env):
         self.state = state
+        state.transport_manager = self
         self.road_circuity_mean = road_circuity_mean
         self.env = env
         self.pending_requests: List[TransportRequest] = []
@@ -46,7 +37,6 @@ class PointToPointTransport:
         return get_distance(from_region, to_region) * self._mean_transport_circuity() / TRAVEL_SPEED_KMH / 24.0
 
     def held_volume_by_requester(self) -> Dict[str, float]:
-        """Volume held for queued requests, by sending collector: out of its center, on no vehicle yet."""
         held = {}
         for request in self.pending_requests:
             held[request.requester_id] = held.get(request.requester_id, 0.0) + request.volume
@@ -64,8 +54,7 @@ class PointToPointTransport:
         return True
 
     def schedule_dispatch(self) -> None:
-        """Dispatch at the end of the current instant, once, so same-instant requests travel together."""
-        if self.env is None or self._dispatch_scheduled:
+        if self._dispatch_scheduled:
             return
         self._dispatch_scheduled = True
         self.env.process(self._deferred_dispatch())
@@ -78,7 +67,6 @@ class PointToPointTransport:
             self.env.process(self._run_transfer(transport))
 
     def _run_transfer(self, transport: Dict):
-        """Deliver at the arrival time, drive home empty, then free the vehicle and dispatch again."""
         yield self.env.timeout(max(0.0, transport["arrival_time"] - self.env.now))
         self.deliver(transport)
         transport["collector"].active_transports.remove(transport)
@@ -92,7 +80,6 @@ class PointToPointTransport:
         self.schedule_dispatch()
 
     def deliver(self, transport: Dict) -> None:
-        """Unload into the destination center and charge the vehicle owner one trip (ADR 0034, 0038)."""
         destination_collector = self._destination_collector(transport["destination"])
         if destination_collector:
             for waste_type, volume in transport["load_by_type"].items():
@@ -122,10 +109,6 @@ class PointToPointTransport:
         return best_option
 
     def process_requests(self, current_time: float) -> List[Dict]:
-        """Load one idle vehicle per (sending collector, destination) with every queued type for it.
-
-        Groups with no idle vehicle stay queued, their volume still held.
-        """
         if not self.pending_requests:
             return []
 
@@ -156,7 +139,6 @@ class PointToPointTransport:
 
     def _create_transport(self, request: TransportRequest, load_by_type: Dict[WasteType, float],
                           vehicle_info: Dict, current_time: float) -> Dict:
-        """Load the vehicle and log one collector-to-collector flow per type, attributed to the sender."""
         vehicle = vehicle_info["vehicle"]
         collector = vehicle_info["collector"]
 

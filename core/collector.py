@@ -289,10 +289,6 @@ class CollectorCompany(OperationalEntity):
             self.collection_center.current_storage[waste_type] += amount
 
     def manage_transport(self):
-        """Daily sweep: dispatch transfers still waiting for a vehicle a local trip has since freed.
-
-        Transfers otherwise dispatch, deliver and free their vehicles as events (ADR 0041).
-        """
         while True:
             self.transport_manager.schedule_dispatch()
             yield self.env.timeout(1.0)
@@ -433,10 +429,6 @@ class CollectorCompany(OperationalEntity):
             signal for signal in self.kanban_manager.get_signals(self.env.now)
             if not _is_market_signal(signal)
         ]
-
-    def transferable_volume(self, waste_type: WasteType) -> float:
-        """Stock of this waste type in the center. Volume held for a transfer has already left it (ADR 0041)."""
-        return self.collection_center.current_storage[waste_type]
 
     def transfer_waste_to_region(self, waste_type: WasteType, volume: float, destination: RegionType) -> bool:
         """Request a transfer. The volume, at most this center's stock, leaves the center now and is held for it (ADR 0041).

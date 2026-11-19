@@ -58,7 +58,7 @@ def make_collector(env, waste_monitor, **overrides):
         kanban_manager=KanbanManager(),
         inventory_policy=InventoryPolicy.PUSH,
         stock_strategy=StockStrategy.REORDER_50,
-        transport_manager=PointToPointTransport(state=state, road_circuity_mean=1.0),
+        transport_manager=PointToPointTransport(state=state, road_circuity_mean=1.0, env=env),
         state=state,
         failure_config=None,
         seed=0,
@@ -199,10 +199,10 @@ def signal_recording_collector(region, stock):
         is_operational=True,
         status=EntityStatus.OPERATIONAL,
         inventory_policy=InventoryPolicy.PULL,
-        collection_center=SimpleNamespace(current_storage=dict(stock)),
+        collection_center=SimpleNamespace(current_storage={**dict.fromkeys(WasteType, 0.0), **stock}),
         kanban_manager=RecordingKanbanManager(),
-        transferable_volume=lambda waste_type: 0.0,
         provide_waste_for_treatment=lambda *args, **kwargs: {},
+        transfer_waste_to_region=lambda *args: False,
     )
 
 

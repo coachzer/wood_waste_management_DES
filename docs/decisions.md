@@ -117,7 +117,7 @@ After delivery the vehicle drives home empty over road travel time and stays `in
 Within one `TreatmentOperator.trigger_collection` call, each drain from another region's collector adds to a per-collector load, and at the end of the call that collector is charged one loaded trip for the combined load over the distance to the operator. Draining several types from one collector therefore pays the fixed trip cost once. Volumes, drain order and unpriced local drains are unchanged.
 
 ## 0043 Treatment converts waste mass, not loose volume, into panels
-The catalogue efficiency is a mass efficiency, so panel m3 per waste m3 is `mass efficiency x waste density / panel density` (`models.transformations.volumetric_yield`). Waste density comes from `WASTE_DENSITIES`, the table that turns calibrated tonnes into m3, and panel density from `PANEL_DENSITIES` in `config/constants.py`, so a tonne generated is a tonne converted. `treatment_conversion` is `(1.0, 0.03)` in every scenario. Transformation prioritization still scores the mass efficiency, so a dense input is not favoured for its density.
+The catalogue efficiency is a mass efficiency, so panel m3 per waste m3 is `mass efficiency x waste density / panel density` (`models.transformations.volumetric_yield`). Waste density comes from `WASTE_DENSITIES`, the table that turns calibrated tonnes into m3, and panel density is the midpoint of each product's range in `models/products.py`, so a tonne generated is a tonne converted. Resin and additive mass is not counted. `treatment_conversion` is `(1.0, 0.03)` in every scenario. Transformation prioritization still scores the mass efficiency, so a dense input is not favoured for its density.
 
 ## Dropped numbers
 

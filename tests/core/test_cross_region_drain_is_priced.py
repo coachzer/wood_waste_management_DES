@@ -26,7 +26,7 @@ def test_only_the_remote_drain_is_charged_over_its_distance():
     env = simpy.Environment()
     monitor = ChargeRecordingMonitor()
     state = SimulationState()
-    transport_manager = PointToPointTransport(state=state, road_circuity_mean=1.0)
+    transport_manager = PointToPointTransport(state=state, road_circuity_mean=1.0, env=env)
     local, remote = (
         make_collector(env, monitor, name=name, region_type=region, state=state, transport_manager=transport_manager)
         for name, region in (("col_home", HOME), ("col_remote", REMOTE))

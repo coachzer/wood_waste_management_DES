@@ -16,6 +16,7 @@ class SimulationState:
         self.treatment_operators = []
         self.transport_flows = []
         self.consumption_events = []
+        self.transport_manager = None
 
     def initialize(self, generators, collectors, treatment_operators):
         self.generators = generators
@@ -49,21 +50,9 @@ class SimulationState:
         return in_flight
 
     def held_transfer_volume_by_collector(self) -> dict:
-        """Volume held for queued transfers, by sending collector (ADR 0041).
-
-        It left the sending center at request time and is on no vehicle yet, so neither
-        ``current_storage`` nor ``iter_outbound_vehicles`` sees it.
-        """
-        held = {}
-        transport_managers = {}
-        for collector in self.collectors:
-            transport_manager = getattr(collector, "transport_manager", None)
-            if transport_manager is not None:
-                transport_managers[id(transport_manager)] = transport_manager
-        for transport_manager in transport_managers.values():
-            for name, volume in transport_manager.held_volume_by_requester().items():
-                held[name] = held.get(name, 0.0) + volume
-        return held
+        if self.transport_manager is None:
+            return {}
+        return self.transport_manager.held_volume_by_requester()
 
     def track_transport_flow(self, source_type: str, source_name: str, 
                            target_type: str, target_name: str, 

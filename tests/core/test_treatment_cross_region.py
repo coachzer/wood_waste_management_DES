@@ -25,7 +25,7 @@ def _request_100(waste_monitor, stock_by_region):
     """One collector per region holding the given stock; returns (collected, queued transfers by origin)."""
     env = simpy.Environment()
     state = SimulationState()
-    transport_manager = PointToPointTransport(state=state, road_circuity_mean=1.0)
+    transport_manager = PointToPointTransport(state=state, road_circuity_mean=1.0, env=env)
     state.collectors = []
     for region, stock in stock_by_region.items():
         collector = make_collector(
@@ -39,7 +39,7 @@ def _request_100(waste_monitor, stock_by_region):
         order_share_by_waste_type={CONSTRUCTION: 1.0}, order_up_to_level_m3=100.0,
     )
 
-    collected = operator.request_waste_directly(100.0, [CONSTRUCTION], remote_drain_loads={})
+    collected = operator.request_waste_directly(100.0, [CONSTRUCTION]).collected
 
     queued = {request.origin: request.volume for request in transport_manager.pending_requests}
     return collected, queued

@@ -104,7 +104,7 @@ def test_reposition_logs_collector_to_collector_not_treatment():
     # A treatment operator sits in the destination region too -- the old code
     # would have mislabeled the flow onto it; the relabel must ignore it.
     state.treatment_operators = [SimpleNamespace(name="treatment-dest", region_type=destination)]
-    transport_manager = PointToPointTransport(state=state, road_circuity_mean=1.0)
+    transport_manager = PointToPointTransport(state=state, road_circuity_mean=1.0, env=simpy.Environment())
 
     transport_manager.request_transport(TransportRequest(
         origin=origin, destination=destination, waste_type=CONSTRUCTION,

@@ -1,4 +1,5 @@
 from models.enums import OutputType, WasteType
+from models.products import ProductDataManager
 
 LANDFILL_EMISSIONS_PER_M3_KG = 0.24 * 1_000  # 240 kg CO2e / m³ (0.24 t CO2e per m³)
 TRANSPORT_EMISSIONS_PER_TON_KM = 0.087  # kg eCO2 per ton-kilometer or 87 g CO2e/ton km
@@ -34,13 +35,9 @@ COLLECTOR_TRIP_COST_CAP = 100
 COLLECTION_CENTER_CAPACITY_MULTIPLE = 2
 VEHICLES_PER_COLLECTOR = 3
 
-# Pressed panel density, kg/m3: the midpoint of each product's range in models/products.py
-# (particle board 600-800, OSB 600-680, MDF 500-1000). Treatment converts waste mass, not loose
-# waste volume, into panel volume with these (ADR 0043). Resin and additive mass is not counted.
 PANEL_DENSITIES = {
-    OutputType.PARTICLE_BOARD: 700.0,
-    OutputType.OSB: 640.0,
-    OutputType.MDF: 750.0,
+    output_type: ProductDataManager().get_product_specification(output_type.value).density_midpoint
+    for output_type in OutputType
 }
 
 # Standard waste densities in kg/m³ based on EWC codes and industry data

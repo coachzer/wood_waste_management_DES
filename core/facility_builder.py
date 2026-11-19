@@ -24,7 +24,6 @@ from utils.capacity_utils import per_tick_capacity
 
 
 def _catalogue_volumetric_yield(transformation) -> float:
-    """Panel m3 per waste m3 at the catalogue mass efficiency, the mean treatment realizes (ADR 0043)."""
     return volumetric_yield(transformation.conversion_efficiency, transformation.input_type, transformation.output_type)
 
 class FacilityBuilder:

@@ -15,6 +15,10 @@ class ProductSpecification:
     description: str
     
     @property
+    def density_midpoint(self) -> KilogramsPerCubicMetre:
+        return (self.density_min + self.density_max) / 2
+
+    @property
     def wood_density_min(self) -> float:
         """Calculate minimum wood content density (kg/m³)"""
         return self.density_min * (self.wood_content_percent / 100)

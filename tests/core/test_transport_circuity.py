@@ -10,6 +10,8 @@ knob to half-wired).
 
 from types import SimpleNamespace
 
+import simpy
+
 import pytest
 
 from core.collector import CollectorCompany
@@ -74,7 +76,7 @@ def _repositioning_times(road_circuity_mean, vehicle_region):
         collectors=[origin] if owner is origin else [origin, owner],
         track_transport_flow=lambda **kwargs: None,
     )
-    manager = PointToPointTransport(state=state, road_circuity_mean=road_circuity_mean)
+    manager = PointToPointTransport(state=state, road_circuity_mean=road_circuity_mean, env=simpy.Environment())
     manager.request_transport(TransportRequest(
         origin=RegionType.POMURSKA, destination=RegionType.PODRAVSKA, waste_type=WASTE,
         volume=10.0, request_time=0.0, requester_id="collector-1",

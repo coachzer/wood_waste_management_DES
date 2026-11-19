@@ -50,7 +50,7 @@ def test_a_vehicle_back_home_takes_the_waiting_transfer_at_once():
     world = make_world()
     _ship(world)
     world.env.run(until=1e-9)
-    _ship(world, OTHER_WASTE, 10.0)  # queued: the only vehicle is out
+    _ship(world, OTHER_WASTE, 10.0)
     back_home_at = 2 * world.transport_manager.travel_time_days(HOME, AWAY)
 
     world.env.run(until=back_home_at + 1e-9)
@@ -61,7 +61,7 @@ def test_a_vehicle_back_home_takes_the_waiting_transfer_at_once():
 
 
 def test_the_return_leg_takes_road_travel_time():
-    world = make_world(with_env=False)
+    world = make_world()
     world.transport_manager.road_circuity_mean = 1.35
 
     assert world.transport_manager.travel_time_days(AWAY, HOME) == pytest.approx(
