@@ -30,6 +30,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 from analysis.layout import iter_combo_summaries, split_combo_label
+from models.enums import StockStrategy
 
 # The two plotted metrics and their summary.csv keys. x is the headline service
 # level (full, not operational -- the paper reports the full figure because the
@@ -48,11 +49,7 @@ STRATEGY_COLORS = {
     "reorder_50": "#ff7f0e",
     "reorder_90": "#2ca02c",
 }
-STRATEGY_LABELS = {
-    "on_demand": "ON_DEMAND",
-    "reorder_50": "REORDER_50",
-    "reorder_90": "REORDER_90",
-}
+STRATEGY_LABELS = {strategy.value: strategy.name for strategy in StockStrategy}
 
 # Single-column journal figure size in inches.
 FIGURE_SIZE_INCHES = (7, 5)

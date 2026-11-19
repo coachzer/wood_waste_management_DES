@@ -27,6 +27,7 @@ from matplotlib.patches import Patch
 from analysis.layout import iter_combo_summaries, split_combo_label
 from visualization.policy_comparison_figure import (
     FIGURE_SIZE_INCHES,
+    KG_PER_KILOTONNE,
     STRATEGY_COLORS,
     STRATEGY_LABELS,
     read_metric_intervals,
@@ -86,10 +87,6 @@ CARBON_METRIC_COLORS = {
 # from demand.json, not a constant here, so the figure discovers whichever
 # prefixed rows the summary carries rather than hardcoding product names.
 SERVICE_BY_PRODUCT_PREFIX = "service_level_full_by_product_pct."
-
-# Carbon values are scaled to kilotonnes for a readable axis, same divisor as
-# the policy comparison figure's emissions axis.
-KG_PER_KILOTONNE = 1_000_000.0
 
 
 def to_kilotonnes(interval: Tuple[float, float, float]) -> Tuple[float, float, float]:
