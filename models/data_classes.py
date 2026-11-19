@@ -1,11 +1,7 @@
 import numpy as np
 from dataclasses import dataclass, field
-from typing import Dict, Tuple, Optional
-from config.constants import (
-    COLLECTION_CENTER_DOWNTIME_DAYS,
-    FAILURE_CHECK_INTERVAL_DAYS,
-    RECOVERING_BASE_EFFICIENCY,
-)
+from typing import Dict, Optional
+from config.constants import FAILURE_CHECK_INTERVAL_DAYS, RECOVERING_BASE_EFFICIENCY
 from .recording import EntityStatusRecorder
 from .enums import WasteType, RegionType, EntityStatus, OutputType
 from .units import (
@@ -186,23 +182,11 @@ class Vehicle:
     destination: Optional[RegionType] = None
     estimated_arrival: Optional[float] = None
 
-@dataclass(init=False)
-class CollectionCenter(OperationalEntity):
-    """Data class to represent a waste collection center"""
-    region: RegionType
+@dataclass
+class CollectionCenter:
+    """A collector's intermediate storage."""
     waste_storage_capacity: CubicMetres
     current_storage: Dict[WasteType, CubicMetres]
-    coordinates: Tuple[float, float]
-
-    def __init__(self, region: RegionType, waste_storage_capacity: float,
-                 current_storage: Dict[WasteType, float], coordinates: Tuple[float, float]):
-        """Initialize collection center with custom downtime duration"""
-        super().__init__()
-        self.region = region
-        self.waste_storage_capacity = waste_storage_capacity
-        self.current_storage = current_storage
-        self.coordinates = coordinates
-        self.downtime_duration = COLLECTION_CENTER_DOWNTIME_DAYS
 
 @dataclass
 class ProductStorage:

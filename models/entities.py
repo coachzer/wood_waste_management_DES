@@ -1,12 +1,11 @@
 from typing import Dict, List, Optional
 from dataclasses import dataclass
-from .data_classes import FailureConfig, OperationalEntity
 from .enums import WasteType, normalize_waste_type
 
 
 @dataclass
-class Generator(OperationalEntity):
-    """Waste generator entity"""
+class Generator:
+    """Generator as loaded from a region file."""
     id: str
     waste_generation_rates: Dict[WasteType, float]
     generation_frequency: float
@@ -14,26 +13,10 @@ class Generator(OperationalEntity):
     efficiency: float
     initial_stock: Optional[Dict[WasteType, float]] = None
 
-    def __init__(self,
-                 id: str,
-                 waste_generation_rates: Dict[WasteType, float],
-                 generation_frequency: float,
-                 waste_storage_capacity: float,
-                 efficiency: float,
-                 initial_stock: Optional[Dict[WasteType, float]] = None,
-                 failure_config: Optional[FailureConfig] = None):
-        super().__init__(failure_config=failure_config)
-        self.id = id
-        self.waste_generation_rates = waste_generation_rates
-        self.generation_frequency = generation_frequency
-        self.waste_storage_capacity = waste_storage_capacity
-        self.efficiency = efficiency
-        self.initial_stock = initial_stock
-
 
 @dataclass
-class Collector(OperationalEntity):
-    """Waste collector entity"""
+class Collector:
+    """Collector as loaded from a region file."""
     id: str
     waste_types: List[WasteType]
     collection_capacity: float
@@ -42,28 +25,10 @@ class Collector(OperationalEntity):
     efficiency: float
     availability: bool
 
-    def __init__(self,
-                 id: str,
-                 waste_types: List[WasteType],
-                 collection_capacity: float,
-                 collection_frequency: float,
-                 transport_cost: float,
-                 efficiency: float,
-                 availability: bool,
-                 failure_config: Optional[FailureConfig] = None):
-        super().__init__(failure_config=failure_config)
-        self.id = id
-        self.waste_types = waste_types
-        self.collection_capacity = collection_capacity
-        self.collection_frequency = collection_frequency
-        self.transport_cost = transport_cost
-        self.efficiency = efficiency
-        self.availability = availability
-
 
 @dataclass
-class Processor(OperationalEntity):
-    """Treatment/processing facility"""
+class Processor:
+    """Treatment operator as loaded from a region file."""
     id: str
     input_types: List[WasteType]
     output_types: List[str]
@@ -71,30 +36,8 @@ class Processor(OperationalEntity):
     waste_storage_capacity: float
     energy_consumption: float = 1.0
     environmental_impact: float = 1.0
-    conversion_rate: float = 1.0
     operational_costs: float = 1.0
 
-    def __init__(self,
-                 id: str,
-                 input_types: List[str],
-                 output_types: List[str],
-                 processing_time: float,
-                 waste_storage_capacity: float,
-                 energy_consumption: float = 1.0,
-                 environmental_impact: float = 1.0,
-                 conversion_rate: float = 1.0,
-                 operational_costs: float = 1.0,
-                 failure_config: Optional[FailureConfig] = None):
-        super().__init__(failure_config=failure_config)
-        self.id = id
-        self.input_types = input_types
-        self.output_types = output_types
-        self.processing_time = processing_time
-        self.waste_storage_capacity = waste_storage_capacity
-        self.energy_consumption = energy_consumption
-        self.environmental_impact = environmental_impact
-        self.conversion_rate = conversion_rate
-        self.operational_costs = operational_costs
 
 @dataclass
 class RegionalFacilities:

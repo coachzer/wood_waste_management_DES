@@ -78,7 +78,6 @@
             "waste_storage_capacity": 28000,
             "energy_consumption": 100.0,
             "environmental_impact": 1.5,
-            "conversion_rate": 1.0,
             "operational_costs": 80.0
         }
     ]

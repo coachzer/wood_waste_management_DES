@@ -18,7 +18,7 @@ from core.transport_manager import PointToPointTransport, TransportRequest
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy, normalize_waste_type
 from instrumentation.waste_monitor import WasteMonitor
 from models.data_classes import Vehicle, CollectionCenter, OperationalEntity
-from models.distances import REGION_COORDINATES, get_distance, get_closest_regions
+from models.distances import get_distance, get_closest_regions
 from utils.capacity_utils import (
     handle_storage_event,
     check_storage_capacity,
@@ -113,12 +113,8 @@ class CollectorCompany(OperationalEntity):
         self.region_type = RegionType[region.upper().replace('-', '_')] if region else None
 
         self.collection_center = CollectionCenter(
-            region=self.region_type,
             waste_storage_capacity=collection_capacity * 2,
             current_storage=dict.fromkeys(WasteType, 0.0),
-            coordinates=(
-                REGION_COORDINATES[self.region_type] if self.region_type else (0.0, 0.0)
-            ),
         )
 
         self.vehicle_capacity = (

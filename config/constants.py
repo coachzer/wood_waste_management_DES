@@ -75,8 +75,6 @@ RECOVERING_BASE_EFFICIENCY = 0.3
 FAILURE_CHECK_INTERVAL_DAYS = 1.0
 # Treatment processing capacity is sized as this fraction of waste storage capacity.
 PROCESSING_CAPACITY_FRACTION = 0.8
-# Collection centers take longer to repair than other entities (days of downtime).
-COLLECTION_CENTER_DOWNTIME_DAYS = 2.0
 
 # Operating clock (ADR 0020). Treatment and collectors act once per tick. The
 # region data keeps each entity's capacity per its native period
