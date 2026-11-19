@@ -21,9 +21,10 @@ way it imports ``write_paired_comparison_report``.
 
 import csv
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, List, Tuple
 
 from ._kpi_shared import KPI_SENSE, KpiSense
+from .layout import iter_combo_summaries
 
 OBJECTIVES: List[Tuple[str, str]] = [
     (metric, KPI_SENSE[metric])
@@ -93,26 +94,6 @@ def pareto_frontier(
             if other != label
         )
     )
-
-
-def iter_combo_summaries(path: Path, root: bool) -> Iterable[Tuple[str, Path]]:
-    """Yield ``(config_label, summary_csv_path)`` for each configuration under ``path``.
-
-    Scenario mode (``root=False``): ``path`` is a scenario dir; each immediate
-    subdir is a combo holding ``summary.csv``; the label is the combo name
-    (e.g. ``push__on_demand``). Root mode (``root=True``): ``path`` holds scenario
-    dirs, each holding combo dirs; the label is ``{scenario}__{combo}`` so the
-    frontier spans (scenario x combo) -- e.g. Baseline plus the C1 Buffer
-    scenarios in one frontier. Sorted so the artifact is deterministic.
-    """
-    glob_pattern = "*/*/summary.csv" if root else "*/summary.csv"
-    for summary_path in sorted(path.glob(glob_pattern)):
-        combo_dir = summary_path.parent
-        if root:
-            label = f"{combo_dir.parent.name}__{combo_dir.name}"
-        else:
-            label = combo_dir.name
-        yield label, summary_path
 
 
 def read_objective_point(

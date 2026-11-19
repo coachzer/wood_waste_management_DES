@@ -7,8 +7,8 @@ import-free to run as a bare file (the old ``monitoring/__init__`` import cycle)
 The clean-monitoring refactor killed that cycle, so the modules now run via
 ``python -m analysis.<module>`` and import this leaf instead of copying it.
 
-This module is a leaf: it imports only the standard library and scipy, so
-importing it can never reintroduce a project-internal cycle.
+This module is a leaf: it imports only the standard library, scipy and the
+``analysis.layout`` leaf, so importing it can never reintroduce a project-internal cycle.
 """
 
 import json
@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Dict, List
 
 from scipy import stats
+
+from .layout import RUN_GLOB, combo_label
 
 
 def t_ci_margin(n: int, stdev: float, alpha: float) -> float:
@@ -96,10 +98,10 @@ def load_combo_kpis(scenario_dir: Path) -> Dict[str, Dict[int, dict]]:
     generic namespaces are flattened to ``{namespace}.{key}`` metrics on load.
     """
     combos: Dict[str, Dict[int, dict]] = {}
-    for run_path in sorted(scenario_dir.glob("*/run_*.json")):
+    for run_path in sorted(scenario_dir.glob(RUN_GLOB)):
         with open(run_path, "r", encoding="utf-8") as f:
             run = json.load(f)
-        label = f"{run['inventory_policy']}__{run['stock_strategy']}"
+        label = combo_label(run['inventory_policy'], run['stock_strategy'])
         combos.setdefault(label, {})[run["seed"]] = _flatten_namespaces(run["kpis"])
     return combos
 

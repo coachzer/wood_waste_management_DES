@@ -2,7 +2,7 @@
 
 The rendering is Matplotlib and not meaningfully assertable, so these exercise
 the pure data path that decides where each point lands and how big its 95% CI
-crosshairs are: ``read_metric_intervals`` (mean + CI bounds), ``_split_combo_label``
+crosshairs are: ``read_metric_intervals`` (mean + CI bounds), ``split_combo_label``
 (policy/strategy from the dir name), and ``build_points`` (the asymmetric error
 half-widths and the kg->kt emissions scaling). Synthetic tmp summary.csv fixtures,
 no simulation -- mirrors ``test_pareto.py``.
@@ -15,10 +15,10 @@ Failure modes guarded:
 
 import pytest
 
+from analysis.layout import split_combo_label
 from visualization.policy_comparison_figure import (
     EMISSIONS_METRIC,
     SERVICE_METRIC,
-    _split_combo_label,
     build_points,
     read_metric_intervals,
     write_policy_comparison_figure,
@@ -55,14 +55,14 @@ def test_read_metric_intervals_raises_on_missing_metric(tmp_path):
 
 
 def test_split_combo_label_parses_policy_and_strategy():
-    assert _split_combo_label("push__on_demand") == ("push", "on_demand")
-    assert _split_combo_label("pull__reorder_90") == ("pull", "reorder_90")
+    assert split_combo_label("push__on_demand") == ("push", "on_demand")
+    assert split_combo_label("pull__reorder_90") == ("pull", "reorder_90")
 
 
 def test_split_combo_label_rejects_non_combo_name():
     # A directory that is not exactly one '__' join must raise, not mis-style.
     with pytest.raises(ValueError):
-        _split_combo_label("baseline_only")
+        split_combo_label("baseline_only")
 
 
 def test_build_points_computes_asymmetric_err_and_kt_scaling(tmp_path):

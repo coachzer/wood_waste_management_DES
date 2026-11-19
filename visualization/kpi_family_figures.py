@@ -24,12 +24,11 @@ matplotlib.use("Agg")  # headless, browser-free static rendering
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
-from analysis.pareto import iter_combo_summaries
+from analysis.layout import iter_combo_summaries, split_combo_label
 from visualization.policy_comparison_figure import (
     FIGURE_SIZE_INCHES,
     STRATEGY_COLORS,
     STRATEGY_LABELS,
-    _split_combo_label,
     read_metric_intervals,
 )
 
@@ -183,7 +182,7 @@ def build_metric_table(path: Path, metrics: List[str]) -> List[dict]:
     """
     table: List[dict] = []
     for label, summary_path in iter_combo_summaries(Path(path), root=False):
-        policy, strategy = _split_combo_label(label)
+        policy, strategy = split_combo_label(label)
         intervals = read_metric_intervals(summary_path, metrics)
         table.append(
             {

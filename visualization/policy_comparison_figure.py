@@ -14,7 +14,7 @@ one that needs a browser-free static export.
 
 Reads only ``summary.csv`` files (the Monte Carlo aggregate) and runs via
 ``python -m visualization.policy_comparison_figure <scenario_dir>``. It reuses
-``analysis.pareto.iter_combo_summaries`` so the combo-discovery rule stays in one
+``analysis.layout.iter_combo_summaries`` so the combo-discovery rule stays in one
 place.
 """
 
@@ -29,7 +29,7 @@ matplotlib.use("Agg")  # headless, browser-free static rendering
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-from analysis.pareto import iter_combo_summaries
+from analysis.layout import iter_combo_summaries, split_combo_label
 
 # The two plotted metrics and their summary.csv keys. x is the headline service
 # level (full, not operational -- the paper reports the full figure because the
@@ -84,20 +84,6 @@ def read_metric_intervals(
     return intervals
 
 
-def _split_combo_label(label: str) -> Tuple[str, str]:
-    """Split a ``policy__strategy`` combo label into ``(policy, strategy)``.
-
-    Raises ``ValueError`` on any label that is not exactly one ``__`` join, so an
-    unexpected directory name fails loudly instead of mis-styling a point.
-    """
-    parts = label.split("__")
-    if len(parts) != 2:
-        raise ValueError(
-            f"Expected a 'policy__strategy' combo label, got {label!r}"
-        )
-    return parts[0], parts[1]
-
-
 def build_points(path: Path) -> List[dict]:
     """One styled point dict per configuration under scenario dir ``path``.
 
@@ -108,7 +94,7 @@ def build_points(path: Path) -> List[dict]:
     """
     points: List[dict] = []
     for label, summary_path in iter_combo_summaries(path, root=False):
-        policy, strategy = _split_combo_label(label)
+        policy, strategy = split_combo_label(label)
         intervals = read_metric_intervals(
             summary_path, [SERVICE_METRIC, EMISSIONS_METRIC]
         )

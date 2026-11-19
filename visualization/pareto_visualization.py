@@ -22,7 +22,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-from analysis.pareto import OBJECTIVES, build_pareto_report, iter_combo_summaries
+from analysis.layout import iter_combo_summaries, split_combo_label
+from analysis.pareto import OBJECTIVES, build_pareto_report
 from visualization.policy_comparison_figure import (
     FIGURE_SIZE_INCHES,
     KG_PER_KILOTONNE,
@@ -36,15 +37,6 @@ SERVICE_METRIC = "service_level_full_pct"
 EMISSIONS_METRIC = "total_emissions_kgco2e"
 LANDFILL_METRIC = "landfill_volume_m3"
 COST_METRIC = "total_system_cost"
-
-
-def _split_combo_label(label: str) -> Tuple[str, str]:
-    parts = label.split("__")
-    if len(parts) != 2:
-        raise ValueError(
-            f"Expected a 'policy__strategy' combo label, got {label!r}"
-        )
-    return parts[0], parts[1]
 
 
 def _build_points(
@@ -70,7 +62,7 @@ def _build_points(
     for label, summary_path in iter_combo_summaries(path, root=root):
         if label not in pareto_by_config:
             continue
-        policy, strategy = _split_combo_label(label)
+        policy, strategy = split_combo_label(label)
 
         intervals = read_metric_intervals(summary_path, all_metrics)
         service_mean, service_low, service_high = intervals[SERVICE_METRIC]

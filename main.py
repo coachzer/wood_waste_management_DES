@@ -7,6 +7,7 @@ from visualization.scenario_comparison import ScenarioComparison
 from analysis.baseline_aggregate import extract_kpis, summary_rows
 from persistence.serialization import build_raw_payload, jsonify
 from analysis.paired_comparison import write_paired_comparison_report
+from analysis.layout import SUMMARY_FILENAME, combo_label, raw_filename, run_filename
 from analysis.pareto import write_pareto_report
 from analysis.stochastic_dominance import write_dominance_report
 from visualization.pareto_visualization import write_pareto_plot
@@ -110,7 +111,7 @@ def _run_baseline_replication_task(
     )
     kpis = extract_kpis(simulation_result["monitor_data"])
 
-    run_path = combo_dir / f"run_{replication_index:03d}.json"
+    run_path = combo_dir / run_filename(replication_index)
     try:
         with open(run_path, "w", encoding="utf-8") as f:
             json.dump(
@@ -128,7 +129,7 @@ def _run_baseline_replication_task(
     except Exception as e:
         print(f"Warning: failed to write {run_path}: {e}")
 
-    raw_path = combo_dir / f"raw_{replication_index:03d}.json"
+    raw_path = combo_dir / raw_filename(replication_index)
     try:
         with open(raw_path, "w", encoding="utf-8") as f:
             json.dump(
@@ -196,7 +197,7 @@ def run_monte_carlo_baseline(
         replication_tasks: list[tuple] = []
         for policy in inventory_policies:
             for strategy in stock_strategies:
-                combo_dir = scenario_dir / f"{policy.value}__{strategy.value}"
+                combo_dir = scenario_dir / combo_label(policy.value, strategy.value)
                 combo_dir.mkdir(parents=True, exist_ok=True)
                 for replication_index in range(replications):
                     replication_tasks.append(
@@ -229,7 +230,7 @@ def run_monte_carlo_baseline(
         for policy in inventory_policies:
             for strategy in stock_strategies:
                 print(f"\n-- {policy.value} x {strategy.value} --")
-                combo_dir = scenario_dir / f"{policy.value}__{strategy.value}"
+                combo_dir = scenario_dir / combo_label(policy.value, strategy.value)
                 combo_records = [
                     record
                     for record in replication_records
@@ -243,12 +244,12 @@ def run_monte_carlo_baseline(
                 print(
                     f"Completed {replications} reps for {policy.value} x {strategy.value}"
                 )
-                summary_csv = combo_dir / "summary.csv"
+                summary_csv = combo_dir / SUMMARY_FILENAME
                 try:
                     _write_combo_summary(summary_csv, combo_kpis)
                 except Exception as e:
                     print(
-                        f"Warning: failed to write summary CSV for {policy.value}__{strategy.value}: {e}"
+                        f"Warning: failed to write summary CSV for {combo_label(policy.value, strategy.value)}: {e}"
                     )
 
         # Paired (CRN) comparison across this scenario's combos by per-replication
