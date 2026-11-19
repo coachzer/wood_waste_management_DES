@@ -303,3 +303,23 @@ def test_kpi_family_figures_main_skips_none_output(tmp_path):
     )
     assert "Wrote None" not in proc.stdout
     assert "bullwhip_comparison.pdf" in proc.stdout
+
+
+def test_log_axis_whisker_below_zero_stops_at_the_axis_bottom(tmp_path):
+    import matplotlib.pyplot as plt
+
+    from visualization.kpi_family_figures import _grouped_bars, build_metric_table
+
+    rows_a = _bullwhip_rows()
+    rows_a[BULLWHIP_RATIO_METRICS[0]] = (10.0, -5.0, 15.0)
+    _write_summary(tmp_path / "pull__on_demand", rows_a)
+    _write_summary(tmp_path / "push__on_demand", _bullwhip_rows(scale=0.5))
+    table = build_metric_table(tmp_path, BULLWHIP_RATIO_METRICS)
+
+    fig, ax = plt.subplots()
+    try:
+        _grouped_bars(ax, table, BULLWHIP_RATIO_METRICS, log_y=True)
+        ax.set_yscale("log")
+        assert ax.get_ylim()[0] == pytest.approx(4.5 / 2)
+    finally:
+        plt.close(fig)

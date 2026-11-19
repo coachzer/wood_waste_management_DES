@@ -141,7 +141,21 @@ def _grouped_bar_legend(table: List[dict]) -> List[Patch]:
 def _grouped_bars(
     ax, table: List[dict], metrics: List[str], *, log_y: bool = False
 ) -> None:
-    """One bar group per metric, one bar per combo, asymmetric 95% CI whiskers."""
+    """One bar group per metric, one bar per combo, asymmetric 95% CI whiskers.
+
+    On a log axis a CI reaching zero or below cannot be drawn, so its lower
+    whisker stops at the axis bottom: half the smallest positive mean or CI low.
+    """
+    log_floor = None
+    if log_y:
+        positive = [
+            value
+            for row in table
+            for metric in metrics
+            for value in row["values"][metric][:2]
+            if value > 0
+        ]
+        log_floor = min(positive) / 2 if positive else None
     group_width = 0.8
     bar_width = group_width / len(table)
     for combo_index, row in enumerate(table):
@@ -154,8 +168,8 @@ def _grouped_bars(
         for metric in metrics:
             mean, low, _ = row["values"][metric]
             low_half = max(0.0, mean - low)
-            if log_y and mean > 0 and mean - low_half <= 0:
-                low_half = mean * (1.0 - 1e-6)
+            if log_floor is not None and mean > 0 and mean - low_half <= 0:
+                low_half = mean - log_floor
             err_low.append(low_half)
         err_high = [
             max(0.0, row["values"][metric][2] - row["values"][metric][0])
@@ -170,6 +184,8 @@ def _grouped_bars(
             error_kw={"elinewidth": 0.8},
             **_bar_style(row),
         )
+    if log_floor is not None:
+        ax.set_ylim(bottom=log_floor)
     ax.set_xticks(range(len(metrics)))
 
 
