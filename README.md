@@ -59,7 +59,7 @@ Products are ranked by total biogenic carbon stock impact (demand volume times b
 
 ### Failure injection
 
-All entities inherit a three-state lifecycle (`OPERATIONAL -> FAILED -> RECOVERING`) from `OperationalEntity`. Scenarios set failure rates and recovery times through `FailureConfig` and `UncertaintySet`.
+All entities inherit a three-state lifecycle (`OPERATIONAL -> FAILED -> RECOVERING`) from `OperationalEntity`. Each `ScenarioConfig` sets failure rates and recovery times per echelon through a `FailureConfig`.
 
 ### Storage and overflow
 
@@ -96,7 +96,7 @@ Baseline mode writes to `outputs/baseline/{scenario}/`. Each `{policy}__{strateg
 ```
 main.py                     Entry point and CLI
 config/
-  base_config.py            Scenario definitions, cost params, UncertaintySet
+  base_config.py            Scenario definitions (ScenarioConfig) and their validation
   constants.py              Simulation duration, emission factors, densities, thresholds
 core/
   simulation_manager.py     Orchestrates initialization and run lifecycle
