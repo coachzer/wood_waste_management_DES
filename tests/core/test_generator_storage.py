@@ -14,15 +14,11 @@ Pins three failure modes in ``WasteGenerator``:
    exactly the excess over capacity; nothing silently vanishes.
 """
 
-from types import SimpleNamespace
-
 import pytest
 import simpy
 
 from config.constants import OPERATING_TICK_DAYS
-from core.generator import WasteGenerator
-from models.data_classes import WasteStream
-from models.enums import EntityStatus, WasteType
+from models.enums import WasteType
 from tests.core.factories import make_waste_generator
 
 
@@ -37,67 +33,6 @@ def run_one_generation_tick(waste_monitor, generation_rates, **overrides):
     generator = make_waste_generator(env, waste_monitor, generation_rates, **overrides)
     env.run(until=OPERATING_TICK_DAYS / 2)
     return generator
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-class RecordingState:
-    """Stands in for SimulationState.
-
-    The generator storage path no longer calls back into state, so this is an
-    inert placeholder that satisfies the ``self.state`` attribute without
-    spinning up a real ``SimulationState``.
-    """
-
-
-def make_generator_stub(
-    waste_generation_rates,
-    waste_storage_capacity,
-    current_storage=0.0,
-    status=EntityStatus.OPERATIONAL,
-    outlet_waste_types=(),
-):
-    """Build a minimal SimpleNamespace that satisfies ``_generate_waste_for_period``.
-
-    Mirrors only the attributes those methods actually read, using the same
-    field names as the real ``WasteGenerator``.
-    """
-    state = RecordingState()
-
-    waste_streams = {
-        waste_type: WasteStream(waste_type=waste_type, volume=0.0)
-        for waste_type in waste_generation_rates
-    }
-
-    total_generated = {waste_type: 0.0 for waste_type in waste_generation_rates}
-    total_potential_generated = {waste_type: 0.0 for waste_type in waste_generation_rates}
-    total_uncollected = {waste_type: 0.0 for waste_type in waste_generation_rates}
-
-    def _calculate_daily_factors_stub(self):
-        """No uncertainty: return unit factor for every waste type."""
-        return [1.0] * len(self.waste_generation_rates)
-
-    stub = SimpleNamespace(
-        waste_generation_rates=waste_generation_rates,
-        waste_storage_capacity=waste_storage_capacity,
-        current_storage=current_storage,
-        waste_streams=waste_streams,
-        total_generated=total_generated,
-        total_potential_generated=total_potential_generated,
-        total_uncollected=total_uncollected,
-        outlet_waste_types=frozenset(outlet_waste_types),
-        total_outlet={waste_type: 0.0 for waste_type in waste_generation_rates},
-        efficiency=1.0,
-        status=status,
-        state=state,
-    )
-    import types
-    stub._calculate_daily_factors = types.MethodType(_calculate_daily_factors_stub, stub)
-    # Bind the real _update_waste_stream so _generate_waste_for_period can call it.
-    stub._update_waste_stream = types.MethodType(WasteGenerator._update_waste_stream, stub)
-    return stub
 
 
 # ---------------------------------------------------------------------------
@@ -154,20 +89,14 @@ def test_update_waste_stream_increments_all_counters_atomically():
 
     Guards against a split-brain where the three internal counters diverge.
     """
-    stub = make_generator_stub(
-        waste_generation_rates={CONSTRUCTION: 1.0},
-        waste_storage_capacity=500.0,
-        current_storage=0.0,
-    )
+    generator = make_waste_generator(simpy.Environment(), None, {CONSTRUCTION: 1.0})
 
     volume_to_add = 42.0
-    WasteGenerator._update_waste_stream(
-        stub, CONSTRUCTION, volume_to_add
-    )
+    generator._update_waste_stream(CONSTRUCTION, volume_to_add)
 
-    assert stub.waste_streams[CONSTRUCTION].volume == pytest.approx(volume_to_add)
-    assert stub.current_storage == pytest.approx(volume_to_add)
-    assert stub.total_generated[CONSTRUCTION] == pytest.approx(volume_to_add)
+    assert generator.waste_streams[CONSTRUCTION].volume == pytest.approx(volume_to_add)
+    assert generator.current_storage == pytest.approx(volume_to_add)
+    assert generator.total_generated[CONSTRUCTION] == pytest.approx(volume_to_add)
 
 
 def test_handle_overflow_caps_storage_and_scales_streams_proportionally():
@@ -178,46 +107,46 @@ def test_handle_overflow_caps_storage_and_scales_streams_proportionally():
     pre-overflow total, and every stream must shrink by the same factor --
     nothing silently vanishes and no type is singled out.
 
-    Uses a monkeypatched handle_storage_event stub so the test does not depend
+    Uses a monkeypatched handle_storage_event so the test does not depend
     on landfill-vs-expand cost arithmetic; the invariant being tested is the
     scaling step alone.
     """
     capacity = 100.0
     # Prime streams above capacity to force the scaling branch
-    stub = make_generator_stub(
-        waste_generation_rates={CONSTRUCTION: 1.0, PACKAGING: 1.0},
+    generator = make_waste_generator(
+        simpy.Environment(), None, {CONSTRUCTION: 1.0, PACKAGING: 1.0},
         waste_storage_capacity=capacity,
-        current_storage=130.0,
     )
     pre_overflow_volumes = {CONSTRUCTION: 80.0, PACKAGING: 50.0}
     for waste_type, volume in pre_overflow_volumes.items():
-        stub.waste_streams[waste_type].volume = volume
+        generator.waste_streams[waste_type].volume = volume
+    generator.current_storage = 130.0
 
     pre_overflow_total = sum(pre_overflow_volumes.values())  # 130
 
     # Stub handle_storage_event so it performs no side effects on capacity or
     # streams; we are testing the scaling step that follows it.
     import unittest.mock as mock
-    with mock.patch("core.generator.handle_storage_event"):
-        WasteGenerator._handle_overflow(stub, force_landfill=False)
+    with mock.patch("core.generator.handle_storage_event", return_value=(0.0, "landfill")):
+        generator._handle_overflow(force_landfill=False)
 
     # Storage must be capped at capacity
-    assert stub.current_storage == pytest.approx(capacity)
+    assert generator.current_storage == pytest.approx(capacity)
 
     # Sum of volumes across streams must equal capacity
-    total_stored = sum(s.volume for s in stub.waste_streams.values())
+    total_stored = sum(s.volume for s in generator.waste_streams.values())
     assert total_stored == pytest.approx(capacity)
 
     # Every stream shrank by the same factor (proportional, not type-biased)
     expected_scaling_factor = capacity / pre_overflow_total
     for waste_type, pre_volume in pre_overflow_volumes.items():
-        assert stub.waste_streams[waste_type].volume == pytest.approx(
+        assert generator.waste_streams[waste_type].volume == pytest.approx(
             pre_volume * expected_scaling_factor
         )
 
     # Mass conservation identity: removed volume is exactly the excess
     total_removed = sum(
-        pre_volume - stub.waste_streams[waste_type].volume
+        pre_volume - generator.waste_streams[waste_type].volume
         for waste_type, pre_volume in pre_overflow_volumes.items()
     )
     assert total_removed == pytest.approx(pre_overflow_total - capacity)
@@ -241,3 +170,29 @@ def test_outlet_type_leaves_without_taking_storage(ledger_waste_monitor):
     assert generator.total_generated[CONSTRUCTION] == pytest.approx(10.0)
     assert generator.total_uncollected[CONSTRUCTION] == 0.0
     assert generator.current_storage == pytest.approx(10.0)
+
+
+def test_overflow_beyond_one_expansion_landfills_the_remainder():
+    """An expansion adds a fixed block; overflow past it must be landfilled,
+    not scaled out of the streams unrecorded (mass loss)."""
+    import unittest.mock as mock
+
+    generator = make_waste_generator(
+        simpy.Environment(), None, {CONSTRUCTION: 1.0}, waste_storage_capacity=100.0
+    )
+    generator.waste_streams[CONSTRUCTION].volume = 700.0
+    generator.current_storage = 700.0
+    events = []
+
+    def fake_storage_event(entity, composition, force_landfill=False):
+        events.append((sum(composition.values()), force_landfill))
+        if force_landfill:
+            return 0.0, "landfill"
+        entity.waste_storage_capacity += 500.0
+        return 0.0, "expand_storage"
+
+    with mock.patch("core.generator.handle_storage_event", side_effect=fake_storage_event):
+        generator._handle_overflow()
+
+    assert events == [(pytest.approx(600.0), False), (pytest.approx(100.0), True)]
+    assert generator.current_storage == pytest.approx(600.0)

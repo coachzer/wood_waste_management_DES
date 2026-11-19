@@ -166,13 +166,19 @@ class WasteGenerator(OperationalEntity):
         if total_current > self.waste_storage_capacity:
             overflow_amount = total_current - self.waste_storage_capacity
 
-            handle_storage_event(
+            _cost, action = handle_storage_event(
                 self,
                 split_overflow_by_type(current_volumes, overflow_amount),
                 force_landfill=force_landfill
             )
 
             effective_capacity = self.waste_storage_capacity
+            if action == "expand_storage" and total_current > effective_capacity:
+                handle_storage_event(
+                    self,
+                    split_overflow_by_type(current_volumes, total_current - effective_capacity),
+                    force_landfill=True,
+                )
 
             if total_current > effective_capacity:
                 scaling_factor = effective_capacity / total_current
