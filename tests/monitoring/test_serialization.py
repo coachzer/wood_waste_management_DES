@@ -10,12 +10,6 @@ from models.enums import OutputType, WasteType
 from persistence.serialization import build_raw_payload, jsonify
 
 
-def test_enum_dict_keys_rewritten_to_value():
-    out = jsonify({WasteType.CONSTRUCTION_WOOD_17_02_01: 5.0})
-    assert out == {"17 02 01": 5.0}
-    json.dumps(out)  # must not raise
-
-
 def test_enum_values_rewritten_to_value():
     assert jsonify(OutputType.MDF) == "mdf"
     assert jsonify([WasteType.WOOD_19_12_07, OutputType.OSB]) == ["19 12 07", "osb"]
@@ -42,6 +36,7 @@ def test_build_raw_payload_output_is_json_serializable_after_jsonify():
         "generation_history": {"gen1": {WasteType.WOOD_19_12_07: [1.0, 2.0]}},
         "consumption_events": [{"product": OutputType.MDF, "consumed": 3.0}],
     }
-    encoded = jsonify(build_raw_payload(monitor_data))
-    text = json.dumps(encoded)
-    assert "19 12 07" in text and "mdf" in text
+    reloaded = json.loads(json.dumps(jsonify(build_raw_payload(monitor_data))))
+
+    assert reloaded["generation_history"] == {"gen1": {"19 12 07": [1.0, 2.0]}}
+    assert reloaded["consumption_events"] == [{"product": "mdf", "consumed": 3.0}]

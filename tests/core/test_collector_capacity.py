@@ -1,6 +1,6 @@
 """Collector efficiency is applied to collection capacity exactly once.
 
-``collection_loop`` already stores ``collection_capacity = initial x efficiency``.
+``collection_loop`` already sets ``collection_capacity_per_tick_m3`` from ``initial x efficiency``.
 Consumers used to multiply by ``efficiency`` again, so effective capacity scaled
 with efficiency squared and amplified the policy-dependent efficiency curves.
 """

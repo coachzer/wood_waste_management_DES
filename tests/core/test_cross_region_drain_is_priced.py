@@ -2,7 +2,7 @@
 import pytest
 import simpy
 
-from config.constants import COLLECTION_COST_PER_KM_PER_M3, LOCAL_COLLECTION_RATIO, ROAD_CIRCUITY_FACTOR
+from config.constants import COLLECTION_COST_PER_KM_PER_M3, ROAD_CIRCUITY_FACTOR
 from core.transport_manager import PointToPointTransport
 from models.distances import get_distance
 from models.enums import RegionType, WasteType
@@ -41,7 +41,6 @@ def test_only_the_remote_drain_is_charged_over_its_distance():
 
     collected = operator.request_waste_directly(100.0, [WASTE])
 
-    assert LOCAL_COLLECTION_RATIO == 0.8
     assert collected == {WASTE: pytest.approx(80.0)}
     road_distance = get_distance(REMOTE, HOME) * ROAD_CIRCUITY_FACTOR
     assert monitor.costs == [

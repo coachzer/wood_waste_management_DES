@@ -71,8 +71,7 @@ def test_landfill_readers_agree_on_the_serialized_copy():
     ``raw_NNN.json`` cannot drift from the in-process value.
 
     Mutation check (red): make ``total_landfilled_volume`` read ``"costs"``
-    instead of delegating to ``landfilled_volume_by_entity`` -> the totals
-    disagree.
+    -> the per-entity totals become the costs (10.0, 1.0).
     """
     from persistence.serialization import jsonify
 
@@ -82,9 +81,11 @@ def test_landfill_readers_agree_on_the_serialized_copy():
 
     round_tripped = json.loads(json.dumps(jsonify(store.get_landfill_history)))
 
-    assert landfilled_volume_by_entity(round_tripped) == store.landfilled_volume_by_entity()
-    assert total_landfilled_volume(round_tripped) == store.total_landfilled_volume()
-    assert total_landfill_cost(round_tripped) == total_landfill_cost(store.landfill_history)
+    expected_by_entity = {"col-1": 42.5, "col-2": 4.0}
+    assert store.landfilled_volume_by_entity() == expected_by_entity
+    assert landfilled_volume_by_entity(round_tripped) == expected_by_entity
+    assert store.total_landfilled_volume() == total_landfilled_volume(round_tripped) == 46.5
+    assert total_landfill_cost(store.landfill_history) == total_landfill_cost(round_tripped) == 11.0
 
 
 # --- record_emission --------------------------------------------------------

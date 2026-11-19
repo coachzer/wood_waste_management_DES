@@ -323,7 +323,7 @@ def test_leaking_waste_system_trips():
 def _baseline_run():
     """One Baseline PUSH/ON_DEMAND replication with armed invariants.
 
-    The shared configuration of the four slow end-to-end invariant tests below.
+    The shared configuration of the two slow end-to-end invariant tests below.
     Deferred import keeps main's heavy import chain off this module's fast
     tests.
     """
@@ -337,12 +337,6 @@ def _baseline_run():
         create_mfa=False,
         raise_on_violation=True,
     )
-
-
-@pytest.fixture(scope="module")
-def baseline_run_result():
-    """The unmutated baseline run, shared by the clean-run invariant tests below."""
-    return _baseline_run()
 
 
 @pytest.mark.slow
@@ -382,52 +376,23 @@ def test_yield_bridge_trips_on_halved_yield(monkeypatch):
 
 
 @pytest.mark.slow
-def test_yield_bridge_holds_on_baseline_run(baseline_run_result):
-    """The armed yield bridge closes on a real, unmutated baseline run.
+def test_armed_invariants_hold_on_baseline_run():
+    """The armed end-of-run invariants close on a real, unmutated baseline run.
 
-    ``run_single_simulation`` runs with ``raise_on_violation=True``, so the
-    end-of-run ``check_yield_bridge`` aborts (as ``SystemExit``) on any
-    intake/output divergence; a clean return means deposited finished goods
-    match the intake x efficiency expectation. The clean return IS the
-    invariant assertion; the KPI check guards non-vacuity -- a zero-throughput
-    run would close the bridge trivially. Slow: a full baseline run.
+    ``run_single_simulation`` runs with ``raise_on_violation=True``, so
+    ``check_yield_bridge`` (deposited finished goods match intake x efficiency),
+    ``check_waste_system`` (raw waste conserved system-wide) and the
+    per-collection-center identity abort the run (as ``SystemExit``) on any
+    leak; a clean return IS the invariant assertion. The KPI checks guard
+    non-vacuity: a run that generated, collected or processed nothing would
+    close every identity trivially. Slow: a full 365-day, 12-region simulation.
     """
     from analysis.baseline_aggregate import extract_kpis
 
-    assert extract_kpis(baseline_run_result["monitor_data"])["total_processed_m3"] > 0.0
-
-
-@pytest.mark.slow
-def test_waste_system_invariant_holds_on_baseline_run(baseline_run_result):
-    """The armed waste-side invariant holds on a real drained baseline run.
-
-    ``run_single_simulation`` runs with ``raise_on_violation=True``, so the
-    end-of-run ``check_waste_system`` aborts (surfaced as ``SystemExit``) on any
-    leak; a clean return means raw waste is conserved system-wide. The clean
-    return IS the invariant assertion; the KPI check guards non-vacuity -- a
-    run that generated nothing would conserve trivially. Slow: a full 365-day,
-    12-region simulation.
-    """
-    from analysis.baseline_aggregate import extract_kpis
-
-    assert extract_kpis(baseline_run_result["monitor_data"])["total_generated_m3"] > 0.0
-
-
-@pytest.mark.slow
-def test_collection_center_invariant_holds_on_baseline_run(baseline_run_result):
-    """The per-collection-center identity closes on a real drained baseline run.
-
-    Wired final-only in ``run_simulation`` alongside ``check_waste_system``. With
-    reposition outflow now sourced on the origin collector (not the borrowed
-    carrier), each center's books balance independently. ``raise_on_violation``
-    aborts (as ``SystemExit``) on any per-center leak; a clean return confirms
-    the localized identity holds. The clean return IS the invariant assertion;
-    the KPI check guards non-vacuity -- centers that never received inflow
-    would balance trivially. Slow: a full 365-day, 12-region simulation.
-    """
-    from analysis.baseline_aggregate import extract_kpis
-
-    assert extract_kpis(baseline_run_result["monitor_data"])["total_collected_m3"] > 0.0
+    kpis = extract_kpis(_baseline_run()["monitor_data"])
+    assert kpis["total_generated_m3"] > 0.0
+    assert kpis["total_collected_m3"] > 0.0
+    assert kpis["total_processed_m3"] > 0.0
 
 
 # --- cross-region repositioning still in the pipeline at check time ----------

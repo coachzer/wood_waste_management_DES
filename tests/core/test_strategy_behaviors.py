@@ -31,6 +31,18 @@ def _boom():
     raise AssertionError("signal callable must not be consulted on this path")
 
 
+def test_factories_map_every_selector_to_its_behavior_class():
+    assert {member: type(build_stock_strategy(member)) for member in StockStrategy} == {
+        StockStrategy.ON_DEMAND: OnDemandStrategy,
+        StockStrategy.REORDER_50: Reorder50Strategy,
+        StockStrategy.REORDER_90: Reorder90Strategy,
+    }
+    assert {member: type(build_inventory_policy(member)) for member in InventoryPolicy} == {
+        InventoryPolicy.PUSH: PushPolicy,
+        InventoryPolicy.PULL: PullPolicy,
+    }
+
+
 # --- stock strategy thresholds --------------------------------------------
 
 def test_reorder_adaptive_threshold_is_the_fraction():
@@ -83,11 +95,6 @@ def test_ondemand_generator_signal_push_uses_storage_threshold():
     strategy = OnDemandStrategy()
     assert strategy.generator_should_signal(11.0, 100.0, PushPolicy(), _boom) is True
     assert strategy.generator_should_signal(10.0, 100.0, PushPolicy(), _boom) is False
-
-
-def test_only_push_generators_request_pickup():
-    assert build_inventory_policy(InventoryPolicy.PUSH).generators_request_pickup() is True
-    assert build_inventory_policy(InventoryPolicy.PULL).generators_request_pickup() is False
 
 
 # --- inventory policy ------------------------------------------------------

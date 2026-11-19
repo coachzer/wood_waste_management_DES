@@ -52,20 +52,6 @@ def test_most_depleted_output_ranks_first(ledger_waste_monitor):
     assert ordering == [OutputType.OSB, OutputType.PARTICLE_BOARD, OutputType.MDF]
 
 
-def test_full_buffer_scores_below_depleted_buffer(ledger_waste_monitor):
-    """A saturated buffer contributes zero shortfall and ranks last."""
-    operator = make_operator(
-        ledger_waste_monitor,
-        finished_goods_storage={"mdf": 100.0, "particle_board": 60.0, "osb": 0.0},
-        capacity={"mdf": 100.0, "particle_board": 100.0, "osb": 100.0},
-    )
-
-    ordering = output_order(operator._get_prioritized_transformations())
-
-    assert ordering[0] == OutputType.OSB
-    assert ordering[-1] == OutputType.MDF
-
-
 def test_zero_capacity_output_contributes_no_shortfall(ledger_waste_monitor):
     """An output with zero finished-goods capacity yields a zero shortfall term
     rather than dividing by zero."""

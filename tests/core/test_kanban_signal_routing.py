@@ -69,12 +69,22 @@ def test_right_region_collector_consumes_treatment_signal(ledger_waste_monitor):
     assert pending == [], "right-region collector should propagate upstream and ack"
 
 
+def test_right_region_collector_serves_treatment_signal_from_a_local_generator(ledger_waste_monitor):
+    pending, generators = _run(
+        ledger_waste_monitor, [RegionType.PODRAVSKA], [RegionType.PODRAVSKA],
+        post_signal=_treatment_signal_to_podravska,
+    )
+
+    assert generators["gen-1"].waste_streams[WASTE].volume == 0.0
+    assert pending == []
+
+
 def test_unaddressed_signal_reaches_a_collector_in_another_region(ledger_waste_monitor):
     pending, generators = _run(
         ledger_waste_monitor, [RegionType.POMURSKA], [RegionType.PODRAVSKA], post_signal=_generator_signal,
     )
 
-    assert generators["gen-1"].waste_streams[WASTE].volume < GENERATOR_STOCK_M3
+    assert generators["gen-1"].waste_streams[WASTE].volume == 0.0
     assert pending == []
 
 
@@ -93,5 +103,5 @@ def test_generator_signal_left_by_a_remote_collector_is_served_by_the_local_one(
         post_signal=_generator_signal,
     )
 
-    assert generators["gen-1"].waste_streams[WASTE].volume < GENERATOR_STOCK_M3
+    assert generators["gen-1"].waste_streams[WASTE].volume == 0.0
     assert pending == []
