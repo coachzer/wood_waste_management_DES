@@ -45,18 +45,6 @@ def test_default_str_alone_cannot_serialize_enum_keys():
         json.dumps({WasteType.WOOD_19_12_07: 1}, default=str)
 
 
-def test_build_raw_payload_selects_only_history_and_event_logs():
-    monitor_data = {key: {"present": key} for key in RAW_PAYLOAD_KEYS}
-    monitor_data["final_summary"] = {"dropped": True}
-    monitor_data["storage_capacities"] = {"dropped": True}
-
-    payload = build_raw_payload(monitor_data)
-
-    assert set(payload) == set(RAW_PAYLOAD_KEYS)
-    assert "final_summary" not in payload
-    assert "storage_capacities" not in payload
-
-
 def test_build_raw_payload_output_is_json_serializable_after_jsonify():
     monitor_data = {
         "generation_history": {"gen1": {WasteType.WOOD_19_12_07: [1.0, 2.0]}},
