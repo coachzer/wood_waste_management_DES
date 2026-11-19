@@ -1,6 +1,6 @@
 import numpy as np
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 from config.constants import FAILURE_CHECK_INTERVAL_DAYS, RECOVERING_BASE_EFFICIENCY
 from .enums import WasteType, RegionType, EntityStatus, OutputType
 from .units import (
@@ -34,14 +34,12 @@ class OperationalEntity:
     recovery_progress: float
     expansion_count: int
     landfill_count: int
-    waste_monitor: Optional[Any]
     failure_config: Optional[FailureConfig]
     downtime_duration: float
     rng: np.random.Generator
 
-    def __init__(self, failure_config: Optional[FailureConfig] = None, seed=None,
-                 waste_monitor: Optional[Any] = None):
-        """Initialize defaults; the recorder is injected, never built here, so
+    def __init__(self, failure_config: Optional[FailureConfig] = None, seed=None):
+        """Initialize defaults. Subclasses take their recorder at construction;
         ``models/`` does not import ``instrumentation``.
         """
         self.status = EntityStatus.OPERATIONAL
@@ -52,7 +50,6 @@ class OperationalEntity:
         self.recovery_progress = 0.0
         self.expansion_count = 0
         self.landfill_count = 0
-        self.waste_monitor = waste_monitor
         self.failure_config = failure_config
         self.downtime_duration = 1.0
         self.rng = np.random.default_rng(seed)

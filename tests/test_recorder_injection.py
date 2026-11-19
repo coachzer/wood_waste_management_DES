@@ -59,10 +59,5 @@ def test_models_layer_does_not_import_the_recording_layer():
 
 
 def test_base_entity_does_not_construct_a_recorder():
-    """An un-injected entity has no recorder; the base class must not build one.
-
-    Mutation check (red): restore ``self.waste_monitor = WasteMonitor()`` in
-    ``OperationalEntity.__init__`` -> ``waste_monitor`` is a WasteMonitor, not None.
-    """
-    entity = OperationalEntity()
-    assert entity.waste_monitor is None
+    """The base entity holds no recorder; subclasses take one at construction."""
+    assert not hasattr(OperationalEntity(), "waste_monitor")
