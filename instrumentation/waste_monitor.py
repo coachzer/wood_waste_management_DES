@@ -116,7 +116,7 @@ class WasteMonitor:
 
             self._track_storage_metrics(treatment, history)
             self._track_processing_metrics(treatment, history)
-            self._track_product_metrics(treatment, history, timestamp)
+            self._track_product_metrics(treatment, history)
 
             history["operational"]["energy_costs"].append(0.0)
             history["operational"]["processing_costs"].append(0.0)
@@ -250,7 +250,7 @@ class WasteMonitor:
         total_processed = sum(treatment.processed_volumes.values())
         history["processed"]["total"].append(total_processed)
 
-    def _track_product_metrics(self, treatment, history, timestamp):
+    def _track_product_metrics(self, treatment, history):
         """Track product-related metrics"""
         product_types = self.store.product_types
         product_volumes = treatment.product_volumes

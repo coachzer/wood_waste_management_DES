@@ -54,7 +54,6 @@ class EntityRegistry:
     operators: List[Any]
     generators: Optional[List[Any]] = None
     collectors: Optional[List[Any]] = None
-    transport: Optional[List[Any]] = None
     history: Optional[HistoryStore] = None
 
     def landfilled_by_entity(self) -> Dict[str, float]:

@@ -158,13 +158,9 @@ class CollectorCompany(OperationalEntity):
 
     def _dispatch_vehicle_for_collection(self, vehicle, generator, target_volume, waste_type=None):
         """Complete vehicle collection process with proper storage and overflow handling"""
-        current_time = self.env.now
-
         travel_time, distance = self._calculate_travel_time_to_generator(generator)
 
         vehicle.in_transit = True
-        vehicle.destination = generator.region_type
-        vehicle.estimated_arrival = current_time + travel_time
 
         yield self.env.timeout(travel_time)
 
@@ -176,17 +172,12 @@ class CollectorCompany(OperationalEntity):
             yield self.env.timeout(travel_time)
 
             self._add_to_collection_center(collected_waste)
-            collection_cost = self.charge_trip(collected_waste, distance)
-            self.last_collection_cost = collection_cost
+            self.last_collection_cost = self.charge_trip(collected_waste, distance)
         else:
             yield self.env.timeout(travel_time)
-            collection_cost = self.transport_cost
 
         vehicle.in_transit = False
         vehicle.current_load_by_type = {}
-        vehicle.destination = self.region_type
-
-        return collection_cost
 
     def charge_trip(self, load_by_type, distance):
         """Charge one loaded trip: fixed trip cost plus per road km per m3, and ton-km emissions.

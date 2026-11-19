@@ -444,7 +444,7 @@ class TreatmentOperator(OperationalEntity):
 
         remaining_local = self._collect_from_local(local_portion, input_waste_types, collected_waste)
 
-        remaining_cross_region = self._collect_from_cross_region(cross_region_portion, input_waste_types, collected_waste)
+        remaining_cross_region = self._collect_from_cross_region(cross_region_portion, input_waste_types)
 
         total_remaining = remaining_local + remaining_cross_region
         if total_remaining > 0:
@@ -473,14 +473,14 @@ class TreatmentOperator(OperationalEntity):
         local_collectors = [c for c in self.state.collectors if c.region_type == self.region_type and c.is_operational]
         return self._drain_collectors(local_collectors, amount_to_collect, waste_types, collected_waste)
 
-    def _collect_from_cross_region(self, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
+    def _collect_from_cross_region(self, amount_to_collect: float, waste_types: List[WasteType]) -> float:
         """Reposition waste from cross-region collectors via transport.
 
         A collector-to-collector repositioning move (ADR 0009): waste is removed
         from the remote collector and routed to a collector in this region, where
         it lands in the collection center and later reaches treatment via the local
         intake path (``provide_waste_for_treatment``). It is therefore NOT added to
-        ``collected_waste`` here -- doing so would double-count it in the waste-side
+        the caller's ``collected_waste`` -- doing so would double-count it in the waste-side
         mass balance. The volume still satisfies the cross-region portion of the
         request (deducted from ``remaining``) but reaches treatment only on the
         later local pickup.
