@@ -177,14 +177,14 @@ class TreatmentOperator(OperationalEntity):
             self._propagate_signal_to_collectors(waste_type, order_volumes[waste_type], timestamp)
 
     def _propagate_signal_to_collectors(self, waste_type, needed_volume, current_time):
-        """Propagate signals to collectors with availability checking"""
+        """Propagate signals to operational collectors"""
         state = self.state
 
         local_collectors = [
             c for c in state.collectors
             if (c.region_type == self.region_type and
                 c.inventory_policy.is_pull() and
-                c.availability)
+                c.is_operational)
         ]
 
         for collector in local_collectors:
@@ -208,7 +208,7 @@ class TreatmentOperator(OperationalEntity):
         if deficit <= 0 or surplus_region is None:
             return
         for collector in state.collectors:
-            if collector.region_type == surplus_region and collector.inventory_policy.is_pull() and collector.availability:
+            if collector.region_type == surplus_region and collector.inventory_policy.is_pull() and collector.is_operational:
                 collector.kanban_manager.add_signal(
                     waste_type=waste_type,
                     timestamp=current_time,
@@ -474,7 +474,7 @@ class TreatmentOperator(OperationalEntity):
 
     def _collect_from_local(self, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
         """Collect waste from local collectors."""
-        local_collectors = [c for c in self.state.collectors if c.region_type == self.region_type and c.availability]
+        local_collectors = [c for c in self.state.collectors if c.region_type == self.region_type and c.is_operational]
         return self._drain_collectors(local_collectors, amount_to_collect, waste_types, collected_waste)
 
     def _collect_from_cross_region(self, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
@@ -492,7 +492,7 @@ class TreatmentOperator(OperationalEntity):
         if amount_to_collect <= 0: return 0.0
 
         state = self.state
-        remote_collectors = [c for c in state.collectors if c.region_type != self.region_type and c.availability]
+        remote_collectors = [c for c in state.collectors if c.region_type != self.region_type and c.is_operational]
         remote_collectors.sort(key=lambda c: get_distance(self.region_type, c.region_type))
 
         remaining = amount_to_collect
@@ -506,7 +506,7 @@ class TreatmentOperator(OperationalEntity):
 
     def _collect_with_fallback(self, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
         """Collect waste from any available collector as a fallback."""
-        all_collectors = [c for c in self.state.collectors if c.availability]
+        all_collectors = [c for c in self.state.collectors if c.is_operational]
         return self._drain_collectors(all_collectors, amount_to_collect, waste_types, collected_waste)
 
     def _request_via_transport(self, collector, amount: float, waste_types: List[WasteType]) -> Dict[WasteType, float]:

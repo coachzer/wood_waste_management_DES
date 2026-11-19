@@ -70,7 +70,7 @@ def test_late_sorted_type_is_collected_when_an_early_type_has_plenty():
         return drained
 
     state.collectors = [SimpleNamespace(
-        region_type=operator.region_type, availability=True,
+        region_type=operator.region_type, is_operational=True,
         provide_waste_for_treatment=provide_waste_for_treatment,
         collection_center=SimpleNamespace(current_storage=dict.fromkeys(WasteType, 0.0)),
     )]

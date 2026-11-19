@@ -35,7 +35,7 @@ PACKAGING = WasteType.WOODEN_PACKAGING_15_01_03
 # Stub builders
 # ---------------------------------------------------------------------------
 
-def make_remote_collector(region_type, availability=True, name=None):
+def make_remote_collector(region_type, name=None):
     """A collector stand-in for state.collectors.
 
     Uses real RegionType members so ``get_distance`` in the sort key works
@@ -43,7 +43,7 @@ def make_remote_collector(region_type, availability=True, name=None):
     """
     return SimpleNamespace(
         region_type=region_type,
-        availability=availability,
+        is_operational=True,
         name=name or region_type.value,
     )
 

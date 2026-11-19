@@ -53,16 +53,6 @@ class CollectorCompany(OperationalEntity):
     def waste_storage_capacity(self, value):
         self.collection_center.waste_storage_capacity = value
 
-    @property
-    def availability(self):
-        """Map status to availability for backward compatibility"""
-        return self.status == EntityStatus.OPERATIONAL
-
-    @availability.setter
-    def availability(self, value):
-        """Allow setting availability for backward compatibility"""
-        self.status = EntityStatus.OPERATIONAL if value else EntityStatus.FAILED
-
     def __init__(
         self,
         env,
@@ -108,7 +98,7 @@ class CollectorCompany(OperationalEntity):
         self.transport_cost = transport_cost
         self.last_collection_cost = 0.0
         self.efficiency = efficiency
-        self.availability = availability
+        self.status = EntityStatus.OPERATIONAL if availability else EntityStatus.FAILED
         self.region_type = region_type
 
         self.collection_center = CollectionCenter(

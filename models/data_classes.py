@@ -54,6 +54,10 @@ class OperationalEntity:
         [failure_seed] = seed_sequence.spawn(1)
         self.policy_independent_failure_rng = np.random.default_rng(failure_seed)
 
+    @property
+    def is_operational(self) -> bool:
+        return self.status == EntityStatus.OPERATIONAL
+
     def start_failure_process(self, env) -> None:
         """Start the daily failure clock when the entity has a failure_config.
 

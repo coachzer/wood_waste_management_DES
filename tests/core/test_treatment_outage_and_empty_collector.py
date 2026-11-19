@@ -45,7 +45,7 @@ def test_failed_operator_does_not_order_waste():
 def _fake_collector(region, stock):
     return SimpleNamespace(
         region_type=region,
-        availability=True,
+        is_operational=True,
         inventory_policy=SimpleNamespace(is_pull=lambda: True),
         collection_center=SimpleNamespace(current_storage=dict(stock)),
         kanban_manager=KanbanManager(),

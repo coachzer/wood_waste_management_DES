@@ -16,7 +16,7 @@ def _collector(region_type, stock, charges):
         return {WASTE: taken} if taken else {}
     return SimpleNamespace(
         region_type=region_type,
-        availability=True,
+        is_operational=True,
         provide_waste_for_treatment=provide,
         charge_trip=lambda load, distance: charges.append((region_type, load, distance)),
     )
