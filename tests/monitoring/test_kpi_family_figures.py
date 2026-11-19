@@ -239,3 +239,11 @@ def test_write_carbon_figure_emits_nonempty_pdf(tmp_path):
     assert written is not None
     assert written.name == "carbon_comparison.pdf"
     assert written.read_bytes().startswith(b"%PDF")
+
+
+def test_family_figures_embed_fixed_dates_so_reruns_are_byte_identical(tmp_path):
+    _write_summary(tmp_path / "push__on_demand", _bullwhip_rows())
+    written = write_bullwhip_figure(tmp_path)
+    pdf = written.read_bytes()
+    assert b"/CreationDate (D:19700101" in pdf
+    assert b"/ModDate (D:19700101" in pdf

@@ -51,6 +51,12 @@ STRATEGY_COLORS = {
 }
 STRATEGY_LABELS = {strategy.value: strategy.name for strategy in StockStrategy}
 
+# Fixed PDF dates so a rerun writes byte-identical figures.
+REPRODUCIBLE_PDF_METADATA = {
+    "CreationDate": datetime(1970, 1, 1, 0, 0, 0),
+    "ModDate": datetime(1970, 1, 1, 0, 0, 0),
+}
+
 # Single-column journal figure size in inches.
 FIGURE_SIZE_INCHES = (7, 5)
 
@@ -183,10 +189,7 @@ def write_policy_comparison_figure(path):
     output_path = path / "policy_comparison.pdf"
     fig.savefig(
         output_path,
-        metadata={
-            "CreationDate": datetime(1970, 1, 1, 0, 0, 0),
-            "ModDate": datetime(1970, 1, 1, 0, 0, 0),
-        },
+        metadata=REPRODUCIBLE_PDF_METADATA,
     )
     plt.close(fig)
     return output_path

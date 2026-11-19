@@ -12,7 +12,6 @@ Rendered with Matplotlib's Agg backend (browser-free static PDF), just
 like the policy-comparison figure.
 """
 
-from datetime import datetime
 from pathlib import Path
 from typing import List, Tuple
 
@@ -29,6 +28,7 @@ from visualization.policy_comparison_figure import (
     FIGURE_SIZE_INCHES,
     KG_PER_KILOTONNE,
     POLICY_MARKERS,
+    REPRODUCIBLE_PDF_METADATA,
     STRATEGY_COLORS,
     SERVICE_METRIC,
     STRATEGY_LABELS,
@@ -237,10 +237,7 @@ def write_pareto_plot(path, root: bool = False):
     output_path = path / "pareto_frontier.pdf"
     fig.savefig(
         output_path,
-        metadata={
-            "CreationDate": datetime(1970, 1, 1, 0, 0, 0),
-            "ModDate": datetime(1970, 1, 1, 0, 0, 0),
-        },
+        metadata=REPRODUCIBLE_PDF_METADATA,
     )
     plt.close(fig)
     return output_path

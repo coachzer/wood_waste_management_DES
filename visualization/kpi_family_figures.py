@@ -9,7 +9,7 @@ pattern as ``policy_comparison_figure`` (which remains the paper's Fig. 2).
 
 Reads only ``summary.csv`` files and runs standalone via
 ``python -m visualization.kpi_family_figures <scenario_dir>``. Combo discovery
-and CSV parsing are reused from ``analysis.pareto`` and
+and CSV parsing are reused from ``analysis.layout`` and
 ``policy_comparison_figure`` so those rules stay in one place.
 """
 
@@ -28,6 +28,7 @@ from analysis.layout import iter_combo_summaries, split_combo_label
 from visualization.policy_comparison_figure import (
     FIGURE_SIZE_INCHES,
     KG_PER_KILOTONNE,
+    REPRODUCIBLE_PDF_METADATA,
     STRATEGY_COLORS,
     STRATEGY_LABELS,
     read_metric_intervals,
@@ -229,7 +230,7 @@ def write_bullwhip_figure(path):
     ax.legend(handles=_grouped_bar_legend(table), loc="best", fontsize=8)
     fig.tight_layout()
     output_path = path / "bullwhip_comparison.pdf"
-    fig.savefig(output_path)
+    fig.savefig(output_path, metadata=REPRODUCIBLE_PDF_METADATA)
     plt.close(fig)
     return output_path
 
@@ -257,7 +258,7 @@ def write_residence_figure(path):
     ax.legend(handles=_grouped_bar_legend(table), loc="best", fontsize=8)
     fig.tight_layout()
     output_path = path / "residence_comparison.pdf"
-    fig.savefig(output_path)
+    fig.savefig(output_path, metadata=REPRODUCIBLE_PDF_METADATA)
     plt.close(fig)
     return output_path
 
@@ -322,7 +323,7 @@ def write_service_by_product_figure(path):
     ax.legend(handles=_grouped_bar_legend(table), loc="best", fontsize=8)
     fig.tight_layout()
     output_path = path / "service_by_product_comparison.pdf"
-    fig.savefig(output_path)
+    fig.savefig(output_path, metadata=REPRODUCIBLE_PDF_METADATA)
     plt.close(fig)
     return output_path
 
@@ -375,7 +376,7 @@ def write_carbon_figure(path):
     ax.legend(loc="best", fontsize=8)
     fig.tight_layout()
     output_path = path / "carbon_comparison.pdf"
-    fig.savefig(output_path)
+    fig.savefig(output_path, metadata=REPRODUCIBLE_PDF_METADATA)
     plt.close(fig)
     return output_path
 
