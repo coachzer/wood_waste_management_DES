@@ -16,6 +16,7 @@ class WasteMonitor:
     def __init__(self, env=None):
         self.env = env
         self.store = HistoryStore()
+        self._costs_before_first_sample: Dict[str, Dict[str, float]] = {}
 
     def track_generation(self, generator, timestamp):
         """Track waste generation events with timestamps and costs"""
@@ -97,6 +98,7 @@ class WasteMonitor:
         history["energy_costs"].append(0.0)
         history["operational_costs"].append(0.0)
         history["total_costs"].append(0.0)
+        self._book_costs_before_first_sample(collector.name, history)
 
     def track_processing(self, treatment, timestamp: float):
         """Track treatment facility metrics with embedded costs"""
@@ -118,6 +120,7 @@ class WasteMonitor:
             history["operational"]["energy_costs"].append(0.0)
             history["operational"]["processing_costs"].append(0.0)
             history["operational"]["total_costs"].append(0.0)
+            self._book_costs_before_first_sample(treatment.name, history["operational"])
             # Daily holding-cost accrual on the waste-side storage; inside the
             # same-timestamp guard so re-entrant calls from the operator's own
             # loop cannot accrue more than once per day. Kept out of
@@ -127,24 +130,36 @@ class WasteMonitor:
             )
 
     def update_entity_costs(self, entity_name: str, entity_type: str,
-                       energy_cost: float = 0.0, processing_cost: float = 0.0, 
+                       energy_cost: float = 0.0, processing_cost: float = 0.0,
                        transport_cost: float = 0.0):
-        """Update costs in the most recent tracking entry for an entity"""
+        """Add costs to the entity's latest sample.
 
-        if entity_type == "collector" and entity_name in self.store.collection_history:
-            history = self.store.collection_history[entity_name]
-            if history["timestamps"]:
-                history["energy_costs"][-1] += energy_cost
-                history["operational_costs"][-1] += processing_cost
-                history["transport_costs"][-1] += transport_cost
-                history["total_costs"][-1] += energy_cost + processing_cost + transport_cost
+        Before its first sample (treatment runs at t=0 ahead of the monitor
+        process) the costs are held and booked into that first sample.
+        """
+        if entity_type == "collector":
+            history = self.store.collection_history.get(entity_name)
+            columns = {"energy_costs": energy_cost, "operational_costs": processing_cost,
+                       "transport_costs": transport_cost}
+        elif entity_type == "treatment":
+            history = self.store.processing_history.get(entity_name)
+            history = history["operational"] if history else None
+            columns = {"energy_costs": energy_cost, "processing_costs": processing_cost}
+        else:
+            raise ValueError(f"No cost series for entity type {entity_type!r}")
+        columns["total_costs"] = sum(columns.values())
 
-        elif entity_type == "treatment" and entity_name in self.store.processing_history:
-            history = self.store.processing_history[entity_name]
-            if history["timestamps"]:
-                history["operational"]["energy_costs"][-1] += energy_cost
-                history["operational"]["processing_costs"][-1] += processing_cost
-                history["operational"]["total_costs"][-1] += energy_cost + processing_cost
+        if history is None or not history["total_costs"]:
+            held = self._costs_before_first_sample.setdefault(entity_name, {})
+            for column, cost in columns.items():
+                held[column] = held.get(column, 0.0) + cost
+            return
+        for column, cost in columns.items():
+            history[column][-1] += cost
+
+    def _book_costs_before_first_sample(self, entity_name, cost_history):
+        for column, cost in self._costs_before_first_sample.pop(entity_name, {}).items():
+            cost_history[column][-1] += cost
 
     def track_expansion(self, volume: float, cost_incurred: float, timestamp: float):
         """Record one storage expansion (the overflow volume that triggered it)."""
