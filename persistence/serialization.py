@@ -4,8 +4,7 @@ The per-run history dicts carry ``WasteType``/``OutputType`` members as dict
 KEYS (e.g. per-waste-type breakdowns inside ``generation_history``). Plain
 ``json.dump`` cannot serialize those, and its ``default=`` hook does NOT help:
 ``default=`` fires for VALUES only, never for dict keys, and ``WasteType`` is a
-plain ``Enum`` (no ``str`` mixin). So the only persisted block today is ``kpis``
-and the raw history is dropped -- which is why a new KPI forces a full re-run.
+plain ``Enum`` (no ``str`` mixin).
 
 ``jsonify`` walks the structure and rewrites every ``Enum`` member to its
 ``.value`` wherever it appears -- as a dict key, a dict value, or inside a

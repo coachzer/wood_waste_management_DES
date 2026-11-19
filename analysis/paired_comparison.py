@@ -117,9 +117,9 @@ def build_paired_report(
     combo-pair comparisons for that one metric), so the family-wise error rate
     is controlled at ``alpha`` for each metric's question independently.
 
-    When ``metrics`` is left at its default, the discovered ``bullwhip.*`` keys
-    are appended after the curated set so the namespace flows through without
-    wiring (issue 07). An explicit ``metrics`` list is honored verbatim.
+    When ``metrics`` is left at its default, every discovered ``{namespace}.*``
+    key is appended after the curated set so new namespaces flow through
+    without wiring (issue 07). An explicit ``metrics`` list is honored verbatim.
     """
     combos = load_combo_kpis(scenario_dir)
     if metrics is None:

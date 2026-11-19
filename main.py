@@ -143,7 +143,7 @@ def run_monte_carlo_baseline(
     workers: int = 1,
 ) -> list[dict]:
     """
-    Run baseline Monte Carlo: 100 replications per InventoryPolicy x StockStrategy.
+    Run baseline Monte Carlo: ``replications`` seeds per InventoryPolicy x StockStrategy.
 
     Returns lightweight per-replication records (no ``monitor_data``) and, when
     ``workers > 1``, uses a process pool to keep artifact writes byte-identical
