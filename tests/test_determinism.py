@@ -144,3 +144,28 @@ def test_generation_floor_is_policy_invariant(tmp_path):
             f"generation floor carries a policy signal: {combo}={floor} vs "
             f"{reference_combo}={reference_floor}"
         )
+
+
+@pytest.mark.slow
+def test_availability_is_policy_invariant(tmp_path):
+    """Failures draw from ``policy_independent_failure_rng`` and status is
+    sampled once per daily poll, so on one seed every combo sees the same
+    outage schedule and the same availability. A sample taken inside a
+    policy-driven path (T36: treatment intake latched the pre-failure status)
+    shows up here as a cross-combo spread."""
+    out_root = tmp_path / "run"
+    _run_baseline(out_root)
+
+    availability_by_combo = {}
+    for run_file in sorted(out_root.rglob("run_*.json")):
+        record = json.loads(run_file.read_text())
+        combo = f"{record['inventory_policy']}__{record['stock_strategy']}"
+        availability_by_combo[combo] = record["kpis"]["availability"]
+    assert len(availability_by_combo) == 6
+
+    reference_combo, reference = next(iter(availability_by_combo.items()))
+    for combo, availability in availability_by_combo.items():
+        assert availability == pytest.approx(reference, rel=1e-12), (
+            f"availability carries a policy signal: {combo}={availability} vs "
+            f"{reference_combo}={reference}"
+        )

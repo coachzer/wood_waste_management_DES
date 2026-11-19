@@ -547,8 +547,6 @@ class TreatmentOperator(OperationalEntity):
         if not collected_waste or sum(collected_waste.values()) == 0:
             return 0, 0
 
-        self.waste_monitor.track_processing(self, self.env.now)
-
         actually_stored = self._add_to_storage(collected_waste)
 
         return actually_stored, sum(collected_waste.values())

@@ -94,11 +94,8 @@ def test_track_processing_accrues_once_per_day_under_the_same_timestamp_guard():
     """Treatment accrues on its waste storage; a same-timestamp re-entry does
     not double-accrue.
 
-    ``track_processing`` is called both by the daily monitor process and from
-    the treatment operator's own loop (``core/treatment.py``); the existing
-    ``timestamp > last`` guard dedupes rows. Holding cost must sit inside that
-    guard or a busy operator would accrue more holding cost per day than an
-    idle one with identical storage.
+    The ``timestamp > last`` guard dedupes rows; holding cost must sit inside
+    it so a repeated call cannot accrue twice in one day.
 
     Mutation check (red): drop the accrual -> first assertion fails; move the
     accrual outside the guard -> the second (single-entry) assertion fails.

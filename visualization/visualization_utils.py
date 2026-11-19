@@ -145,9 +145,8 @@ def aggregate_aligned_series(series_by_entity: Dict, series_class: str) -> Dict:
     pair. The monitor loop currently samples every entity on one shared
     cadence, so the per-entity timestamp vectors are identical and this
     alignment is a no-op — but that is an accident of the sampling schedule,
-    not a contract. Event-driven tracking (``track_processing`` is also called
-    from the treatment intake path) can introduce per-entity timestamps at any
-    time, and a plain ``{timestamp: sum}`` dict then drops each absent
+    not a contract. Event-driven tracking would introduce per-entity
+    timestamps, and a plain ``{timestamp: sum}`` dict then drops each absent
     entity's contribution, sawing the aggregate curve downward (VIZ-REVIEW T4).
 
     Gap semantics depend on what the series measures (``series_class``):

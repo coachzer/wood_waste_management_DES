@@ -120,10 +120,7 @@ class WasteMonitor:
             history["operational"]["processing_costs"].append(0.0)
             history["operational"]["total_costs"].append(0.0)
             self._book_costs_before_first_sample(treatment.name, history["operational"])
-            # Daily holding-cost accrual on the waste-side storage; inside the
-            # same-timestamp guard so re-entrant calls from the operator's own
-            # loop cannot accrue more than once per day. Kept out of
-            # total_costs so the processing KPI component stays pure.
+            # Kept out of total_costs so the processing KPI component stays pure.
             history["operational"]["holding_costs"].append(
                 treatment.current_storage * WASTE_HOLDING_COST_PER_M3_PER_DAY
             )
