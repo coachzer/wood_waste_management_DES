@@ -40,7 +40,6 @@ def _noop_monitor():
     return SimpleNamespace(
         update_entity_costs=noop,
         record_emission=noop,
-        record_entity_status=noop,
         track_processing=noop,
         track_expansion=noop,
         record_landfill=noop,

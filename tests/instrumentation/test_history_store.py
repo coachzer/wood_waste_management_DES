@@ -8,31 +8,6 @@ from instrumentation.history_store import HistoryStore
 from instrumentation.waste_monitor import WasteMonitor
 
 
-def test_recorder_writes_status_into_the_store():
-    """A recorded status transition lands in the store, not a recorder-local dict.
-
-    Mutation check (red): point ``record_entity_status`` at a ``self``-owned dict
-    instead of ``self.store.entity_status_history`` -> the store stays empty and
-    the membership assertion fails.
-    """
-
-    class _Status:
-        name = "OPERATIONAL"
-
-    class WasteGenerator:
-        facility_type = "generator"
-        name = "gen-1"
-        status = _Status()
-
-    monitor = WasteMonitor()
-    monitor.record_entity_status(WasteGenerator(), timestamp=4.0)
-
-    generators = monitor.store.entity_status_history["generators"]
-    assert "gen-1" in generators
-    assert generators["gen-1"]["timestamps"] == [4.0]
-    assert generators["gen-1"]["status"] == ["OPERATIONAL"]
-
-
 # --- Issue 10: the store authors the per-entity schemas; the recorder appends only ---
 
 

@@ -183,23 +183,6 @@ class WasteMonitor:
         """Write one emission of ``kind`` to the store's ledger (see HistoryStore)."""
         self.store.record_emission(entity_name, kind, kgco2e, timestamp)
 
-    def record_entity_status(self, entity, timestamp: float):
-        """Record entity status at specific moments (like transitions)"""
-
-        history_category = HISTORY_CATEGORY_BY_FACILITY_TYPE[entity.facility_type]
-        entity_name = entity.name
-
-        self.store.ensure_entity_status(history_category, entity_name)
-
-        entity_history = self.store.entity_status_history[history_category][entity_name]
-
-        if (not entity_history["timestamps"] or 
-            timestamp > entity_history["timestamps"][-1] or
-            entity.status.name != entity_history["status"][-1]):
-
-            entity_history["timestamps"].append(timestamp)
-            entity_history["status"].append(entity.status.name)
-
     def monitor_system_process(self, generators, collectors, treatment_operators):
         """Process for continuous monitoring"""
         while True:

@@ -1,8 +1,7 @@
 import numpy as np
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 from config.constants import FAILURE_CHECK_INTERVAL_DAYS, RECOVERING_BASE_EFFICIENCY
-from .recording import EntityStatusRecorder
 from .enums import WasteType, RegionType, EntityStatus, OutputType
 from .units import (
     CubicMetres,
@@ -35,16 +34,15 @@ class OperationalEntity:
     recovery_progress: float
     expansion_count: int
     landfill_count: int
-    waste_monitor: Optional[EntityStatusRecorder]
+    waste_monitor: Optional[Any]
     failure_config: Optional[FailureConfig]
     downtime_duration: float
     rng: np.random.Generator
 
     def __init__(self, failure_config: Optional[FailureConfig] = None, seed=None,
-                 waste_monitor: Optional[EntityStatusRecorder] = None):
-        """Initialize defaults; the recorder is injected, not constructed here, so
-        the domain layer depends on ``EntityStatusRecorder``, not the concrete
-        recorder (closes the circular import).
+                 waste_monitor: Optional[Any] = None):
+        """Initialize defaults; the recorder is injected, never built here, so
+        ``models/`` does not import ``instrumentation``.
         """
         self.status = EntityStatus.OPERATIONAL
         self.failure_count = 0
@@ -99,9 +97,6 @@ class OperationalEntity:
                 self.failure_start_time = current_time
                 self.downtime_duration = self._get_recovery_duration()
 
-                if self.waste_monitor:
-                    self.waste_monitor.record_entity_status(self, current_time)
-
                 print(f"FAILURE: {self.__class__.__name__} {getattr(self, 'name', 'unknown')} failed at time {current_time}")
                 return True
 
@@ -112,17 +107,12 @@ class OperationalEntity:
                 self.recovery_duration = self._get_recovery_duration()
                 self.recovery_progress = 0.0
 
-                if self.waste_monitor:
-                    self.waste_monitor.record_entity_status(self, current_time)
-
         elif self.status == EntityStatus.RECOVERING:
             elapsed = current_time - self.recovery_start_time
             self.recovery_progress = min(1.0, elapsed / self.recovery_duration)
 
             if self.recovery_progress >= 1.0:
                 self.status = EntityStatus.OPERATIONAL
-                if self.waste_monitor:
-                    self.waste_monitor.record_entity_status(self, current_time)
                 self.recovery_start_time = None
                 self.recovery_duration = None
                 self.recovery_progress = 0.0

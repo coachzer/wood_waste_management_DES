@@ -28,3 +28,28 @@ def test_same_day_calls_record_one_status_sample():
     status_history = monitor.store.entity_status_history["treatments"][treatment.name]
     assert status_history["timestamps"] == [0, 1, 2]
     assert len(status_history["status"]) == 3
+
+
+def test_failure_transitions_add_no_status_samples():
+    """The status history is the daily poll only; a failure day is not sampled twice.
+
+    Failure transitions used to append their own sample on the polled day,
+    which pulled availability toward FAILED/RECOVERING days.
+    """
+    from tests.core.factories import make_collector
+
+    env = simpy.Environment()
+    monitor = WasteMonitor(env)
+    collector = make_collector(env, monitor)
+    env.process(monitor.monitor_system_process([], [collector], []))
+
+    def fail_on_day_two():
+        yield env.timeout(2)
+        collector.check_failure(env.now, failure_probability=1.0)
+
+    env.process(fail_on_day_two())
+    env.run(until=5)
+
+    status_history = monitor.store.entity_status_history["collectors"][collector.name]
+    assert status_history["timestamps"] == [0, 1, 2, 3, 4]
+    assert status_history["status"][3] == "FAILED"
