@@ -26,9 +26,9 @@ per-name counter on ``SimulationState``, and an entity-less monitor bucket)
 with the invariant reading one copy and the KPI another; one ledger, one
 writer, shared readers closes that hole.
 
-The getters return a shallow top-level copy (``dict(...)``) so a caller cannot
-mutate the store's spine while still sharing the per-entity history nodes, which
-is exactly what ``SimulationManager.get_monitor_data`` relies on.
+``SimulationManager.get_monitor_data`` takes a shallow top-level copy
+(``dict(...)``) of each history, so a caller cannot mutate the store's spine
+while still sharing the per-entity history nodes.
 
 The ``ensure_*`` methods are idempotent guards (init-if-absent); they preserve
 the recorder's original insertion order because it calls them in the same

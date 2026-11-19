@@ -2,9 +2,8 @@
 
 Each concrete class owns the strategy-specific arithmetic that used to live in
 ``match self.stock_strategy`` blocks across the collector, treatment, and
-generator process modules. The methods take primitive values (and, where the
-original code only read upstream signals on one branch, a lazy callable) so the
-behavior stays byte-identical to the inlined branches it replaces.
+generator process modules. The methods take primitive values, so the behavior
+stays byte-identical to the inlined branches it replaces.
 
 Collector efficiency is the same for every strategy and policy (ADR 0025), so
 no strategy owns an efficiency curve.
@@ -33,8 +32,6 @@ class StockStrategyProtocol(Protocol):
     def collector_adaptive_threshold(self, base_time: float) -> float:
         """Storage-utilization threshold the collector's should-collect test uses."""
         ...
-
-
 
     def treatment_should_reorder(self, current_total: float, capacity: float) -> bool:
         """Reorder threshold ``s`` of the (s, S) rule on treatment waste storage."""
@@ -84,8 +81,6 @@ class OnDemandStrategy:
         )
         return ON_DEMAND_COLLECTOR_BASE_THRESHOLD + time_factor
 
-
-
     def treatment_should_reorder(self, current_total: float, capacity: float) -> bool:
         return current_total < capacity
 
@@ -99,14 +94,10 @@ class Reorder50Strategy(_ReorderStrategy):
     _reorder_fraction = PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_50
 
 
-
-
 class Reorder90Strategy(_ReorderStrategy):
     """Reorder at 90% of capacity; large buffers."""
 
     _reorder_fraction = PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_90
-
-
 
 
 _STOCK_STRATEGY_BY_ENUM = {
