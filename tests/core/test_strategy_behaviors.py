@@ -6,8 +6,7 @@ branches in the process modules. The byte-identical baseline run is the real
 oracle for behavior preservation; these tests pin two things that run does not
 make obvious:
 
-1. The factories map every enum selector to the right concrete class (so adding
-   a strategy is one class plus one mapping entry, zero process-module edits).
+1. The factories map every enum selector to the class with that behavior.
 2. PUSH paths never consult the signal callables, so PUSH ignores signals.
 """
 
@@ -32,28 +31,15 @@ def _boom():
     raise AssertionError("signal callable must not be consulted on this path")
 
 
-# --- factories -------------------------------------------------------------
-
-def test_build_stock_strategy_maps_every_enum():
-    assert isinstance(build_stock_strategy(StockStrategy.ON_DEMAND), OnDemandStrategy)
-    assert isinstance(build_stock_strategy(StockStrategy.REORDER_50), Reorder50Strategy)
-    assert isinstance(build_stock_strategy(StockStrategy.REORDER_90), Reorder90Strategy)
-
-
-def test_build_inventory_policy_maps_every_enum():
-    assert isinstance(build_inventory_policy(InventoryPolicy.PUSH), PushPolicy)
-    assert isinstance(build_inventory_policy(InventoryPolicy.PULL), PullPolicy)
-
-
 # --- stock strategy thresholds --------------------------------------------
 
 def test_reorder_adaptive_threshold_is_the_fraction():
-    assert Reorder50Strategy().collector_adaptive_threshold(999.0) == 0.5
-    assert Reorder90Strategy().collector_adaptive_threshold(999.0) == 0.9
+    assert build_stock_strategy(StockStrategy.REORDER_50).collector_adaptive_threshold(999.0) == 0.5
+    assert build_stock_strategy(StockStrategy.REORDER_90).collector_adaptive_threshold(999.0) == 0.9
 
 
 def test_ondemand_adaptive_threshold_grows_with_time_and_caps():
-    strategy = OnDemandStrategy()
+    strategy = build_stock_strategy(StockStrategy.ON_DEMAND)
     assert strategy.collector_adaptive_threshold(0.0) == pytest.approx(0.10)
     assert strategy.collector_adaptive_threshold(100.0) == pytest.approx(0.20)
     # Time factor caps at 0.30, so the threshold caps at 0.40.
@@ -100,8 +86,8 @@ def test_ondemand_generator_signal_push_uses_storage_threshold():
 
 
 def test_only_push_generators_request_pickup():
-    assert PushPolicy().generators_request_pickup() is True
-    assert PullPolicy().generators_request_pickup() is False
+    assert build_inventory_policy(InventoryPolicy.PUSH).generators_request_pickup() is True
+    assert build_inventory_policy(InventoryPolicy.PULL).generators_request_pickup() is False
 
 
 # --- inventory policy ------------------------------------------------------

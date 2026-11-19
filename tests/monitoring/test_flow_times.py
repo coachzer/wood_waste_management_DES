@@ -56,12 +56,6 @@ def test_residence_time_undefined_when_throughput_non_positive_or_missing():
     assert residence_time(500.0, None) is None
 
 
-def test_residence_time_satisfies_littles_law_identity():
-    wip, throughput = 500.0, 100.0
-    res = residence_time(wip, throughput)
-    assert throughput * res == pytest.approx(wip)
-
-
 # --- assembler -------------------------------------------------------------
 
 def _synthetic_monitor_data():

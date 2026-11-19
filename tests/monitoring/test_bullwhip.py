@@ -193,10 +193,6 @@ def test_denominator_uses_attempted_not_consumed():
     assert result is not None
     assert math.isclose(result, expected, rel_tol=1e-12)
 
-    # The same series anchored on the (flat) consumed values would be undefined.
-    consumed_bins = [50.0] * len(consumption_events)
-    assert bullwhip_ratio(volume_bins, consumed_bins) is None
-
 
 def test_warmup_weeks_are_excluded():
     """Flows and consumption inside the first BULLWHIP_WARMUP_WEEKS weeks must

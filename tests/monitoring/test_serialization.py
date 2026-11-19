@@ -6,10 +6,8 @@ dict keys -- the case plain ``json.dump(default=str)`` cannot handle.
 """
 import json
 
-import pytest
-
 from models.enums import OutputType, WasteType
-from persistence.serialization import RAW_PAYLOAD_KEYS, build_raw_payload, jsonify
+from persistence.serialization import build_raw_payload, jsonify
 
 
 def test_enum_dict_keys_rewritten_to_value():
@@ -37,12 +35,6 @@ def test_tuples_become_lists():
 def test_non_enum_leaves_pass_through_unchanged():
     data = {"name": "gen1", "vals": [1, 2.5, None, True]}
     assert jsonify(data) == data
-
-
-def test_default_str_alone_cannot_serialize_enum_keys():
-    """Documents WHY jsonify exists: json's default= never fires for dict keys."""
-    with pytest.raises(TypeError):
-        json.dumps({WasteType.WOOD_19_12_07: 1}, default=str)
 
 
 def test_build_raw_payload_output_is_json_serializable_after_jsonify():

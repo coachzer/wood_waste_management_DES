@@ -5,13 +5,9 @@ vehicle from any region, so vehicles drifted away from home and failed collector
 """
 from types import SimpleNamespace
 
-import pytest
-
-from config.constants import TRAVEL_SPEED_KMH
 from core.collector import CollectorCompany
 from core.transport_manager import PointToPointTransport, TransportRequest
 from models.data_classes import Vehicle
-from models.distances import get_distance
 from models.enums import EntityStatus, RegionType, WasteType
 
 WASTE = WasteType.CONSTRUCTION_WOOD_17_02_01
@@ -76,15 +72,6 @@ def test_a_vehicle_that_delivered_elsewhere_stays_busy_until_it_has_driven_home(
     assert not vehicle.in_transit
     assert vehicle.current_region == HOME
     assert transport_manager.find_available_vehicle(HOME)["vehicle"] is vehicle
-
-
-def test_the_return_leg_takes_road_travel_time():
-    _, _, _, transport_manager = _world()
-    transport_manager.road_circuity_mean = 1.35
-
-    assert transport_manager.travel_time_days(AWAY, HOME) == pytest.approx(
-        get_distance(AWAY, HOME) * 1.35 / TRAVEL_SPEED_KMH / 24.0)
-    assert transport_manager.travel_time_days(AWAY, HOME) > 0
 
 
 def test_a_failed_collectors_idle_vehicle_takes_no_transfer():

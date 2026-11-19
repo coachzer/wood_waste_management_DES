@@ -31,8 +31,10 @@ def test_generator_outflows_sum_to_potential_generation(inventory_policy):
     for source_index, value in zip(sources, values):
         outflow[source_index] += value
     potential_by_generator = volumes[0]
-    assert potential_by_generator
+    matched_generators = set()
     for index, label in enumerate(labels):
         name = label.split("\n", 1)[0]
         if name in potential_by_generator:
+            matched_generators.add(name)
             assert outflow[index] == pytest.approx(potential_by_generator[name], rel=1e-6, abs=1.0), name
+    assert potential_by_generator and matched_generators == set(potential_by_generator)

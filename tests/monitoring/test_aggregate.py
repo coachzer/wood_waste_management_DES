@@ -5,10 +5,6 @@ Exercises the pure ``summary_rows`` seam that ``main.py`` writes to
 over the ``bullwhip`` namespace, and the None/degenerate handling for both.
 """
 
-import math
-
-from scipy import stats
-
 from analysis.baseline_aggregate import _SUMMARY_METRICS, extract_kpis, summary_rows
 
 
@@ -35,20 +31,11 @@ def test_header_is_first_row_and_marginal_mean_is_reported():
 
 
 def test_marginal_ci_uses_student_t_not_normal_z():
-    # Four reps of a metric: mean 5, sample stdev sqrt(var). The CI half-width
-    # must use t(0.975, 3) ~= 3.182, not z = 1.96 (ADR 0008).
-    vals = [2.0, 4.0, 6.0, 8.0]
-    kpis = [{"total_generated_m3": v, "bullwhip": {}} for v in vals]
+    # Mean 5, sample stdev 2.58199. The half-width is t(0.975, 3) = 3.18245 times
+    # stdev / sqrt(4) = 4.10852 (ADR 0008); a z = 1.96 interval would be 2.4697..7.5303.
+    kpis = [{"total_generated_m3": v, "bullwhip": {}} for v in [2.0, 4.0, 6.0, 8.0]]
     cells = _row(summary_rows(kpis), "total_generated_m3")
-    mean = sum(vals) / len(vals)
-    stdev = math.sqrt(sum((x - mean) ** 2 for x in vals) / (len(vals) - 1))
-    t_margin = float(stats.t.ppf(0.975, len(vals) - 1)) * stdev / math.sqrt(len(vals))
-    z_margin = 1.96 * stdev / math.sqrt(len(vals))
-    # Cells are formatted to 6 significant figures, so compare at that precision.
-    assert math.isclose(float(cells[3]), mean - t_margin, rel_tol=1e-5)
-    assert math.isclose(float(cells[4]), mean + t_margin, rel_tol=1e-5)
-    # The t interval is materially wider than the old z interval at small n.
-    assert (mean + t_margin) - (mean - t_margin) > (mean + z_margin) - (mean - z_margin)
+    assert cells[1:5] == ["5", "2.58199", "0.891479", "9.10852"]
 
 
 def test_single_replication_collapses_ci_to_the_mean():

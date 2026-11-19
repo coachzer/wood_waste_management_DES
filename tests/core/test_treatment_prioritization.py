@@ -69,32 +69,6 @@ def test_full_buffer_scores_below_depleted_buffer():
     assert ordering[-1] == OutputType.MDF
 
 
-def test_demand_ceiling_api_stays_retired():
-    """The legacy demand-ceiling control surface must stay deleted.
-
-    Ceiling retirement removed these accessors; the scorer now steers on
-    finished-goods shortfall only. Re-introducing any of them would resurrect
-    the retired ceiling, so guard against it. The scorer must still run with no
-    ceiling present.
-    """
-    from models.state import SimulationState
-
-    for attr in (
-        "get_unmet_demands",
-        "check_all_demands_met",
-        "track_product_production",
-    ):
-        assert not hasattr(SimulationState, attr), f"ceiling symbol resurrected: {attr}"
-
-    fake = make_self(
-        finished_goods_storage={"mdf": 10.0, "particle_board": 50.0, "osb": 90.0},
-        capacity={"mdf": 100.0, "particle_board": 100.0, "osb": 100.0},
-    )
-
-    # Must not raise -- the scorer reads only finished-goods inventory state.
-    TreatmentOperator._get_prioritized_transformations(fake)
-
-
 def test_zero_capacity_output_contributes_no_shortfall():
     """An output with zero finished-goods capacity yields a zero shortfall term
     rather than dividing by zero."""

@@ -67,13 +67,10 @@ def test_landfill_cost_is_per_type_density_weighted(noop_waste_monitor):
     """Landfill cost weights each waste type by its OWN density, not a flat 0.6
     (ADR 0013). 100 m³ of PAPER (600 kg/m³) costs 3x 100 m³ of SAWDUST (200 kg/m³).
 
-    Non-vacuity: the retired flat-density formula would charge the whole 200 m³ at
+    The retired flat-density formula would charge the whole 200 m³ at
     0.6 t/m³ = 200*0.6*46 = 5520 USD; the per-type formula charges
-    100*0.6*46 + 100*0.2*46 = 3680 USD, so the assertion fails under the old code.
-    Expected is computed from WASTE_DENSITIES so it is not a hand-pinned literal.
+    100*0.6*46 + 100*0.2*46 = 3680 USD.
     """
-    from config.constants import KILOGRAMS_PER_TONNE, LANDFILL_COST_PER_TONNE_USD, WASTE_DENSITIES
-
     state = SimulationState()
     entity = make_entity(state, noop_waste_monitor)
 
@@ -81,14 +78,8 @@ def test_landfill_cost_is_per_type_density_weighted(noop_waste_monitor):
         entity, {PAPER: 100.0, SAWDUST: 100.0}, force_landfill=True
     )
 
-    expected = sum(
-        volume * (WASTE_DENSITIES[waste_type] / KILOGRAMS_PER_TONNE)
-        * LANDFILL_COST_PER_TONNE_USD
-        for waste_type, volume in {PAPER: 100.0, SAWDUST: 100.0}.items()
-    )
     assert action == "landfill"
-    assert cost == pytest.approx(expected)
-    assert cost == pytest.approx(3680.0)  # 100*0.6*46 + 100*0.2*46
+    assert cost == pytest.approx(3680.0)
 
 
 # --- check_storage_capacity: the proportional-scaling overflow logic ---------

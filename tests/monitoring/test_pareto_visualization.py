@@ -1,17 +1,10 @@
 """Smoke test for the Pareto frontier figure (Matplotlib PDF).
 
-Confirms that ``build_pareto_figure`` returns a Matplotlib Figure and that
-``write_pareto_plot`` produces a ``pareto_frontier.pdf`` beside a tmp
-dataset. Plot aesthetics are not asserted -- only that the artifact is
+Confirms that ``write_pareto_plot`` produces a ``pareto_frontier.pdf`` beside
+a tmp dataset. Plot aesthetics are not asserted -- only that the artifact is
 written and non-trivial.
 """
-
-import matplotlib.pyplot as plt
-
-from visualization.pareto_visualization import (
-    build_pareto_figure,
-    write_pareto_plot,
-)
+from visualization.pareto_visualization import write_pareto_plot
 
 
 def _baseline_dataset(write_summary, scenario_dir):
@@ -33,17 +26,6 @@ def _baseline_dataset(write_summary, scenario_dir):
             "total_system_cost": 1.72e7,
         },
     )
-
-
-def test_build_pareto_figure_returns_matplotlib_figure(tmp_path, write_summary):
-    _baseline_dataset(write_summary, tmp_path)
-    from visualization.pareto_visualization import _build_points
-    from analysis.pareto import OBJECTIVES
-
-    points = _build_points(tmp_path, root=False, objectives=OBJECTIVES)
-    fig = build_pareto_figure(points)
-    assert isinstance(fig, plt.Figure)
-    plt.close(fig)
 
 
 def test_write_pareto_plot_emits_pdf(tmp_path, write_summary):

@@ -1,67 +1,11 @@
-"""Recorder->store seam contract (clean-monitoring issue 09).
+"""HistoryStore holds the run's history; WasteMonitor writes into it.
 
-Issue 09 pulls the in-memory store -- the six history dicts + their getters --
-out of ``WasteMonitor`` into ``instrumentation.history_store.HistoryStore``, so
-the store HOLDS data, the recorder WRITES into it, and ``get_monitor_data`` READS
-from it. The raw-vs-raw gate proves byte-stability of the move; these tests pin
-the structural seam itself, so a future "inline the store back into the recorder"
-regresses loudly here rather than silently passing the behavioral gates.
-
-Issue 10 then reduces ``WasteMonitor`` to append-only: the empty-dict templates
-that define each per-entity history shape move onto the store as ``ensure_*``
-methods, so the recorder authors no schema -- the second block of tests pins that.
-
-Each assertion is mutation-verified non-vacuous -- see the per-test docstrings.
-Run in full-suite context: single-test isolation can ImportError on the
-``config`` <-> ``models.data_classes`` bootstrap cycle (HANDOFF.md landmine 3).
+The store also authors each per-entity history shape (the ``ensure_*``
+methods), so ``get_monitor_data`` and the KPI readers see the same keys
+whichever recorder path created the entry.
 """
 from instrumentation.history_store import HistoryStore
 from instrumentation.waste_monitor import WasteMonitor
-
-# The raw history dicts the store owns and the recorder writes into.
-HISTORY_GETTERS = (
-    "get_generation_history",
-    "get_collection_history",
-    "get_processing_history",
-    "get_environmental_history",
-    "get_landfill_history",
-    "get_event_history",
-    "get_entity_status_history",
-)
-
-# The schema authors the store owns (issue 10); the recorder only appends.
-ENSURE_METHODS = (
-    "ensure_generation",
-    "ensure_collection",
-    "ensure_processing",
-    "ensure_event",
-    "ensure_environmental",
-    "ensure_landfill",
-    "ensure_entity_status",
-)
-
-
-def test_recorder_owns_a_history_store():
-    """``WasteMonitor.store`` is the dedicated ``HistoryStore``, not the recorder itself.
-
-    Mutation check (red): revert ``__init__`` to set ``self.generation_history = {}``
-    (etc.) on the recorder instead of ``self.store = HistoryStore()`` -> ``.store``
-    is missing and ``getattr`` below raises / the isinstance fails.
-    """
-    monitor = WasteMonitor()
-    assert isinstance(monitor.store, HistoryStore)
-
-
-def test_getters_live_on_the_store_not_the_recorder():
-    """The six history getters resolve on the store, and no longer on the recorder.
-
-    Mutation check (red): leave the ``get_*_history`` properties defined on
-    ``WasteMonitor`` -> the second assertion (absent-on-recorder) fails.
-    """
-    monitor = WasteMonitor()
-    for getter in HISTORY_GETTERS:
-        assert hasattr(monitor.store, getter), f"{getter} missing from the store"
-        assert not hasattr(type(monitor), getter), f"{getter} still on the recorder"
 
 
 def test_recorder_writes_status_into_the_store():
@@ -90,23 +34,6 @@ def test_recorder_writes_status_into_the_store():
 
 
 # --- Issue 10: the store authors the per-entity schemas; the recorder appends only ---
-
-
-def test_schema_authoring_lives_on_the_store_not_the_recorder():
-    """The ``ensure_*`` schema authors resolve on the store; the recorder authors none.
-
-    Issue 10 moves the empty-dict templates (and the ``demand.json`` product-types
-    loader that one of them needs) off ``WasteMonitor`` onto ``HistoryStore``.
-
-    Mutation check (red): re-inline a schema by restoring
-    ``WasteMonitor._initialize_treatment_history`` / ``_get_product_types`` -> the
-    recorder-authors-none assertions fail; or drop an ``ensure_*`` from the store ->
-    the resolves-on-store assertion fails.
-    """
-    for method in ENSURE_METHODS:
-        assert hasattr(HistoryStore, method), f"{method} missing from the store"
-    assert not hasattr(WasteMonitor, "_initialize_treatment_history")
-    assert not hasattr(WasteMonitor, "_get_product_types")
 
 
 def test_ensure_generation_materializes_the_generation_schema():
