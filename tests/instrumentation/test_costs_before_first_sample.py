@@ -44,3 +44,21 @@ def test_collector_cost_before_first_sample_lands_in_it():
     history = monitor.store.collection_history[collector.name]
     assert history["transport_costs"] == [4.0]
     assert history["total_costs"] == [4.0]
+
+
+def test_held_costs_are_kept_apart_for_a_collector_and_treatment_sharing_a_name():
+    monitor = WasteMonitor()
+    env = simpy.Environment()
+    collector = make_collector(env, monitor, waste_types=[PAPER], name="shared")
+    treatment = make_treatment(
+        env, monitor, name="shared", initial_waste_storage={PAPER: 0.0},
+        order_share_by_waste_type={PAPER: 1.0}, order_up_to_level_m3=100.0,
+    )
+
+    monitor.update_entity_costs("shared", "collector", transport_cost=4.0)
+    monitor.update_entity_costs("shared", "treatment", processing_cost=7.0)
+    monitor.track_collection(collector, timestamp=0)
+    monitor.track_processing(treatment, timestamp=0)
+
+    assert monitor.store.collection_history["shared"]["transport_costs"] == [4.0]
+    assert monitor.store.processing_history["shared"]["operational"]["processing_costs"] == [7.0]

@@ -1,13 +1,6 @@
-from typing import Dict
+from typing import Dict, Tuple
 from config.constants import WASTE_HOLDING_COST_PER_M3_PER_DAY
 from instrumentation.history_store import HistoryStore
-
-
-HISTORY_CATEGORY_BY_FACILITY_TYPE = {
-    "generator": "generators",
-    "collector": "collectors",
-    "treatment": "treatments",
-}
 
 
 class WasteMonitor:
@@ -16,7 +9,7 @@ class WasteMonitor:
     def __init__(self, env=None):
         self.env = env
         self.store = HistoryStore()
-        self._costs_before_first_sample: Dict[str, Dict[str, float]] = {}
+        self._costs_before_first_sample: Dict[Tuple[str, str], Dict[str, float]] = {}
 
     def track_generation(self, generator, timestamp):
         """Track waste generation events with timestamps and costs"""
@@ -98,7 +91,7 @@ class WasteMonitor:
         history["energy_costs"].append(0.0)
         history["operational_costs"].append(0.0)
         history["total_costs"].append(0.0)
-        self._book_costs_before_first_sample(collector.name, history)
+        self._book_costs_before_first_sample(("collector", collector.name), history)
 
     def track_processing(self, treatment, timestamp: float):
         """Track treatment facility metrics with embedded costs"""
@@ -119,7 +112,7 @@ class WasteMonitor:
             history["operational"]["energy_costs"].append(0.0)
             history["operational"]["processing_costs"].append(0.0)
             history["operational"]["total_costs"].append(0.0)
-            self._book_costs_before_first_sample(treatment.name, history["operational"])
+            self._book_costs_before_first_sample(("treatment", treatment.name), history["operational"])
             # Kept out of total_costs so the processing KPI component stays pure.
             history["operational"]["holding_costs"].append(
                 treatment.current_storage * WASTE_HOLDING_COST_PER_M3_PER_DAY
@@ -146,15 +139,15 @@ class WasteMonitor:
         columns["total_costs"] = sum(columns.values())
 
         if history is None or not history["total_costs"]:
-            held = self._costs_before_first_sample.setdefault(entity_name, {})
+            held = self._costs_before_first_sample.setdefault((entity_type, entity_name), {})
             for column, cost in columns.items():
                 held[column] = held.get(column, 0.0) + cost
             return
         for column, cost in columns.items():
             history[column][-1] += cost
 
-    def _book_costs_before_first_sample(self, entity_name, cost_history):
-        for column, cost in self._costs_before_first_sample.pop(entity_name, {}).items():
+    def _book_costs_before_first_sample(self, entity_key, cost_history):
+        for column, cost in self._costs_before_first_sample.pop(entity_key, {}).items():
             cost_history[column][-1] += cost
 
     def track_expansion(self, volume: float, cost_incurred: float, timestamp: float):
