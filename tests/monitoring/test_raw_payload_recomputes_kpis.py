@@ -8,12 +8,22 @@ import json
 
 import pytest
 
-from analysis._kpi_shared import _flatten_namespaces
 from analysis.baseline_aggregate import extract_kpis
 from config.base_config import get_scenario_config
 from core.simulation_manager import SimulationManager
 from models.enums import InventoryPolicy, StockStrategy
 from persistence.serialization import build_raw_payload, jsonify
+
+
+def _flat_round_trip(kpis):
+    """JSON round-trip, then lift each nested namespace to dotted keys."""
+    flat = {}
+    for key, value in json.loads(json.dumps(jsonify(kpis))).items():
+        if isinstance(value, dict):
+            flat.update({f"{key}.{sub_key}": sub_value for sub_key, sub_value in value.items()})
+        else:
+            flat[key] = value
+    return flat
 
 
 def test_kpis_recomputed_from_the_raw_sidecar_match_the_live_run():
@@ -25,8 +35,8 @@ def test_kpis_recomputed_from_the_raw_sidecar_match_the_live_run():
 
     reloaded = json.loads(json.dumps(jsonify(build_raw_payload(monitor_data))))
 
-    live = _flatten_namespaces(json.loads(json.dumps(jsonify(extract_kpis(monitor_data)))))
-    recomputed = _flatten_namespaces(json.loads(json.dumps(jsonify(extract_kpis(reloaded)))))
+    live = _flat_round_trip(extract_kpis(monitor_data))
+    recomputed = _flat_round_trip(extract_kpis(reloaded))
 
     assert recomputed.keys() == live.keys()
 

@@ -140,10 +140,10 @@ def test_holding_cost_kpi_sums_all_three_echelons_into_total_system_cost():
     Mutation check (red): drop an echelon from the holding sum -> 60.0 becomes
     a partial sum and the first assertion fails; leave ``holding_cost`` out of
     ``total_system_cost`` -> the closure assertion fails; drop it from
-    ``_SUMMARY_METRICS`` -> the wiring assertion fails (the KPI would never
+    the summary metric list -> the wiring assertion fails (the KPI would never
     reach summary.csv).
     """
-    from analysis.baseline_aggregate import _SUMMARY_METRICS, extract_kpis
+    from analysis.baseline_aggregate import extract_kpis, summary_rows
 
     monitor_data = {
         "generation_history": {
@@ -165,4 +165,5 @@ def test_holding_cost_kpi_sums_all_three_echelons_into_total_system_cost():
     assert kpis["holding_cost"] == 60.0
     # total_system_cost closes over transport + processing + overflow + holding.
     assert kpis["total_system_cost"] == 100.0 + 200.0 + 0.0 + 60.0
-    assert "holding_cost" in _SUMMARY_METRICS
+    summary_metrics = [row.split(",", 1)[0] for row in summary_rows([kpis])]
+    assert "holding_cost" in summary_metrics

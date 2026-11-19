@@ -5,7 +5,7 @@ Exercises the pure ``summary_rows`` seam that ``main.py`` writes to
 over the ``bullwhip`` namespace, and the None/degenerate handling for both.
 """
 
-from analysis.baseline_aggregate import _SUMMARY_METRICS, extract_kpis, summary_rows
+from analysis.baseline_aggregate import extract_kpis, summary_rows
 
 
 def _row(rows, metric):
@@ -171,8 +171,9 @@ def test_overflow_cost_decomposition_kpis_reach_summary_csv():
     # The three decomposition KPIs must be wired into the marginal metric list,
     # not just computed: an extracted-but-unlisted KPI never reaches summary.csv
     # (the exact failure mode T8/T9 cleaned up).
+    rows = summary_rows([extract_kpis({})])
     for metric in ("landfill_cost", "expansion_cost", "expansion_volume_m3"):
-        assert metric in _SUMMARY_METRICS
+        assert _row(rows, metric) is not None, metric
 
 
 def test_service_by_product_namespace_emitted_as_prefixed_rows():
