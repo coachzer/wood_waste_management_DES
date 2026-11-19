@@ -58,7 +58,7 @@ class PointToPointTransport:
                     distance = get_distance(vehicle.current_region, origin)
                     if distance < min_distance:
                         min_distance = distance
-                        best_option = {"vehicle": vehicle, "collector": collector, "distance": distance}
+                        best_option = {"vehicle": vehicle, "collector": collector}
         
         return best_option
     

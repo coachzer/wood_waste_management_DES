@@ -1,7 +1,7 @@
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Dict, Tuple, List
-from config.constants import FINISHED_GOODS_BUFFER_WEEKS
+from config.constants import FINISHED_GOODS_BUFFER_WEEKS, ROAD_CIRCUITY_FACTOR
 from models.data_classes import FailureConfig
 
 @dataclass
@@ -41,7 +41,7 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
         waste_generation_mean=1.0,
         waste_generation_variability=0.1,
         treatment_conversion=(0.9, 0.03),
-        transportation_time=(1.35, 0.1),  # Road circuity over great-circle distance (ADR 0015)
+        transportation_time=(ROAD_CIRCUITY_FACTOR, 0.1),  # Road circuity over great-circle distance (ADR 0015)
         generator_failure=LOW_FAILURE,
         collector_failure=MEDIUM_FAILURE,
         treatment_failure=HIGH_FAILURE,
