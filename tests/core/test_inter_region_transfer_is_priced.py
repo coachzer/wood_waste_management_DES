@@ -20,21 +20,26 @@ TRIP_COST = 50.0
 
 
 def test_completed_transfer_charges_the_vehicle_owner():
-    """Gorenjska queues 40 m3 for Osrednjeslovenska; its own vehicle carries it and pays.
+    """Gorenjska queues 40 m3 for Osrednjeslovenska; a Podravska vehicle carries it and pays.
 
-    Mutation check (red): drop the charge in _handle_completed_transport.
+    Neither endpoint has a vehicle, so the bill must follow the vehicle owner, not
+    the origin. Mutation check (red): drop the charge in _handle_completed_transport,
+    or bill the origin collector.
     """
     env = simpy.Environment()
     monitor = ChargeRecordingMonitor()
     state = SimulationState()
     transport_manager = PointToPointTransport(state=state, road_circuity_mean=1.0)
-    origin, destination = (
+    origin, destination, owner = (
         make_collector(env, monitor, name=name, region_type=region, state=state,
                        transport_manager=transport_manager, transport_cost=TRIP_COST)
         for name, region in (("col_origin", RegionType.GORENJSKA),
-                             ("col_destination", RegionType.OSREDNJESLOVENSKA))
+                             ("col_destination", RegionType.OSREDNJESLOVENSKA),
+                             ("col_owner", RegionType.PODRAVSKA))
     )
-    state.collectors = [origin, destination]
+    origin.vehicles = []
+    destination.vehicles = []
+    state.collectors = [origin, destination, owner]
     origin.collection_center.current_storage[WASTE] = 40.0
 
     origin.transfer_waste_to_region(WASTE, 40.0, RegionType.OSREDNJESLOVENSKA)
@@ -42,10 +47,12 @@ def test_completed_transfer_charges_the_vehicle_owner():
 
     distance = get_distance(RegionType.GORENJSKA, RegionType.OSREDNJESLOVENSKA) * ROAD_CIRCUITY_FACTOR
     assert destination.collection_center.current_storage[WASTE] == 40.0
-    # The fixed trip cost ages with the fleet (ADR 0025), so read it off the owner.
-    assert TRIP_COST < origin.transport_cost < TRIP_COST * 1.01
-    assert monitor.costs == [("col_origin", pytest.approx(origin.transport_cost + distance * COLLECTION_COST_PER_KM_PER_M3 * 40.0))]
+    [(billed_collector, billed_cost)] = monitor.costs
+    assert billed_collector == "col_owner"
+    # The fixed trip cost ages each tick with the fleet (ADR 0025), so bound it.
+    fixed_part = billed_cost - distance * COLLECTION_COST_PER_KM_PER_M3 * 40.0
+    assert TRIP_COST <= fixed_part < TRIP_COST * 1.01
     tonnes = 40.0 * WASTE_DENSITIES[WASTE] / KILOGRAMS_PER_TONNE
     assert monitor.emissions == [
-        ("col_origin", "transport_emissions", pytest.approx(tonnes * distance * TRANSPORT_EMISSIONS_PER_TON_KM)),
+        ("col_owner", "transport_emissions", pytest.approx(tonnes * distance * TRANSPORT_EMISSIONS_PER_TON_KM)),
     ]
