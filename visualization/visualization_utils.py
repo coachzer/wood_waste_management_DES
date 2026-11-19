@@ -1,9 +1,43 @@
+import csv
 import logging
 import os
+from pathlib import Path
 
 import numpy as np
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from config.constants import HEATMAP_TIME_GRID_POINTS, PDF_EXPORT_SCALE
+
+# summary.csv keys of the paper's headline axes. Service is the full level, not
+# operational: the paper reports the full figure because the two coincide when
+# no_capability_lost is zero. Emissions are operational.
+SERVICE_METRIC = "service_level_full_pct"
+EMISSIONS_METRIC = "total_emissions_kgco2e"
+
+
+def read_metric_intervals(
+    summary_csv_path: Path, metrics: List[str]
+) -> Dict[str, Tuple[float, float, float]]:
+    """Read ``(mean, ci95_low, ci95_high)`` for each requested metric from one ``summary.csv``.
+
+    The file has rows ``metric,mean,stdev,ci95_low,ci95_high,count``. Raises
+    ``KeyError`` if a requested metric is absent, so an incomplete dataset fails
+    loudly rather than silently dropping a configuration from the figure.
+    """
+    wanted = set(metrics)
+    intervals: Dict[str, Tuple[float, float, float]] = {}
+    with open(summary_csv_path, "r", encoding="utf-8", newline="") as handle:
+        reader = csv.reader(handle)
+        next(reader, None)
+        for row in reader:
+            if len(row) < 5 or row[0] not in wanted:
+                continue
+            intervals[row[0]] = (float(row[1]), float(row[3]), float(row[4]))
+    missing = wanted - intervals.keys()
+    if missing:
+        raise KeyError(
+            f"{summary_csv_path}: missing metric(s) {sorted(missing)}"
+        )
+    return intervals
 
 
 def group_results_by_scenario_and_policy(results: List[Dict]) -> Dict:

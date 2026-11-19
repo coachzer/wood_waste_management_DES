@@ -23,17 +23,15 @@ from matplotlib.lines import Line2D
 
 from analysis.layout import iter_combo_summaries, split_combo_label
 from analysis.pareto import OBJECTIVES, build_pareto_report
-from visualization.policy_comparison_figure import (
-    EMISSIONS_METRIC,
+from visualization.figure_style import (
     FIGURE_SIZE_INCHES,
     KG_PER_KILOTONNE,
     POLICY_MARKERS,
     REPRODUCIBLE_PDF_METADATA,
     STRATEGY_COLORS,
-    SERVICE_METRIC,
     STRATEGY_LABELS,
-    read_metric_intervals,
 )
+from visualization.visualization_utils import EMISSIONS_METRIC, SERVICE_METRIC, read_metric_intervals
 
 LANDFILL_METRIC = "landfill_volume_m3"
 COST_METRIC = "total_system_cost"

@@ -16,13 +16,8 @@ Failure modes guarded:
 import pytest
 
 from analysis.layout import split_combo_label
-from visualization.policy_comparison_figure import (
-    EMISSIONS_METRIC,
-    SERVICE_METRIC,
-    build_points,
-    read_metric_intervals,
-    write_policy_comparison_figure,
-)
+from visualization.policy_comparison_figure import build_points, write_policy_comparison_figure
+from visualization.visualization_utils import EMISSIONS_METRIC, SERVICE_METRIC, read_metric_intervals
 
 
 def _write_summary(combo_dir, rows):

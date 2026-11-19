@@ -167,12 +167,7 @@ BASELINE_OUTPUT_ROOT = f"{OUTPUT_ROOT}/baseline"
 BASELINE_SCENARIO_DEFAULT = f"{BASELINE_OUTPUT_ROOT}/Baseline"
 SCENARIO_COMPARISON_PLOTS_DIR = f"{PLOTS_ROOT}/scenario_comparison"
 
-# Visualization theme. Encoding convention for the Plotly comparison suite:
-# color encodes the inventory policy, marker symbol encodes the stock strategy.
-# (The Matplotlib paper figure in policy_comparison_figure.py keeps its own
-# documented caption convention: marker per policy, colour per strategy.)
-POLICY_COLORS = {"push": "#1f77b4", "pull": "#ff7f0e"}
-STRATEGY_SYMBOLS = {"on_demand": "circle", "reorder_50": "square", "reorder_90": "diamond"}
+# Visualization theme. Enum-keyed figure styling lives in visualization/figure_style.py.
 # Positional palette for multi-panel bar charts (Plotly default category colors).
 CHART_PALETTE = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"]
 

@@ -25,14 +25,15 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
 from analysis.layout import iter_combo_summaries, split_combo_label
-from visualization.policy_comparison_figure import (
+from visualization.figure_style import (
     FIGURE_SIZE_INCHES,
     KG_PER_KILOTONNE,
+    PULL_HATCH,
     REPRODUCIBLE_PDF_METADATA,
     STRATEGY_COLORS,
     STRATEGY_LABELS,
-    read_metric_intervals,
 )
+from visualization.visualization_utils import read_metric_intervals
 
 # The six CV^2-ratio bullwhip keys (ADR 0004-0007) in display order: the
 # anchored headline pair, the pooled robustness pair, then the stage-by-stage
@@ -106,11 +107,6 @@ BULLWHIP_METRIC_LABELS = {
     "bullwhip.treatment_stage": "Treatment\nstage",
     "bullwhip.collector_stage": "Collector\nstage",
 }
-
-# Bar styling: colour encodes the stock strategy (same palette as the policy
-# comparison figure); fill encodes the inventory policy (solid PUSH, hatched
-# PULL) since bars cannot carry the marker-shape convention.
-PULL_HATCH = "//"
 
 
 def _bar_style(row: dict) -> dict:

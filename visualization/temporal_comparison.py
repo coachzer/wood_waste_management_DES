@@ -3,12 +3,8 @@ import plotly.graph_objects as go
 import plotly.subplots as sp
 import numpy as np
 from typing import Dict, List
-from config.constants import (
-    FRONTIER_FIGURE_HEIGHT_PX,
-    FRONTIER_FIGURE_WIDTH_PX,
-    POLICY_COLORS,
-    STRATEGY_SYMBOLS,
-)
+from config.constants import FRONTIER_FIGURE_HEIGHT_PX, FRONTIER_FIGURE_WIDTH_PX
+from visualization.figure_style import POLICY_COLORS, STRATEGY_SYMBOLS
 from instrumentation.history_store import total_emissions_kgco2e
 from .visualization_utils import (
     aggregate_collection_data,

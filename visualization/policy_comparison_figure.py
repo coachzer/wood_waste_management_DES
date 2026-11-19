@@ -18,10 +18,8 @@ Reads only ``summary.csv`` files (the Monte Carlo aggregate) and runs via
 place.
 """
 
-import csv
-from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import List
 
 import matplotlib
 
@@ -30,60 +28,15 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 from analysis.layout import iter_combo_summaries, split_combo_label
-from models.enums import StockStrategy
-
-# The two plotted metrics and their summary.csv keys. x is the headline service
-# level (full, not operational -- the paper reports the full figure because the
-# two coincide when no_capability_lost is zero); y is operational emissions.
-SERVICE_METRIC = "service_level_full_pct"
-EMISSIONS_METRIC = "total_emissions_kgco2e"
-
-# Emissions are scaled to kilotonnes for a readable axis (raw values run ~1e6-2e7
-# kg CO2e). The divisor is exact, so it shifts only the axis label, not the data.
-KG_PER_KILOTONNE = 1_000_000.0
-
-# Marker shape per inventory policy, colour per stock strategy (caption convention).
-POLICY_MARKERS = {"push": "o", "pull": "^"}
-STRATEGY_COLORS = {
-    "on_demand": "#1f77b4",
-    "reorder_50": "#ff7f0e",
-    "reorder_90": "#2ca02c",
-}
-STRATEGY_LABELS = {strategy.value: strategy.name for strategy in StockStrategy}
-
-REPRODUCIBLE_PDF_METADATA = {
-    "CreationDate": datetime(1970, 1, 1, 0, 0, 0),
-    "ModDate": datetime(1970, 1, 1, 0, 0, 0),
-}
-
-# Single-column journal figure size in inches.
-FIGURE_SIZE_INCHES = (7, 5)
-
-
-def read_metric_intervals(
-    summary_csv_path: Path, metrics: List[str]
-) -> Dict[str, Tuple[float, float, float]]:
-    """Read ``(mean, ci95_low, ci95_high)`` for each requested metric from one ``summary.csv``.
-
-    The file has rows ``metric,mean,stdev,ci95_low,ci95_high,count``. Raises
-    ``KeyError`` if a requested metric is absent, so an incomplete dataset fails
-    loudly rather than silently dropping a configuration from the figure.
-    """
-    wanted = set(metrics)
-    intervals: Dict[str, Tuple[float, float, float]] = {}
-    with open(summary_csv_path, "r", encoding="utf-8", newline="") as handle:
-        reader = csv.reader(handle)
-        next(reader, None)
-        for row in reader:
-            if len(row) < 5 or row[0] not in wanted:
-                continue
-            intervals[row[0]] = (float(row[1]), float(row[3]), float(row[4]))
-    missing = wanted - intervals.keys()
-    if missing:
-        raise KeyError(
-            f"{summary_csv_path}: missing metric(s) {sorted(missing)}"
-        )
-    return intervals
+from visualization.figure_style import (
+    FIGURE_SIZE_INCHES,
+    KG_PER_KILOTONNE,
+    POLICY_MARKERS,
+    REPRODUCIBLE_PDF_METADATA,
+    STRATEGY_COLORS,
+    STRATEGY_LABELS,
+)
+from visualization.visualization_utils import EMISSIONS_METRIC, SERVICE_METRIC, read_metric_intervals
 
 
 def build_points(path: Path) -> List[dict]:
