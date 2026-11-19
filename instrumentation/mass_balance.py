@@ -157,12 +157,14 @@ class MassBalanceMonitor:
         ``inflow`` is every transport flow targeting the collector (collection
         plus cross-region reposition-in); ``outflow`` every flow sourced from it
         (treatment intake plus reposition-out). Cross-region reposition logged as
-        inflow here but still on a vehicle is added to ``out``. Reposition still
-        queued for a vehicle is in the origin's ``current_storage``. Final-only by intent.
+        inflow here but still on a vehicle is added to ``out``. Volume held for a
+        transfer still queued for a vehicle left the origin's ``current_storage``
+        at request time and is added to its ``out`` (ADR 0041). Final-only by intent.
         """
         state = self.registry.state
         landfilled_by_entity = self.registry.landfilled_by_entity()
         in_flight_by_destination = state.scheduled_reposition_volume_by_destination()
+        held_by_origin = state.held_transfer_volume_by_collector()
         violations = []
         for collector in (self.registry.collectors or []):
             name = collector.name
@@ -181,7 +183,7 @@ class MassBalanceMonitor:
             in_pipeline = in_flight_by_destination.get(name, 0.0)
 
             lhs = initial + inflow
-            rhs = outflow + current + landfilled + in_pipeline
+            rhs = outflow + current + landfilled + in_pipeline + held_by_origin.get(name, 0.0)
             delta = lhs - rhs
 
             if not math.isclose(
@@ -208,14 +210,15 @@ class MassBalanceMonitor:
         any raw waste primed into treatment at t=0) equals the sum of every fate:
 
             sum(generated) + initial_treatment_storage + initial_collection_center
-                == generator_storage + in_transit + collection_center_storage
-                 + treatment_storage + treated_intake + landfilled
+                == generator_storage + in_transit + held_for_transfer
+                 + collection_center_storage + treatment_storage + treated_intake + landfilled
 
         ``treated_intake`` is ``processed_volumes`` (the corrected ADR 0009
         intake); ``landfilled`` is the single funnel through
         ``handle_storage_event``, read from the landfill ledger. A mismatch means raw waste appeared or vanished
-        without a recorded reason. ``in_transit`` covers loaded vehicles.
-        Repositioning still queued for a vehicle stays in its origin center.
+        without a recorded reason. ``in_transit`` covers loaded vehicles;
+        ``held_for_transfer`` covers volume held for a transfer still queued for a
+        vehicle, which has left its origin center (ADR 0041).
         Final-only by intent.
         """
         state = self.registry.state
@@ -231,6 +234,7 @@ class MassBalanceMonitor:
             sum(vehicle.current_load_by_type.values())
             for vehicle in state.iter_outbound_vehicles()
         )
+        held_for_transfer = sum(state.held_transfer_volume_by_collector().values())
         collection_center_storage = sum(
             sum(collector.collection_center.current_storage.values())
             for collector in collectors
@@ -248,6 +252,7 @@ class MassBalanceMonitor:
         rhs = (
             generator_storage
             + in_transit
+            + held_for_transfer
             + collection_center_storage
             + treatment_storage
             + treated_intake

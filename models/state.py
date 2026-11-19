@@ -15,7 +15,9 @@ class SimulationState:
         self.collectors = []
         self.treatment_operators = []
         self.transport_flows = []
+        self.residue_transfers = []
         self.consumption_events = []
+        self.transport_manager = None
 
     def initialize(self, generators, collectors, treatment_operators):
         self.generators = generators
@@ -41,12 +43,14 @@ class SimulationState:
         the destination center only receives it on arrival. Keyed by the
         destination collector named in that flow.
         """
-        in_flight = {}
-        for collector in self.collectors:
-            for transport in collector.active_transports:
-                target_name = transport["target_name"]
-                in_flight[target_name] = in_flight.get(target_name, 0.0) + transport["volume"]
-        return in_flight
+        if self.transport_manager is None:
+            return {}
+        return self.transport_manager.in_flight_volume_by_destination()
+
+    def held_transfer_volume_by_collector(self) -> dict:
+        if self.transport_manager is None:
+            return {}
+        return self.transport_manager.held_volume_by_requester()
 
     def track_transport_flow(self, source_type: str, source_name: str, 
                            target_type: str, target_name: str, 
@@ -62,6 +66,15 @@ class SimulationState:
             'volume': volume,
             'timestamp': timestamp,
             'transport_method': transport_method
+        })
+
+    def record_residue_transfer(self, source_name: str, volume: float, cost: float, timestamp: float) -> None:
+        """Record a delivered transfer under RESIDUE_TRANSFER_VOLUME_M3 and the trip cost it still paid."""
+        self.residue_transfers.append({
+            'source_name': source_name,
+            'volume': volume,
+            'cost': cost,
+            'timestamp': timestamp,
         })
 
     def record_consumption_event(self, operator_name: str, product: str,

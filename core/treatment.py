@@ -1,6 +1,6 @@
 
 import numpy as np
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, NamedTuple, Optional, Tuple
 from models.data_classes import FailureConfig, WasteTransformation, OperationalEntity, ProductStorage
 from config.base_config import ScenarioConfig
 from models.distances import get_distance
@@ -8,6 +8,7 @@ from models.enums import EntityStatus, InventoryPolicy, OutputType, RegionType, 
 from instrumentation.waste_monitor import WasteMonitor
 from core.kanban_manager import KanbanManager
 from core.strategies import build_stock_strategy, build_inventory_policy
+from models.transformations import volumetric_yield
 from config.constants import (
     INITIAL_INVENTORY_FRACTION,
     PROCESSING_CAPACITY_FRACTION,
@@ -18,6 +19,12 @@ from config.constants import (
     OPERATING_TICK_DAYS,
 )
 from utils.capacity_utils import per_tick_capacity, store_with_overflow
+
+
+class Drain(NamedTuple):
+    collector: object
+    drained: Dict[WasteType, float]
+
 
 class TreatmentOperator(OperationalEntity):
     """Treatment operator that processes waste into products"""
@@ -356,14 +363,16 @@ class TreatmentOperator(OperationalEntity):
     def _process_waste_transformation(self, input_type, output_type, transformation, output_cap=None):
         """Process a single waste transformation.
 
+        ``panel_yield`` is the volumetric yield, panel m3 per waste m3 (ADR 0043).
         ``output_cap`` (PULL, ADR 0002 Phase E) bounds production to the
-        demand-driven target: when provided, ``output_cap / efficiency`` joins the
+        demand-driven target: when provided, ``output_cap / panel_yield`` joins the
         input-waste, processing-capacity and finished-goods-headroom clamps. PUSH
         callers omit it. Returns the output volume produced (0.0 when nothing was
         processed) so the PULL caller can draw down its per-product target.
         """
 
-        efficiency = min(self._get_transformation_efficiency(transformation), 1.0)
+        mass_efficiency = min(self._get_transformation_efficiency(transformation), 1.0)
+        panel_yield = volumetric_yield(mass_efficiency, input_type, output_type)
 
         headroom = self.finished_goods.capacity.get(output_type, 0.0) - self.finished_goods.current_storage[output_type]
         if headroom <= 0:
@@ -372,16 +381,16 @@ class TreatmentOperator(OperationalEntity):
         clamps = [
             self.waste_storage[input_type],
             self.processing_capacity_per_tick_m3,
-            headroom / efficiency,
+            headroom / panel_yield,
         ]
         if output_cap is not None:
-            clamps.append(output_cap / efficiency)
+            clamps.append(output_cap / panel_yield)
         amount_to_process = min(clamps)
 
         if amount_to_process <= 0:
             return 0.0
 
-        output_amount = amount_to_process * efficiency
+        output_amount = amount_to_process * panel_yield
 
         self._update_waste_storage(input_type, amount_to_process)
 
@@ -435,42 +444,39 @@ class TreatmentOperator(OperationalEntity):
             timestamp=timestamp,
         )
 
-    def request_waste_directly(self, required_waste: float, input_waste_types: List[WasteType]) -> Dict[WasteType, float]:
-        """Request waste with local/cross-region routing split"""
-        collected_waste = {}
+    def _request_waste_type(self, required_waste: float, input_waste_types: List[WasteType]) -> List[Drain]:
         local_portion = required_waste * LOCAL_COLLECTION_RATIO
         cross_region_portion = required_waste * (1.0 - LOCAL_COLLECTION_RATIO)
 
-        remaining_local = self._collect_from_local(local_portion, input_waste_types, collected_waste)
+        remaining_local, drains = self._collect_from_local(local_portion, input_waste_types)
 
         remaining_cross_region = self._collect_from_cross_region(cross_region_portion, input_waste_types)
 
         total_remaining = remaining_local + remaining_cross_region
         if total_remaining > 0:
-            self._collect_with_fallback(total_remaining, input_waste_types, collected_waste)
+            _, fallback_drains = self._collect_with_fallback(total_remaining, input_waste_types)
+            drains += fallback_drains
 
-        return collected_waste
+        return drains
 
-    def _drain_collectors(self, collectors, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
-        """Drain pre-filtered collectors via the local intake path until satisfied. A drain
-        from another region is charged as one loaded trip over the distance (ADR 0037)."""
+    def _drain_collectors(self, collectors, amount_to_collect: float,
+                          waste_types: List[WasteType]) -> Tuple[float, List[Drain]]:
         remaining = amount_to_collect
+        drains = []
         for collector in collectors:
             if remaining <= 0: break
 
             drained = collector.provide_waste_for_treatment(remaining, waste_types, treatment_name=self.name)
-            if drained and collector.region_type != self.region_type:
-                collector.charge_trip(drained, get_distance(collector.region_type, self.region_type))
-
-            for waste_type, amount in drained.items():
-                collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
+            if drained:
+                drains.append(Drain(collector, drained))
+            for amount in drained.values():
                 remaining -= amount
-        return remaining
+        return remaining, drains
 
-    def _collect_from_local(self, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
+    def _collect_from_local(self, amount_to_collect: float, waste_types: List[WasteType]) -> Tuple[float, List[Drain]]:
         """Collect waste from local collectors."""
         local_collectors = [c for c in self.state.collectors if c.region_type == self.region_type and c.is_operational]
-        return self._drain_collectors(local_collectors, amount_to_collect, waste_types, collected_waste)
+        return self._drain_collectors(local_collectors, amount_to_collect, waste_types)
 
     def _collect_from_cross_region(self, amount_to_collect: float, waste_types: List[WasteType]) -> float:
         """Reposition waste from cross-region collectors via transport.
@@ -499,10 +505,10 @@ class TreatmentOperator(OperationalEntity):
                 remaining -= amount
         return remaining
 
-    def _collect_with_fallback(self, amount_to_collect: float, waste_types: List[WasteType], collected_waste: dict) -> float:
+    def _collect_with_fallback(self, amount_to_collect: float, waste_types: List[WasteType]) -> Tuple[float, List[Drain]]:
         """Collect waste from any available collector as a fallback."""
         all_collectors = [c for c in self.state.collectors if c.is_operational]
-        return self._drain_collectors(all_collectors, amount_to_collect, waste_types, collected_waste)
+        return self._drain_collectors(all_collectors, amount_to_collect, waste_types)
 
     def _request_via_transport(self, collector, amount: float, waste_types: List[WasteType]) -> Dict[WasteType, float]:
         """Request waste via transport system"""
@@ -522,7 +528,7 @@ class TreatmentOperator(OperationalEntity):
             if remaining_capacity <= 0:
                 break
 
-            available_in_storage = collector.transferable_volume(waste_type)
+            available_in_storage = collector.collection_center.current_storage[waste_type]
             if available_in_storage > 0:
                 can_take = min(available_in_storage, remaining_capacity)
                 available_waste[waste_type] = can_take
@@ -537,11 +543,20 @@ class TreatmentOperator(OperationalEntity):
         fill the whole order, starving the types after it.
         """
         collected_waste = {}
+        remote_drain_loads = {}
         for waste_type in sorted_by_value(order_volumes):
             if order_volumes[waste_type] <= 0:
                 continue
-            for collected_type, volume in self.request_waste_directly(order_volumes[waste_type], [waste_type]).items():
-                collected_waste[collected_type] = collected_waste.get(collected_type, 0.0) + volume
+            for drain in self._request_waste_type(order_volumes[waste_type], [waste_type]):
+                for drained_type, amount in drain.drained.items():
+                    collected_waste[drained_type] = collected_waste.get(drained_type, 0.0) + amount
+                if drain.collector.region_type == self.region_type:
+                    continue
+                _, load_by_type = remote_drain_loads.setdefault(drain.collector.name, (drain.collector, {}))
+                for drained_type, amount in drain.drained.items():
+                    load_by_type[drained_type] = load_by_type.get(drained_type, 0.0) + amount
+        for collector, load_by_type in remote_drain_loads.values():
+            collector.charge_trip(load_by_type, get_distance(collector.region_type, self.region_type))
 
         if not collected_waste or sum(collected_waste.values()) == 0:
             return 0, 0

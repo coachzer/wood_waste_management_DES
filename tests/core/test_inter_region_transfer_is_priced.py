@@ -23,13 +23,13 @@ def test_completed_transfer_charges_the_vehicle_owner():
     """Gorenjska queues 40 m3 for Osrednjeslovenska; a Podravska vehicle carries it and pays.
 
     Neither endpoint has a vehicle, so the bill must follow the vehicle owner, not
-    the origin. Mutation check (red): drop the charge in _handle_completed_transport,
+    the origin. Mutation check (red): drop the charge in PointToPointTransport.deliver,
     or bill the origin collector.
     """
     env = simpy.Environment()
     monitor = ChargeRecordingMonitor()
     state = SimulationState()
-    transport_manager = PointToPointTransport(state=state, road_circuity_mean=1.0)
+    transport_manager = PointToPointTransport(state=state, road_circuity_mean=1.0, env=env)
     origin, destination, owner = (
         make_collector(env, monitor, name=name, region_type=region, state=state,
                        transport_manager=transport_manager, transport_cost=TRIP_COST)

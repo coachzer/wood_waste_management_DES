@@ -177,8 +177,6 @@ class Vehicle:
     current_region: RegionType
     in_transit: bool = False
     current_load_by_type: Dict[WasteType, CubicMetres] = field(default_factory=dict)
-    destination: Optional[RegionType] = None
-    estimated_arrival: Optional[float] = None
 
 @dataclass
 class CollectionCenter:

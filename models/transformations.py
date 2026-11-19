@@ -1,8 +1,18 @@
 """Single source of truth for the waste-to-product transformation catalogue."""
 from typing import Dict, Iterable, Tuple
 
+from config.constants import PANEL_DENSITIES, WASTE_DENSITIES
 from models.data_classes import WasteTransformation
 from models.enums import OutputType, WasteType
+
+
+def volumetric_yield(mass_efficiency: float, input_type: WasteType, output_type: OutputType) -> float:
+    """Panel m3 made per m3 of loose waste (ADR 0043).
+
+    Waste m3 becomes tonnes at the waste's bulk density, ``mass_efficiency`` of that mass ends up
+    in the panel, and the panel's pressed density turns it back into m3.
+    """
+    return mass_efficiency * WASTE_DENSITIES[input_type] / PANEL_DENSITIES[output_type]
 
 TRANSFORMATION_CATALOGUE = {
     WasteType.CONSTRUCTION_WOOD_17_02_01: (0.98, 0.90),

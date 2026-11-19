@@ -5,7 +5,7 @@ move: the remote collector queues a transfer to this region, and treatment picks
 the waste up later through the local intake path. Counting it as collected now
 would double-count it in the waste-side mass balance.
 
-An operator in Osrednjeslovenska asks for 100 m3 through ``request_waste_directly``:
+An operator in Osrednjeslovenska orders 100 m3 through ``trigger_collection``:
 80% local, 20% cross-region, then a fallback drain for whatever is still missing.
 """
 import pytest
@@ -22,10 +22,10 @@ HOME = RegionType.OSREDNJESLOVENSKA
 
 
 def _request_100(waste_monitor, stock_by_region):
-    """One collector per region holding the given stock; returns (collected, queued transfers by origin)."""
+    """One collector per region holding the given stock; returns (collected m3, queued transfers by origin)."""
     env = simpy.Environment()
     state = SimulationState()
-    transport_manager = PointToPointTransport(state=state, road_circuity_mean=1.0)
+    transport_manager = PointToPointTransport(state=state, road_circuity_mean=1.0, env=env)
     state.collectors = []
     for region, stock in stock_by_region.items():
         collector = make_collector(
@@ -39,7 +39,7 @@ def _request_100(waste_monitor, stock_by_region):
         order_share_by_waste_type={CONSTRUCTION: 1.0}, order_up_to_level_m3=100.0,
     )
 
-    collected = operator.request_waste_directly(100.0, [CONSTRUCTION])
+    _, collected = operator.trigger_collection({CONSTRUCTION: 100.0})
 
     queued = {request.origin: request.volume for request in transport_manager.pending_requests}
     return collected, queued
@@ -53,7 +53,7 @@ def test_cross_region_share_is_queued_not_collected(ledger_waste_monitor):
     collected, queued = _request_100(ledger_waste_monitor, {HOME: 0.0, RegionType.PODRAVSKA: 500.0})
 
     assert queued == {RegionType.PODRAVSKA: pytest.approx(20.0)}
-    assert collected == {CONSTRUCTION: pytest.approx(80.0)}
+    assert collected == pytest.approx(80.0)
 
 
 def test_unfilled_cross_region_share_falls_back_to_a_drain(ledger_waste_monitor):
@@ -71,7 +71,7 @@ def test_unfilled_cross_region_share_falls_back_to_a_drain(ledger_waste_monitor)
     })
 
     assert queued == {RegionType.GORENJSKA: 5.0}
-    assert collected == {CONSTRUCTION: pytest.approx(95.0)}
+    assert collected == pytest.approx(95.0)
 
 
 def test_cross_region_asks_only_the_three_nearest_remote_collectors(ledger_waste_monitor):

@@ -6,6 +6,8 @@ or per-collection-center flow identities break.
 """
 from types import SimpleNamespace
 
+import simpy
+
 from core.transport_manager import PointToPointTransport, TransportRequest
 from models.data_classes import Vehicle
 from models.enums import EntityStatus, RegionType, WasteType
@@ -30,7 +32,7 @@ def test_flow_from_a_borrowed_vehicle_names_the_origin_collector():
         collectors=[origin, lender, destination],
         track_transport_flow=lambda **flow: flows.append(flow),
     )
-    transport_manager = PointToPointTransport(state=state, road_circuity_mean=1.0)
+    transport_manager = PointToPointTransport(state=state, road_circuity_mean=1.0, env=simpy.Environment())
     transport_manager.request_transport(TransportRequest(
         origin=RegionType.GORENJSKA, destination=RegionType.OSREDNJESLOVENSKA,
         waste_type=WasteType.CONSTRUCTION_WOOD_17_02_01, volume=10.0,

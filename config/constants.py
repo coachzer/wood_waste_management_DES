@@ -1,4 +1,5 @@
-from models.enums import WasteType
+from models.enums import OutputType, WasteType
+from models.products import ProductDataManager
 
 LANDFILL_EMISSIONS_PER_M3_KG = 0.24 * 1_000  # 240 kg CO2e / m³ (0.24 t CO2e per m³)
 TRANSPORT_EMISSIONS_PER_TON_KM = 0.087  # kg eCO2 per ton-kilometer or 87 g CO2e/ton km
@@ -31,8 +32,15 @@ ESTIMATED_COLLECTION_COST_PER_KM = 0.5  # pre-trip estimate: distance * this
 ROAD_CIRCUITY_FACTOR = 1.35
 
 COLLECTOR_TRIP_COST_CAP = 100
+RESIDUE_TRANSFER_VOLUME_M3 = 1e-6
 COLLECTION_CENTER_CAPACITY_MULTIPLE = 2
 VEHICLES_PER_COLLECTOR = 3
+
+_product_data = ProductDataManager()
+PANEL_DENSITIES = {
+    output_type: _product_data.get_product_specification(output_type.value).density_midpoint
+    for output_type in OutputType
+}
 
 # Standard waste densities in kg/m³ based on EWC codes and industry data
 WASTE_DENSITIES = {
