@@ -42,12 +42,9 @@ class SimulationState:
         the destination center only receives it on arrival. Keyed by the
         destination collector named in that flow.
         """
-        in_flight = {}
-        for collector in self.collectors:
-            for transport in collector.active_transports:
-                target_name = transport["target_name"]
-                in_flight[target_name] = in_flight.get(target_name, 0.0) + transport["volume"]
-        return in_flight
+        if self.transport_manager is None:
+            return {}
+        return self.transport_manager.in_flight_volume_by_destination()
 
     def held_transfer_volume_by_collector(self) -> dict:
         if self.transport_manager is None:

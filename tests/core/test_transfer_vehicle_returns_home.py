@@ -29,7 +29,7 @@ def test_delivery_happens_at_the_arrival_time_not_the_next_tick():
 
     world.env.run(until=arrival + 1e-9)
     assert world.away.collection_center.current_storage[WASTE] == 40.0
-    assert world.home.active_transports == []
+    assert world.transport_manager.active_transports == []
 
 
 def test_the_vehicle_stays_busy_until_it_has_driven_home():
@@ -55,7 +55,7 @@ def test_a_vehicle_back_home_takes_the_waiting_transfer_at_once():
 
     world.env.run(until=back_home_at + 1e-9)
 
-    [transport] = world.home.active_transports
+    [transport] = world.transport_manager.active_transports
     assert transport["load_by_type"] == {OTHER_WASTE: 10.0}
     assert transport["pickup_time"] == pytest.approx(back_home_at)
 

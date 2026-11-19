@@ -26,7 +26,7 @@ def test_a_drain_in_the_same_instant_cannot_take_held_volume():
 
     world.env.run(until=1e-9)
 
-    [transport] = world.home.active_transports
+    [transport] = world.transport_manager.active_transports
     assert transport["load_by_type"] == {WASTE: 40.0}
 
 

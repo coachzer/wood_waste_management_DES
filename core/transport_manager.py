@@ -20,6 +20,7 @@ class PointToPointTransport:
         self.road_circuity_mean = road_circuity_mean
         self.env = env
         self.pending_requests: List[TransportRequest] = []
+        self.active_transports: List[Dict] = []
         self._dispatch_scheduled = False
 
     def _mean_transport_circuity(self) -> float:
@@ -42,6 +43,16 @@ class PointToPointTransport:
             held[request.requester_id] = held.get(request.requester_id, 0.0) + request.volume
         return held
 
+    def in_flight_volume_by_destination(self) -> Dict[str, float]:
+        """Volume on vehicles per destination collector name, summed collector by collector."""
+        in_flight = {}
+        for collector in self.state.collectors:
+            for transport in self.active_transports:
+                if transport["collector"] is collector:
+                    target_name = transport["target_name"]
+                    in_flight[target_name] = in_flight.get(target_name, 0.0) + transport["volume"]
+        return in_flight
+
     def request_transport(self, request: TransportRequest) -> bool:
         """Hold the requested volume (at most the center's stock) and queue it. False if none is left."""
         stock = self._origin_collector(request).collection_center.current_storage
@@ -63,13 +74,13 @@ class PointToPointTransport:
         yield self.env.timeout(0)
         self._dispatch_scheduled = False
         for transport in self.process_requests(self.env.now):
-            transport["collector"].active_transports.append(transport)
+            self.active_transports.append(transport)
             self.env.process(self._run_transfer(transport))
 
     def _run_transfer(self, transport: Dict):
         yield self.env.timeout(max(0.0, transport["arrival_time"] - self.env.now))
         self.deliver(transport)
-        transport["collector"].active_transports.remove(transport)
+        self.active_transports.remove(transport)
         vehicle = transport["vehicle"]
         home_region = transport["collector"].region_type
         vehicle.current_load_by_type = {}

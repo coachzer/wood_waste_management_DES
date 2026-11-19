@@ -115,8 +115,6 @@ class CollectorCompany(OperationalEntity):
             for i in range(VEHICLES_PER_COLLECTOR)
         ]
 
-        self.active_transports = []
-
         self.collected_waste = dict.fromkeys(WasteType, 0.0)
 
         self.waste_monitor = waste_monitor
