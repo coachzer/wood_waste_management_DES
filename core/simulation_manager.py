@@ -12,7 +12,7 @@ from config.constants import (
 from utils.seasonality import seasonal_factor
 from core.transport_manager import PointToPointTransport
 from models.enums import RegionType, OutputType, InventoryPolicy, StockStrategy, WasteType, sorted_by_value
-from persistence.serialization import HISTORY_KEYS
+from instrumentation.history_store import HISTORY_KEYS
 from models.state import SimulationState
 from instrumentation.waste_monitor import WasteMonitor
 from instrumentation.mass_balance import EntityRegistry, MassBalanceMonitor

@@ -89,6 +89,21 @@ def total_emissions_kgco2e(environmental_history: Dict[str, Any]) -> float:
     return total
 
 
+# The polled history dicts and ledgers, in the order get_monitor_data assembles
+# them. Each name doubles as the export key AND the suffix of the HistoryStore
+# getter it is read from (get_{key}); get_monitor_data builds its export by
+# iterating this tuple, so the persisted and exported lists cannot drift.
+HISTORY_KEYS = (
+    "generation_history",
+    "collection_history",
+    "processing_history",
+    "environmental_history",
+    "landfill_history",
+    "event_history",
+    "entity_status_history",
+)
+
+
 class HistoryStore:
     """Holds the raw history dicts and authors their per-entity schemas.
 

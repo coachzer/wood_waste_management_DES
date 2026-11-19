@@ -18,19 +18,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Dict
 
-# The polled history dicts and ledgers, in the order get_monitor_data assembles
-# them. Each name doubles as the export key AND the suffix of the HistoryStore
-# property it is read from (get_{key}); get_monitor_data builds its export by
-# iterating this tuple, so the persisted and exported lists cannot drift.
-HISTORY_KEYS = (
-    "generation_history",
-    "collection_history",
-    "processing_history",
-    "environmental_history",
-    "landfill_history",
-    "event_history",
-    "entity_status_history",
-)
+from instrumentation.history_store import HISTORY_KEYS
 
 # The histories plus the two event logs that carry the full raw run. KPIs are
 # derived from exactly these; persisting them lets a new KPI be computed
