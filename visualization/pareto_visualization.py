@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 from analysis.layout import iter_combo_summaries, split_combo_label
-from analysis.pareto import OBJECTIVES, build_pareto_report
+from analysis.pareto import OBJECTIVES, pareto_frontier
 from visualization.figure_style import (
     FIGURE_SIZE_INCHES,
     KG_PER_KILOTONNE,
@@ -35,6 +35,10 @@ from visualization.visualization_utils import EMISSIONS_METRIC, SERVICE_METRIC, 
 
 LANDFILL_METRIC = "landfill_volume_m3"
 COST_METRIC = "total_system_cost"
+_TWOD_OBJECTIVES: List[Tuple[str, str]] = [
+    ("service", "max"),
+    ("emissions", "min"),
+]
 
 
 def _build_points(
@@ -43,25 +47,33 @@ def _build_points(
 ) -> List[dict]:
     """One styled point dict per configuration with Pareto status and CI data.
 
-    Merges the Pareto frontier report (means + non_dominated flag) with the
-    CI intervals from each combo's ``summary.csv``.
+    Reads each combo's ``summary.csv`` once for both the 4-objective Pareto
+    frontier check and the CI intervals.
     """
-    pareto_rows = build_pareto_report(path, root=False, objectives=objectives)
-    if not pareto_rows:
+    all_metrics = list(
+        dict.fromkeys(
+            [SERVICE_METRIC, EMISSIONS_METRIC, LANDFILL_METRIC, COST_METRIC]
+            + [metric for metric, _ in objectives]
+        )
+    )
+
+    raw_rows: List[Tuple[str, str, str, dict]] = []
+    objective_vectors = {}
+    for label, summary_path in iter_combo_summaries(path, root=False):
+        policy, strategy = split_combo_label(label)
+        intervals = read_metric_intervals(summary_path, all_metrics)
+        raw_rows.append((label, policy, strategy, intervals))
+        objective_vectors[label] = {
+            metric: intervals[metric][0] for metric, _ in objectives
+        }
+
+    if not raw_rows:
         return []
 
-    frontier_set = {row["config"] for row in pareto_rows if row["non_dominated"]}
-    pareto_by_config = {row["config"]: row for row in pareto_rows}
-
-    all_metrics = [SERVICE_METRIC, EMISSIONS_METRIC, LANDFILL_METRIC, COST_METRIC]
+    frontier_set = set(pareto_frontier(objective_vectors, objectives=objectives))
 
     points: List[dict] = []
-    for label, summary_path in iter_combo_summaries(path, root=False):
-        if label not in pareto_by_config:
-            continue
-        policy, strategy = split_combo_label(label)
-
-        intervals = read_metric_intervals(summary_path, all_metrics)
+    for label, policy, strategy, intervals in raw_rows:
         service_mean, service_low, service_high = intervals[SERVICE_METRIC]
         emis_mean, emis_low, emis_high = intervals[EMISSIONS_METRIC]
         landfill_mean = intervals[LANDFILL_METRIC][0]
@@ -90,7 +102,9 @@ def _build_points(
     return points
 
 
-def _build_legend_handles(points: List[dict]) -> List[Line2D]:
+def _build_legend_handles(
+    points: List[dict], *, has_frontier_line: bool = True
+) -> List[Line2D]:
     present_policies = [
         p for p in POLICY_MARKERS if any(pt["policy"] == p for pt in points)
     ]
@@ -112,12 +126,13 @@ def _build_legend_handles(points: List[dict]) -> List[Line2D]:
                 linestyle="none", markersize=8, label=STRATEGY_LABELS[strategy],
             )
         )
-    handles.append(
-        Line2D(
-            [], [], color="black", linestyle="-", linewidth=1.5,
-            marker="none", label="Pareto frontier",
+    if has_frontier_line:
+        handles.append(
+            Line2D(
+                [], [], color="black", linestyle="-", linewidth=1.5,
+                marker="none", label="2D frontier (service vs. emissions)",
+            )
         )
-    )
     return handles
 
 
@@ -131,6 +146,20 @@ def build_pareto_figure(
         [p for p in points if p["frontier"]], key=lambda p: p["service"]
     )
     dominated_pts = [p for p in points if not p["frontier"]]
+
+    frontier_2d_labels = set(
+        pareto_frontier(
+            {
+                p["label"]: {"service": p["service"], "emissions": p["emissions"]}
+                for p in frontier_pts
+            },
+            objectives=_TWOD_OBJECTIVES,
+        )
+    )
+    frontier_2d_pts = sorted(
+        [p for p in frontier_pts if p["label"] in frontier_2d_labels],
+        key=lambda p: (p["service"], p["emissions"]),
+    )
 
     for point in dominated_pts:
         ax.errorbar(
@@ -162,10 +191,10 @@ def build_pareto_figure(
             zorder=5,
         )
 
-    if len(frontier_pts) >= 2:
+    if len(frontier_2d_pts) >= 2:
         ax.plot(
-            [p["service"] for p in frontier_pts],
-            [p["emissions"] for p in frontier_pts],
+            [p["service"] for p in frontier_2d_pts],
+            [p["emissions"] for p in frontier_2d_pts],
             color="black",
             linewidth=1.5,
             linestyle="-",
@@ -182,12 +211,13 @@ def build_pareto_figure(
                 f"{p['landfill']:,.0f}",
                 f"{p['cost']:,.0f}",
             ])
+        table_height = min(0.45, 0.06 + 0.045 * len(frontier_pts))
         table = ax.table(
             cellText=cell_text,
             colLabels=col_labels,
             loc="lower left",
             cellLoc="center",
-            bbox=[0.02, 0.02, 0.48, 0.06 + 0.045 * len(frontier_pts)],
+            bbox=[0.02, 0.02, 0.48, table_height],
         )
         table.auto_set_font_size(False)
         table.set_fontsize(7)
@@ -203,19 +233,23 @@ def build_pareto_figure(
 
     ax.set_xlabel("Full service level (%)")
     ax.set_ylabel("Total emissions (kt CO$_2$e)")
-    ax.set_title("Pareto frontier: emissions vs service level")
+    ax.set_title("4-objective Pareto frontier: emissions vs service level")
     ax.grid(True, linestyle=":", alpha=0.5)
 
     n_frontier = sum(1 for p in points if p["frontier"])
     ax.text(
         0.98, 0.98,
-        f"{n_frontier} of {len(points)} non-dominated",
+        f"{n_frontier} of {len(points)} 4D non-dominated",
         transform=ax.transAxes,
         ha="right", va="top",
         fontsize=8, color="#666666",
     )
 
-    ax.legend(handles=_build_legend_handles(points), loc="upper left", fontsize=8)
+    ax.legend(
+        handles=_build_legend_handles(points, has_frontier_line=len(frontier_2d_pts) >= 2),
+        loc="upper left",
+        fontsize=8,
+    )
     fig.tight_layout()
     return fig
 
@@ -232,11 +266,13 @@ def write_pareto_plot(path):
         return None
     fig = build_pareto_figure(points)
     output_path = path / "pareto_frontier.pdf"
-    fig.savefig(
-        output_path,
-        metadata=REPRODUCIBLE_PDF_METADATA,
-    )
-    plt.close(fig)
+    try:
+        fig.savefig(
+            output_path,
+            metadata=REPRODUCIBLE_PDF_METADATA,
+        )
+    finally:
+        plt.close(fig)
     return output_path
 
 

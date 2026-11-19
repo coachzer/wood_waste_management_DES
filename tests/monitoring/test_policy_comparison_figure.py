@@ -103,3 +103,34 @@ def test_write_figure_emits_nonempty_pdf(tmp_path):
     assert written is not None
     assert written.name == "policy_comparison.pdf"
     assert written.read_bytes().startswith(b"%PDF")
+
+
+def test_read_metric_intervals_raises_clear_value_error_on_blank_row(tmp_path):
+    summary_path = tmp_path / "summary.csv"
+    summary_path.write_text(
+        "metric,mean,stdev,ci95_low,ci95_high,count\n"
+        f"{SERVICE_METRIC},,,,,0\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match=SERVICE_METRIC):
+        read_metric_intervals(summary_path, [SERVICE_METRIC])
+
+
+def test_read_metric_intervals_validates_csv_header(tmp_path):
+    summary_path = tmp_path / "summary.csv"
+    summary_path.write_text("bad,header\n1,2\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="expected CSV columns"):
+        read_metric_intervals(summary_path, [SERVICE_METRIC])
+
+
+def test_build_points_clamps_inverted_ci_half_widths(tmp_path):
+    _write_summary(
+        tmp_path / "push__on_demand",
+        {
+            SERVICE_METRIC: (70.0, 72.0, 69.0),
+            EMISSIONS_METRIC: (2_000_000.0, 2_200_000.0, 1_800_000.0),
+        },
+    )
+    (point,) = build_points(tmp_path)
+    assert point["service_err"] == [[0.0], [0.0]]
+    assert point["emissions_err"] == [[0.0], [0.0]]

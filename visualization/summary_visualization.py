@@ -1,3 +1,4 @@
+import os
 import plotly.graph_objects as go
 import plotly.subplots as sp
 import pandas as pd
@@ -8,18 +9,33 @@ from instrumentation.history_store import total_landfill_cost
 
 def create_cost_impact_comparison(results: List[Dict], output_dir: str):
     """Create bar charts comparing cost and environmental impact breakdowns"""
-    cost_components = ['energy_costs', 'operational_costs', 'transport_costs', 'overflow']
+    os.makedirs(output_dir, exist_ok=True)
+    if not results:
+        return
+
+    cost_components = [
+        'energy_costs',
+        'operational_costs',
+        'transport_costs',
+        'holding_costs',
+        'overflow',
+    ]
     scenario_labels = []
     cost_data = {comp: [] for comp in cost_components}
 
     for result in results:
         monitor_data = result['monitor_data']
         scenario_labels.append(create_scenario_label(result))
-        
+
         total_energy = 0
         total_operational = 0
         total_transport = 0
-        
+        total_holding = 0
+
+        for entity_data in monitor_data.get('generation_history', {}).values():
+            if entity_data.get('holding_costs'):
+                total_holding += sum(entity_data['holding_costs'])
+
         for entity_data in monitor_data.get('collection_history', {}).values():
             if entity_data.get('energy_costs'):
                 total_energy += sum(entity_data['energy_costs'])
@@ -27,6 +43,8 @@ def create_cost_impact_comparison(results: List[Dict], output_dir: str):
                 total_operational += sum(entity_data['operational_costs'])
             if entity_data.get('transport_costs'):
                 total_transport += sum(entity_data['transport_costs'])
+            if entity_data.get('holding_costs'):
+                total_holding += sum(entity_data['holding_costs'])
 
         for entity_data in monitor_data.get('processing_history', {}).values():
             operational = entity_data.get('operational', {})
@@ -34,11 +52,14 @@ def create_cost_impact_comparison(results: List[Dict], output_dir: str):
                 total_energy += sum(operational['energy_costs'])
             if operational.get('processing_costs'):
                 total_operational += sum(operational['processing_costs'])
-        
+            if operational.get('holding_costs'):
+                total_holding += sum(operational['holding_costs'])
+
         cost_data['energy_costs'].append(total_energy)
         cost_data['operational_costs'].append(total_operational)
         cost_data['transport_costs'].append(total_transport)
-        
+        cost_data['holding_costs'].append(total_holding)
+
         # Overflow = expansions (system-event stream) + landfills (ledger).
         event_history = monitor_data.get('event_history', {})
         overflow_cost = total_landfill_cost(monitor_data.get('landfill_history', {}))
@@ -51,22 +72,26 @@ def create_cost_impact_comparison(results: List[Dict], output_dir: str):
     fig_cost = go.Figure()
     for comp in cost_components:
         fig_cost.add_trace(go.Bar(
-            x=scenario_labels, 
-            y=cost_data[comp], 
-            name=comp.title()
+            x=scenario_labels,
+            y=cost_data[comp],
+            name=comp.replace("_", " ").title()
         ))
     fig_cost.update_layout(
-        title="Cost Breakdown by Scenario", 
-        barmode='stack', 
-        xaxis_title="Scenario", 
+        title="Cost Breakdown by Scenario",
+        barmode='stack',
+        xaxis_title="Scenario",
         yaxis_title="Total Cost"
     )
     fig_cost.write_html(f"{output_dir}/cost_breakdown_comparison.html")
 
 def create_summary_dashboard(results: List[Dict], output_dir: str):
     """Create a comprehensive dashboard with key metrics"""
+    os.makedirs(output_dir, exist_ok=True)
+    if not results:
+        return
+
     metrics_data = []
-    
+
     for result in results:
         monitor_data = result['monitor_data']
         generation_history = monitor_data['generation_history']
@@ -75,6 +100,8 @@ def create_summary_dashboard(results: List[Dict], output_dir: str):
         event_history = monitor_data['event_history']
 
         total_generated = sum(last_cumulative_by_entity(generation_history, 'total_potential_generated').values())
+        total_outlet = sum(last_cumulative_by_entity(generation_history, 'total_outlet').values())
+        treatable_potential = total_generated - total_outlet
         total_collected = sum(last_cumulative_by_entity(collection_history, 'collected_volumes').values())
         total_processed = sum(last_cumulative_by_entity(processing_history, 'processed.total').values())
 
@@ -86,7 +113,7 @@ def create_summary_dashboard(results: List[Dict], output_dir: str):
         if total_costs:
             total_overflow_cost += sum(total_costs)
 
-        collection_eff = (total_collected / total_generated * 100) if total_generated > 0 else 0
+        collection_eff = (total_collected / treatable_potential * 100) if treatable_potential > 0 else 0
         processing_eff = (total_processed / total_collected * 100) if total_collected > 0 else 0
 
         metrics_data.append({
