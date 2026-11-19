@@ -1,4 +1,3 @@
-import logging
 
 import numpy as np
 from typing import Dict, List, Optional, Tuple
@@ -88,11 +87,7 @@ class TreatmentOperator(OperationalEntity):
             for waste_type, volume in initial_waste_storage.items():
                 self._waste_storage[waste_type] = volume
         self.processed_volumes = dict.fromkeys(WasteType, 0.0)
-        self.product_volumes = {
-            "mdf": 0.0,
-            "particle_board": 0.0,
-            "osb": 0.0
-        }
+        self.product_volumes = {output_type.value: 0.0 for output_type in OutputType}
         self.expected_output_volume_from_intake_m3 = 0.0
         finished_goods_capacity = finished_goods_capacity or {}
         self.finished_goods = ProductStorage(
@@ -389,14 +384,6 @@ class TreatmentOperator(OperationalEntity):
         processed) so the PULL caller can draw down its per-product target.
         """
 
-        final_products = {
-            OutputType.MDF,
-            OutputType.PARTICLE_BOARD,
-            OutputType.OSB
-        }
-        if input_type in final_products:
-            return 0.0
-
         efficiency = min(self._get_transformation_efficiency(transformation), 1.0)
 
         headroom = self.finished_goods.capacity.get(output_type, 0.0) - self.finished_goods.current_storage[output_type]
@@ -419,19 +406,9 @@ class TreatmentOperator(OperationalEntity):
 
         self._update_waste_storage(input_type, amount_to_process)
 
-        if output_type in final_products:
-            self.finished_goods.current_storage[output_type] += output_amount
-
-            self.expected_output_volume_from_intake_m3 += amount_to_process * efficiency
-
-            if output_type == OutputType.MDF:
-                self.product_volumes["mdf"] += output_amount
-            elif output_type == OutputType.PARTICLE_BOARD:
-                self.product_volumes["particle_board"] += output_amount
-            elif output_type == OutputType.OSB:
-                self.product_volumes["osb"] += output_amount
-        else:
-            logging.warning(f"[{self.name}] Unclassified output: {output_amount:.2f} m³ of {output_type.value} from {input_type.value}")
+        self.finished_goods.current_storage[output_type] += output_amount
+        self.expected_output_volume_from_intake_m3 += output_amount
+        self.product_volumes[output_type.value] += output_amount
 
         self._track_treatment_properties(amount_to_process, transformation)
 
