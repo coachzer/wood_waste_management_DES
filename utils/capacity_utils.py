@@ -89,10 +89,8 @@ def split_overflow_by_type(
             for waste_type in sorted_by_value(composition)
         }
     return {
-        waste_type: overflow_total * (volume_m3 / total_composition)
-        for waste_type, volume_m3 in sorted(
-            composition.items(), key=lambda item: item[0].value
-        )
+        waste_type: overflow_total * (composition[waste_type] / total_composition)
+        for waste_type in sorted_by_value(composition)
     }
 
 
@@ -156,11 +154,9 @@ def handle_storage_event(entity, composition: Dict[WasteType, float], force_land
         1 + landfill_count * LANDFILL_COST_ESCALATION_PER_PRIOR
     )
     base_landfill_cost = sum(
-        volume_m3 * (WASTE_DENSITIES[waste_type] / KILOGRAMS_PER_TONNE)
+        composition[waste_type] * (WASTE_DENSITIES[waste_type] / KILOGRAMS_PER_TONNE)
         * LANDFILL_COST_PER_TONNE_USD
-        for waste_type, volume_m3 in sorted(
-            composition.items(), key=lambda item: item[0].value
-        )
+        for waste_type in sorted_by_value(composition)
     )
     landfill_cost = base_landfill_cost * landfill_cost_escalation
 

@@ -18,7 +18,7 @@ from config.constants import (
     VEHICLES_PER_COLLECTOR,
 )
 from core.transport_manager import PointToPointTransport, TransportRequest
-from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
+from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy, sorted_by_value
 from instrumentation.waste_monitor import WasteMonitor
 from models.data_classes import FailureConfig, Vehicle, CollectionCenter, OperationalEntity
 from config.base_config import ScenarioConfig
@@ -186,11 +186,9 @@ class CollectorCompany(OperationalEntity):
         road_distance = distance * ROAD_CIRCUITY_FACTOR
         trip_cost = self.transport_cost + (road_distance * COLLECTION_COST_PER_KM_PER_M3 * sum(load_by_type.values()))
         emissions = sum(
-            volume_m3 * (WASTE_DENSITIES[waste_type] / KILOGRAMS_PER_TONNE)
+            load_by_type[waste_type] * (WASTE_DENSITIES[waste_type] / KILOGRAMS_PER_TONNE)
             * road_distance * TRANSPORT_EMISSIONS_PER_TON_KM
-            for waste_type, volume_m3 in sorted(
-                load_by_type.items(), key=lambda item: item[0].value
-            )
+            for waste_type in sorted_by_value(load_by_type)
         )
 
         if self.waste_monitor:

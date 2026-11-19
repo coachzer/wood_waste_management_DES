@@ -13,7 +13,7 @@ Outputs: `outputs/baseline/{scenario}/{policy}__{strategy}/`. Seeds are CRN: rep
 
 ## Traps
 
-- **Sort enum sets.** Enum members hash by `id()`, so iterating a set of `WasteType`/`OutputType` breaks per-seed reproducibility silently. On ordered-work paths, `sorted(..., key=lambda e: e.value)` and keep a `List`. Guarded by `tests/test_enum_set_ordering.py`, `tests/test_determinism.py`.
+- **Sort enum sets.** Enum members hash by `id()`, so iterating a set of `WasteType`/`OutputType` breaks per-seed reproducibility silently. On ordered-work paths, iterate `models.enums.sorted_by_value(...)` and keep a `List`. Guarded by `tests/test_enum_set_ordering.py`, `tests/test_determinism.py`.
 - **PULL needs treatment orders.** If `TreatmentOperator._order_volumes_by_waste_type()` returns nothing, collectors stall.
 - **PUSH ignores signals**; under PULL, generators emit none (ADR 0032), collectors serve largest order first (ADR 0031), short operators also signal the richest region (ADR 0033).
 
