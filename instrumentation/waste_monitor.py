@@ -105,11 +105,10 @@ class WasteMonitor:
         self.store.ensure_processing(treatment.name)
         self.store.ensure_entity_status("treatments", treatment.name)
 
-        self.store.entity_status_history["treatments"][treatment.name]["timestamps"].append(timestamp)
-        self.store.entity_status_history["treatments"][treatment.name]["status"].append(treatment.status.name)
-
         history = self.store.processing_history[treatment.name]
         if not history["timestamps"] or timestamp > history["timestamps"][-1]:
+            self.store.entity_status_history["treatments"][treatment.name]["timestamps"].append(timestamp)
+            self.store.entity_status_history["treatments"][treatment.name]["status"].append(treatment.status.name)
             history["timestamps"].append(timestamp)
             history["status"].append(treatment.status.name)
 
