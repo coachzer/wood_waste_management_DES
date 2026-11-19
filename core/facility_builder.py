@@ -1,13 +1,13 @@
 import numpy as np
 from simpy import Environment
 from models.facility_data import FacilityDataManager
-from models.enums import RegionType, WasteType, OutputType, normalize_waste_type, sorted_by_value
-from models.data_classes import WasteTransformation
-from models.transformations import TRANSFORMATION_CATALOGUE, WASTE_TO_OUTPUT_TYPES
+from models.enums import RegionType, WasteType, sorted_by_value
+from models.transformations import build_transformations
 from core.generator import WasteGenerator
 from core.collector import CollectorCompany
 from core.treatment import TreatmentOperator
 from instrumentation.waste_monitor import WasteMonitor
+from config.base_config import ScenarioConfig
 from utils.unit_conversion import convert_generation_rates_to_volume
 import math
 
@@ -18,7 +18,6 @@ from config.constants import (
     SAFETY_STOCK_Z,
     TREATMENT_REPLENISHMENT_LEAD_TIME_DAYS,
     WEEKS_PER_YEAR,
-    FINISHED_GOODS_BUFFER_WEEKS,
     WASTE_STORAGE_PRIMING_WEEKS,
 )
 from utils.capacity_utils import per_tick_capacity
@@ -31,16 +30,16 @@ class FacilityBuilder:
         env: Environment,
         facility_manager: FacilityDataManager,
         waste_monitor: WasteMonitor,
-        uncertainty_set=None,
-        transport_manager=None,
-        kanban_manager=None,
-        state=None,
-        seed=None
+        scenario: ScenarioConfig,
+        transport_manager,
+        kanban_manager,
+        state,
+        seed,
     ):
         self.env = env
         self.facility_manager = facility_manager
         self.waste_monitor = waste_monitor
-        self.uncertainty_set = uncertainty_set
+        self.scenario = scenario
         self.transport_manager = transport_manager
         self.kanban_manager = kanban_manager
         self.state = state
@@ -51,7 +50,7 @@ class FacilityBuilder:
             'TreatmentOperator': 0
         }
 
-    def create_generator(self, gen_data, region: RegionType, stock_strategy=None, inventory_policy=None,
+    def create_generator(self, gen_data, region: RegionType, stock_strategy, inventory_policy,
                          accepted_waste_types=None) -> WasteGenerator:
         """Create a single waste generator"""
         if gen_data.waste_storage_capacity <= 0:
@@ -61,21 +60,7 @@ class FacilityBuilder:
 
         initial_stock = None
         if gen_data.initial_stock:
-            initial_stock_ewc = convert_generation_rates_to_volume(gen_data.initial_stock)
-            initial_stock = initial_stock_ewc
-
-        if stock_strategy is None and hasattr(self.uncertainty_set, 'stock_strategy'):
-            stock_strategy = self.uncertainty_set.stock_strategy
-
-            
-        if stock_strategy is None:
-            raise SystemExit(f"Error: No stock strategy specified for generator {gen_data.id}")
-
-        if inventory_policy is None and hasattr(self.uncertainty_set, 'inventory_policy'):
-            inventory_policy = self.uncertainty_set.inventory_policy
-
-        if inventory_policy is None:
-            raise SystemExit(f"Error: No inventory policy specified for generator {gen_data.id}")
+            initial_stock = convert_generation_rates_to_volume(gen_data.initial_stock)
 
         self.facility_counts['WasteGenerator'] += 1
         [child_seed] = self.seed_sequence.spawn(1)
@@ -87,32 +72,21 @@ class FacilityBuilder:
             generation_frequency=gen_data.generation_frequency,
             waste_storage_capacity=gen_data.waste_storage_capacity,
             efficiency=gen_data.efficiency,
-            region=region.value,
-            uncertainty_set=self.uncertainty_set,
+            region_type=region,
+            scenario=self.scenario,
             initial_stock=initial_stock,
             waste_monitor=self.waste_monitor,
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
             kanban_manager=self.kanban_manager,
             state=self.state,
-            failure_config=self.uncertainty_set.generator_failure if self.uncertainty_set else None,
+            failure_config=self.scenario.generator_failure,
             seed=child_seed,
             accepted_waste_types=accepted_waste_types,
         )
 
-    def create_collector(self, col_data, region: RegionType, stock_strategy=None, inventory_policy=None) -> CollectorCompany:
+    def create_collector(self, col_data, region: RegionType, stock_strategy, inventory_policy) -> CollectorCompany:
         """Create a single collector company"""
-        if stock_strategy is None and hasattr(self.uncertainty_set, 'stock_strategy'):
-            stock_strategy = self.uncertainty_set.stock_strategy
-            
-        if stock_strategy is None:
-            raise SystemExit(f"Error: No stock strategy specified for collector {col_data.id}")
-        
-        if inventory_policy is None and hasattr(self.uncertainty_set, 'inventory_policy'):
-            inventory_policy = self.uncertainty_set.inventory_policy
-
-        if inventory_policy is None:
-            raise SystemExit(f"Error: No inventory policy specified for collector {col_data.id}")
 
         waste_types_enum = [WasteType(wtype) if not isinstance(wtype, WasteType) else wtype for wtype in col_data.waste_types]
 
@@ -131,26 +105,26 @@ class FacilityBuilder:
             transport_cost=col_data.transport_cost,
             efficiency=col_data.efficiency,
             availability=col_data.availability,
-            region=region.value,
+            region_type=region,
             waste_monitor=self.waste_monitor,
-            uncertainty_set=self.uncertainty_set,
+            scenario=self.scenario,
             stock_strategy=stock_strategy,
             inventory_policy=inventory_policy,
             transport_manager=self.transport_manager,
             kanban_manager=self.kanban_manager,
             state=self.state,
-            failure_config=self.uncertainty_set.collector_failure if self.uncertainty_set else None,
+            failure_config=self.scenario.collector_failure,
             seed=child_seed
         )
 
-    def create_processor(self, proc_data, region: RegionType, stock_strategy=None, inventory_policy=None, market_share: float = 0.0) -> TreatmentOperator:
+    def create_processor(self, proc_data, region: RegionType, stock_strategy, inventory_policy, market_share: float = 0.0) -> TreatmentOperator:
         """Create a single treatment processor.
 
         ``market_share`` is the operator's proportional share of national
         market demand (ADR 0002), computed by the caller from total processing
         capacity since a single processor cannot know the system-wide total.
         """
-        transformations = self._build_transformations(proc_data)
+        transformations = build_transformations(proc_data.input_types, proc_data.output_types)
         finished_goods_capacity = self._finished_goods_capacity(transformations, market_share)
         initial_waste_storage = self._prime_waste_storage(transformations, region, market_share)
         order_share_by_waste_type = self._order_share_by_waste_type(transformations)
@@ -158,17 +132,6 @@ class FacilityBuilder:
             transformations, market_share, proc_data.waste_storage_capacity
         )
 
-        if stock_strategy is None and hasattr(self.uncertainty_set, 'stock_strategy'):
-            stock_strategy = self.uncertainty_set.stock_strategy
-
-        if stock_strategy is None:
-            raise SystemExit(f"Error: No stock strategy specified for processor {proc_data.id}")
-        
-        if inventory_policy is None and hasattr(self.uncertainty_set, 'inventory_policy'):
-            inventory_policy = self.uncertainty_set.inventory_policy
-
-        if inventory_policy is None:
-            raise SystemExit(f"Error: No inventory policy specified for processor {proc_data.id}")
         
         self.facility_counts['TreatmentOperator'] += 1
         [child_seed] = self.seed_sequence.spawn(1)
@@ -181,8 +144,8 @@ class FacilityBuilder:
             energy_consumption=proc_data.energy_consumption,
             environmental_impact=proc_data.environmental_impact,
             operational_costs=proc_data.operational_costs,
-            region=region.value,
-            uncertainty_set=self.uncertainty_set,
+            region_type=region,
+            scenario=self.scenario,
             transformations=transformations,
             waste_monitor=self.waste_monitor,
             finished_goods_capacity=finished_goods_capacity,
@@ -194,7 +157,7 @@ class FacilityBuilder:
             inventory_policy=inventory_policy,
             kanban_manager=self.kanban_manager,
             state=self.state,
-            failure_config=self.uncertainty_set.treatment_failure if self.uncertainty_set else None,
+            failure_config=self.scenario.treatment_failure,
             seed=child_seed
         )
 
@@ -209,9 +172,7 @@ class FacilityBuilder:
         no-capability lost sales and never touches their inventory, so priming
         them would be meaningless dead stock.
         """
-        buffer_weeks = getattr(
-            self.uncertainty_set, "finished_goods_buffer_weeks", FINISHED_GOODS_BUFFER_WEEKS
-        )
+        buffer_weeks = self.scenario.finished_goods_buffer_weeks
         national_demand = self.facility_manager.demand
         producible_outputs = sorted_by_value({transformation.output_type for transformation in transformations.values()})
         return {
@@ -360,48 +321,6 @@ class FacilityBuilder:
             for waste_type, volume in convert_generation_rates_to_volume(generator.waste_generation_rates).items():
                 volume_by_type[waste_type] = volume_by_type.get(waste_type, 0.0) + volume
         return volume_by_type
-
-    def _build_transformations(self, proc_data):
-        """Build waste transformation mappings for a processor"""
-        transformations = {}
-
-        for input_type in proc_data.input_types:
-            waste_type = normalize_waste_type(input_type)
-            if waste_type is None:
-                print(f"Warning: Skipping invalid waste type: {input_type}")
-                continue
-
-            if waste_type not in TRANSFORMATION_CATALOGUE:
-                continue
-
-            efficiency, energy = TRANSFORMATION_CATALOGUE[waste_type]
-            appropriate_outputs = [
-                output_type.value
-                for output_type in WASTE_TO_OUTPUT_TYPES.get(waste_type, [])
-            ]
-            
-            for output_type in proc_data.output_types:
-                if output_type.lower() == waste_type.value.lower():
-                    continue
-                
-                if output_type.lower() not in appropriate_outputs:
-                    continue
-
-                try:
-                    output_waste_type = OutputType(output_type)
-                except ValueError:
-                    print(f"Warning: Skipping invalid output type: {output_type}")
-                    continue
-                    
-                key = (waste_type, output_waste_type)
-                transformations[key] = WasteTransformation(
-                    input_type=waste_type,
-                    output_type=output_waste_type,
-                    conversion_efficiency=efficiency,
-                    energy_required=energy,
-                )
-                
-        return transformations
 
     def print_failure_analysis(self):
         entities_by_type = {

@@ -1,4 +1,3 @@
-from config.base_config import get_cost_params
 from typing import Dict, Tuple
 from config.constants import (
     LANDFILL_EMISSIONS_PER_M3_KG,
@@ -6,6 +5,9 @@ from config.constants import (
     KILOGRAMS_PER_TONNE,
     WASTE_DENSITIES,
     EXPANSION_SIZE_M3,
+    EXPANSION_COST_PER_M3,
+    EXPANSION_COST_ESCALATION_PER_PRIOR,
+    LANDFILL_COST_ESCALATION_PER_PRIOR,
     OVERFLOW_VOLUME_TOLERANCE_M3,
     OPERATING_TICK_DAYS,
 )
@@ -138,13 +140,11 @@ def handle_storage_event(entity, composition: Dict[WasteType, float], force_land
     if total_volume < OVERFLOW_VOLUME_TOLERANCE_M3:
         return 0.0, "no_action"
 
-    config = get_cost_params()
     expansion_count = getattr(entity, 'expansion_count', 0)
     landfill_count = getattr(entity, 'landfill_count', 0)
 
-    base_expansion_cost_per_m3 = config.expansion_cost_per_m3
-    expansion_cost_per_m3 = base_expansion_cost_per_m3 * (
-        1 + expansion_count * config.expansion_cost_escalation_per_prior
+    expansion_cost_per_m3 = EXPANSION_COST_PER_M3 * (
+        1 + expansion_count * EXPANSION_COST_ESCALATION_PER_PRIOR
     )
 
     # Per-type landfill cost: each stream's volume is converted to mass at its own
@@ -152,7 +152,7 @@ def handle_storage_event(entity, composition: Dict[WasteType, float], force_land
     # then escalated by prior landfills on this entity. Sorted by WasteType.value
     # so the summation order is deterministic across processes (CRN guard).
     landfill_cost_escalation = (
-        1 + landfill_count * config.landfill_cost_escalation_per_prior
+        1 + landfill_count * LANDFILL_COST_ESCALATION_PER_PRIOR
     )
     base_landfill_cost = sum(
         volume_m3 * (WASTE_DENSITIES[waste_type] / KILOGRAMS_PER_TONNE)

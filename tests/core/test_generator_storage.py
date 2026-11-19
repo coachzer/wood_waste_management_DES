@@ -47,8 +47,6 @@ def make_generator_stub(
     waste_storage_capacity,
     current_storage=0.0,
     status=EntityStatus.OPERATIONAL,
-    uncertainty_set=None,
-    region=None,
     outlet_waste_types=(),
 ):
     """Build a minimal SimpleNamespace that satisfies ``_generate_waste_for_period``.
@@ -83,9 +81,7 @@ def make_generator_stub(
         total_outlet={waste_type: 0.0 for waste_type in waste_generation_rates},
         efficiency=1.0,
         status=status,
-        uncertainty_set=uncertainty_set,
         state=state,
-        region=region,
     )
     import types
     stub._calculate_daily_factors = types.MethodType(_calculate_daily_factors_stub, stub)
@@ -202,7 +198,6 @@ def test_update_waste_stream_increments_all_counters_atomically():
         waste_generation_rates={CONSTRUCTION: 1.0},
         waste_storage_capacity=500.0,
         current_storage=0.0,
-        region="podravska",
     )
 
     volume_to_add = 42.0
@@ -233,7 +228,6 @@ def test_handle_overflow_caps_storage_and_scales_streams_proportionally():
         waste_generation_rates={CONSTRUCTION: 1.0, PACKAGING: 1.0},
         waste_storage_capacity=capacity,
         current_storage=130.0,
-        region="podravska",
     )
     pre_overflow_volumes = {CONSTRUCTION: 80.0, PACKAGING: 50.0}
     for waste_type, volume in pre_overflow_volumes.items():

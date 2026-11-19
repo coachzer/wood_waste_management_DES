@@ -17,7 +17,8 @@ from config.constants import (
 from core.transport_manager import PointToPointTransport, TransportRequest
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy, normalize_waste_type
 from instrumentation.waste_monitor import WasteMonitor
-from models.data_classes import Vehicle, CollectionCenter, OperationalEntity
+from models.data_classes import FailureConfig, Vehicle, CollectionCenter, OperationalEntity
+from config.base_config import ScenarioConfig
 from models.distances import get_distance, get_closest_regions
 from utils.capacity_utils import (
     handle_storage_event,
@@ -68,37 +69,34 @@ class CollectorCompany(OperationalEntity):
         collection_frequency,
         transport_cost,
         efficiency,
-        availability=True,
-        region=None,
+        availability,
+        region_type: RegionType,
+        scenario: ScenarioConfig,
+        waste_monitor: WasteMonitor,
+        kanban_manager: KanbanManager,
+        inventory_policy: InventoryPolicy,
+        stock_strategy: StockStrategy,
+        transport_manager: PointToPointTransport,
+        state,
+        failure_config: Optional[FailureConfig],
+        seed,
         num_vehicles: int = 3,
         vehicle_capacity: Optional[float] = None,
-        uncertainty_set = None,
-        waste_monitor: Optional[WasteMonitor] = None,
-        kanban_manager: KanbanManager = None,
-        inventory_policy: InventoryPolicy = None,
-        stock_strategy: StockStrategy = None,
-        transport_manager: PointToPointTransport = None,
-        state = None,
-        failure_config = None,
-        seed = None
     ):
-        self.uncertainty_set = uncertainty_set
-
-        if failure_config is None and uncertainty_set:
-            failure_config = uncertainty_set.collector_failure
+        self.scenario = scenario
         super().__init__(failure_config=failure_config, seed=seed)
         self.env = env
         self.name = name
         self.facility_type = "collector"
         self.expansion_count = 0
         self.waste_types = set(waste_types) if waste_types else set()
-        self.kanban_manager = kanban_manager or KanbanManager()
+        self.kanban_manager = kanban_manager
         self.state = state
         self.inventory_policy = inventory_policy
         self.stock_strategy = stock_strategy
         self.stock_strategy_behavior = build_stock_strategy(stock_strategy)
         self.inventory_policy_behavior = build_inventory_policy(inventory_policy)
-        self.transport_manager = transport_manager or PointToPointTransport()
+        self.transport_manager = transport_manager
         self.collection_frequency = collection_frequency
         self.initial_collection_capacity_per_tick_m3 = per_tick_capacity(
             collection_capacity, collection_frequency
@@ -109,8 +107,7 @@ class CollectorCompany(OperationalEntity):
         self.last_collection_cost = 0.0
         self.efficiency = efficiency
         self.availability = availability
-        self.region = region
-        self.region_type = RegionType[region.upper().replace('-', '_')] if region else None
+        self.region_type = region_type
 
         self.collection_center = CollectionCenter(
             waste_storage_capacity=collection_capacity * 2,
@@ -135,8 +132,6 @@ class CollectorCompany(OperationalEntity):
         self.collected_waste = dict.fromkeys(WasteType, 0.0)
 
         self.waste_monitor = waste_monitor
-        if waste_monitor is None:
-            raise ValueError("waste_monitor is required for CollectorCompany")
 
         self.process = env.process(self.collection_loop())
         self.transport_process = env.process(self.manage_transport())
@@ -154,9 +149,7 @@ class CollectorCompany(OperationalEntity):
         great-circle line. Affects travel time only; cost and emissions use
         ROAD_CIRCUITY_FACTOR (ADR 0038).
         """
-        if not self.uncertainty_set:
-            return 1.0
-        circuity_mean, circuity_std = self.uncertainty_set.transportation_time
+        circuity_mean, circuity_std = self.scenario.transportation_time
         return max(1.0, self.rng.normal(circuity_mean, circuity_std))
 
     def _calculate_travel_time_to_generator(self, generator):

@@ -1,15 +1,15 @@
 import logging
 
 import numpy as np
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from core.abc_analysis import BiogenicCarbonABCAnalyzer
-from models.data_classes import WasteTransformation, OperationalEntity, ProductStorage
+from models.data_classes import FailureConfig, WasteTransformation, OperationalEntity, ProductStorage
+from config.base_config import ScenarioConfig
 from models.distances import get_distance
 from models.enums import EntityStatus, InventoryPolicy, OutputType, RegionType, StockStrategy, WasteType, sorted_by_value
 from instrumentation.waste_monitor import WasteMonitor
 from core.kanban_manager import KanbanManager
 from core.strategies import build_stock_strategy, build_inventory_policy
-from models.transformations import TRANSFORMATION_CATALOGUE, WASTE_TO_OUTPUT_TYPES
 from utils.capacity_utils import check_storage_capacity, compute_and_handle_overflow
 from config.constants import (
     INITIAL_INVENTORY_FRACTION,
@@ -33,45 +33,35 @@ class TreatmentOperator(OperationalEntity):
         energy_consumption,
         environmental_impact,
         operational_costs,
-        region: str,
-        uncertainty_set=None,
-        transformations: Optional[Dict[WasteType, WasteTransformation]] = None,
-        waste_monitor: Optional[WasteMonitor] = None,
-        kanban_manager: KanbanManager = None,
+        *,
+        region_type: RegionType,
+        scenario: ScenarioConfig,
+        transformations: Dict[Tuple[WasteType, OutputType], WasteTransformation],
+        waste_monitor: WasteMonitor,
+        kanban_manager: KanbanManager,
         finished_goods_capacity: Optional[Dict[OutputType, float]] = None,
         initial_waste_storage: Optional[Dict[WasteType, float]] = None,
         order_share_by_waste_type: Optional[Dict[WasteType, float]] = None,
         order_up_to_level_m3: Optional[float] = None,
         market_share: float = 0.0,
-        stock_strategy: StockStrategy = None,
-        inventory_policy: InventoryPolicy = None,
-        state = None,
+        stock_strategy: StockStrategy,
+        inventory_policy: InventoryPolicy,
+        state,
+        failure_config: Optional[FailureConfig],
+        seed,
         abc_demand_config_path: str = "data/demand.json",
-        failure_config = None,
-        seed = None
     ):
-        self.uncertainty_set = uncertainty_set
-
-        if failure_config is None and uncertainty_set:
-            failure_config = uncertainty_set.treatment_failure
-
+        self.scenario = scenario
         super().__init__(failure_config=failure_config, seed=seed)
 
         self.waste_monitor = waste_monitor
         self.stock_strategy = stock_strategy
         self.inventory_policy = inventory_policy
 
-        if waste_monitor is None:
-            raise ValueError("waste_monitor is required for TreatmentOperator")
-        if self.inventory_policy is None:
-            raise ValueError("inventory_policy must be provided")
-        if self.stock_strategy is None:
-            raise ValueError("stock_strategy must be provided")
-
         self.stock_strategy_behavior = build_stock_strategy(stock_strategy)
         self.inventory_policy_behavior = build_inventory_policy(inventory_policy)
 
-        self.kanban_manager = kanban_manager or KanbanManager()
+        self.kanban_manager = kanban_manager
         self.state = state
         self.env = env
         self.name = name
@@ -85,8 +75,7 @@ class TreatmentOperator(OperationalEntity):
             self.waste_storage_capacity * PROCESSING_CAPACITY_FRACTION, self.processing_time
         )
         self.initial_processing_capacity_per_tick_m3 = self.processing_capacity_per_tick_m3
-        self.region = region
-        self.region_type = RegionType[region.upper().replace('-', '_')]
+        self.region_type = region_type
         self.market_share = market_share
         if order_share_by_waste_type is None:
             raise ValueError("order_share_by_waste_type is required for TreatmentOperator (ADR 0026)")
@@ -119,7 +108,7 @@ class TreatmentOperator(OperationalEntity):
             for output_type in sorted_by_value(OutputType)
         }
 
-        self.transformations = transformations or self._default_transformations()
+        self.transformations = transformations
 
         self.abc_priority_map = {}
         self._initialize_abc_priorities(abc_demand_config_path)
@@ -451,14 +440,8 @@ class TreatmentOperator(OperationalEntity):
     def _get_transformation_efficiency(self, transformation):
         """Calculate transformation efficiency with uncertainty if applicable"""
         efficiency = transformation.conversion_efficiency
-        if self.uncertainty_set:
-            if (
-                hasattr(self.uncertainty_set.treatment_conversion, "__len__")
-                and len(self.uncertainty_set.treatment_conversion) == 2
-            ):
-                mean, std = self.uncertainty_set.treatment_conversion
-                efficiency = np.clip(self.rng.normal(mean * efficiency, std), 0.6, 1.0)
-        return efficiency
+        mean, std = self.scenario.treatment_conversion
+        return np.clip(self.rng.normal(mean * efficiency, std), 0.6, 1.0)
 
     def _update_waste_storage(self, input_type, amount_to_process):
         """Update waste storage and track raw production"""
@@ -625,21 +608,6 @@ class TreatmentOperator(OperationalEntity):
         actually_stored = self._add_to_storage(collected_waste)
 
         return actually_stored, sum(collected_waste.values())
-
-    def _default_transformations(self) -> Dict[WasteType, WasteTransformation]:
-        """Build the full catalogue fallback when no transformations are injected."""
-        transformations = {}
-
-        for input_type, (efficiency, energy) in TRANSFORMATION_CATALOGUE.items():
-            for output_type in WASTE_TO_OUTPUT_TYPES[input_type]:
-                key = (input_type, output_type)
-                transformations[key] = WasteTransformation(
-                    input_type=input_type,
-                    output_type=output_type,
-                    conversion_efficiency=efficiency,
-                    energy_required=energy,
-                )
-        return transformations
 
     def _add_to_storage(self, waste_amounts: Dict[WasteType, float]) -> float:
         """Add waste to storage considering capacity constraints"""

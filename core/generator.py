@@ -2,7 +2,8 @@ import numpy as np
 from typing import Dict, List, Optional
 from utils.seasonality import seasonal_factor
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
-from models.data_classes import WasteStream, OperationalEntity
+from models.data_classes import FailureConfig, WasteStream, OperationalEntity
+from config.base_config import ScenarioConfig
 from instrumentation.waste_monitor import WasteMonitor
 from core.kanban_manager import KanbanManager
 from core.strategies import build_stock_strategy, build_inventory_policy
@@ -17,23 +18,19 @@ class WasteGenerator(OperationalEntity):
         generation_frequency,
         waste_storage_capacity,
         efficiency,
-        region: str,
-        uncertainty_set = None,
+        region_type: RegionType,
+        scenario: ScenarioConfig,
+        waste_monitor: WasteMonitor,
+        stock_strategy: StockStrategy,
+        inventory_policy: InventoryPolicy,
+        kanban_manager: KanbanManager,
+        state,
+        failure_config: Optional[FailureConfig],
+        seed,
         initial_stock: Optional[Dict[WasteType, float]] = None,
-        waste_monitor: Optional[WasteMonitor] = None,
-        stock_strategy: StockStrategy = None,
-        inventory_policy: InventoryPolicy = None,
-        kanban_manager = None,
-        state = None,
-        failure_config = None,
-        seed = None,
         accepted_waste_types: Optional[List[WasteType]] = None,
     ):
-        self.uncertainty_set = uncertainty_set
-
-        if failure_config is None and uncertainty_set:
-            failure_config = uncertainty_set.generator_failure
-
+        self.scenario = scenario
         super().__init__(failure_config=failure_config, seed=seed)
         self.env = env
         self.name = name
@@ -56,8 +53,8 @@ class WasteGenerator(OperationalEntity):
             for waste_type in waste_streams.keys()
         }
         self.waste_generation_rates = dict(waste_streams)
-        if uncertainty_set and uncertainty_set.waste_generation_mean != 1.0:
-            mean_multiplier = uncertainty_set.waste_generation_mean
+        if scenario.waste_generation_mean != 1.0:
+            mean_multiplier = scenario.waste_generation_mean
             self.waste_generation_rates = {
                 waste_type: rate * mean_multiplier
                 for waste_type, rate in self.waste_generation_rates.items()
@@ -66,14 +63,9 @@ class WasteGenerator(OperationalEntity):
         self.waste_storage_capacity = waste_storage_capacity
         self.efficiency = efficiency
         self.current_storage = sum(initial_stock.values() if initial_stock else [0])
-        self.region = region
-        self.region_type = RegionType[region.upper().replace('-', '_')] if region else None
-
+        self.region_type = region_type
         self.waste_monitor = waste_monitor
-        if waste_monitor is None:
-            raise ValueError("waste_monitor is required for WasteGenerator")
-
-        self.kanban_manager = kanban_manager or KanbanManager()
+        self.kanban_manager = kanban_manager
         self.state = state
 
         self.total_generated = {
@@ -162,11 +154,8 @@ class WasteGenerator(OperationalEntity):
 
     def _calculate_daily_factors(self):
         """Calculate daily generation factors based on uncertainty"""
-        if not self.uncertainty_set:
-            return [1.0] * len(self.waste_generation_rates)
-
         daily_factors = []
-        variability = getattr(self.uncertainty_set, 'waste_generation_variability', 0.2)
+        variability = self.scenario.waste_generation_variability
 
         for _ in self.waste_generation_rates.keys():
             factor = self.rng.normal(1.0, variability)

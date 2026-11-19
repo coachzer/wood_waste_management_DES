@@ -5,6 +5,12 @@ TRANSPORT_EMISSIONS_PER_TON_KM = 0.087  # kg eCO2 per ton-kilometer or 87 g CO2e
 
 KILOGRAMS_PER_TONNE = 1000.0  # unit conversion factor, kg per tonne
 LANDFILL_COST_PER_TONNE_USD = 46.0  # $/tonne deterrent gate cost, at par with EU-27 landfill range ~EUR 39-46/t (CEWEP 2021 / EEA 2023)
+# Landfill cost is per waste type: LANDFILL_COST_PER_TONNE_USD at each stream's bulk
+# density (ADR 0013). Each repeated overflow on an entity costs more than the last:
+# the escalation factors scale with the count of that entity's prior expansions/landfills.
+EXPANSION_COST_PER_M3 = 100.0
+EXPANSION_COST_ESCALATION_PER_PRIOR = 0.5
+LANDFILL_COST_ESCALATION_PER_PRIOR = 0.3
 
 # Carbon shadow price applied to treatment emissions to derive an environmental
 # cost component. Uncalibrated placeholder (the source comment tagged it "example");

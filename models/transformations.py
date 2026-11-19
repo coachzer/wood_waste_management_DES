@@ -1,9 +1,7 @@
-"""Single source of truth for the waste-to-product transformation catalogue.
+"""Single source of truth for the waste-to-product transformation catalogue."""
+from typing import Dict, Iterable, Tuple
 
-Both FacilityBuilder (the live build path) and TreatmentOperator's
-no-transformations fallback read these tables; they previously each carried
-their own copy and the output mappings had drifted apart.
-"""
+from models.data_classes import WasteTransformation
 from models.enums import OutputType, WasteType
 
 TRANSFORMATION_CATALOGUE = {
@@ -52,3 +50,24 @@ WASTE_TO_OUTPUT_TYPES = {
         OutputType.OSB,
     ],
 }
+
+
+def build_transformations(
+    input_types: Iterable[WasteType], output_types: Iterable[OutputType]
+) -> Dict[Tuple[WasteType, OutputType], WasteTransformation]:
+    """Every catalogue route from the given inputs to the given outputs, keyed in input-then-output order."""
+    output_types = list(output_types)
+    transformations = {}
+    for input_type in input_types:
+        if input_type not in TRANSFORMATION_CATALOGUE:
+            continue
+        efficiency, energy = TRANSFORMATION_CATALOGUE[input_type]
+        for output_type in output_types:
+            if output_type in WASTE_TO_OUTPUT_TYPES[input_type]:
+                transformations[(input_type, output_type)] = WasteTransformation(
+                    input_type=input_type,
+                    output_type=output_type,
+                    conversion_efficiency=efficiency,
+                    energy_required=energy,
+                )
+    return transformations

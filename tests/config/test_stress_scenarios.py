@@ -26,9 +26,9 @@ def test_supply_disruption_scenario_carries_its_calibration_anchors():
     and treatment, stretched transport -- beyond-observed COVID contraction."""
     scenario = get_scenario_config("SupplyDisruption")
 
-    assert scenario.waste_gen == (0.60, 0.25)
-    assert scenario.trans_time == (4.0, 1.2)
-    assert scenario.treat_conv == SCENARIO_CONFIGS["Baseline"].treat_conv
+    assert (scenario.waste_generation_mean, scenario.waste_generation_variability) == (0.60, 0.25)
+    assert scenario.transportation_time == (4.0, 1.2)
+    assert scenario.treatment_conversion == SCENARIO_CONFIGS["Baseline"].treatment_conversion
     assert scenario.generator_failure == LOW_FAILURE
     assert scenario.collector_failure == HIGH_FAILURE
     assert scenario.treatment_failure == HIGH_FAILURE
@@ -40,9 +40,9 @@ def test_generation_surge_scenario_carries_its_calibration_anchors():
     not a market product demand increase)."""
     scenario = get_scenario_config("GenerationSurge")
 
-    assert scenario.waste_gen == (1.50, 0.15)
-    assert scenario.trans_time == (1.5, 0.15)
-    assert scenario.treat_conv == SCENARIO_CONFIGS["Baseline"].treat_conv
+    assert (scenario.waste_generation_mean, scenario.waste_generation_variability) == (1.50, 0.15)
+    assert scenario.transportation_time == (1.5, 0.15)
+    assert scenario.treatment_conversion == SCENARIO_CONFIGS["Baseline"].treatment_conversion
     assert scenario.generator_failure == LOW_FAILURE
     assert scenario.collector_failure == LOW_FAILURE
     assert scenario.treatment_failure == LOW_FAILURE

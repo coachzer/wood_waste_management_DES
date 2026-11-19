@@ -9,29 +9,15 @@ from types import SimpleNamespace
 
 import simpy
 
-from core.collector import CollectorCompany
+from tests.core.factories import make_collector
 from models.data_classes import WasteStream
-from models.enums import InventoryPolicy, StockStrategy, WasteType
-from models.state import SimulationState
+from models.enums import WasteType
 
 CONSTRUCTION = WasteType.CONSTRUCTION_WOOD_17_02_01
 
 
 def _collector(noop_waste_monitor):
-    return CollectorCompany(
-        env=simpy.Environment(),
-        name="collector-1",
-        waste_types=[CONSTRUCTION],
-        collection_capacity=100.0,
-        collection_frequency=12,
-        transport_cost=10.0,
-        efficiency=1.0,
-        region="podravska",
-        waste_monitor=noop_waste_monitor,
-        inventory_policy=InventoryPolicy.PUSH,
-        stock_strategy=StockStrategy.REORDER_50,
-        state=SimulationState(),
-    )
+    return make_collector(simpy.Environment(), noop_waste_monitor)
 
 
 def test_site_pickup_is_capped_by_scaled_capacity_not_its_square(noop_waste_monitor):

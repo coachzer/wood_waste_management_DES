@@ -5,61 +5,17 @@ from config.constants import FINISHED_GOODS_BUFFER_WEEKS
 from models.data_classes import FailureConfig
 
 @dataclass
-class UncertaintySet:
-    """Uncertainty set - only variability parameters"""
-    name: str
-    treatment_conversion: Tuple[float, float]
-    transportation_time: Tuple[float, float]
-    generator_failure: FailureConfig
-    collector_failure: FailureConfig
-    treatment_failure: FailureConfig
-    waste_generation_mean: float = 1.0               # Scenario multiplier on base rates
-    waste_generation_variability: float = 0.2      # ±20% variation on regional rates
-    finished_goods_buffer_weeks: int = FINISHED_GOODS_BUFFER_WEEKS  # weeks of demand sized into finished-goods capacity
-
-@dataclass
-class CostParams:
-    """Cost parameters.
-
-    Landfill cost is no longer a flat $/m³ here: handle_storage_event computes it
-    per waste type from LANDFILL_COST_PER_TONNE_USD ($46/t deterrent gate cost,
-    par with the EU-27 ~EUR 39-46/t range, CEWEP 2021 / EEA 2023) and each
-    stream's own bulk density (WASTE_DENSITIES), per ADR 0013. The two escalation
-    factors make each repeated overflow on an entity progressively more expensive
-    (penalty grows with the count of prior expansions / landfills).
-    """
-    expansion_cost_per_m3: float = 100.0  # Cost to expand storage by 1m³
-    expansion_cost_escalation_per_prior: float = 0.5  # per prior expansion on the entity
-    landfill_cost_escalation_per_prior: float = 0.3  # per prior landfill on the entity
-
-DEFAULT_COSTS = CostParams()
-
-@dataclass
 class ScenarioConfig:
-    """Configuration for a simulation scenario - unified and simplified"""
+    """The operating environment of one scenario; policy and strategy are a separate grid axis."""
     name: str
-    waste_gen: Tuple[float, float]
-    treat_conv: Tuple[float, float]
-    trans_time: Tuple[float, float]
+    waste_generation_mean: float  # multiplier on the calibrated regional rates
+    waste_generation_variability: float  # std of the daily Normal(1, std) generation factor
+    treatment_conversion: Tuple[float, float]  # (mean multiplier, std) on catalogue efficiency
+    transportation_time: Tuple[float, float]  # (mean, std) road circuity over great-circle distance (ADR 0015)
     generator_failure: FailureConfig
     collector_failure: FailureConfig
     treatment_failure: FailureConfig
     finished_goods_buffer_weeks: int = FINISHED_GOODS_BUFFER_WEEKS  # swept by the bucket-C sensitivity scenarios
-
-    def to_uncertainty_set(self) -> UncertaintySet:
-        """Convert scenario config to uncertainty set"""
-
-        return UncertaintySet(
-            name=self.name,
-            treatment_conversion=self.treat_conv,
-            transportation_time=self.trans_time,
-            generator_failure=self.generator_failure,
-            collector_failure=self.collector_failure,
-            treatment_failure=self.treatment_failure,
-            waste_generation_mean=self.waste_gen[0],
-            waste_generation_variability=self.waste_gen[1],
-            finished_goods_buffer_weeks=self.finished_goods_buffer_weeks
-        )
 
 LOW_FAILURE = FailureConfig(
     probability=0.0024,  # ~0.24% chance per day 
@@ -88,9 +44,10 @@ DISASTER_FAILURE = FailureConfig(
 SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
     "Baseline": ScenarioConfig(
         name="Baseline",
-        waste_gen=(1.0, 0.1),    # Standard generation, low variability
-        treat_conv=(0.9, 0.03),  # High, stable conversion efficiency
-        trans_time=(1.35, 0.1),  # Road circuity over great-circle distance (ADR 0015)
+        waste_generation_mean=1.0,  # Standard generation, low variability
+        waste_generation_variability=0.1,
+        treatment_conversion=(0.9, 0.03),  # High, stable conversion efficiency
+        transportation_time=(1.35, 0.1),  # Road circuity over great-circle distance (ADR 0015)
         generator_failure=LOW_FAILURE,
         collector_failure=MEDIUM_FAILURE,
         treatment_failure=HIGH_FAILURE,
@@ -100,16 +57,17 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
     # total, -11% C&D waste, Eurostat env_wasgen W075); the 0.60 multiplier is
     # deliberately more severe than observed -- a beyond-observed stress case.
     # Reorder checks count on-hand stock only (not in-transit), so the long
-    # trans_time lets orders stack before the first lands -- expected overshoot,
+    # transportation_time lets orders stack before the first lands -- expected overshoot,
     # stated as a manuscript footnote. Bullwhip amplification grows with both
     # the mean and variance of lead time (Chen et al. 2000, "Quantifying the
     # bullwhip effect in a simple supply chain", Management Science 46(3)),
-    # which motivates the stretched trans_time=(4.0, 1.2) here.
+    # which motivates the stretched transportation_time=(4.0, 1.2) here.
     "SupplyDisruption": ScenarioConfig(
         name="SupplyDisruption",
-        waste_gen=(0.60, 0.25),
-        treat_conv=(0.9, 0.03),
-        trans_time=(4.0, 1.2),
+        waste_generation_mean=0.60,
+        waste_generation_variability=0.25,
+        treatment_conversion=(0.9, 0.03),
+        transportation_time=(4.0, 1.2),
         generator_failure=LOW_FAILURE,
         collector_failure=HIGH_FAILURE,
         treatment_failure=HIGH_FAILURE,
@@ -125,9 +83,10 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
     # the abundance.
     "GenerationSurge": ScenarioConfig(
         name="GenerationSurge",
-        waste_gen=(1.50, 0.15),
-        treat_conv=(0.9, 0.03),
-        trans_time=(1.5, 0.15),
+        waste_generation_mean=1.50,
+        waste_generation_variability=0.15,
+        treatment_conversion=(0.9, 0.03),
+        transportation_time=(1.5, 0.15),
         generator_failure=LOW_FAILURE,
         collector_failure=LOW_FAILURE,
         treatment_failure=LOW_FAILURE,
@@ -181,9 +140,9 @@ def validate_tuple(mean_std_tuple: Tuple[float, float], name: str) -> None:
 
 def validate_scenario_config(config: ScenarioConfig) -> None:
     """Validate a scenario configuration"""
-    validate_tuple(config.waste_gen, "Waste generation")
-    validate_tuple(config.treat_conv, "Treatment conversion")
-    validate_tuple(config.trans_time, "Transportation time")
+    validate_tuple((config.waste_generation_mean, config.waste_generation_variability), "Waste generation")
+    validate_tuple(config.treatment_conversion, "Treatment conversion")
+    validate_tuple(config.transportation_time, "Transportation time")
     if config.finished_goods_buffer_weeks <= 0:
         raise ValueError("finished_goods_buffer_weeks must be positive")
 
@@ -199,7 +158,3 @@ def get_scenario_config(scenario_name: str) -> ScenarioConfig:
 def list_available_scenarios() -> List[str]:
     """List all available scenario names"""
     return list(SCENARIO_CONFIGS.keys())
-
-def get_cost_params() -> CostParams:
-    """Get default cost parameters"""
-    return DEFAULT_COSTS

@@ -3,29 +3,21 @@ from types import SimpleNamespace
 
 import simpy
 
-from core.collector import CollectorCompany
+from tests.core.factories import make_collector
 from models.data_classes import WasteStream
-from models.enums import InventoryPolicy, StockStrategy, WasteType
-from models.state import SimulationState
+from models.enums import InventoryPolicy, WasteType
 
 FIRST_IN_DICT = WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05
 SIGNALLED = WasteType.CONSTRUCTION_WOOD_17_02_01
 
 
 def _collector(noop_waste_monitor):
-    collector = CollectorCompany(
-        env=simpy.Environment(),
-        name="collector-1",
+    collector = make_collector(
+        simpy.Environment(),
+        noop_waste_monitor,
         waste_types=[FIRST_IN_DICT, SIGNALLED],
         collection_capacity=1_000.0,
-        collection_frequency=12,
-        transport_cost=10.0,
-        efficiency=1.0,
-        region="podravska",
-        waste_monitor=noop_waste_monitor,
         inventory_policy=InventoryPolicy.PULL,
-        stock_strategy=StockStrategy.REORDER_50,
-        state=SimulationState(),
     )
     collector.collection_capacity_per_tick_m3 = 1_000.0
     return collector

@@ -24,7 +24,7 @@ def _world(origin_stock, vehicles):
         collection_center=SimpleNamespace(current_storage={WASTE: 0.0}),
     )
     state = SimpleNamespace(collectors=[origin, destination], track_transport_flow=lambda **flow: None)
-    transport_manager = PointToPointTransport(state=state)
+    transport_manager = PointToPointTransport(state=state, road_circuity_mean=1.0)
     origin.transport_manager = transport_manager
     origin.env = SimpleNamespace(now=0.0)
     return origin, transport_manager

@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional
 from dataclasses import dataclass
-from .enums import WasteType, normalize_waste_type
+from .enums import OutputType, WasteType, normalize_waste_type
 
 
 @dataclass
@@ -31,7 +31,7 @@ class Processor:
     """Treatment operator as loaded from a region file."""
     id: str
     input_types: List[WasteType]
-    output_types: List[str]
+    output_types: List[OutputType]
     processing_time: float
     waste_storage_capacity: float
     energy_consumption: float = 1.0
@@ -51,7 +51,7 @@ class RegionalFacilities:
         return cls(
             generators=[Generator(**_with_waste_type_keys(g)) for g in data["generators"]],
             collectors=[Collector(**_with_waste_type_lists(c, "waste_types")) for c in data["collectors"]],
-            processors=[Processor(**_with_waste_type_lists(p, "input_types")) for p in data["processors"]]
+            processors=[Processor(**_with_output_types(_with_waste_type_lists(p, "input_types"))) for p in data["processors"]]
         )
 
 
@@ -86,4 +86,16 @@ def _with_waste_type_keys(generator_data: Dict) -> Dict:
 def _with_waste_type_lists(facility_data: Dict, field_name: str) -> Dict:
     parsed = dict(facility_data)
     parsed[field_name] = _waste_types_in(parsed.get(field_name, []))
+    return parsed
+
+
+def _with_output_types(processor_data: Dict) -> Dict:
+    parsed = dict(processor_data)
+    output_types = []
+    for code in parsed.get("output_types", []):
+        try:
+            output_types.append(OutputType(code))
+        except ValueError:
+            print(f"Warning: Skipping invalid output type: {code}")
+    parsed["output_types"] = output_types
     return parsed

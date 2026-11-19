@@ -14,9 +14,9 @@ class TransportRequest:
     requester_id: str
 
 class PointToPointTransport:
-    def __init__(self, state=None, uncertainty_set=None):
+    def __init__(self, state, road_circuity_mean: float):
         self.state = state
-        self.uncertainty_set = uncertainty_set
+        self.road_circuity_mean = road_circuity_mean
         self.pending_requests: List[TransportRequest] = []
 
     def _mean_transport_circuity(self) -> float:
@@ -27,9 +27,7 @@ class PointToPointTransport:
         collectors and carries no seeded RNG, so the per-trip stochastic draw
         lives on the collection trips, not here.
         """
-        if not self.uncertainty_set:
-            return 1.0
-        return max(1.0, self.uncertainty_set.transportation_time[0])
+        return max(1.0, self.road_circuity_mean)
 
     def travel_time_days(self, from_region: RegionType, to_region: RegionType) -> float:
         """Road travel time between two regions, in days."""

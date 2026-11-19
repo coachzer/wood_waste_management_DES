@@ -33,7 +33,6 @@ class SimulationManager:
 
         self.env = simpy.Environment()
         self.waste_monitor = WasteMonitor(self.env)
-        self.transport_manager = PointToPointTransport(state=self.state)
 
         self.kanban_manager = KanbanManager()
 
@@ -54,15 +53,16 @@ class SimulationManager:
         try:
             self.facility_manager.load_data()
             
-            uncertainty_set = scenario_config.to_uncertainty_set()
-
-            self.transport_manager.uncertainty_set = uncertainty_set
+            self.transport_manager = PointToPointTransport(
+                state=self.state,
+                road_circuity_mean=scenario_config.transportation_time[0],
+            )
 
             self.facility_builder = FacilityBuilder(
                 env=self.env,
                 facility_manager=self.facility_manager,
                 waste_monitor=self.waste_monitor,
-                uncertainty_set=uncertainty_set,
+                scenario=scenario_config,
                 transport_manager=self.transport_manager,
                 kanban_manager=self.kanban_manager,
                 state=self.state,

@@ -87,9 +87,9 @@ def test_intake_logs_one_flow_per_waste_type():
 
 
 def make_transport_manager(state):
-    """A real PointToPointTransport with no uncertainty_set: _create_transport
+    """A real PointToPointTransport at great-circle circuity (1.0): _create_transport
     reads self.state and applies the identity circuity factor (ADR 0015)."""
-    return PointToPointTransport(state=state)
+    return PointToPointTransport(state=state, road_circuity_mean=1.0)
 
 
 def test_reposition_logs_collector_to_collector_not_treatment():

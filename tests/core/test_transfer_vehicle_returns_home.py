@@ -34,7 +34,7 @@ def _world(away_vehicles=()):
     home = _collector("col_home", HOME, [vehicle], stock=100.0)
     away = _collector("col_away", AWAY, list(away_vehicles))
     state = SimpleNamespace(collectors=[home, away], track_transport_flow=lambda **flow: None)
-    transport_manager = PointToPointTransport(state=state)
+    transport_manager = PointToPointTransport(state=state, road_circuity_mean=1.0)
     for collector in (home, away):
         collector.state = state
         collector.transport_manager = transport_manager
@@ -80,7 +80,7 @@ def test_a_vehicle_that_delivered_elsewhere_stays_busy_until_it_has_driven_home(
 
 def test_the_return_leg_takes_road_travel_time():
     _, _, _, transport_manager = _world()
-    transport_manager.uncertainty_set = SimpleNamespace(transportation_time=(1.35, 0.1))
+    transport_manager.road_circuity_mean = 1.35
 
     assert transport_manager.travel_time_days(AWAY, HOME) == pytest.approx(
         get_distance(AWAY, HOME) * 1.35 / TRAVEL_SPEED_KMH / 24.0)

@@ -448,7 +448,7 @@ def test_queued_and_in_flight_reposition_balance_both_waste_checks():
 
     waste_type = WasteType.CONSTRUCTION_WOOD_17_02_01
     state = SimulationState()
-    manager = PointToPointTransport(state=state)
+    manager = PointToPointTransport(state=state, road_circuity_mean=1.0)
 
     def collector(name):
         return SimpleNamespace(

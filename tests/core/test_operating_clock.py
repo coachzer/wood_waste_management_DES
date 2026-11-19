@@ -20,12 +20,12 @@ from config.constants import (
     RECOVERING_BASE_EFFICIENCY,
     SIMULATION_DURATION,
 )
-from core.collector import CollectorCompany
 from core.facility_builder import FacilityBuilder
 from core.kanban_manager import KanbanManager
-from core.treatment import TreatmentOperator
-from models.enums import EntityStatus, InventoryPolicy, OutputType, StockStrategy, WasteType
+from core.transport_manager import PointToPointTransport
+from models.enums import EntityStatus, InventoryPolicy, OutputType, RegionType, StockStrategy, WasteType
 from models.state import SimulationState
+from tests.core.factories import deterministic_scenario, make_collector, make_treatment
 from utils.capacity_utils import handle_storage_event
 
 CONSTRUCTION = WasteType.CONSTRUCTION_WOOD_17_02_01
@@ -48,42 +48,30 @@ def _noop_monitor():
 
 
 def _treatment(env, inventory_policy=InventoryPolicy.PUSH, state=None, kanban_manager=None):
-    return TreatmentOperator(
-        env=env,
-        name="proc-1",
+    return make_treatment(
+        env,
+        _noop_monitor(),
         processing_time=PROCESSING_TIME_DAYS,
         waste_storage_capacity=TREATMENT_STORAGE_M3,
-        energy_consumption=100.0,
-        environmental_impact=1.8,
-        operational_costs=50.0,
-        region="podravska",
-        waste_monitor=_noop_monitor(),
-        kanban_manager=kanban_manager,
+        kanban_manager=kanban_manager or KanbanManager(),
         finished_goods_capacity={OutputType.OSB: 10_000.0, OutputType.PARTICLE_BOARD: 10_000.0},
         initial_waste_storage={CONSTRUCTION: 20_000.0},
         order_share_by_waste_type={CONSTRUCTION: 1.0},
         order_up_to_level_m3=TREATMENT_STORAGE_M3,
-        stock_strategy=StockStrategy.REORDER_50,
         inventory_policy=inventory_policy,
         state=state or SimulationState(),
     )
 
 
 def _collector(env, vehicle_capacity=None):
-    return CollectorCompany(
-        env=env,
+    return make_collector(
+        env,
+        _noop_monitor(),
         name="col-1",
-        waste_types=[CONSTRUCTION],
         collection_capacity=COLLECTION_CAPACITY_M3,
         collection_frequency=COLLECTION_FREQUENCY_DAYS,
         transport_cost=50.0,
-        efficiency=1.0,
-        region="podravska",
         vehicle_capacity=vehicle_capacity,
-        waste_monitor=_noop_monitor(),
-        inventory_policy=InventoryPolicy.PUSH,
-        stock_strategy=StockStrategy.REORDER_50,
-        state=SimulationState(),
     )
 
 
@@ -165,20 +153,26 @@ def test_builder_sets_vehicle_capacity_explicitly_to_one_tick_of_collection():
     raw 12-day volume.
     """
     env = simpy.Environment()
+    state = SimulationState()
     builder = FacilityBuilder(
-        env, facility_manager=None, waste_monitor=_noop_monitor(), state=SimulationState(), seed=1
+        env,
+        facility_manager=None,
+        waste_monitor=_noop_monitor(),
+        scenario=deterministic_scenario(),
+        transport_manager=PointToPointTransport(state=state, road_circuity_mean=1.0),
+        kanban_manager=KanbanManager(),
+        state=state,
+        seed=1,
     )
     col_data = SimpleNamespace(
         id="col-1",
-        waste_types=[CONSTRUCTION.value],
+        waste_types=[CONSTRUCTION],
         collection_capacity=COLLECTION_CAPACITY_M3,
         collection_frequency=COLLECTION_FREQUENCY_DAYS,
         transport_cost=50.0,
         efficiency=1.0,
         availability=True,
     )
-    from models.enums import RegionType
-
     collector = builder.create_collector(
         col_data, RegionType.PODRAVSKA, StockStrategy.REORDER_50, InventoryPolicy.PUSH
     )
