@@ -9,14 +9,11 @@ a winner.
 
 This is an analysis-layer reduction over the Monte Carlo dataset: it reads each
 combo's already-written ``summary.csv`` ``mean`` column (one point per
-configuration) and computes domination. There is no simulation change and no new
-per-run KPI, so the golden additive gate is unaffected.
+configuration) and computes domination.
 
 This module reads only ``summary.csv`` files and runs via
-``python -m analysis.pareto <dir>`` (the Plotly companion plot is imported lazily
-inside ``__main__`` only, so a missing visualization dependency does not break the
-CSV artifact). ``main.py`` imports ``write_pareto_report`` by module path, the same
-way it imports ``write_paired_comparison_report``.
+``python -m analysis.pareto <dir>``. The companion figure is drawn by
+``python -m visualization.pareto_visualization <dir>``.
 """
 
 import csv
@@ -194,22 +191,6 @@ def _print_frontier_summary(rows: List[dict]) -> None:
         print(f"  {row['config']}  ({objective_str})")
 
 
-def _write_optional_pareto_plot(target: Path, root: bool) -> None:
-    """Write the companion Pareto plot, or note why it was skipped.
-
-    Plotting is an optional dependency, so it is imported here and any failure
-    only skips the plot. The CSV report is the analysis artifact.
-    """
-    try:
-        from visualization.pareto_visualization import write_pareto_plot
-
-        plot = write_pareto_plot(target, root=root)
-        if plot is not None:
-            print(f"Wrote {plot}")
-    except Exception as exc:
-        print(f"(skipped Pareto plot: {exc})")
-
-
 if __name__ == "__main__":
     import argparse
 
@@ -238,5 +219,3 @@ if __name__ == "__main__":
     report = write_pareto_report(target, root=args.root)
     print(f"Wrote {report}")
     _print_frontier_summary(report_rows)
-
-    _write_optional_pareto_plot(target, root=args.root)
