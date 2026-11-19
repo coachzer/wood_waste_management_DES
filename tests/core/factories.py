@@ -43,6 +43,8 @@ def deterministic_scenario(**overrides) -> ScenarioConfig:
 def make_collector(env, waste_monitor, **overrides):
     """A real CollectorCompany in Podravska with one-tick-sized vehicles and no failures."""
     state = overrides.pop("state", None) or SimulationState()
+    transport_manager = (overrides.pop("transport_manager", None)
+                         or PointToPointTransport(state=state, road_circuity_mean=1.0, env=env))
     fields = dict(
         env=env,
         name="collector-1",
@@ -58,7 +60,7 @@ def make_collector(env, waste_monitor, **overrides):
         kanban_manager=KanbanManager(),
         inventory_policy=InventoryPolicy.PUSH,
         stock_strategy=StockStrategy.REORDER_50,
-        transport_manager=PointToPointTransport(state=state, road_circuity_mean=1.0, env=env),
+        transport_manager=transport_manager,
         state=state,
         failure_config=None,
         seed=0,

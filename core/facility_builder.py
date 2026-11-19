@@ -194,8 +194,8 @@ class FacilityBuilder:
         """
         if not transformations:
             return 0.0
-        efficiencies = [_catalogue_volumetric_yield(transformation) for transformation in transformations.values()]
-        blended_efficiency = sum(efficiencies) / len(efficiencies)
+        yields = [_catalogue_volumetric_yield(transformation) for transformation in transformations.values()]
+        blended_yield = sum(yields) / len(yields)
         national_demand = self.facility_manager.demand
         producible_products = sorted(
             {transformation.output_type.value for transformation in transformations.values()}
@@ -203,7 +203,7 @@ class FacilityBuilder:
         producible_annual_demand = sum(
             national_demand.get(product, 0.0) for product in producible_products
         )
-        waste_per_interval = market_share * (producible_annual_demand / WEEKS_PER_YEAR) / blended_efficiency
+        waste_per_interval = market_share * (producible_annual_demand / WEEKS_PER_YEAR) / blended_yield
         protection_intervals = max(
             1,
             math.ceil(
@@ -220,8 +220,8 @@ class FacilityBuilder:
     def _order_share_by_waste_type(self, transformations) -> dict:
         """Each input type's share of the treatment order-up-to level (ADR 0026).
 
-        Each producible product ``p`` needs ``demand_p / efficiency_p`` waste,
-        with ``efficiency_p`` the mean efficiency of the routes to ``p``. That
+        Each producible product ``p`` needs ``demand_p / yield_p`` waste,
+        with ``yield_p`` the mean volumetric yield of the routes to ``p``. That
         need is spread over the input types that can make ``p`` by the national
         generation mix (evenly if no region generates them). Collection crosses
         regions, so a type the home region lacks still gets ordered. A type's
@@ -240,9 +240,9 @@ class FacilityBuilder:
         for output_type in sorted_by_value(routes_by_product):
             routes = routes_by_product[output_type]
             demand = national_demand.get(output_type.value, 0.0)
-            mean_efficiency = sum(_catalogue_volumetric_yield(route) for route in routes) / len(routes)
-            if demand > 0 and mean_efficiency > 0:
-                waste_need_by_product[output_type] = demand / mean_efficiency
+            mean_yield = sum(_catalogue_volumetric_yield(route) for route in routes) / len(routes)
+            if demand > 0 and mean_yield > 0:
+                waste_need_by_product[output_type] = demand / mean_yield
         total_need = sum(waste_need_by_product.values())
         if total_need <= 0:
             return {}
@@ -265,12 +265,12 @@ class FacilityBuilder:
         """Prime waste storage to ~2 weeks of producible throughput (ADR 0002, Phase C).
 
         The total primed volume is ``(annual_demand_total / WEEKS_PER_YEAR) *
-        WASTE_STORAGE_PRIMING_WEEKS * market_share / blended_efficiency`` waste
+        WASTE_STORAGE_PRIMING_WEEKS * market_share / blended_yield`` waste
         m3, distributed across the operator's accepted input waste types in
         proportion to the region's volume-generation mix. A type the region does
         not generate gets zero (it arrives later via collection); if the region
         generates none of the input types, an even split avoids divide-by-zero.
-        ``blended_efficiency`` is the mean volumetric yield (ADR 0043) across the
+        ``blended_yield`` is the mean volumetric yield (ADR 0043) across the
         operator's transformations -- this only shapes the warm-up mix, which
         collection self-corrects within ~2 weeks, so precision is irrelevant.
         """
@@ -278,8 +278,8 @@ class FacilityBuilder:
         if not input_types:
             return {}
 
-        efficiencies = [_catalogue_volumetric_yield(transformation) for transformation in transformations.values()]
-        blended_efficiency = sum(efficiencies) / len(efficiencies)
+        yields = [_catalogue_volumetric_yield(transformation) for transformation in transformations.values()]
+        blended_yield = sum(yields) / len(yields)
 
         national_demand = self.facility_manager.demand
         annual_demand_total = sum(national_demand.values())
@@ -287,7 +287,7 @@ class FacilityBuilder:
             (annual_demand_total / WEEKS_PER_YEAR)
             * WASTE_STORAGE_PRIMING_WEEKS
             * market_share
-            / blended_efficiency
+            / blended_yield
         )
 
         region_volume_by_type = self._region_generation_volume(region)
