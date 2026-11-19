@@ -555,7 +555,7 @@ class CollectorCompany(OperationalEntity):
         return total_cost
 
     def provide_waste_for_treatment(self, requested_amount: float, needed_types: List[WasteType],
-                                     treatment_name: Optional[str] = None) -> Dict[WasteType, float]:
+                                     treatment_name: str) -> Dict[WasteType, float]:
         """Hand waste from this collector's collection center to a treatment operator.
 
         The real Treatment-echelon inbound flow (ADR 0009): decrements collector
@@ -579,17 +579,16 @@ class CollectorCompany(OperationalEntity):
                 provided_waste[waste_type] = provided_waste.get(waste_type, 0) + transfer_amount
                 remaining_request -= transfer_amount
 
-                if treatment_name is not None:
-                    self.state.track_transport_flow(
-                        source_type="collector",
-                        source_name=self.name,
-                        target_type="treatment",
-                        target_name=treatment_name,
-                        waste_type=waste_type,
-                        volume=transfer_amount,
-                        timestamp=self.env.now,
-                        transport_method="treatment_intake",
-                    )
+                self.state.track_transport_flow(
+                    source_type="collector",
+                    source_name=self.name,
+                    target_type="treatment",
+                    target_name=treatment_name,
+                    waste_type=waste_type,
+                    volume=transfer_amount,
+                    timestamp=self.env.now,
+                    transport_method="treatment_intake",
+                )
 
         return provided_waste
 
