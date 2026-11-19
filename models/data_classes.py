@@ -1,50 +1,65 @@
 import numpy as np
 from dataclasses import dataclass, field
-from typing import Dict, Tuple, Optional
-from .recording import EntityStatusRecorder
+from typing import Dict, Optional
+from config.constants import FAILURE_CHECK_INTERVAL_DAYS, RECOVERING_BASE_EFFICIENCY
 from .enums import WasteType, RegionType, EntityStatus, OutputType
+from .units import (
+    CubicMetres,
+    DailyProbability,
+    Days,
+    Fraction,
+    KilogramsCO2e,
+    KilogramsCO2ePerCubicMetre,
+    KilowattHoursPerKilogram,
+)
 
 @dataclass
 class FailureConfig:
-    """Configuration for entity failure rates and durations"""
-    probability: float
-    min_duration: float
-    max_duration: float
+    """Configuration for entity failure rates and durations.
+
+    The duration bounds apply separately to the FAILED outage and to the RECOVERING ramp.
+    """
+    probability: DailyProbability
+    min_duration: Days
+    max_duration: Days
 
 @dataclass(init=False)
 class OperationalEntity:
     """Base class for entities that can experience failures"""
 
-    _failure_counts = {}
     status: EntityStatus
-    failure_time: Optional[float]
-    recovery_time: Optional[float]
-    waste_monitor: Optional[EntityStatusRecorder]
+    failure_start_time: Optional[float]
+    recovery_start_time: Optional[float]
+    recovery_duration: Optional[float]
+    recovery_progress: float
+    expansion_count: int
+    landfill_count: int
     failure_config: Optional[FailureConfig]
     downtime_duration: float
     rng: np.random.Generator
 
-    def __init__(self, failure_config: Optional[FailureConfig] = None, seed=None,
-                 waste_monitor: Optional[EntityStatusRecorder] = None):
-        """Initialize defaults; the recorder is injected, not constructed here, so
-        the domain layer depends on ``EntityStatusRecorder``, not the concrete
-        recorder (closes the circular import).
+    def __init__(self, failure_config: Optional[FailureConfig] = None, seed=None):
+        """Initialize defaults. Subclasses take their recorder at construction;
+        ``models/`` does not import ``instrumentation``.
         """
         self.status = EntityStatus.OPERATIONAL
-        self.failure_time = None
-        self.recovery_time = None
-        self.waste_monitor = waste_monitor
+        self.failure_count = 0
+        self.failure_start_time = None
+        self.recovery_start_time = None
+        self.recovery_duration = None
+        self.recovery_progress = 0.0
+        self.expansion_count = 0
+        self.landfill_count = 0
         self.failure_config = failure_config
         self.downtime_duration = 1.0
         self.rng = np.random.default_rng(seed)
         seed_sequence = seed if isinstance(seed, np.random.SeedSequence) else np.random.SeedSequence(seed)
         [failure_seed] = seed_sequence.spawn(1)
-        self.failure_rng = np.random.default_rng(failure_seed)
+        self.policy_independent_failure_rng = np.random.default_rng(failure_seed)
 
-    @classmethod
-    def get_failure_stats(cls):
-        """Get failure statistics"""
-        return cls._failure_counts.copy()
+    @property
+    def is_operational(self) -> bool:
+        return self.status == EntityStatus.OPERATIONAL
 
     def start_failure_process(self, env) -> None:
         """Start the daily failure clock when the entity has a failure_config.
@@ -58,7 +73,6 @@ class OperationalEntity:
 
     def _failure_process(self, env):
         """Advance the failure state machine once per FAILURE_CHECK_INTERVAL_DAYS."""
-        from config.constants import FAILURE_CHECK_INTERVAL_DAYS
         while True:
             yield env.timeout(FAILURE_CHECK_INTERVAL_DAYS)
             self.check_failure(env.now, self.failure_config.probability)
@@ -73,20 +87,14 @@ class OperationalEntity:
         """
 
         if self.status == EntityStatus.OPERATIONAL:
-            if self.failure_rng.random() < failure_probability:
-                entity_type = self.__class__.__name__
-                if entity_type not in self._failure_counts:
-                    self._failure_counts[entity_type] = 0
-                self._failure_counts[entity_type] += 1
+            if self.policy_independent_failure_rng.random() < failure_probability:
+                self.failure_count += 1
 
                 self.status = EntityStatus.FAILED
                 self.failure_start_time = current_time
                 self.downtime_duration = self._get_recovery_duration()
 
-                if hasattr(self, 'waste_monitor') and self.waste_monitor:
-                    self.waste_monitor.record_entity_status(self, current_time)
-
-                print(f"FAILURE: {entity_type} {getattr(self, 'name', 'unknown')} failed at time {current_time}")
+                print(f"FAILURE: {self.__class__.__name__} {getattr(self, 'name', 'unknown')} failed at time {current_time}")
                 return True
 
         elif self.status == EntityStatus.FAILED:
@@ -96,17 +104,12 @@ class OperationalEntity:
                 self.recovery_duration = self._get_recovery_duration()
                 self.recovery_progress = 0.0
 
-                if hasattr(self, 'waste_monitor') and self.waste_monitor:
-                    self.waste_monitor.record_entity_status(self, current_time)
-
         elif self.status == EntityStatus.RECOVERING:
             elapsed = current_time - self.recovery_start_time
             self.recovery_progress = min(1.0, elapsed / self.recovery_duration)
 
             if self.recovery_progress >= 1.0:
                 self.status = EntityStatus.OPERATIONAL
-                if hasattr(self, 'waste_monitor') and self.waste_monitor:
-                    self.waste_monitor.record_entity_status(self, current_time)
                 self.recovery_start_time = None
                 self.recovery_duration = None
                 self.recovery_progress = 0.0
@@ -137,7 +140,6 @@ class OperationalEntity:
         if self.status == EntityStatus.OPERATIONAL:
             return 1.0
         elif self.status == EntityStatus.RECOVERING:
-            from config.constants import RECOVERING_BASE_EFFICIENCY
             return RECOVERING_BASE_EFFICIENCY + ((1.0 - RECOVERING_BASE_EFFICIENCY) * self.recovery_progress)
         else:
             return 0.0
@@ -145,7 +147,7 @@ class OperationalEntity:
     def _get_recovery_duration(self):
         """Draw an outage or recovery-ramp duration from the failure config."""
         if self.failure_config:
-            return self.failure_rng.uniform(
+            return self.policy_independent_failure_rng.uniform(
                 self.failure_config.min_duration,
                 self.failure_config.max_duration
             )
@@ -164,53 +166,37 @@ class WasteTransformation:
 
     input_type: WasteType
     output_type: OutputType
-    conversion_efficiency: float
-    energy_required: float
+    conversion_efficiency: Fraction
+    energy_required: KilowattHoursPerKilogram
 
 @dataclass
 class Vehicle:
     """Data class to represent a transport vehicle"""
     id: str
-    capacity: float
+    capacity: CubicMetres
     current_region: RegionType
     in_transit: bool = False
-    current_load: float = 0.0
-    current_load_by_type: Dict[WasteType, float] = field(default_factory=dict)
-    destination: Optional[RegionType] = None
-    estimated_arrival: Optional[float] = None
+    current_load_by_type: Dict[WasteType, CubicMetres] = field(default_factory=dict)
 
-@dataclass(init=False)
-class CollectionCenter(OperationalEntity):
-    """Data class to represent a waste collection center"""
-    region: RegionType
-    waste_storage_capacity: float
-    current_storage: Dict[WasteType, float]
-    coordinates: Tuple[float, float]
-
-    def __init__(self, region: RegionType, waste_storage_capacity: float,
-                 current_storage: Dict[WasteType, float], coordinates: Tuple[float, float]):
-        """Initialize collection center with custom downtime duration"""
-        super().__init__()
-        self.region = region
-        self.waste_storage_capacity = waste_storage_capacity
-        self.current_storage = current_storage
-        self.coordinates = coordinates
-        from config.constants import COLLECTION_CENTER_DOWNTIME_DAYS
-        self.downtime_duration = COLLECTION_CENTER_DOWNTIME_DAYS
+@dataclass
+class CollectionCenter:
+    """A collector's intermediate storage."""
+    waste_storage_capacity: CubicMetres
+    current_storage: Dict[WasteType, CubicMetres]
 
 @dataclass
 class ProductStorage:
     """Data class to represent storage for finished products"""
-    capacity: Dict[OutputType, float]
-    current_storage: Dict[OutputType, float]
+    capacity: Dict[OutputType, CubicMetres]
+    current_storage: Dict[OutputType, CubicMetres]
 
 @dataclass
 class ABCClassification:
     """ABC classification result for a product"""
     product_type: str
-    biogenic_carbon_per_unit: float
-    demand_volume: float
-    total_biogenic_impact: float
+    biogenic_carbon_per_unit: KilogramsCO2ePerCubicMetre
+    demand_volume: CubicMetres
+    total_biogenic_impact: KilogramsCO2e
     abc_class: str
     cumulative_percentage: float
     priority_weight: float

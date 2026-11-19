@@ -80,7 +80,6 @@ def test_track_collection_accrues_daily_holding_cost_on_collection_center_storag
         collected_waste = {}
         efficiency = 1.0
         collection_center = _CollectionCenter()
-        last_collection_cost = 12.5
 
     monitor = WasteMonitor()
     monitor.track_collection(_Collector(), timestamp=3.0)
@@ -95,11 +94,8 @@ def test_track_processing_accrues_once_per_day_under_the_same_timestamp_guard():
     """Treatment accrues on its waste storage; a same-timestamp re-entry does
     not double-accrue.
 
-    ``track_processing`` is called both by the daily monitor process and from
-    the treatment operator's own loop (``core/treatment.py``); the existing
-    ``timestamp > last`` guard dedupes rows. Holding cost must sit inside that
-    guard or a busy operator would accrue more holding cost per day than an
-    idle one with identical storage.
+    The ``timestamp > last`` guard dedupes rows; holding cost must sit inside
+    it so a repeated call cannot accrue twice in one day.
 
     Mutation check (red): drop the accrual -> first assertion fails; move the
     accrual outside the guard -> the second (single-entry) assertion fails.
@@ -140,10 +136,10 @@ def test_holding_cost_kpi_sums_all_three_echelons_into_total_system_cost():
     Mutation check (red): drop an echelon from the holding sum -> 60.0 becomes
     a partial sum and the first assertion fails; leave ``holding_cost`` out of
     ``total_system_cost`` -> the closure assertion fails; drop it from
-    ``_SUMMARY_METRICS`` -> the wiring assertion fails (the KPI would never
+    the summary metric list -> the wiring assertion fails (the KPI would never
     reach summary.csv).
     """
-    from analysis.baseline_aggregate import _SUMMARY_METRICS, extract_kpis
+    from analysis.baseline_aggregate import extract_kpis, summary_rows
 
     monitor_data = {
         "generation_history": {
@@ -165,4 +161,5 @@ def test_holding_cost_kpi_sums_all_three_echelons_into_total_system_cost():
     assert kpis["holding_cost"] == 60.0
     # total_system_cost closes over transport + processing + overflow + holding.
     assert kpis["total_system_cost"] == 100.0 + 200.0 + 0.0 + 60.0
-    assert "holding_cost" in _SUMMARY_METRICS
+    summary_metrics = [row.split(",", 1)[0] for row in summary_rows([kpis])]
+    assert "holding_cost" in summary_metrics

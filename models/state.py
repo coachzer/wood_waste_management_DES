@@ -15,7 +15,9 @@ class SimulationState:
         self.collectors = []
         self.treatment_operators = []
         self.transport_flows = []
+        self.residue_transfers = []
         self.consumption_events = []
+        self.transport_manager = None
 
     def initialize(self, generators, collectors, treatment_operators):
         self.generators = generators
@@ -34,24 +36,6 @@ class SimulationState:
                 if vehicle.in_transit:
                     yield vehicle
 
-    def pending_reposition_volume_by_origin(self) -> dict:
-        """Repositioning volume debited from its origin but not yet on a vehicle.
-
-        ``transfer_waste_to_region`` removes the volume from the origin collection
-        center at request time; it waits in the shared transport manager's queue
-        until a vehicle frees up, logged nowhere else. Keyed by origin collector.
-        """
-        pending = {}
-        seen_managers = set()
-        for collector in self.collectors:
-            manager = collector.transport_manager
-            if id(manager) in seen_managers:
-                continue
-            seen_managers.add(id(manager))
-            for request in manager.pending_requests:
-                pending[request.requester_id] = pending.get(request.requester_id, 0.0) + request.volume
-        return pending
-
     def scheduled_reposition_volume_by_destination(self) -> dict:
         """Repositioning volume on a vehicle, logged as inflow but not yet deposited.
 
@@ -59,12 +43,14 @@ class SimulationState:
         the destination center only receives it on arrival. Keyed by the
         destination collector named in that flow.
         """
-        in_flight = {}
-        for collector in self.collectors:
-            for transport in collector.active_transports:
-                target_name = transport["target_name"]
-                in_flight[target_name] = in_flight.get(target_name, 0.0) + transport["volume"]
-        return in_flight
+        if self.transport_manager is None:
+            return {}
+        return self.transport_manager.in_flight_volume_by_destination()
+
+    def held_transfer_volume_by_collector(self) -> dict:
+        if self.transport_manager is None:
+            return {}
+        return self.transport_manager.held_volume_by_requester()
 
     def track_transport_flow(self, source_type: str, source_name: str, 
                            target_type: str, target_name: str, 
@@ -80,6 +66,15 @@ class SimulationState:
             'volume': volume,
             'timestamp': timestamp,
             'transport_method': transport_method
+        })
+
+    def record_residue_transfer(self, source_name: str, volume: float, cost: float, timestamp: float) -> None:
+        """Record a delivered transfer under RESIDUE_TRANSFER_VOLUME_M3 and the trip cost it still paid."""
+        self.residue_transfers.append({
+            'source_name': source_name,
+            'volume': volume,
+            'cost': cost,
+            'timestamp': timestamp,
         })
 
     def record_consumption_event(self, operator_name: str, product: str,
@@ -172,11 +167,3 @@ class SimulationState:
         if attempted <= 0:
             return None
         return sum(event['consumed'] for event in events) / attempted
-
-    def reset(self):
-        """Reset simulation state to initial values"""
-        self.generators = []
-        self.collectors = []
-        self.treatment_operators = []
-        self.transport_flows = []
-        self.consumption_events = []

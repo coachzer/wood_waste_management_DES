@@ -5,11 +5,7 @@ Exercises the pure ``summary_rows`` seam that ``main.py`` writes to
 over the ``bullwhip`` namespace, and the None/degenerate handling for both.
 """
 
-import math
-
-from scipy import stats
-
-from analysis.baseline_aggregate import _SUMMARY_METRICS, extract_kpis, summary_rows
+from analysis.baseline_aggregate import extract_kpis, summary_rows
 
 
 def _row(rows, metric):
@@ -35,20 +31,11 @@ def test_header_is_first_row_and_marginal_mean_is_reported():
 
 
 def test_marginal_ci_uses_student_t_not_normal_z():
-    # Four reps of a metric: mean 5, sample stdev sqrt(var). The CI half-width
-    # must use t(0.975, 3) ~= 3.182, not z = 1.96 (ADR 0008).
-    vals = [2.0, 4.0, 6.0, 8.0]
-    kpis = [{"total_generated_m3": v, "bullwhip": {}} for v in vals]
+    # Mean 5, sample stdev 2.58199. The half-width is t(0.975, 3) = 3.18245 times
+    # stdev / sqrt(4) = 4.10852 (ADR 0008); a z = 1.96 interval would be 2.4697..7.5303.
+    kpis = [{"total_generated_m3": v, "bullwhip": {}} for v in [2.0, 4.0, 6.0, 8.0]]
     cells = _row(summary_rows(kpis), "total_generated_m3")
-    mean = sum(vals) / len(vals)
-    stdev = math.sqrt(sum((x - mean) ** 2 for x in vals) / (len(vals) - 1))
-    t_margin = float(stats.t.ppf(0.975, len(vals) - 1)) * stdev / math.sqrt(len(vals))
-    z_margin = 1.96 * stdev / math.sqrt(len(vals))
-    # Cells are formatted to 6 significant figures, so compare at that precision.
-    assert math.isclose(float(cells[3]), mean - t_margin, rel_tol=1e-5)
-    assert math.isclose(float(cells[4]), mean + t_margin, rel_tol=1e-5)
-    # The t interval is materially wider than the old z interval at small n.
-    assert (mean + t_margin) - (mean - t_margin) > (mean + z_margin) - (mean - z_margin)
+    assert cells[1:5] == ["5", "2.58199", "0.891479", "9.10852"]
 
 
 def test_single_replication_collapses_ci_to_the_mean():
@@ -184,8 +171,9 @@ def test_overflow_cost_decomposition_kpis_reach_summary_csv():
     # The three decomposition KPIs must be wired into the marginal metric list,
     # not just computed: an extracted-but-unlisted KPI never reaches summary.csv
     # (the exact failure mode T8/T9 cleaned up).
+    rows = summary_rows([extract_kpis({})])
     for metric in ("landfill_cost", "expansion_cost", "expansion_volume_m3"):
-        assert metric in _SUMMARY_METRICS
+        assert _row(rows, metric) is not None, metric
 
 
 def test_service_by_product_namespace_emitted_as_prefixed_rows():
@@ -239,3 +227,21 @@ def test_total_emissions_sums_per_tick_impact_series_not_last_element():
     }
     kpis = extract_kpis(monitor_data)
     assert kpis["total_emissions_kgco2e"] == 65.0
+
+
+def test_residue_transfers_are_counted_with_their_trip_cost():
+    kpis = extract_kpis({"residue_transfers": [{"cost": 10.0}, {"cost": 2.5}]})
+    assert kpis["residue_transfer_count"] == 2
+    assert kpis["residue_transfer_cost"] == 12.5
+
+
+def test_a_run_without_residue_transfers_reports_zero():
+    kpis = extract_kpis({})
+    assert kpis["residue_transfer_count"] == 0
+    assert kpis["residue_transfer_cost"] == 0.0
+
+
+def test_residue_transfer_kpis_reach_summary_csv():
+    rows = summary_rows([extract_kpis({})])
+    for metric in ("residue_transfer_count", "residue_transfer_cost"):
+        assert _row(rows, metric) is not None, metric

@@ -116,12 +116,15 @@ def test_all_none_bullwhip_metric_yields_no_comparison_row(tmp_path, write_run):
     # report has nothing to compare when every value is None, so the metric is
     # dropped entirely -- same as any curated metric with an empty family.
     for seed in (0, 1):
-        write_run(tmp_path, "push", "on_demand", seed, {"bullwhip": {"collector_stage": None}})
-        write_run(tmp_path, "pull", "on_demand", seed, {"bullwhip": {"collector_stage": None}})
+        write_run(tmp_path, "push", "on_demand", seed,
+                  {"bullwhip": {"collector_stage": None, "treatment_stage": 1.0 + seed}})
+        write_run(tmp_path, "pull", "on_demand", seed,
+                  {"bullwhip": {"collector_stage": None, "treatment_stage": 3.0 + seed}})
 
-    rows = build_paired_report(tmp_path)
+    compared_metrics = {row["metric"] for row in build_paired_report(tmp_path)}
 
-    assert all(r["metric"] != "bullwhip.collector_stage" for r in rows)
+    assert "bullwhip.treatment_stage" in compared_metrics
+    assert "bullwhip.collector_stage" not in compared_metrics
 
 
 def test_explicit_metrics_list_suppresses_bullwhip_auto_append(tmp_path, write_run):

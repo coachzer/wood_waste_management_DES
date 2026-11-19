@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from models.enums import InventoryPolicy, OutputType, StockStrategy
+from models.enums import InventoryPolicy, OutputType, StockStrategy, WasteType
 from instrumentation.history_store import HistoryStore
 from instrumentation.mass_balance import (
     EntityRegistry,
@@ -40,7 +40,7 @@ def make_operator(name, produced, storage, expected_output=None):
         finished_goods=finished_goods,
     )
     if expected_output is not None:
-        operator.expected_output_volume = expected_output
+        operator.expected_output_volume_from_intake_m3 = expected_output
     return operator
 
 
@@ -97,7 +97,7 @@ def test_valid_invariant_does_not_raise():
 #
 # Per treatment operator, the bridge relates the two otherwise-independent
 # ledgers: the output expected from intake (intake x efficiency, accumulated
-# into expected_output_volume) must equal the finished-goods actually deposited
+# into expected_output_volume_from_intake_m3) must equal the finished-goods actually deposited
 # (sum of product_volumes). A wrong efficiency or mis-scaled yield breaks the
 # bridge without disturbing either single-ledger invariant.
 
@@ -155,11 +155,10 @@ def make_center_collector(name, storage):
 
 
 def make_waste_state():
-    """A SimulationState stand-in: a transport-flow log, no reposition in flight."""
     return SimpleNamespace(
         transport_flows=[],
-        pending_reposition_volume_by_origin=lambda: {},
         scheduled_reposition_volume_by_destination=lambda: {},
+        held_transfer_volume_by_collector=lambda: {},
     )
 
 
@@ -248,11 +247,10 @@ def make_treatment_op(name, waste_storage, processed):
 
 
 def make_system_state(vehicles=()):
-    """A SimulationState stub exposing the in-transit iterator."""
     moving = list(vehicles)
     return SimpleNamespace(
         iter_outbound_vehicles=lambda: iter(moving),
-        pending_reposition_volume_by_origin=lambda: {},
+        held_transfer_volume_by_collector=lambda: {},
     )
 
 
@@ -325,7 +323,7 @@ def test_leaking_waste_system_trips():
 def _baseline_run():
     """One Baseline PUSH/ON_DEMAND replication with armed invariants.
 
-    The shared configuration of the four slow end-to-end invariant tests below.
+    The shared configuration of the two slow end-to-end invariant tests below.
     Deferred import keeps main's heavy import chain off this module's fast
     tests.
     """
@@ -349,7 +347,7 @@ def test_yield_bridge_trips_on_halved_yield(monkeypatch):
     deposit from BOTH product ledgers (``finished_goods`` and
     ``product_volumes``) keeps the product invariant internally consistent --
     exactly the Probe 4 failure shape that slips past both single-ledger
-    invariants -- while intake (and thus ``expected_output_volume``) stays
+    invariants -- while intake (and thus ``expected_output_volume_from_intake_m3``) stays
     untouched, so only the armed yield bridge can catch the divergence and
     must abort the run (surfaced as ``SystemExit`` whose cause is a
     ``MassBalanceViolation``). Slow: a full 365-day, 12-region simulation.
@@ -378,55 +376,23 @@ def test_yield_bridge_trips_on_halved_yield(monkeypatch):
 
 
 @pytest.mark.slow
-def test_yield_bridge_holds_on_baseline_run():
-    """The armed yield bridge closes on a real, unmutated baseline run.
+def test_armed_invariants_hold_on_baseline_run():
+    """The armed end-of-run invariants close on a real, unmutated baseline run.
 
-    ``run_single_simulation`` runs with ``raise_on_violation=True``, so the
-    end-of-run ``check_yield_bridge`` aborts (as ``SystemExit``) on any
-    intake/output divergence; a clean return means deposited finished goods
-    match the intake x efficiency expectation. The clean return IS the
-    invariant assertion; the KPI check guards non-vacuity -- a zero-throughput
-    run would close the bridge trivially. Slow: a full baseline run.
+    ``run_single_simulation`` runs with ``raise_on_violation=True``, so
+    ``check_yield_bridge`` (deposited finished goods match intake x efficiency),
+    ``check_waste_system`` (raw waste conserved system-wide) and the
+    per-collection-center identity abort the run (as ``SystemExit``) on any
+    leak; a clean return IS the invariant assertion. The KPI checks guard
+    non-vacuity: a run that generated, collected or processed nothing would
+    close every identity trivially. Slow: a full 365-day, 12-region simulation.
     """
     from analysis.baseline_aggregate import extract_kpis
 
-    result = _baseline_run()
-    assert extract_kpis(result["monitor_data"])["total_processed_m3"] > 0.0
-
-
-@pytest.mark.slow
-def test_waste_system_invariant_holds_on_baseline_run():
-    """The armed waste-side invariant holds on a real drained baseline run.
-
-    ``run_single_simulation`` runs with ``raise_on_violation=True``, so the
-    end-of-run ``check_waste_system`` aborts (surfaced as ``SystemExit``) on any
-    leak; a clean return means raw waste is conserved system-wide. The clean
-    return IS the invariant assertion; the KPI check guards non-vacuity -- a
-    run that generated nothing would conserve trivially. Slow: a full 365-day,
-    12-region simulation.
-    """
-    from analysis.baseline_aggregate import extract_kpis
-
-    result = _baseline_run()
-    assert extract_kpis(result["monitor_data"])["total_generated_m3"] > 0.0
-
-
-@pytest.mark.slow
-def test_collection_center_invariant_holds_on_baseline_run():
-    """The per-collection-center identity closes on a real drained baseline run.
-
-    Wired final-only in ``run_simulation`` alongside ``check_waste_system``. With
-    reposition outflow now sourced on the origin collector (not the borrowed
-    carrier), each center's books balance independently. ``raise_on_violation``
-    aborts (as ``SystemExit``) on any per-center leak; a clean return confirms
-    the localized identity holds. The clean return IS the invariant assertion;
-    the KPI check guards non-vacuity -- centers that never received inflow
-    would balance trivially. Slow: a full 365-day, 12-region simulation.
-    """
-    from analysis.baseline_aggregate import extract_kpis
-
-    result = _baseline_run()
-    assert extract_kpis(result["monitor_data"])["total_collected_m3"] > 0.0
+    kpis = extract_kpis(_baseline_run()["monitor_data"])
+    assert kpis["total_generated_m3"] > 0.0
+    assert kpis["total_collected_m3"] > 0.0
+    assert kpis["total_processed_m3"] > 0.0
 
 
 # --- cross-region repositioning still in the pipeline at check time ----------
@@ -435,30 +401,29 @@ def test_collection_center_invariant_holds_on_baseline_run():
 def test_queued_and_in_flight_reposition_balance_both_waste_checks():
     """Repositioning volume mid-pipeline at the end-of-run check is conserved.
 
-    ``transfer_waste_to_region`` debits the origin center at request time. The
-    volume then waits in the shared transport queue (no vehicle yet, no flow
-    logged) or rides a vehicle (flow logged origin -> destination, not yet
-    deposited). Both are real fates, so neither the per-center nor the
-    system-wide identity may trip.
+    A queued transfer's volume is held: it left the origin center at request
+    time and is on no vehicle yet (ADR 0041). Loaded volume rides a vehicle
+    (flow logged origin -> destination, not yet deposited). Neither the
+    per-center nor the system-wide identity may trip.
 
-    Mutation checks (red): drop ``pending_reposition_volume_by_origin`` from
-    either check, or ``scheduled_reposition_volume_by_destination`` from the
-    per-center check -> MassBalanceViolation.
+    Mutation checks (red): drop held volume from either check, or drop
+    ``scheduled_reposition_volume_by_destination`` from the per-center check
+    -> MassBalanceViolation.
     """
+    import simpy
+
     from core.transport_manager import PointToPointTransport, TransportRequest
     from models.enums import RegionType, WasteType
     from models.state import SimulationState
 
     waste_type = WasteType.CONSTRUCTION_WOOD_17_02_01
     state = SimulationState()
-    manager = PointToPointTransport(state=state)
+    manager = PointToPointTransport(state=state, road_circuity_mean=1.0, env=simpy.Environment())
 
     def collector(name):
         return SimpleNamespace(
             name=name,
             collection_center=SimpleNamespace(current_storage={waste_type: 0.0}),
-            transport_manager=manager,
-            active_transports=[],
             vehicles=[],
         )
 
@@ -478,7 +443,6 @@ def test_queued_and_in_flight_reposition_balance_both_waste_checks():
     # 1000 generated and collected into the origin center.
     generator.total_generated[waste_type] = 1000.0
     state.transport_flows.append(flow("gen-1", "col-origin", 1000.0))
-    # 300 debited and queued for a vehicle; 200 debited and on a vehicle.
     manager.pending_requests.append(
         TransportRequest(
             origin=RegionType.KOROSKA,
@@ -492,8 +456,43 @@ def test_queued_and_in_flight_reposition_balance_both_waste_checks():
     state.transport_flows.append(flow("col-origin", "col-destination", 200.0))
     vehicle = SimpleNamespace(in_transit=True, current_load_by_type={waste_type: 200.0})
     origin.vehicles.append(vehicle)
-    origin.active_transports.append({"volume": 200.0, "target_name": "col-destination"})
+    manager.active_transports.append(
+        {"collector": origin, "volume": 200.0, "target_name": "col-destination"}
+    )
     origin.collection_center.current_storage[waste_type] = 500.0
 
     monitor.check_collection_centers()  # must not raise
     monitor.check_waste_system()  # must not raise
+
+
+def _generator_with_generation(potential, entered_storage, uncollected, outlet=0.0):
+    waste_type = WasteType.CONSTRUCTION_WOOD_17_02_01
+    return SimpleNamespace(
+        name="gen-1",
+        total_potential_generated={waste_type: potential},
+        total_generated={waste_type: entered_storage},
+        total_uncollected={waste_type: uncollected},
+        total_outlet={waste_type: outlet},
+    )
+
+
+def _generator_check_monitor(generator):
+    return MassBalanceMonitor(
+        EntityRegistry(state=SimpleNamespace(), operators=[], generators=[generator])
+    )
+
+
+def test_generation_split_into_stored_and_uncollected_balances():
+    _generator_check_monitor(_generator_with_generation(100.0, 60.0, 40.0)).check_generators()
+
+
+def test_generation_that_vanishes_between_potential_and_storage_raises():
+    monitor = _generator_check_monitor(_generator_with_generation(100.0, 60.0, 0.0))
+
+    with pytest.raises(MassBalanceViolation, match="Generator mass-balance"):
+        monitor.check_generators()
+
+
+def test_generation_sent_to_the_outlet_balances():
+    """ADR 0036. Mutation check (red): leave total_outlet out of the generator balance."""
+    _generator_check_monitor(_generator_with_generation(100.0, 0.0, 0.0, outlet=100.0)).check_generators()

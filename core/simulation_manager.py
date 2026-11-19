@@ -11,13 +11,13 @@ from config.constants import (
 )
 from utils.seasonality import seasonal_factor
 from core.transport_manager import PointToPointTransport
-from models.data_classes import OperationalEntity
-from models.enums import RegionType, OutputType, InventoryPolicy, StockStrategy
-from persistence.serialization import HISTORY_KEYS
+from models.enums import RegionType, OutputType, InventoryPolicy, StockStrategy, WasteType, sorted_by_value
+from instrumentation.history_store import HISTORY_KEYS
 from models.state import SimulationState
 from instrumentation.waste_monitor import WasteMonitor
 from instrumentation.mass_balance import EntityRegistry, MassBalanceMonitor
 from models.facility_data import FacilityDataManager
+from core.abc_analysis import abc_priority_weights
 from core.facility_builder import FacilityBuilder
 from core.kanban_manager import KanbanManager
 from core.generator import WasteGenerator
@@ -28,15 +28,12 @@ class SimulationManager:
     """Manages complete simulation lifecycle - setup, execution, and monitoring"""
     
     def __init__(self, seed=None):
-        OperationalEntity._failure_counts.clear()
-
         self.seed = seed
 
         self.state = SimulationState()
 
         self.env = simpy.Environment()
         self.waste_monitor = WasteMonitor(self.env)
-        self.transport_manager = PointToPointTransport(state=self.state)
 
         self.kanban_manager = KanbanManager()
 
@@ -57,19 +54,22 @@ class SimulationManager:
         try:
             self.facility_manager.load_data()
             
-            uncertainty_set = scenario_config.to_uncertainty_set()
-
-            self.transport_manager.uncertainty_set = uncertainty_set
+            self.transport_manager = PointToPointTransport(
+                state=self.state,
+                road_circuity_mean=scenario_config.transportation_time[0],
+                env=self.env,
+            )
 
             self.facility_builder = FacilityBuilder(
                 env=self.env,
                 facility_manager=self.facility_manager,
                 waste_monitor=self.waste_monitor,
-                uncertainty_set=uncertainty_set,
+                scenario=scenario_config,
                 transport_manager=self.transport_manager,
                 kanban_manager=self.kanban_manager,
                 state=self.state,
-                seed=self.seed
+                seed=self.seed,
+                abc_priority_map=abc_priority_weights(self.facility_manager.demand),
             )
             
             generators, collectors, processors = self._build_all_facilities(
@@ -97,6 +97,7 @@ class SimulationManager:
         processors = []
 
         total_processor_capacity = self._total_processor_capacity()
+        accepted_waste_types = self._nationally_accepted_waste_types()
 
         for region in RegionType:
             facilities = self.facility_manager.get_region_facilities(region)
@@ -105,7 +106,8 @@ class SimulationManager:
                 
             for gen_data in facilities.generators:
                 generator = self.facility_builder.create_generator(
-                    gen_data, region, stock_strategy, inventory_policy
+                    gen_data, region, stock_strategy, inventory_policy,
+                    accepted_waste_types=accepted_waste_types,
                 )
                 generators.append(generator)
 
@@ -128,6 +130,17 @@ class SimulationManager:
                 processors.append(processor)
 
         return generators, collectors, processors
+
+    def _nationally_accepted_waste_types(self) -> List[WasteType]:
+        """Waste types at least one processor in the country accepts. Generators send every
+        other type to the outlet (ADR 0036)."""
+        accepted = set()
+        for region in RegionType:
+            facilities = self.facility_manager.get_region_facilities(region)
+            if facilities:
+                for proc_data in facilities.processors:
+                    accepted.update(proc_data.input_types)
+        return sorted_by_value(accepted)
 
     def _total_processor_capacity(self) -> float:
         """Sum of waste storage capacity across every processor in every region.
@@ -204,16 +217,18 @@ class SimulationManager:
         self.mass_balance_monitor.check_waste_system(self.env.now)
         self.mass_balance_monitor.check_collection_centers(self.env.now)
         self.mass_balance_monitor.check_yield_bridge(self.env.now)
+        self.mass_balance_monitor.check_generators(self.env.now)
         self._print_final_status()
 
     def get_monitor_data(self) -> Dict[str, Any]:
         """Extract all relevant monitoring data"""
         monitor_data: Dict[str, Any] = {
-            key: getattr(self.waste_monitor.store, f"get_{key}")
+            key: dict(getattr(self.waste_monitor.store, key))
             for key in HISTORY_KEYS
         }
         monitor_data.update({
             'transport_flows': self.state.transport_flows,
+            'residue_transfers': self.state.residue_transfers,
             'consumption_events': self.state.consumption_events,
             'storage_capacities': {
                 'generators': {
@@ -253,9 +268,8 @@ class SimulationManager:
         shortfall as ``stockout``. Every attempt is logged via
         ``record_consumption_event``.
 
-        PULL operators additionally receive a market kanban signal carrying their
-        producible attempted volume (ADR 0002, Phase E) -- ``attempted``, not
-        ``consumed``, so an emptied inventory does not starve future production.
+        PULL operators additionally receive a market kanban signal (ADR 0002, Phase E).
+        Their backlog replaces the ``consumed`` volume it references (ADR 0029).
         """
         national_demand = self.facility_manager.demand
         while True:
@@ -309,6 +323,22 @@ class SimulationManager:
                         source_type="market",
                     )
 
+    def print_failure_analysis(self):
+        entities_by_type = {
+            "WasteGenerator": self.state.generators,
+            "CollectorCompany": self.state.collectors,
+            "TreatmentOperator": self.state.treatment_operators,
+        }
+        print("\n=== FAILURE ANALYSIS ===")
+        for entity_type, entities in entities_by_type.items():
+            total_failures = sum(entity.failure_count for entity in entities)
+            if total_failures == 0:
+                continue
+            print(f"{entity_type}:")
+            print(f"  Total entities: {len(entities)}")
+            print(f"  Total failures: {total_failures}")
+            print(f"  Failures per entity: {total_failures / len(entities):.3f}")
+
     def _print_final_status(self):
         """Print final simulation results (continuous market-consumption model)."""
         print(f"\n=== Simulation Complete (Time: {self.env.now}) ===")
@@ -317,6 +347,10 @@ class SimulationManager:
         full_str = f"{full * 100:.2f}%" if full is not None else "n/a"
         operational_str = (
             f"{operational * 100:.2f}%" if operational is not None else "n/a"
+        )
+        print(
+            f"Residue transfers: {len(self.state.residue_transfers)} "
+            f"(trip cost {sum(transfer['cost'] for transfer in self.state.residue_transfers):.2f})"
         )
         print(
             f"Service level -- full: {full_str}, operational: {operational_str} "

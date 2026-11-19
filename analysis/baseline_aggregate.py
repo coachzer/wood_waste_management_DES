@@ -12,6 +12,7 @@ from .bullwhip import (
 )
 from .availability import availability_metrics
 from .flow_times import flow_time_metrics
+from .outlet import outlet_destination_metrics
 from .avoided_emissions import avoided_emissions_metrics
 from .biogenic_carbon import biogenic_carbon_metrics
 from ._kpi_shared import _GENERIC_NAMESPACES, t_ci_margin
@@ -24,12 +25,16 @@ from instrumentation.history_store import (
 
 _SUMMARY_METRICS = [
     "total_generated_m3",
+    "total_potential_generated_m3",
     "total_collected_m3",
     "total_processed_m3",
     "collection_rate_pct",
+    "collection_rate_all_generation_pct",
+    "outlet_volume_m3",
     "processing_rate_pct",
     "overall_efficiency_pct",
     "landfill_volume_m3",
+    "uncollected_volume_m3",
     "expansion_volume_m3",
     "total_emissions_kgco2e",
     "collection_transport_cost",
@@ -48,6 +53,8 @@ _SUMMARY_METRICS = [
     "total_consumed_m3",
     "no_capability_lost_m3",
     "stockout_lost_m3",
+    "residue_transfer_count",
+    "residue_transfer_cost",
 ]
 
 _SUMMARY_HEADER = "metric,mean,stdev,ci95_low,ci95_high,count"
@@ -138,6 +145,10 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
     final_summary = monitor_data.get("final_summary", {})
 
     total_generated = _sum_last_nested(gen_hist, "total_generated")
+    total_uncollected = _sum_last_nested(gen_hist, "total_uncollected")
+    total_potential_generated = _sum_last_nested(gen_hist, "total_potential_generated")
+    total_outlet = _sum_last_nested(gen_hist, "total_outlet")
+    treatable_potential_generated = total_potential_generated - total_outlet
     total_collected = _sum_last_nested(col_hist, "collected_volumes")
 
     total_processed = 0.0
@@ -147,13 +158,16 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
             total_processed += float(series[-1])
 
     collection_rate = (
-        (total_collected / total_generated * 100.0) if total_generated > 0 else 0.0
+        (total_collected / treatable_potential_generated * 100.0) if treatable_potential_generated > 0 else 0.0
+    )
+    collection_rate_all_generation = (
+        (total_collected / total_potential_generated * 100.0) if total_potential_generated > 0 else 0.0
     )
     processing_rate = (
         (total_processed / total_collected * 100.0) if total_collected > 0 else 0.0
     )
     overall_eff = (
-        (total_processed / total_generated * 100.0) if total_generated > 0 else 0.0
+        (total_processed / treatable_potential_generated * 100.0) if treatable_potential_generated > 0 else 0.0
     )
 
     sys_evt = evt_hist.get("system_events", {})
@@ -218,6 +232,7 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         for product_name, value in (final_summary.get("consumption_service_by_product") or {}).items()
     }
 
+    residue_transfers = monitor_data.get("residue_transfers", [])
     transport_flows = monitor_data.get("transport_flows", [])
     consumption_events = monitor_data.get("consumption_events", [])
     treatment_stage, collector_stage = stage_bullwhip(
@@ -243,12 +258,17 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "total_generated_m3": total_generated,
+        "total_potential_generated_m3": total_potential_generated,
         "total_collected_m3": total_collected,
         "total_processed_m3": total_processed,
         "collection_rate_pct": collection_rate,
+        "collection_rate_all_generation_pct": collection_rate_all_generation,
+        "outlet_volume_m3": total_outlet,
+        "outlet_by_destination": outlet_destination_metrics(gen_hist),
         "processing_rate_pct": processing_rate,
         "overall_efficiency_pct": overall_eff,
         "landfill_volume_m3": landfill_volume,
+        "uncollected_volume_m3": total_uncollected,
         "expansion_volume_m3": expansion_volume,
         "total_emissions_kgco2e": total_emissions,
         "collection_transport_cost": collection_transport_cost,
@@ -268,6 +288,8 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         "total_consumed_m3": float(final_summary.get("total_consumed") or 0.0),
         "no_capability_lost_m3": float(final_summary.get("no_capability_lost") or 0.0),
         "stockout_lost_m3": float(final_summary.get("stockout_lost") or 0.0),
+        "residue_transfer_count": len(residue_transfers),
+        "residue_transfer_cost": float(sum(transfer["cost"] for transfer in residue_transfers)),
         "bullwhip": bullwhip,
         "residence": flow_time_metrics(monitor_data),
         "carbon": {

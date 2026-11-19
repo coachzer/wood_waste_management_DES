@@ -42,10 +42,10 @@ That gives 6 policy-strategy combinations per scenario. In baseline mode, each c
 All three strategies set *when* upstream replenishment signals fire:
 
 - `ON_DEMAND` signals for the replacement volume after every consumption (lot-for-lot).
-- `REORDER_50` signals when waste storage drops below 50% of capacity.
-- `REORDER_90` signals when waste storage drops below 90% of capacity.
+- `REORDER_50` signals when a waste type's stock drops below 50% of its order-up-to level.
+- `REORDER_90` signals when a waste type's stock drops below 90% of its order-up-to level.
 
-The order-up-to level is always full capacity. Strategy affects waste-side decisions only, not finished goods production.
+Each order fills the gap to that level. The level is sized from demand and clamped at storage capacity (ADR 0026, 0027). Strategy affects waste-side decisions only, not finished goods production.
 
 ## Key mechanisms
 
@@ -59,7 +59,7 @@ Products are ranked by total biogenic carbon stock impact (demand volume times b
 
 ### Failure injection
 
-All entities inherit a three-state lifecycle (`OPERATIONAL -> FAILED -> RECOVERING`) from `OperationalEntity`. Scenarios set failure rates and recovery times through `FailureConfig` and `UncertaintySet`.
+All entities inherit a three-state lifecycle (`OPERATIONAL -> FAILED -> RECOVERING`) from `OperationalEntity`. Each `ScenarioConfig` sets failure rates and recovery times per echelon through a `FailureConfig`.
 
 ### Storage and overflow
 
@@ -96,7 +96,7 @@ Baseline mode writes to `outputs/baseline/{scenario}/`. Each `{policy}__{strateg
 ```
 main.py                     Entry point and CLI
 config/
-  base_config.py            Scenario definitions, cost params, UncertaintySet
+  base_config.py            Scenario definitions (ScenarioConfig) and their validation
   constants.py              Simulation duration, emission factors, densities, thresholds
 core/
   simulation_manager.py     Orchestrates initialization and run lifecycle

@@ -110,7 +110,7 @@ def test_failure_history_is_invariant_to_policy_rng_consumption():
     """Same seed, different policy-driven RNG use -> identical failure days (CRN).
 
     Mutation check (red): draw failures from ``self.rng`` instead of
-    ``self.failure_rng`` -> the extra main-loop draws shift the failure days.
+    ``self.policy_independent_failure_rng`` -> the extra main-loop draws shift the failure days.
     """
     config = FailureConfig(probability=0.1, min_duration=0.5, max_duration=2.0)
     quiet = _run(dict(failure_config=config, seed=11, loop_period=3.0), days=365)

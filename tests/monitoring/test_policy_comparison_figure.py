@@ -2,7 +2,7 @@
 
 The rendering is Matplotlib and not meaningfully assertable, so these exercise
 the pure data path that decides where each point lands and how big its 95% CI
-crosshairs are: ``read_metric_intervals`` (mean + CI bounds), ``_split_combo_label``
+crosshairs are: ``read_metric_intervals`` (mean + CI bounds), ``split_combo_label``
 (policy/strategy from the dir name), and ``build_points`` (the asymmetric error
 half-widths and the kg->kt emissions scaling). Synthetic tmp summary.csv fixtures,
 no simulation -- mirrors ``test_pareto.py``.
@@ -15,14 +15,9 @@ Failure modes guarded:
 
 import pytest
 
-from visualization.policy_comparison_figure import (
-    EMISSIONS_METRIC,
-    SERVICE_METRIC,
-    _split_combo_label,
-    build_points,
-    read_metric_intervals,
-    write_policy_comparison_figure,
-)
+from analysis.layout import split_combo_label
+from visualization.policy_comparison_figure import build_points, write_policy_comparison_figure
+from visualization.visualization_utils import EMISSIONS_METRIC, SERVICE_METRIC, read_metric_intervals
 
 
 def _write_summary(combo_dir, rows):
@@ -55,14 +50,14 @@ def test_read_metric_intervals_raises_on_missing_metric(tmp_path):
 
 
 def test_split_combo_label_parses_policy_and_strategy():
-    assert _split_combo_label("push__on_demand") == ("push", "on_demand")
-    assert _split_combo_label("pull__reorder_90") == ("pull", "reorder_90")
+    assert split_combo_label("push__on_demand") == ("push", "on_demand")
+    assert split_combo_label("pull__reorder_90") == ("pull", "reorder_90")
 
 
 def test_split_combo_label_rejects_non_combo_name():
     # A directory that is not exactly one '__' join must raise, not mis-style.
     with pytest.raises(ValueError):
-        _split_combo_label("baseline_only")
+        split_combo_label("baseline_only")
 
 
 def test_build_points_computes_asymmetric_err_and_kt_scaling(tmp_path):
@@ -108,3 +103,34 @@ def test_write_figure_emits_nonempty_pdf(tmp_path):
     assert written is not None
     assert written.name == "policy_comparison.pdf"
     assert written.read_bytes().startswith(b"%PDF")
+
+
+def test_read_metric_intervals_raises_clear_value_error_on_blank_row(tmp_path):
+    summary_path = tmp_path / "summary.csv"
+    summary_path.write_text(
+        "metric,mean,stdev,ci95_low,ci95_high,count\n"
+        f"{SERVICE_METRIC},,,,,0\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match=SERVICE_METRIC):
+        read_metric_intervals(summary_path, [SERVICE_METRIC])
+
+
+def test_read_metric_intervals_validates_csv_header(tmp_path):
+    summary_path = tmp_path / "summary.csv"
+    summary_path.write_text("bad,header\n1,2\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="expected CSV columns"):
+        read_metric_intervals(summary_path, [SERVICE_METRIC])
+
+
+def test_build_points_clamps_inverted_ci_half_widths(tmp_path):
+    _write_summary(
+        tmp_path / "push__on_demand",
+        {
+            SERVICE_METRIC: (70.0, 72.0, 69.0),
+            EMISSIONS_METRIC: (2_000_000.0, 2_200_000.0, 1_800_000.0),
+        },
+    )
+    (point,) = build_points(tmp_path)
+    assert point["service_err"] == [[0.0], [0.0]]
+    assert point["emissions_err"] == [[0.0], [0.0]]

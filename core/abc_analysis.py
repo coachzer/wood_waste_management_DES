@@ -1,3 +1,4 @@
+"""Biogenic-carbon ABC classification of products. Run ``python -m core.abc_analysis`` to print the report."""
 import json
 from typing import Dict, List
 from models.data_classes import ABCClassification
@@ -6,26 +7,15 @@ from models.products import ProductDataManager
 class BiogenicCarbonABCAnalyzer:
     """ABC Analysis based on biogenic carbon stock values"""
     
-    def __init__(self, demand_config_path: str = "data/demand.json"):
+    def __init__(self, national_demand: Dict[str, float]):
         self.product_manager = ProductDataManager()
-        self.demand_config_path = demand_config_path
-        self.demand_data = self._load_demand_data()
-        
-    def _load_demand_data(self) -> Dict:
-        """Load demand configuration from JSON file.
-
-        A missing or unreadable file raises: the demand config drives the ABC
-        priority weights, so a moved or renamed file must fail loudly instead
-        of silently degrading every run to baked-in defaults.
-        """
-        with open(self.demand_config_path, 'r') as f:
-            return json.load(f)
+        self.national_demand = national_demand
     
     def calculate_biogenic_impact_analysis(self) -> List[ABCClassification]:
         """Calculate total biogenic carbon impact for each product"""
         results = []
         
-        for product_type, demand_volume in self.demand_data["national_demand"].items():
+        for product_type, demand_volume in self.national_demand.items():
             product_spec = self.product_manager.get_product_specification(product_type)
             
             if not product_spec:
@@ -108,7 +98,7 @@ class BiogenicCarbonABCAnalyzer:
         total_carbon_storage = sum(abs(item.total_biogenic_impact) for item in classifications)
         
         report.append(f"Total Biogenic Carbon Storage Potential: {total_carbon_storage:,.0f} kg CO₂eq")
-        report.append(f"Analysis based on national demand volumes from {self.demand_config_path}")
+        report.append("Analysis based on national demand volumes")
         report.append("")
         
         for class_name in ['A', 'B', 'C']:
@@ -178,8 +168,17 @@ class BiogenicCarbonABCAnalyzer:
         
         return "\n".join(report)
 
+def abc_priority_weights(national_demand: Dict[str, float]) -> Dict[str, float]:
+    """Production priority weight per product, from its ABC class."""
+    return {
+        item.product_type: item.priority_weight
+        for item in BiogenicCarbonABCAnalyzer(national_demand).perform_abc_classification()
+    }
+
+
 if __name__ == "__main__":
-    analyzer = BiogenicCarbonABCAnalyzer("data/demand.json")
+    with open("data/demand.json") as demand_file:
+        analyzer = BiogenicCarbonABCAnalyzer(json.load(demand_file)["national_demand"])
 
     report = analyzer.generate_abc_report()
     print(report)

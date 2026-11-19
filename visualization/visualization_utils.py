@@ -1,9 +1,57 @@
+import csv
 import logging
 import os
+from pathlib import Path
 
 import numpy as np
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from config.constants import HEATMAP_TIME_GRID_POINTS, PDF_EXPORT_SCALE
+
+# summary.csv keys of the paper's headline axes. Service is the full level, not
+# operational: the paper reports the full figure because the two coincide when
+# no_capability_lost is zero. Emissions are operational.
+SERVICE_METRIC = "service_level_full_pct"
+EMISSIONS_METRIC = "total_emissions_kgco2e"
+
+
+def read_metric_intervals(
+    summary_csv_path: Path, metrics: List[str]
+) -> Dict[str, Tuple[float, float, float]]:
+    """Read ``(mean, ci95_low, ci95_high)`` for each requested metric from one ``summary.csv``.
+
+    The file has rows ``metric,mean,stdev,ci95_low,ci95_high,count``. Raises
+    ``KeyError`` if a requested metric is absent, and ``ValueError`` if the
+    header is invalid or a requested row has blank interval values (e.g. ``count=0``).
+    """
+    wanted = set(metrics)
+    intervals: Dict[str, Tuple[float, float, float]] = {}
+    required_cols = {"metric", "mean", "ci95_low", "ci95_high"}
+    with open(summary_csv_path, "r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None or not required_cols.issubset(reader.fieldnames):
+            raise ValueError(
+                f"{summary_csv_path}: expected CSV columns {sorted(required_cols)}, "
+                f"got {reader.fieldnames}"
+            )
+        for row in reader:
+            metric = row.get("metric", "")
+            if metric not in wanted:
+                continue
+            mean_str = (row.get("mean") or "").strip()
+            low_str = (row.get("ci95_low") or "").strip()
+            high_str = (row.get("ci95_high") or "").strip()
+            if not mean_str or not low_str or not high_str:
+                raise ValueError(
+                    f"{summary_csv_path}: metric '{metric}' has blank interval values "
+                    "(degenerate count=0 row)"
+                )
+            intervals[metric] = (float(mean_str), float(low_str), float(high_str))
+    missing = wanted - intervals.keys()
+    if missing:
+        raise KeyError(
+            f"{summary_csv_path}: missing metric(s) {sorted(missing)}"
+        )
+    return intervals
 
 
 def group_results_by_scenario_and_policy(results: List[Dict]) -> Dict:
@@ -11,16 +59,7 @@ def group_results_by_scenario_and_policy(results: List[Dict]) -> Dict:
     grouped_results = {}
 
     for result in results:
-        scenario_name = result['scenario_name']
-
-        if '_push_' in scenario_name:
-            base_scenario = scenario_name.split('_push_')[0]
-        elif '_pull_' in scenario_name:
-            base_scenario = scenario_name.split('_pull_')[0]
-        else:
-            base_scenario = scenario_name
-
-        key = (base_scenario, result['inventory_policy'])
+        key = (result['base_scenario'], result['inventory_policy'])
         if key not in grouped_results:
             grouped_results[key] = []
         grouped_results[key].append(result)
@@ -31,8 +70,13 @@ def group_results_by_scenario_and_policy(results: List[Dict]) -> Dict:
     return grouped_results
 
 def create_scenario_label(result: Dict) -> str:
-    """Create a standardized scenario label from result data"""
-    return f"{result['inventory_policy']} | {result['stock_strategy']}"
+    """Create a standardized scenario label from result data."""
+    policy = result["inventory_policy"]
+    strategy = result["stock_strategy"]
+    base_scenario = result.get("base_scenario")
+    if base_scenario:
+        return f"{base_scenario} | {policy} | {strategy}"
+    return f"{policy} | {strategy}"
 
 def save_plot_files(fig, output_dir: str, filename: str, print_message: str = None):
     """Save HTML and PDF versions of a plot"""
@@ -51,10 +95,10 @@ def safe_write_image(fig, path, **kwargs):
     try:
         fig.write_image(path, **kwargs)
         return True
-    except Exception:
+    except Exception as exc:
         logging.warning(
-            f"PDF export skipped ({path}) -- Kaleido needs a Chromium runtime; "
-            "run kaleido.get_chrome_sync() once to install it"
+            f"PDF export skipped ({path}): {exc} "
+            "(if Kaleido/Chromium is missing, run kaleido.get_chrome_sync() once)"
         )
         return False
 
@@ -88,8 +132,8 @@ def last_cumulative_by_entity(history: Dict, key: str) -> Dict[str, float]:
 def extract_heatmap_matrix(history: Dict, value_selector) -> Dict:
     """Interpolate each entity's series onto a shared time grid for heatmaps.
 
-    ``value_selector(entity_data)`` returns the series to plot (or a falsy
-    value, rendered as a zero row).
+    ``value_selector(entity_data)`` returns the series to plot (or ``None`` /
+    empty, rendered as a zero row).
     """
     entities = list(history.keys())
     if not entities:
@@ -97,20 +141,28 @@ def extract_heatmap_matrix(history: Dict, value_selector) -> Dict:
 
     all_timestamps = []
     for entity_data in history.values():
-        if 'timestamps' in entity_data:
+        if 'timestamps' in entity_data and entity_data['timestamps'] is not None:
             all_timestamps.extend(entity_data['timestamps'])
 
     if not all_timestamps:
         return {'x_values': [], 'y_values': [], 'z_values': []}
 
-    time_range = np.linspace(min(all_timestamps), max(all_timestamps), HEATMAP_TIME_GRID_POINTS)
+    t_min, t_max = min(all_timestamps), max(all_timestamps)
+    if t_min == t_max:
+        time_range = np.array([t_min], dtype=float)
+    else:
+        time_range = np.linspace(t_min, t_max, HEATMAP_TIME_GRID_POINTS)
     z_matrix = []
 
     for entity in entities:
         entity_data = history[entity]
         values = value_selector(entity_data)
-        if values:
-            interpolated = np.interp(time_range, entity_data['timestamps'], values)
+        if values is not None and len(values) > 0:
+            timestamps = entity_data.get('timestamps')
+            if timestamps is None:
+                raise ValueError(f"Entity '{entity}' has heatmap values but no 'timestamps'")
+            _validate_entity_series(entity, "heatmap", timestamps, values)
+            interpolated = np.interp(time_range, timestamps, values)
             z_matrix.append(interpolated)
         else:
             z_matrix.append(np.zeros(len(time_range)))
@@ -120,10 +172,6 @@ def extract_heatmap_matrix(history: Dict, value_selector) -> Dict:
         'y_values': entities,
         'z_values': z_matrix
     }
-
-def extract_storage_data(history: Dict, metric: str) -> Dict:
-    """Extract storage utilization data for heatmap"""
-    return extract_heatmap_matrix(history, lambda entity_data: entity_data.get(metric))
 
 def extract_processor_waste_storage_data(history: Dict) -> Dict:
     """Extract waste storage utilization for processors"""
@@ -158,9 +206,8 @@ def aggregate_aligned_series(series_by_entity: Dict, series_class: str) -> Dict:
     pair. The monitor loop currently samples every entity on one shared
     cadence, so the per-entity timestamp vectors are identical and this
     alignment is a no-op — but that is an accident of the sampling schedule,
-    not a contract. Event-driven tracking (``track_processing`` is also called
-    from the treatment intake path) can introduce per-entity timestamps at any
-    time, and a plain ``{timestamp: sum}`` dict then drops each absent
+    not a contract. Event-driven tracking would introduce per-entity
+    timestamps, and a plain ``{timestamp: sum}`` dict then drops each absent
     entity's contribution, sawing the aggregate curve downward (VIZ-REVIEW T4).
 
     Gap semantics depend on what the series measures (``series_class``):

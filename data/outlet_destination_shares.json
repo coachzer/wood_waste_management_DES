@@ -1,0 +1,66 @@
+{
+    "02 01 07": {
+        "recycling": 1.0
+    },
+    "03 01 01": {
+        "recycling": 1.0
+    },
+    "03 01 05": {
+        "disposal": 0.0,
+        "energy_recovery": 0.6063,
+        "other_recovery": 0.002,
+        "recycling": 0.3917
+    },
+    "03 03 01": {
+        "energy_recovery": 0.4265,
+        "other_recovery": 0.5705,
+        "recycling": 0.0031
+    },
+    "03 03 08": {
+        "other_recovery": 0.0603,
+        "recycling": 0.9397
+    },
+    "15 01 01": {
+        "energy_recovery": 0.001,
+        "other_recovery": 0.2199,
+        "recycling": 0.7791
+    },
+    "15 01 03": {
+        "disposal": 0.0,
+        "energy_recovery": 0.0406,
+        "other_recovery": 0.0502,
+        "recycling": 0.9092
+    },
+    "17 02 01": {
+        "disposal": 0.002,
+        "energy_recovery": 0.1834,
+        "other_recovery": 0.1036,
+        "recycling": 0.711
+    },
+    "19 12 01": {
+        "disposal": 0.0,
+        "other_recovery": 0.0551,
+        "recycling": 0.9449
+    },
+    "19 12 07": {
+        "energy_recovery": 0.0416,
+        "other_recovery": 0.0006,
+        "recycling": 0.9577
+    },
+    "20 01 01": {
+        "disposal": 0.0003,
+        "energy_recovery": 0.0002,
+        "other_recovery": 0.0463,
+        "recycling": 0.9532
+    },
+    "20 01 38": {
+        "energy_recovery": 0.0376,
+        "other_recovery": 0.0858,
+        "recycling": 0.8766
+    },
+    "20 03 07": {
+        "disposal": 0.6562,
+        "other_recovery": 0.2766,
+        "recycling": 0.0672
+    }
+}

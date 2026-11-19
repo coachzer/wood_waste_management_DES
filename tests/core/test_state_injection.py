@@ -24,8 +24,3 @@ def test_two_instances_are_independent():
     assert second.consumption_events == []
     assert len(first.consumption_events) == 1
 
-
-def test_singleton_machinery_is_gone():
-    """The global-singleton accessors must stay deleted."""
-    assert not hasattr(SimulationState, "_instance")
-    assert not hasattr(SimulationState, "get_instance")

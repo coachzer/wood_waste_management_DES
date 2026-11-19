@@ -20,13 +20,14 @@ from config.constants import (
     RECOVERING_BASE_EFFICIENCY,
     SIMULATION_DURATION,
 )
-from core.collector import CollectorCompany
 from core.facility_builder import FacilityBuilder
 from core.kanban_manager import KanbanManager
-from core.treatment import TreatmentOperator
-from models.enums import EntityStatus, InventoryPolicy, OutputType, StockStrategy, WasteType
+from core.transport_manager import PointToPointTransport
+from models.enums import EntityStatus, InventoryPolicy, OutputType, RegionType, StockStrategy, WasteType
 from models.state import SimulationState
+from tests.core.factories import deterministic_scenario, make_collector, make_treatment
 from utils.capacity_utils import handle_storage_event
+from models.transformations import volumetric_yield
 
 CONSTRUCTION = WasteType.CONSTRUCTION_WOOD_17_02_01
 TREATMENT_STORAGE_M3 = 24_000.0
@@ -40,7 +41,6 @@ def _noop_monitor():
     return SimpleNamespace(
         update_entity_costs=noop,
         record_emission=noop,
-        record_entity_status=noop,
         track_processing=noop,
         track_expansion=noop,
         record_landfill=noop,
@@ -48,40 +48,30 @@ def _noop_monitor():
 
 
 def _treatment(env, inventory_policy=InventoryPolicy.PUSH, state=None, kanban_manager=None):
-    return TreatmentOperator(
-        env=env,
-        name="proc-1",
+    return make_treatment(
+        env,
+        _noop_monitor(),
         processing_time=PROCESSING_TIME_DAYS,
         waste_storage_capacity=TREATMENT_STORAGE_M3,
-        energy_consumption=100.0,
-        environmental_impact=1.8,
-        operational_costs=50.0,
-        region="podravska",
-        waste_monitor=_noop_monitor(),
-        kanban_manager=kanban_manager,
+        kanban_manager=kanban_manager or KanbanManager(),
         finished_goods_capacity={OutputType.OSB: 10_000.0, OutputType.PARTICLE_BOARD: 10_000.0},
         initial_waste_storage={CONSTRUCTION: 20_000.0},
-        stock_strategy=StockStrategy.REORDER_50,
+        order_share_by_waste_type={CONSTRUCTION: 1.0},
+        order_up_to_level_m3=TREATMENT_STORAGE_M3,
         inventory_policy=inventory_policy,
         state=state or SimulationState(),
     )
 
 
 def _collector(env, vehicle_capacity=None):
-    return CollectorCompany(
-        env=env,
+    return make_collector(
+        env,
+        _noop_monitor(),
         name="col-1",
-        waste_types=[CONSTRUCTION],
         collection_capacity=COLLECTION_CAPACITY_M3,
         collection_frequency=COLLECTION_FREQUENCY_DAYS,
         transport_cost=50.0,
-        efficiency=1.0,
-        region="podravska",
         vehicle_capacity=vehicle_capacity,
-        waste_monitor=_noop_monitor(),
-        inventory_policy=InventoryPolicy.PUSH,
-        stock_strategy=StockStrategy.REORDER_50,
-        state=SimulationState(),
     )
 
 
@@ -105,38 +95,39 @@ def test_treatment_annual_capacity_equals_data_period_capacity(monkeypatch, tick
     expected_annual = (
         TREATMENT_STORAGE_M3 * PROCESSING_CAPACITY_FRACTION * SIMULATION_DURATION / PROCESSING_TIME_DAYS
     )
-    assert operator.processing_capacity * SIMULATION_DURATION / tick_days == pytest.approx(expected_annual)
+    assert operator.processing_capacity_per_tick_m3 * SIMULATION_DURATION / tick_days == pytest.approx(expected_annual)
 
 
 def test_treatment_capacity_unchanged_by_storage_expansion():
     """An EXPANSION_SIZE_M3 storage expansion does not raise processing capacity.
 
     Mutation check (red): derive processing capacity from the live
-    ``waste_storage_capacity`` in ``_apply_status_throughput_effects`` ->
+    ``waste_storage_capacity`` in the per-tick throughput update ->
     capacity grows by 500 * fraction / 24 per expansion.
     """
-    operator = _treatment(simpy.Environment())
-    per_tick_before = operator.processing_capacity
+    env = simpy.Environment()
+    operator = _treatment(env)
+    per_tick_before = operator.processing_capacity_per_tick_m3
 
     _cost, action = handle_storage_event(operator, {CONSTRUCTION: 10_000.0})
-    operator._apply_status_throughput_effects()
+    env.run(until=OPERATING_TICK_DAYS / 2)
 
     assert action == "expand_storage"
     assert operator.waste_storage_capacity == TREATMENT_STORAGE_M3 + EXPANSION_SIZE_M3
-    assert operator.processing_capacity == pytest.approx(per_tick_before)
+    assert operator.processing_capacity_per_tick_m3 == pytest.approx(per_tick_before)
 
 
 def test_treatment_recovering_ramp_scales_the_per_tick_capacity():
     """RECOVERING runs at efficiency x the per-tick (not per-24-day) capacity."""
     operator = _treatment(simpy.Environment())
-    per_tick = operator.initial_processing_capacity
+    per_tick = operator.initial_processing_capacity_per_tick_m3
     operator.status = EntityStatus.RECOVERING
     operator.recovery_progress = 0.5
 
     operator._apply_status_throughput_effects()
 
     ramp_efficiency = RECOVERING_BASE_EFFICIENCY + (1.0 - RECOVERING_BASE_EFFICIENCY) * 0.5
-    assert operator.processing_capacity == pytest.approx(per_tick * ramp_efficiency)
+    assert operator.processing_capacity_per_tick_m3 == pytest.approx(per_tick * ramp_efficiency)
 
 
 def test_collector_annual_capacity_equals_data_period_capacity():
@@ -147,7 +138,7 @@ def test_collector_annual_capacity_equals_data_period_capacity():
     """
     collector = _collector(simpy.Environment())
 
-    assert _annual(collector.initial_collection_capacity) == pytest.approx(
+    assert _annual(collector.initial_collection_capacity_per_tick_m3) == pytest.approx(
         COLLECTION_CAPACITY_M3 * SIMULATION_DURATION / COLLECTION_FREQUENCY_DAYS
     )
     assert collector.collection_center.waste_storage_capacity == 2 * COLLECTION_CAPACITY_M3
@@ -163,20 +154,27 @@ def test_builder_sets_vehicle_capacity_explicitly_to_one_tick_of_collection():
     raw 12-day volume.
     """
     env = simpy.Environment()
+    state = SimulationState()
     builder = FacilityBuilder(
-        env, facility_manager=None, waste_monitor=_noop_monitor(), state=SimulationState(), seed=1
+        env,
+        facility_manager=None,
+        waste_monitor=_noop_monitor(),
+        scenario=deterministic_scenario(),
+        transport_manager=PointToPointTransport(state=state, road_circuity_mean=1.0, env=env),
+        kanban_manager=KanbanManager(),
+        state=state,
+        seed=1,
+        abc_priority_map={},
     )
     col_data = SimpleNamespace(
         id="col-1",
-        waste_types=[CONSTRUCTION.value],
+        waste_types=[CONSTRUCTION],
         collection_capacity=COLLECTION_CAPACITY_M3,
         collection_frequency=COLLECTION_FREQUENCY_DAYS,
         transport_cost=50.0,
         efficiency=1.0,
         availability=True,
     )
-    from models.enums import RegionType
-
     collector = builder.create_collector(
         col_data, RegionType.PODRAVSKA, StockStrategy.REORDER_50, InventoryPolicy.PUSH
     )
@@ -204,9 +202,9 @@ def test_treatment_production_and_reorder_polling_run_every_tick():
 
     def record_reorder_poll():
         reorder_times.append(env.now)
-        return False
+        return {}
 
-    operator._should_trigger_collection_based_on_strategy = record_reorder_poll
+    operator._order_volumes_by_waste_type = record_reorder_poll
 
     env.run(until=10)
 
@@ -238,23 +236,40 @@ def test_collector_decides_every_tick_without_jitter():
 # --- PULL Production Backlog --------------------------------------------------
 
 
-def _pull_operator_with_one_week_of_osb_demand(env, attempted):
+def _pull_operator_at_target(env):
+    """A PULL operator whose finished goods are full, so its backlog is empty."""
     state = SimulationState()
     kanban_manager = KanbanManager()
     operator = _treatment(
         env, inventory_policy=InventoryPolicy.PULL, state=state, kanban_manager=kanban_manager
     )
+    for output_type, capacity in operator.finished_goods.capacity.items():
+        operator.finished_goods.current_storage[output_type] = capacity
+    operator.pull_production_backlog_m3_by_product = dict.fromkeys(
+        operator.pull_production_backlog_m3_by_product, 0.0
+    )
+    return operator, state, kanban_manager
+
+
+def _sell_osb(operator, state, kanban_manager, attempted, consumed):
+    """One market tick at day 0, as ``_market_consumption_process`` records it."""
+    operator.finished_goods.current_storage[OutputType.OSB] -= consumed
     state.record_consumption_event(
         operator_name=operator.name,
         product="osb",
         attempted=attempted,
-        consumed=0.0,
-        reason="stockout",
+        consumed=consumed,
+        reason="stockout" if consumed < attempted else None,
         timestamp=0.0,
     )
     kanban_manager.add_signal(
         waste_type=None, timestamp=0.0, volume=attempted, source_id=operator.name, source_type="market"
     )
+
+
+def _pull_operator_with_one_week_of_osb_demand(env, attempted):
+    operator, state, kanban_manager = _pull_operator_at_target(env)
+    _sell_osb(operator, state, kanban_manager, attempted, consumed=attempted)
     return operator, state
 
 
@@ -266,12 +281,12 @@ def test_pull_week_of_demand_on_one_day_is_produced_over_later_ticks():
     Event, so Lost Sales and Service Level stay defined by the market log.
 
     Mutation check (red): zero the backlog after each tick's production
-    (``self.pull_production_backlog[product] = 0.0``) -> only day 0's output.
+    (``self.pull_production_backlog_m3_by_product[product] = 0.0``) -> only day 0's output.
     """
     env = simpy.Environment()
     one_tick_output = (
         TREATMENT_STORAGE_M3 * PROCESSING_CAPACITY_FRACTION * OPERATING_TICK_DAYS / PROCESSING_TIME_DAYS
-    ) * 0.98  # construction wood -> OSB conversion efficiency
+    ) * volumetric_yield(0.98, CONSTRUCTION, OutputType.OSB)
     attempted = 4.5 * one_tick_output
     operator, state = _pull_operator_with_one_week_of_osb_demand(env, attempted)
 
@@ -281,7 +296,7 @@ def test_pull_week_of_demand_on_one_day_is_produced_over_later_ticks():
 
     assert produced_on_signal_day == pytest.approx(one_tick_output)
     assert operator.product_volumes["osb"] == pytest.approx(attempted)
-    assert operator.pull_production_backlog["osb"] == pytest.approx(0.0, abs=1e-6)
+    assert operator.pull_production_backlog_m3_by_product["osb"] == pytest.approx(0.0, abs=1e-6)
     assert len(state.consumption_events) == 1
 
 
@@ -309,3 +324,34 @@ def test_pull_operator_absorbs_market_signal_while_failed():
 
     env.run(until=6)
     assert operator.product_volumes["osb"] == pytest.approx(500.0)
+
+
+def test_pull_backlog_starts_at_the_finished_goods_gap():
+    """Finished goods start half-full; the backlog holds the other half (ADR 0029).
+
+    Mutation check (red): start the backlog empty -> nothing is produced without a sale.
+    """
+    env = simpy.Environment()
+    operator = _treatment(env, inventory_policy=InventoryPolicy.PULL, kanban_manager=KanbanManager())
+
+    env.run(until=60)
+
+    for output_type, capacity in operator.finished_goods.capacity.items():
+        assert operator.finished_goods.current_storage[output_type] == pytest.approx(capacity)
+        assert operator.pull_production_backlog_m3_by_product[output_type.value] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_pull_backlog_replaces_what_was_sold_not_what_was_asked():
+    """A lost sale does not come back, so only the consumed volume is remade (ADR 0029).
+
+    Mutation check (red): add ``event["attempted"]`` in ``_absorb_market_signals`` ->
+    the 300 m3 that was never sold sticks in the backlog.
+    """
+    env = simpy.Environment()
+    operator, state, kanban_manager = _pull_operator_at_target(env)
+    _sell_osb(operator, state, kanban_manager, attempted=500.0, consumed=200.0)
+
+    env.run(until=14)
+
+    assert operator.product_volumes["osb"] == pytest.approx(200.0)
+    assert operator.pull_production_backlog_m3_by_product["osb"] == pytest.approx(0.0, abs=1e-6)

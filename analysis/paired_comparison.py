@@ -117,9 +117,9 @@ def build_paired_report(
     combo-pair comparisons for that one metric), so the family-wise error rate
     is controlled at ``alpha`` for each metric's question independently.
 
-    When ``metrics`` is left at its default, the discovered ``bullwhip.*`` keys
-    are appended after the curated set so the namespace flows through without
-    wiring (issue 07). An explicit ``metrics`` list is honored verbatim.
+    When ``metrics`` is left at its default, every discovered ``{namespace}.*``
+    key is appended after the curated set so new namespaces flow through
+    without wiring (issue 07). An explicit ``metrics`` list is honored verbatim.
     """
     combos = load_combo_kpis(scenario_dir)
     if metrics is None:
@@ -146,17 +146,13 @@ def build_paired_report(
     return rows
 
 
-def write_paired_comparison_report(
-    scenario_dir: Path,
-    metrics: Optional[List[str]] = None,
-    alpha: float = 0.05,
-) -> Optional[Path]:
+def write_paired_comparison_report(scenario_dir: Path, alpha: float = 0.05) -> Optional[Path]:
     """Write ``paired_comparison.csv`` for a scenario and return its path.
 
     Returns ``None`` when there is nothing to compare (no run files, or every
     combo has fewer than two shared replications).
     """
-    rows = build_paired_report(scenario_dir, metrics=metrics, alpha=alpha)
+    rows = build_paired_report(scenario_dir, alpha=alpha)
     if not rows:
         return None
 

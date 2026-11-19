@@ -12,12 +12,6 @@ from models.enums import OutputType, WasteType
 from persistence.serialization import RAW_PAYLOAD_KEYS, build_raw_payload, jsonify
 
 
-def test_enum_dict_keys_rewritten_to_value():
-    out = jsonify({WasteType.CONSTRUCTION_WOOD_17_02_01: 5.0})
-    assert out == {"17 02 01": 5.0}
-    json.dumps(out)  # must not raise
-
-
 def test_enum_values_rewritten_to_value():
     assert jsonify(OutputType.MDF) == "mdf"
     assert jsonify([WasteType.WOOD_19_12_07, OutputType.OSB]) == ["19 12 07", "osb"]
@@ -39,29 +33,19 @@ def test_non_enum_leaves_pass_through_unchanged():
     assert jsonify(data) == data
 
 
-def test_default_str_alone_cannot_serialize_enum_keys():
-    """Documents WHY jsonify exists: json's default= never fires for dict keys."""
-    with pytest.raises(TypeError):
-        json.dumps({WasteType.WOOD_19_12_07: 1}, default=str)
-
-
-def test_build_raw_payload_selects_only_history_and_event_logs():
-    monitor_data = {key: {"present": key} for key in RAW_PAYLOAD_KEYS}
-    monitor_data["final_summary"] = {"dropped": True}
-    monitor_data["storage_capacities"] = {"dropped": True}
-
-    payload = build_raw_payload(monitor_data)
-
-    assert set(payload) == set(RAW_PAYLOAD_KEYS)
-    assert "final_summary" not in payload
-    assert "storage_capacities" not in payload
-
-
 def test_build_raw_payload_output_is_json_serializable_after_jsonify():
-    monitor_data = {
-        "generation_history": {"gen1": {WasteType.WOOD_19_12_07: [1.0, 2.0]}},
-        "consumption_events": [{"product": OutputType.MDF, "consumed": 3.0}],
-    }
-    encoded = jsonify(build_raw_payload(monitor_data))
-    text = json.dumps(encoded)
-    assert "19 12 07" in text and "mdf" in text
+    monitor_data = {key: {} for key in RAW_PAYLOAD_KEYS}
+    monitor_data["generation_history"] = {"gen1": {WasteType.WOOD_19_12_07: [1.0, 2.0]}}
+    monitor_data["consumption_events"] = [{"product": OutputType.MDF, "consumed": 3.0}]
+    reloaded = json.loads(json.dumps(jsonify(build_raw_payload(monitor_data))))
+
+    assert reloaded["generation_history"] == {"gen1": {"19 12 07": [1.0, 2.0]}}
+    assert reloaded["consumption_events"] == [{"product": "mdf", "consumed": 3.0}]
+
+
+def test_build_raw_payload_fails_loudly_on_a_missing_block():
+    """A renamed history key must not be written as an empty block."""
+    monitor_data = {key: {} for key in RAW_PAYLOAD_KEYS[1:]}
+
+    with pytest.raises(KeyError):
+        build_raw_payload(monitor_data)

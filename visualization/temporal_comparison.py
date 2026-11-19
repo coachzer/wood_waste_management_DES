@@ -1,15 +1,12 @@
+import math
 import os
 import plotly.graph_objects as go
 import plotly.subplots as sp
 import numpy as np
 from typing import Dict, List
-from config.constants import (
-    FRONTIER_FIGURE_HEIGHT_PX,
-    FRONTIER_FIGURE_WIDTH_PX,
-    POLICY_COLORS,
-    STRATEGY_SYMBOLS,
-)
-from instrumentation.history_store import total_emissions_kgco2e
+from config.constants import FRONTIER_FIGURE_HEIGHT_PX, FRONTIER_FIGURE_WIDTH_PX
+from visualization.figure_style import POLICY_COLORS, STRATEGY_SYMBOLS
+from instrumentation.history_store import EMISSION_KINDS, total_emissions_kgco2e
 from .visualization_utils import (
     aggregate_collection_data,
     aggregate_generation_data,
@@ -36,10 +33,6 @@ def create_temporal_comparisons(results: List[Dict], output_dir: str):
     _create_efficiency_frontier_analysis(results, pareto_dir)
     _create_entity_status_view(results, temp_dir)
 
-def create_output_directory(output_dir: str):
-    """Create output directory if it doesn't exist"""
-    os.makedirs(output_dir, exist_ok=True)
-
 def extract_total_costs_from_monitor_data(monitor_data: Dict) -> Dict[str, float]:
     """Extract and aggregate total costs from all history sources in monitor data
 
@@ -54,9 +47,9 @@ def extract_total_costs_from_monitor_data(monitor_data: Dict) -> Dict[str, float
     def process_cost_data(history_dict: Dict, cost_key: str = 'total_costs'):
         for entity_data in history_dict.values():
             timestamps = entity_data.get('timestamps', [])
-            if cost_key == 'operational.total_costs':
-                operational = entity_data.get('operational', {})
-                total_costs = operational.get('total_costs', [])
+            if '.' in cost_key:
+                parent_key, child_key = cost_key.split('.', 1)
+                total_costs = entity_data.get(parent_key, {}).get(child_key, [])
             else:
                 total_costs = entity_data.get(cost_key, [])
             
@@ -64,8 +57,11 @@ def extract_total_costs_from_monitor_data(monitor_data: Dict) -> Dict[str, float
                 if i < len(total_costs):
                     all_costs_by_time[timestamp] = all_costs_by_time.get(timestamp, 0) + total_costs[i]
     
+    process_cost_data(monitor_data.get('generation_history', {}), 'holding_costs')
     process_cost_data(monitor_data.get('collection_history', {}))
+    process_cost_data(monitor_data.get('collection_history', {}), 'holding_costs')
     process_cost_data(monitor_data.get('processing_history', {}), 'operational.total_costs')
+    process_cost_data(monitor_data.get('processing_history', {}), 'operational.holding_costs')
     
     event_history = monitor_data.get('event_history', {})
     if 'system_events' in event_history:
@@ -145,14 +141,6 @@ def extract_environmental_impacts_by_category(monitor_data: Dict, category: str)
     
     return all_impacts_by_time
 
-def calculate_total_environmental_impact(monitor_data: Dict) -> float:
-    """Calculate total environmental impact across all categories and entities"""
-    return total_emissions_kgco2e(monitor_data.get('environmental_history', {}))
-
-def get_scenario_colors_and_symbols():
-    """Return the shared theme mappings: color per policy, symbol per strategy"""
-    return POLICY_COLORS, STRATEGY_SYMBOLS
-
 _METRIC_COMPARISON_SPECS = [
     {
         'subdir': "generation",
@@ -179,6 +167,7 @@ _METRIC_COMPARISON_SPECS = [
         'history_key': 'collection_history',
         'aggregate': calculate_average_efficiency,
         'value_key': 'efficiency',
+        'scale': 100.0,
         'title': "Collection Efficiency Over Time - Scenario Comparison",
         'y_title': "Average Efficiency (%)",
         'filename': "collection_efficiency_comparison",
@@ -189,6 +178,7 @@ _METRIC_COMPARISON_SPECS = [
         'history_key': 'generation_history',
         'aggregate': calculate_average_efficiency,
         'value_key': 'efficiency',
+        'scale': 100.0,
         'title': "Generation Efficiency Over Time - Scenario Comparison",
         'y_title': "Average Efficiency (%)",
         'filename': "generation_efficiency_comparison",
@@ -209,15 +199,21 @@ _METRIC_COMPARISON_SPECS = [
 def _create_metric_comparison(results: List[Dict], output_dir: str, spec: Dict):
     """Compare one aggregated metric across scenarios over time"""
     fig = create_basic_time_series_plot(spec['title'], "Time", spec['y_title'])
+    scale = spec.get('scale', 1.0)
 
     for result in results:
         history = result['monitor_data'][spec['history_key']]
         data = spec['aggregate'](history)
         if data['timestamps']:
+            y_values = (
+                [val * scale for val in data[spec['value_key']]]
+                if scale != 1.0
+                else data[spec['value_key']]
+            )
             add_scenario_trace(
                 fig,
                 data['timestamps'],
-                data[spec['value_key']],
+                y_values,
                 result['scenario_name']
             )
 
@@ -243,14 +239,10 @@ def _create_cost_comparison(results: List[Dict], output_dir: str):
 
 def _create_environmental_impact_comparison(results: List[Dict], output_dir: str):
     """Compare environmental impacts across scenarios over time"""
-    create_output_directory(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
     
-    impact_categories = {
-        'carbon_emissions': 'Carbon Emissions',
-        'transport_emissions': 'Transport Emissions', 
-        'landfill_emissions': 'Landfill Emissions',
-        'total_impact': 'Total Environmental Impact'
-    }
+    impact_categories = {kind: kind.replace('_', ' ').title() for kind in EMISSION_KINDS}
+    impact_categories['total_impact'] = 'Total Environmental Impact'
     
     for category, title in impact_categories.items():
         fig = create_basic_time_series_plot(
@@ -275,26 +267,22 @@ def _create_environmental_breakdown_comparison(results: List[Dict], output_dir: 
     os.makedirs(output_dir, exist_ok=True)
 
     scenario_labels = []
-    impact_data = {
-        'carbon_emissions': [],
-        'transport_emissions': [], 
-        'landfill_emissions': []
-    }
+    impact_data = {kind: [] for kind in EMISSION_KINDS}
 
     for result in results:
         monitor_data = result['monitor_data']
         scenario_labels.append(create_scenario_label(result))
         environmental_history = monitor_data.get('environmental_history', {})
 
-        totals = {'carbon_emissions': 0, 'transport_emissions': 0, 'landfill_emissions': 0}
+        totals = {kind: 0 for kind in EMISSION_KINDS}
 
         for entity_data in environmental_history.values():
-            for category in totals.keys():
+            for category in EMISSION_KINDS:
                 impacts = entity_data.get(category, [])
                 if impacts:
                     totals[category] += sum(impacts)
 
-        for category in totals.keys():
+        for category in EMISSION_KINDS:
             impact_data[category].append(totals[category])
 
     fig = go.Figure()
@@ -320,7 +308,7 @@ def _create_environmental_breakdown_comparison(results: List[Dict], output_dir: 
 
 def _create_efficiency_frontier_analysis(results: List[Dict], output_dir: str):
     """Create efficiency frontier analysis"""
-    create_output_directory(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
 
     scenario_data = _extract_efficiency_metrics(results)
     fig = _create_efficiency_subplot_figure()
@@ -402,7 +390,7 @@ def _extract_efficiency_metrics(results: List[Dict]) -> List[Dict]:
         all_costs_by_time = extract_total_costs_from_monitor_data(monitor_data)
         total_cost = sum(all_costs_by_time.values()) if all_costs_by_time else 0
         
-        total_environmental_impact = calculate_total_environmental_impact(monitor_data)
+        total_environmental_impact = total_emissions_kgco2e(monitor_data.get('environmental_history', {}))
         
         collection_metrics = _calculate_collection_metrics(monitor_data)
         processing_metrics = _calculate_processing_metrics(monitor_data, collection_metrics['total_collected'])
@@ -425,14 +413,21 @@ def _extract_efficiency_metrics(results: List[Dict]) -> List[Dict]:
 
 def _calculate_collection_metrics(monitor_data: Dict) -> Dict:
     """Calculate collection efficiency metrics"""
+    generation_history = monitor_data.get('generation_history', {})
     total_generated = sum(
-        last_cumulative_by_entity(monitor_data.get('generation_history', {}), 'total_generated').values()
+        last_cumulative_by_entity(generation_history, 'total_potential_generated').values()
     )
+    total_outlet = sum(
+        last_cumulative_by_entity(generation_history, 'total_outlet').values()
+    )
+    treatable_potential = total_generated - total_outlet
     total_collected = sum(
         last_cumulative_by_entity(monitor_data.get('collection_history', {}), 'collected_volumes').values()
     )
 
-    collection_efficiency = (total_collected / total_generated * 100) if total_generated > 0 else 0
+    collection_efficiency = (
+        (total_collected / treatable_potential * 100) if treatable_potential > 0 else 0
+    )
 
     return {
         'total_generated': total_generated,
@@ -474,13 +469,13 @@ def _create_efficiency_subplot_figure():
 
 def _add_efficiency_scatter_plots(fig, scenario_data: List[Dict]):
     """Add scatter plots with consistent styling"""
-    colors, symbols = get_scenario_colors_and_symbols()
+    colors, symbols = POLICY_COLORS, STRATEGY_SYMBOLS
 
     subplot_configs = [
         {'x': 'total_cost', 'y': 'total_environmental_impact', 'row': 1, 'col': 1, 
-         'hover': "Cost: €%{x:,.0f}<br>Impact: %{y:,.0f} kg CO₂e"},
+         'hover': "Cost: %{x:,.0f}<br>Impact: %{y:,.0f} kg CO₂e"},
         {'x': 'total_cost', 'y': 'collection_efficiency', 'row': 1, 'col': 2,
-         'hover': "Cost: €%{x:,.0f}<br>Efficiency: %{y:.1f}%"},
+         'hover': "Cost: %{x:,.0f}<br>Efficiency: %{y:.1f}%"},
         {'x': 'total_environmental_impact', 'y': 'processing_efficiency', 'row': 2, 'col': 1,
          'hover': "Impact: %{x:,.0f} kg CO₂e<br>Efficiency: %{y:.1f}%"}
     ]
@@ -493,8 +488,8 @@ def _add_efficiency_scatter_plots(fig, scenario_data: List[Dict]):
                     y=[data[config["y"]]],
                     mode="markers",
                     marker={
-                        "color": colors.get(data["inventory_policy"], "#2ca02c"),
-                        "symbol": symbols.get(data["stock_strategy"], "circle"),
+                        "color": colors[data["inventory_policy"]],
+                        "symbol": symbols[data["stock_strategy"]],
                         "size": 8,
                         "line": {"width": 1, "color": "white"},
                     },
@@ -524,51 +519,58 @@ def _update_all_subplot_styling(fig):
         "tickfont": {"size": 10},
     }
 
-    fig.update_xaxes(title_text="Total Cost (€)", row=1, col=1, **axis_style)
-    fig.update_xaxes(title_text="Total Cost (€)", row=1, col=2, **axis_style)
+    fig.update_xaxes(title_text="Total Cost", row=1, col=1, **axis_style)
+    fig.update_xaxes(title_text="Total Cost", row=1, col=2, **axis_style)
     fig.update_xaxes(
         title_text="Environmental Impact (kg CO₂e)", row=2, col=1, **axis_style
     )
-    fig.update_xaxes(title_text="Strategy", row=2, col=2, **axis_style, tickangle=45)
+    fig.update_xaxes(title_text="Scenario", row=2, col=2, **axis_style, tickangle=45)
 
     fig.update_yaxes(
         title_text="Environmental Impact<br>(kg CO₂e)", row=1, col=1, **axis_style
     )
     fig.update_yaxes(title_text="Collection Efficiency (%)", row=1, col=2, **axis_style)
     fig.update_yaxes(title_text="Processing Efficiency (%)", row=2, col=1, **axis_style)
-    fig.update_yaxes(title_text="Cost per m³ (€/m³)", row=2, col=2, **axis_style)
+    fig.update_yaxes(title_text="Cost/m³", row=2, col=2, **axis_style)
 
 
 def _add_cost_efficiency_bar_chart(fig, scenario_data: List[Dict]):
     """Add bar chart"""
-    colors, _ = get_scenario_colors_and_symbols()
+    colors = POLICY_COLORS
 
     sorted_data = sorted(
         scenario_data,
-        key=lambda x: x["cost_per_m3"] if x["cost_per_m3"] != float("inf") else 999999,
+        key=lambda x: (math.isinf(x["cost_per_m3"]), x["cost_per_m3"]),
     )
 
-    scenario_names = [
-        data["stock_strategy"].replace("_", " ").title() for data in sorted_data
-    ]
+    scenario_names = [data["scenario"] for data in sorted_data]
     cost_efficiencies = [
-        data["cost_per_m3"] if data["cost_per_m3"] != float("inf") else 0
+        None if math.isinf(data["cost_per_m3"]) else data["cost_per_m3"]
         for data in sorted_data
     ]
-    bar_colors = [
-        colors.get(data["inventory_policy"], "#2ca02c") for data in sorted_data
+    custom_labels = [
+        "N/A" if math.isinf(data["cost_per_m3"]) else f"{data['cost_per_m3']:,.2f}"
+        for data in sorted_data
     ]
+    bar_text = [
+        "N/A" if math.isinf(data["cost_per_m3"]) else ""
+        for data in sorted_data
+    ]
+    bar_colors = [colors[data["inventory_policy"]] for data in sorted_data]
 
     fig.add_trace(
         go.Bar(
             x=scenario_names,
             y=cost_efficiencies,
+            text=bar_text,
+            textposition="auto",
+            customdata=custom_labels,
             marker={
                 "color": bar_colors,
                 "line": {"color": "white", "width": 1},
             },
             showlegend=False,
-            hovertemplate="<b>%{x}</b><br>Cost per m³: €%{y:,.2f}<extra></extra>",
+            hovertemplate="<b>%{x}</b><br>Cost/m³: %{customdata}<extra></extra>",
         ),
         row=2,
         col=2,
@@ -621,16 +623,20 @@ def _create_entity_status_view(results: List[Dict], output_dir: str):
 
         for config in entity_configs:
             num_strategies = len(results_group)
+            vertical_spacing = (
+                min(0.12, 0.8 / max(1, num_strategies - 1)) if num_strategies > 1 else 0.0
+            )
 
             fig = sp.make_subplots(
                 rows=num_strategies, 
                 cols=1,
                 subplot_titles=[f"Stock Strategy: {result['stock_strategy']}" for result in results_group],
-                vertical_spacing=0.12,  
+                vertical_spacing=vertical_spacing,
                 specs=[[{"secondary_y": False}] for _ in range(num_strategies)]
             )
 
-            max_entities = 0  
+            max_entities = 0
+            seen_legend_keys = set()
 
             for subplot_idx, result in enumerate(results_group, 1):
                 monitor_data = result['monitor_data']
@@ -640,8 +646,15 @@ def _create_entity_status_view(results: List[Dict], output_dir: str):
                 entity_positions = {entity: idx for idx, entity in enumerate(entity_list)}
                 max_entities = max(max_entities, len(entity_list))
 
-                if not entity_list:  
+                if not entity_list:
                     continue
+
+                fig.update_yaxes(
+                    tickvals=list(range(len(entity_list))),
+                    ticktext=entity_list,
+                    row=subplot_idx,
+                    col=1,
+                )
 
                 for entity_name, data in history_dict.items():
                     if 'status' not in data or not data['status']:
@@ -665,19 +678,25 @@ def _create_entity_status_view(results: List[Dict], output_dir: str):
                         segments.append((start_idx, len(statuses), current_status))
 
                     for seg_start, seg_end, seg_status in segments:
-                        seg_timestamps = timestamps[seg_start:seg_end]
+                        # Extend to next timestamp to bridge transition gaps; lines+markers keeps 1-tick segments visible.
+                        slice_end = min(seg_end + 1, len(timestamps))
+                        seg_timestamps = timestamps[seg_start:slice_end]
                         seg_y = [y_position] * len(seg_timestamps)
+                        status_label = get_status_label(seg_status)
+                        show_legend = status_label not in seen_legend_keys
+                        seen_legend_keys.add(status_label)
 
                         fig.add_trace(
                             go.Scatter(
                                 x=seg_timestamps,
                                 y=seg_y,
-                                mode='lines',
+                                mode='lines+markers',
                                 line={'color': get_status_color(seg_status), 'width': 4},
-                                name=f"{entity_name} - {get_status_label(seg_status)}",
-                                legendgroup=f"{subplot_idx}_{entity_name}",
-                                showlegend=(subplot_idx == 1),  
-                                hovertemplate=f"Entity: {entity_name}<br>Status: {get_status_label(seg_status)}<br>Time: %{{x}}<extra></extra>"
+                                marker={'color': get_status_color(seg_status), 'size': 5},
+                                name=status_label,
+                                legendgroup=status_label,
+                                showlegend=show_legend,
+                                hovertemplate=f"Entity: {entity_name}<br>Status: {status_label}<br>Time: %{{x}}<extra></extra>"
                             ),
                             row=subplot_idx, col=1
                         )

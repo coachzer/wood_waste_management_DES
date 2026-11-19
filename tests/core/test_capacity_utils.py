@@ -14,20 +14,17 @@ import pytest
 
 from models.enums import WasteType
 from models.state import SimulationState
-from utils.capacity_utils import check_storage_capacity, handle_storage_event
+from utils.capacity_utils import check_storage_capacity, handle_storage_event, store_with_overflow
 
 SAWDUST = WasteType.SAWDUST_SHAVINGS_CUTTINGS_WOOD_03_01_05
 PAPER = WasteType.PAPER_PACKAGING_15_01_01
 
 
-def make_entity(state, monitor=False, capacity=1000.0, name="collector-1"):
+def make_entity(state, monitor=None, capacity=1000.0, name="collector-1"):
     """A storage-bearing entity stand-in handle_storage_event can act on.
 
     ``monitor`` is the shared ``noop_waste_monitor`` stub so the recording
-    calls have somewhere to go. ``monitor=False`` omits the ``waste_monitor``
-    attribute entirely (not merely None) -- the guard-asymmetry regression
-    below needs ``hasattr`` itself to be false, the shape a real entity never
-    has but the guard must survive.
+    calls have somewhere to go, or None for a monitor-less entity.
     """
     entity = SimpleNamespace(
         name=name,
@@ -37,9 +34,8 @@ def make_entity(state, monitor=False, capacity=1000.0, name="collector-1"):
         waste_storage_capacity=capacity,
         expansion_count=0,
         landfill_count=0,
+        waste_monitor=monitor,
     )
-    if monitor is not False:
-        entity.waste_monitor = monitor
     return entity
 
 
@@ -71,13 +67,10 @@ def test_landfill_cost_is_per_type_density_weighted(noop_waste_monitor):
     """Landfill cost weights each waste type by its OWN density, not a flat 0.6
     (ADR 0013). 100 m³ of PAPER (600 kg/m³) costs 3x 100 m³ of SAWDUST (200 kg/m³).
 
-    Non-vacuity: the retired flat-density formula would charge the whole 200 m³ at
+    The retired flat-density formula would charge the whole 200 m³ at
     0.6 t/m³ = 200*0.6*46 = 5520 USD; the per-type formula charges
-    100*0.6*46 + 100*0.2*46 = 3680 USD, so the assertion fails under the old code.
-    Expected is computed from WASTE_DENSITIES so it is not a hand-pinned literal.
+    100*0.6*46 + 100*0.2*46 = 3680 USD.
     """
-    from config.constants import KILOGRAMS_PER_TONNE, LANDFILL_COST_PER_TONNE_USD, WASTE_DENSITIES
-
     state = SimulationState()
     entity = make_entity(state, noop_waste_monitor)
 
@@ -85,14 +78,8 @@ def test_landfill_cost_is_per_type_density_weighted(noop_waste_monitor):
         entity, {PAPER: 100.0, SAWDUST: 100.0}, force_landfill=True
     )
 
-    expected = sum(
-        volume * (WASTE_DENSITIES[waste_type] / KILOGRAMS_PER_TONNE)
-        * LANDFILL_COST_PER_TONNE_USD
-        for waste_type, volume in {PAPER: 100.0, SAWDUST: 100.0}.items()
-    )
     assert action == "landfill"
-    assert cost == pytest.approx(expected)
-    assert cost == pytest.approx(3680.0)  # 100*0.6*46 + 100*0.2*46
+    assert cost == pytest.approx(3680.0)
 
 
 # --- check_storage_capacity: the proportional-scaling overflow logic ---------
@@ -171,3 +158,40 @@ def test_landfill_branch_survives_missing_monitor():
     _cost, action = handle_storage_event(entity, {SAWDUST: 100.0}, force_landfill=True)
 
     assert action == "landfill"
+
+
+# --- store_with_overflow: the one intake path for all three echelons (#2) -----
+
+
+def test_store_with_overflow_expands_then_landfills_the_remainder(ledger_waste_monitor):
+    """200 m³ stored, 3000 m³ of PAPER offered to a 1000 m³ store: the 2200 m³
+    overflow is dearer to landfill than one 500 m³ expansion, so capacity grows
+    to 1500, 1300 m³ is stored and the 1700 m³ that still doesn't fit is landfilled.
+    Mutation check (red): skip the post-expansion landfill -> 1700 m³ lost from
+    the ledger (the pre-13c9e93 behaviour)."""
+    entity = make_entity(SimulationState(), ledger_waste_monitor)
+
+    stored = store_with_overflow(entity, {PAPER: 200.0}, {PAPER: 3000.0})
+
+    assert entity.waste_storage_capacity == 1500.0
+    assert stored == {PAPER: pytest.approx(1300.0)}
+    assert ledger_waste_monitor.store.landfilled_volume_by_entity() == {
+        "collector-1": pytest.approx(1700.0)
+    }
+
+
+def test_store_with_overflow_never_takes_back_stock_from_an_overfull_store(ledger_waste_monitor):
+    """A store already 0.7 m³ over its 1000 m³ capacity has no room: the 100 m³
+    offered is landfilled and nothing is stored. Only the offer is landfilled, not
+    the stock already held. Mutation check (red): drop both headroom guards in
+    check_storage_capacity (the max(0, ...) clamp and the no-room early return),
+    as the collector's own arithmetic had before #2 -> 100.7 m³ landfilled and a
+    negative volume "stored"."""
+    entity = make_entity(SimulationState(), ledger_waste_monitor)
+
+    stored = store_with_overflow(entity, {PAPER: 1000.7}, {PAPER: 100.0})
+
+    assert stored == {PAPER: 0.0}
+    assert ledger_waste_monitor.store.landfilled_volume_by_entity() == {
+        "collector-1": pytest.approx(100.0)
+    }

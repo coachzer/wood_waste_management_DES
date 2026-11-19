@@ -1,80 +1,54 @@
 """A FAILED operator stops ordering, and an empty collector still hears demand.
 
 Two defects found auditing PUSH vs PULL: ``schedule_collection_requests`` kept
-ordering waste while the operator was FAILED, and
-``_propagate_signal_to_collectors`` skipped collectors holding none of the waste
-type, which are the ones that must pass demand on to generators.
+ordering waste while the operator was FAILED, and the treatment signal skipped
+collectors holding none of the waste type, which are the ones that must pass
+demand on to generators.
+
+The operator is real and runs its own order tick. Collectors are passive
+stand-ins that only record the signals they receive and supply nothing.
 """
 
-from types import SimpleNamespace
+from models.enums import EntityStatus, RegionType, WasteType
+from tests.core.factories import (
+    EMPTY_PULL_OPERATOR_ORDER_M3,
+    run_empty_pull_operator,
+    signal_recording_collector,
+    signals_addressed_to,
+)
 
-import simpy
-
-from core.kanban_manager import KanbanManager
-from models.enums import EntityStatus, InventoryPolicy, RegionType
-from models.state import SimulationState
-from tests.core.test_operating_clock import CONSTRUCTION, _treatment
-
-
-def _count_collection_calls(operator, env, days):
-    calls = []
-    operator._should_trigger_collection_based_on_strategy = lambda: True
-    operator.trigger_collection = lambda explicit_collection_volume: calls.append(env.now)
-    env.run(until=days)
-    return calls
+CONSTRUCTION = WasteType.CONSTRUCTION_WOOD_17_02_01
 
 
-def test_operational_operator_orders_waste_each_tick():
+def test_operational_operator_orders_waste_each_tick(noop_waste_monitor):
     """Control for the FAILED test, so a vacuous pass is impossible."""
-    env = simpy.Environment()
-    operator = _treatment(env)
+    local = signal_recording_collector(RegionType.PODRAVSKA, {})
+    run_empty_pull_operator(noop_waste_monitor, [local], days=5)
 
-    assert len(_count_collection_calls(operator, env, 5)) == 5
+    assert local.kanban_manager.posted_timestamps == [0.0, 1.0, 2.0, 3.0, 4.0]
 
 
-def test_failed_operator_does_not_order_waste():
+def test_failed_operator_does_not_order_waste(noop_waste_monitor):
     """Mutation check (red): drop the FAILED guard in ``schedule_collection_requests``
-    -> five collection calls during the outage."""
-    env = simpy.Environment()
-    operator = _treatment(env)
-    operator.status = EntityStatus.FAILED
+    -> five orders during the outage."""
+    local = signal_recording_collector(RegionType.PODRAVSKA, {})
+    run_empty_pull_operator(noop_waste_monitor, [local], days=5, status=EntityStatus.FAILED)
 
-    assert _count_collection_calls(operator, env, 5) == []
-
-
-def _fake_collector(region, stock):
-    return SimpleNamespace(
-        region_type=region,
-        availability=True,
-        inventory_policy=SimpleNamespace(is_pull=lambda: True),
-        collection_center=SimpleNamespace(current_storage=dict(stock)),
-        kanban_manager=KanbanManager(),
-    )
+    assert local.kanban_manager.posted_timestamps == []
 
 
-def test_empty_local_collector_receives_treatment_signal():
-    """Mutation check (red): restore the ``current_storage > 0`` filter -> no signal.
-    """
-    env = simpy.Environment()
-    state = SimulationState()
-    operator = _treatment(env, inventory_policy=InventoryPolicy.PULL, state=state)
-    empty = _fake_collector(operator.region_type, {})
-    state.collectors = [empty]
+def test_empty_local_collector_receives_treatment_signal(noop_waste_monitor):
+    """Mutation check (red): restore the ``current_storage > 0`` filter -> no signal."""
+    empty = signal_recording_collector(RegionType.PODRAVSKA, {})
+    run_empty_pull_operator(noop_waste_monitor, [empty])
 
-    operator._propagate_signal_to_collectors(CONSTRUCTION, 100.0, 1.0)
-
-    signals = empty.kanban_manager.get_signals()
-    assert [(s["source_type"], s["volume"]) for s in signals] == [("treatment", 100.0)]
+    signals = signals_addressed_to(empty)
+    assert [(s["source_type"], s["volume"]) for s in signals] == [("treatment", EMPTY_PULL_OPERATOR_ORDER_M3)]
 
 
-def test_other_region_collector_gets_no_treatment_signal():
-    env = simpy.Environment()
-    state = SimulationState()
-    operator = _treatment(env, inventory_policy=InventoryPolicy.PULL, state=state)
-    other_region = next(r for r in RegionType if r != operator.region_type)
-    elsewhere = _fake_collector(other_region, {CONSTRUCTION: 500.0})
-    state.collectors = [elsewhere]
-
-    operator._propagate_signal_to_collectors(CONSTRUCTION, 100.0, 1.0)
+def test_other_region_collector_gets_no_treatment_signal(noop_waste_monitor):
+    other_region = next(region for region in RegionType if region != RegionType.PODRAVSKA)
+    elsewhere = signal_recording_collector(other_region, {CONSTRUCTION: 500.0})
+    run_empty_pull_operator(noop_waste_monitor, [elsewhere])
 
     assert elsewhere.kanban_manager.get_signals() == []

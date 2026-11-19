@@ -9,21 +9,19 @@ a winner.
 
 This is an analysis-layer reduction over the Monte Carlo dataset: it reads each
 combo's already-written ``summary.csv`` ``mean`` column (one point per
-configuration) and computes domination. There is no simulation change and no new
-per-run KPI, so the golden additive gate is unaffected.
+configuration) and computes domination.
 
 This module reads only ``summary.csv`` files and runs via
-``python -m analysis.pareto <dir>`` (the Plotly companion plot is imported lazily
-inside ``__main__`` only, so a missing visualization dependency does not break the
-CSV artifact). ``main.py`` imports ``write_pareto_report`` by module path, the same
-way it imports ``write_paired_comparison_report``.
+``python -m analysis.pareto <dir>``. The companion figure is drawn by
+``python -m visualization.pareto_visualization <dir>``.
 """
 
 import csv
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, List, Tuple
 
-from ._kpi_shared import KPI_SENSE
+from ._kpi_shared import KPI_SENSE, KpiSense
+from .layout import iter_combo_summaries
 
 OBJECTIVES: List[Tuple[str, str]] = [
     (metric, KPI_SENSE[metric])
@@ -43,9 +41,9 @@ def _goodness(value: float, sense: str) -> float:
     ">= on all, > on at least one", with no per-objective sense branching in the
     comparison itself.
     """
-    if sense == "max":
+    if sense == KpiSense.LARGER_IS_BETTER:
         return value
-    if sense == "min":
+    if sense == KpiSense.LARGER_IS_WORSE:
         return -value
     raise ValueError(f"Unknown objective sense {sense!r} (expected 'max' or 'min')")
 
@@ -93,26 +91,6 @@ def pareto_frontier(
             if other != label
         )
     )
-
-
-def iter_combo_summaries(path: Path, root: bool) -> Iterable[Tuple[str, Path]]:
-    """Yield ``(config_label, summary_csv_path)`` for each configuration under ``path``.
-
-    Scenario mode (``root=False``): ``path`` is a scenario dir; each immediate
-    subdir is a combo holding ``summary.csv``; the label is the combo name
-    (e.g. ``push__on_demand``). Root mode (``root=True``): ``path`` holds scenario
-    dirs, each holding combo dirs; the label is ``{scenario}__{combo}`` so the
-    frontier spans (scenario x combo) -- e.g. Baseline plus the C1 Buffer
-    scenarios in one frontier. Sorted so the artifact is deterministic.
-    """
-    glob_pattern = "*/*/summary.csv" if root else "*/summary.csv"
-    for summary_path in sorted(path.glob(glob_pattern)):
-        combo_dir = summary_path.parent
-        if root:
-            label = f"{combo_dir.parent.name}__{combo_dir.name}"
-        else:
-            label = combo_dir.name
-        yield label, summary_path
 
 
 def read_objective_point(
@@ -169,11 +147,7 @@ def build_pareto_report(
     return rows
 
 
-def write_pareto_report(
-    path,
-    root: bool = False,
-    objectives: List[Tuple[str, str]] = OBJECTIVES,
-):
+def write_pareto_report(path, root: bool = False):
     """Write ``pareto_frontier.csv`` under ``path`` and return its ``Path``.
 
     Returns ``None`` when there is nothing to compare (no ``summary.csv`` files).
@@ -181,11 +155,11 @@ def write_pareto_report(
     the dataset root in ``--root`` mode.
     """
     path = Path(path)
-    rows = build_pareto_report(path, root=root, objectives=objectives)
+    rows = build_pareto_report(path, root=root)
     if not rows:
         return None
 
-    metric_columns = [metric for metric, _ in objectives]
+    metric_columns = [metric for metric, _ in OBJECTIVES]
     header = ["config"] + metric_columns + ["non_dominated"]
     lines = [",".join(header)]
     for row in rows:
@@ -241,12 +215,3 @@ if __name__ == "__main__":
     report = write_pareto_report(target, root=args.root)
     print(f"Wrote {report}")
     _print_frontier_summary(report_rows)
-
-    try:
-        from visualization.pareto_visualization import write_pareto_plot
-
-        plot = write_pareto_plot(target, root=args.root)
-        if plot is not None:
-            print(f"Wrote {plot}")
-    except Exception as exc:
-        print(f"(skipped Pareto plot: {exc})")

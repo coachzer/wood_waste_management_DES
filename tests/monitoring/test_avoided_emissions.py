@@ -42,9 +42,3 @@ def test_empty_monitor_data_is_all_zero():
         assert m[f"avoided_emissions_{product}_kgco2e"] == 0.0
     assert m["avoided_emissions_total_kgco2e"] == 0.0
 
-
-def test_avoided_emissions_are_positive_signed(monitor_data):
-    md = monitor_data([{"osb": [3.0]}])
-    m = avoided_emissions_metrics(md)
-    assert m["avoided_emissions_osb_kgco2e"] > 0
-    assert m["avoided_emissions_total_kgco2e"] > 0

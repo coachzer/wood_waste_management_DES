@@ -1,4 +1,6 @@
 import logging
+import os
+from pathlib import Path
 
 import plotly.graph_objects as go
 from typing import Dict
@@ -14,10 +16,19 @@ from visualization.visualization_utils import last_cumulative_by_entity, safe_wr
 
 # Sankey node colors keyed by pipeline stage.
 NODE_COLORS = {
-    'generator': '#2ecc71',    # Green
-    'collector': '#3498db',    # Blue
-    'treatment': '#9b59b6',    # Purple
-    'product': '#e67e22'       # Orange
+    'generator': '#2ecc71',
+    'collector': '#3498db',
+    'treatment': '#9b59b6',
+    'product': '#e67e22',
+}
+UNCOLLECTED_NODE_NAME = "Uncollected"
+OUTLET_NODE_NAME = "Outlet"
+STOCK_NODE_NAME = "Stock at day 365"
+# Sinks where waste ends the run outside treatment: node color, link color, (x, y).
+SINK_NODES = {
+    UNCOLLECTED_NODE_NAME: ('#c0392b', "rgba(192, 57, 43, 0.4)", (0.2, 0.95)),
+    OUTLET_NODE_NAME: ('#7f8c8d', "rgba(127, 140, 141, 0.4)", (0.2, 0.05)),
+    STOCK_NODE_NAME: ('#f1c40f', "rgba(241, 196, 15, 0.5)", (0.5, 0.95)),
 }
 
 
@@ -28,24 +39,37 @@ def format_volume(volume: float) -> str:
     else:
         return f"{volume:.1f} m³"
 
-def _get_product_volumes(state) -> Dict:
+def _format_product_label(key: str) -> str:
+    """Format a snake_case product key for Sankey node labels."""
+    if len(key) <= 3:
+        return key.upper()
+    return key.replace("_", " ").title()
+
+
+def _get_product_volumes(state) -> Dict[str, float]:
     """Sum true per-operator product output (m³) across treatment operators.
 
     Sourced from each operator's ``product_volumes`` -- the real cumulative
     output counters -- rather than the retired demand-ceiling state, so the
     Sankey reports actual production with no ceiling cap.
     """
-    totals = {"MDF": 0.0, "Particle Board": 0.0, "OSB": 0.0}
-    label_by_key = {"mdf": "MDF", "particle_board": "Particle Board", "osb": "OSB"}
-    for operator in state.treatment_operators:
-        for key, label in label_by_key.items():
-            totals[label] += operator.product_volumes.get(key, 0.0)
+    totals: Dict[str, float] = {}
+    for operator in getattr(state, "treatment_operators", []):
+        for key, volume in getattr(operator, "product_volumes", {}).items():
+            label = _format_product_label(key)
+            totals[label] = totals.get(label, 0.0) + volume
     return totals
 
 def get_volumes(generation_history: Dict, collection_history: Dict, processing_history: Dict, state):
-    """Calculate volumes for each stage - now includes all treatment storage types"""
+    """Volumes per stage. Generators report potential generation. The parts that never
+    enter generator storage are returned per sink: uncollected overflow (ADR 0024) and
+    outlet codes (ADR 0036)."""
     return (
-        last_cumulative_by_entity(generation_history, "total_generated"),
+        last_cumulative_by_entity(generation_history, "total_potential_generated"),
+        {
+            UNCOLLECTED_NODE_NAME: last_cumulative_by_entity(generation_history, "total_uncollected"),
+            OUTLET_NODE_NAME: last_cumulative_by_entity(generation_history, "total_outlet"),
+        },
         last_cumulative_by_entity(collection_history, "collected_volumes"),
         last_cumulative_by_entity(processing_history, "processed.total"),
         _get_product_volumes(state)
@@ -128,11 +152,45 @@ def _create_flows(transport_flows: list, labels: list):
 
     return sources, targets, values, link_colors
 
-def create_sankey(generator_volumes: Dict, collector_volumes: Dict,
+def _stock_at_end_by_entity(state) -> Dict[str, float]:
+    """Waste still in generator, collector, and treatment storage when the run ends."""
+    stock = {generator.name: generator.current_storage for generator in getattr(state, "generators", [])}
+    for collector in getattr(state, "collectors", []):
+        stock[collector.name] = sum(collector.collection_center.current_storage.values())
+    for operator in getattr(state, "treatment_operators", []):
+        current_storage = getattr(operator, "current_storage", None)
+        if current_storage is not None:
+            stock[operator.name] = (
+                sum(current_storage.values())
+                if isinstance(current_storage, dict)
+                else current_storage
+            )
+    return stock
+
+
+def create_sankey(generator_volumes: Dict, generator_sink_volumes: Dict, collector_volumes: Dict,
                   treatment_volumes: Dict, product_volumes: Dict, state):
     min_volume = MFA_MIN_NODE_VOLUME_M3
     generators = _filter_volumes(generator_volumes, min_volume)
-    collectors = _filter_volumes(collector_volumes, min_volume)
+
+    effective_collector_volumes = dict(collector_volumes)
+    for flow in state.transport_flows:
+        if flow.get("transport_method") == "inter_region_transport":
+            target = flow["target_name"]
+            effective_collector_volumes[target] = (
+                effective_collector_volumes.get(target, 0.0) + flow["volume"]
+            )
+    collectors = _filter_volumes(effective_collector_volumes, min_volume)
+    referenced_in_flows = {
+        name
+        for flow in state.transport_flows
+        if flow["volume"] >= MFA_MIN_FLOW_VOLUME_M3
+        for name in (flow["source_name"], flow["target_name"])
+    }
+    for name in referenced_in_flows:
+        if name in effective_collector_volumes and name not in collectors:
+            collectors[name] = effective_collector_volumes[name]
+
     treatments = _filter_volumes(treatment_volumes, min_volume)
     products   = _filter_volumes(product_volumes,   min_volume)
 
@@ -148,19 +206,47 @@ def create_sankey(generator_volumes: Dict, collector_volumes: Dict,
     transport_flows = state.transport_flows
     sources, targets, values, link_colors = _create_flows(transport_flows, labels)
 
+    product_key_by_label = {
+        _format_product_label(key): key
+        for operator in getattr(state, "treatment_operators", [])
+        for key in getattr(operator, "product_volumes", {})
+    }
     for t_idx, treat_name in enumerate(treatments.keys()):
         op = next((o for o in state.treatment_operators if o.name == treat_name), None)
         if not op:
             continue
         for p_idx, prod_label in enumerate(products.keys()):
-            key = prod_label.lower().replace(" ", "_")
+            key = product_key_by_label.get(prod_label, prod_label.lower().replace(" ", "_"))
             vol = op.product_volumes.get(key, 0.0)
-            if vol >= min_volume:
+            if vol >= MFA_MIN_FLOW_VOLUME_M3:
                 sources.append(treat_start + t_idx)
                 targets.append(prod_start + p_idx)
                 values.append(vol)
                 link_colors.append(PRODUCT_LINK_COLOR)
-    
+
+    node_index = {label.split("\n", 1)[0]: i for i, label in enumerate(labels)}
+    sink_sources = dict(generator_sink_volumes)
+    sink_sources[STOCK_NODE_NAME] = _stock_at_end_by_entity(state)
+    sink_positions = []
+    for sink_name, (node_color, link_color, position) in SINK_NODES.items():
+        links = [
+            (node_index[name], volume)
+            for name, volume in sorted(sink_sources.get(sink_name, {}).items())
+            if name in node_index and volume >= MFA_MIN_FLOW_VOLUME_M3
+        ]
+        total = sum(volume for _, volume in links)
+        if total < min_volume:
+            continue
+        sink_index = len(labels)
+        labels.append(f"{sink_name}\n{format_volume(total)}")
+        node_colors.append(node_color)
+        sink_positions.append(position)
+        for source_index, volume in links:
+            sources.append(source_index)
+            targets.append(sink_index)
+            values.append(volume)
+            link_colors.append(link_color)
+
     n_gen = len(generators)
     n_col = len(collectors)
     n_treat = len(treatments)
@@ -170,7 +256,10 @@ def create_sankey(generator_volumes: Dict, collector_volumes: Dict,
     y = []
     for count in (n_gen, n_col, n_treat, n_prod):
         y += [(i+1)/(count+1) for i in range(count)]
-    
+    for sink_x, sink_y in sink_positions:
+        x.append(sink_x)
+        y.append(sink_y)
+
     return labels, node_colors, sources, targets, values, link_colors, x, y
 
 def create_material_flow_analysis(generation_history: Dict, collection_history: Dict,
@@ -188,12 +277,12 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
             suffix = f"_{scenario_name}_{inventory_policy}_{stock_strategy}"
         save_path = f"{PLOTS_ROOT}/material_flow_analysis{suffix}.html"
 
-    gen_vol, col_vol, treat_vol, prod_vol = get_volumes(
+    gen_vol, generator_sink_vol, col_vol, treat_vol, prod_vol = get_volumes(
         generation_history, collection_history, processing_history, state
     )
 
     labels, node_colors, sources, targets, values, link_colors, x, y = create_sankey(
-        gen_vol, col_vol, treat_vol, prod_vol, state
+        gen_vol, generator_sink_vol, col_vol, treat_vol, prod_vol, state
     )
 
     fig = go.Figure(data=[go.Sankey(
@@ -233,25 +322,34 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
             "<span style='color:#2ecc71'>&#9632;</span> collection&nbsp;&nbsp;&nbsp;"
             "<span style='color:#e67e22'>&#9632;</span> inter-region transit&nbsp;&nbsp;&nbsp;"
             "<span style='color:#9b59b6'>&#9632;</span> treatment intake&nbsp;&nbsp;&nbsp;"
-            "<span style='color:#808080'>&#9632;</span> production"
+            "<span style='color:#808080'>&#9632;</span> production&nbsp;&nbsp;&nbsp;"
+            "<span style='color:#c0392b'>&#9632;</span> uncollected (storage overflow)&nbsp;&nbsp;&nbsp;"
+            "<span style='color:#7f8c8d'>&#9632;</span> outlet (no processor accepts the code)&nbsp;&nbsp;&nbsp;"
+            "<span style='color:#f1c40f'>&#9632;</span> stock at day 365"
         ),
         xref="paper", yref="paper", x=0.0, y=-0.1,
         xanchor="left", showarrow=False, font={"size": 10}
     )
 
     if inventory_policy and stock_strategy:
+        annotation_lines = []
+        if scenario_name:
+            annotation_lines.append(f"Scenario: {scenario_name}")
+        annotation_lines.append(f"Inventory Policy: {inventory_policy}")
+        annotation_lines.append(f"Stock Strategy: {stock_strategy}")
         fig.add_annotation(
-            text=f"Scenario: {scenario_name}<br>Inventory Policy: {inventory_policy}<br>Stock Strategy: {stock_strategy}",
+            text="<br>".join(annotation_lines),
             xref="paper", yref="paper", x=0.98, y=0.98,
             showarrow=False, font={'size': 10},
             bgcolor="rgba(255,255,255,0.8)",
             bordercolor="black", borderwidth=1
         )
 
+    os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     fig.write_html(save_path)
     logging.info(f"Material flow analysis saved to {save_path}")
 
-    pdf_path = save_path.replace(".html", ".pdf")
+    pdf_path = str(Path(save_path).with_suffix(".pdf"))
     if safe_write_image(fig, pdf_path, height=SANKEY_HEIGHT_PX, width=WIDE_EXPORT_WIDTH_PX):
         logging.info(f"PDF version saved to {pdf_path}")
 

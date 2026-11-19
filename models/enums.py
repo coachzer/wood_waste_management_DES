@@ -1,7 +1,11 @@
 from enum import Enum, auto
 
 class EntityStatus(Enum):
-    """Status of operational entities in the system."""
+    """Status of operational entities in the system.
+
+    OPERATIONAL works at full efficiency. FAILED does no work. RECOVERING works at an
+    efficiency that ramps from RECOVERING_BASE_EFFICIENCY back to full.
+    """
     OPERATIONAL = auto()
     FAILED = auto()
     RECOVERING = auto()
@@ -19,6 +23,16 @@ class RegionType(Enum):
     PRIMORSKONOTRANJSKA = "primorskonotranjska"
     GORISKA = "goriska"
     OBALNO_KRASKA = "obalno_kraska"
+
+
+def sorted_by_value(members):
+    """Return enum members as a list ordered by their value.
+
+    Enum members hash by id(), which PYTHONHASHSEED does not control, so a set or dict of
+    them iterates in per-process memory order. Any iteration that drives ordered simulation
+    work must go through this, or the same seed stops reproducing across processes.
+    """
+    return sorted(members, key=lambda member: member.value)
 
 class WasteType(Enum):
     FORESTRY_WASTE_02_01_07 = "02 01 07"
@@ -42,8 +56,7 @@ def normalize_waste_type(value) -> "WasteType | None":
     Accepts a WasteType (passed through), an EWC value ("03 01 05"), an
     underscore-separated code ("03_01_05"), or an enum member name in any
     case ("sawdust_shavings_cuttings_wood_03_01_05"). Returns None when
-    nothing matches. Single home for this normalization -- the collector
-    and the facility builder previously carried diverged private copies.
+    nothing matches.
     """
     if isinstance(value, WasteType):
         return value

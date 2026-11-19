@@ -3,23 +3,22 @@
 Each concrete class owns the policy-specific decisions that used to live in
 ``if self.inventory_policy == ...`` / ``match self.inventory_policy`` blocks in
 the collector and treatment process modules. Methods take primitive values plus
-lazy callables for the few branches where the original code only read kanban
-signals on one policy path (``get_signals`` mutates by pruning stale signals, so
-it must fire exactly when the original did, no sooner).
+lazy callables for the branches that read kanban signals, so PUSH never reads them.
 
-The policy owns the PUSH/PULL utilization/signal clamping for the collector
-efficiency curve and delegates the strategy-specific shape to the stock
-strategy, matching the original ``_calculate_efficiency_multiplier`` split.
+Only the collection trigger differs between the policies. Collector efficiency
+is the same for both (ADR 0025).
 """
 
 from __future__ import annotations
 
-from typing import Callable, List, Protocol, TYPE_CHECKING
+from typing import Callable, List, Protocol
 
-from config.constants import COLLECTOR_UTILIZATION_CEILING
+from config.constants import (
+    COLLECTOR_UTILIZATION_CEILING,
+    PUSH_COLLECTOR_THRESHOLD_BUFFER,
+    PUSH_ON_DEMAND_GENERATOR_SIGNAL_STORAGE_SHARE,
+)
 
-if TYPE_CHECKING:
-    from core.strategies.stock_strategy import StockStrategyProtocol
 from models.enums import InventoryPolicy
 
 
@@ -39,20 +38,13 @@ class InventoryPolicyProtocol(Protocol):
         """The collector's per-cycle decision to collect."""
         ...
 
-    def collector_efficiency(
-        self,
-        stock_strategy: "StockStrategyProtocol",
-        utilization: float,
-        signals: int,
-        base: float,
-    ) -> float:
-        """Clamp inputs for this policy, then apply the strategy efficiency curve."""
+
+    def generators_request_pickup(self) -> bool:
+        """Whether a generator may call for pickup on its own stock (ADR 0032)."""
         ...
 
-    def ondemand_generator_should_signal(
-        self, current_storage: float, capacity: float, active_signals_fn: Callable[[], List]
-    ) -> bool:
-        """ON_DEMAND generator signal trigger (policy-specific half of the dispatch)."""
+    def ondemand_generator_should_signal(self, current_storage: float, capacity: float) -> bool:
+        """ON_DEMAND generator signal trigger. Reached only when generators request pickup (PUSH)."""
         ...
 
     def propagates_reorder_signals_upstream(self) -> bool:
@@ -73,17 +65,14 @@ class PushPolicy:
     def collector_should_collect(
         self, utilization, adaptive_threshold, non_market_signals_fn
     ) -> bool:
-        push_threshold = min(COLLECTOR_UTILIZATION_CEILING, adaptive_threshold + 0.10)
+        push_threshold = min(COLLECTOR_UTILIZATION_CEILING, adaptive_threshold + PUSH_COLLECTOR_THRESHOLD_BUFFER)
         return utilization < push_threshold
 
-    def collector_efficiency(self, stock_strategy, utilization, signals, base) -> float:
-        utilization = max(0.0, min(1.0, utilization))
-        return stock_strategy.collector_push_efficiency(utilization, base)
+    def generators_request_pickup(self) -> bool:
+        return True
 
-    def ondemand_generator_should_signal(
-        self, current_storage, capacity, active_signals_fn
-    ) -> bool:
-        return current_storage > capacity * 0.1
+    def ondemand_generator_should_signal(self, current_storage, capacity) -> bool:
+        return current_storage > capacity * PUSH_ON_DEMAND_GENERATOR_SIGNAL_STORAGE_SHARE
 
     def propagates_reorder_signals_upstream(self) -> bool:
         return False
@@ -101,20 +90,15 @@ class PullPolicy:
     def collector_should_collect(
         self, utilization, adaptive_threshold, non_market_signals_fn
     ) -> bool:
-        if non_market_signals_fn():
-            return utilization < COLLECTOR_UTILIZATION_CEILING
-        pull_threshold = max(0.15, adaptive_threshold - 0.15)
-        return utilization < pull_threshold
+        if not non_market_signals_fn():
+            return False
+        return utilization < COLLECTOR_UTILIZATION_CEILING
 
-    def collector_efficiency(self, stock_strategy, utilization, signals, base) -> float:
-        utilization = max(0.0, min(1.0, utilization))
-        signals = max(0, signals)
-        return stock_strategy.collector_pull_efficiency(utilization, signals, base)
+    def generators_request_pickup(self) -> bool:
+        return False
 
-    def ondemand_generator_should_signal(
-        self, current_storage, capacity, active_signals_fn
-    ) -> bool:
-        return bool(active_signals_fn()) and current_storage > 0
+    def ondemand_generator_should_signal(self, current_storage, capacity) -> bool:
+        return False
 
     def propagates_reorder_signals_upstream(self) -> bool:
         return True

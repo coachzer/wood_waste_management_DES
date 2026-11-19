@@ -7,16 +7,19 @@ import-free to run as a bare file (the old ``monitoring/__init__`` import cycle)
 The clean-monitoring refactor killed that cycle, so the modules now run via
 ``python -m analysis.<module>`` and import this leaf instead of copying it.
 
-This module is a leaf: it imports only the standard library and scipy, so
-importing it can never reintroduce a project-internal cycle.
+This module is a leaf: it imports only the standard library, scipy and the
+``analysis.layout`` leaf, so importing it can never reintroduce a project-internal cycle.
 """
 
 import json
 import math
+from enum import StrEnum
 from pathlib import Path
 from typing import Dict, List
 
 from scipy import stats
+
+from .layout import RUN_GLOB, combo_label
 
 
 def t_ci_margin(n: int, stdev: float, alpha: float) -> float:
@@ -39,16 +42,21 @@ DEFAULT_METRICS = [
     "collection_rate_pct",
 ]
 
-KPI_SENSE: Dict[str, str] = {
-    "service_level_full_pct": "max",
-    "service_level_operational_pct": "max",
-    "stockout_lost_m3": "min",
-    "total_consumed_m3": "max",
-    "landfill_volume_m3": "min",
-    "total_emissions_kgco2e": "min",
-    "overall_efficiency_pct": "max",
-    "collection_rate_pct": "max",
-    "total_system_cost": "min",
+class KpiSense(StrEnum):
+    LARGER_IS_BETTER = "max"
+    LARGER_IS_WORSE = "min"
+
+
+KPI_SENSE: Dict[str, KpiSense] = {
+    "service_level_full_pct": KpiSense.LARGER_IS_BETTER,
+    "service_level_operational_pct": KpiSense.LARGER_IS_BETTER,
+    "stockout_lost_m3": KpiSense.LARGER_IS_WORSE,
+    "total_consumed_m3": KpiSense.LARGER_IS_BETTER,
+    "landfill_volume_m3": KpiSense.LARGER_IS_WORSE,
+    "total_emissions_kgco2e": KpiSense.LARGER_IS_WORSE,
+    "overall_efficiency_pct": KpiSense.LARGER_IS_BETTER,
+    "collection_rate_pct": KpiSense.LARGER_IS_BETTER,
+    "total_system_cost": KpiSense.LARGER_IS_WORSE,
 }
 
 _GENERIC_NAMESPACES = (
@@ -57,6 +65,7 @@ _GENERIC_NAMESPACES = (
     "carbon",
     "availability",
     "service_level_full_by_product_pct",
+    "outlet_by_destination",
 )
 
 
@@ -89,10 +98,10 @@ def load_combo_kpis(scenario_dir: Path) -> Dict[str, Dict[int, dict]]:
     generic namespaces are flattened to ``{namespace}.{key}`` metrics on load.
     """
     combos: Dict[str, Dict[int, dict]] = {}
-    for run_path in sorted(scenario_dir.glob("*/run_*.json")):
+    for run_path in sorted(scenario_dir.glob(RUN_GLOB)):
         with open(run_path, "r", encoding="utf-8") as f:
             run = json.load(f)
-        label = f"{run['inventory_policy']}__{run['stock_strategy']}"
+        label = combo_label(run['inventory_policy'], run['stock_strategy'])
         combos.setdefault(label, {})[run["seed"]] = _flatten_namespaces(run["kpis"])
     return combos
 

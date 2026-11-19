@@ -1,4 +1,3 @@
-from config.base_config import get_cost_params
 from typing import Dict, Tuple
 from config.constants import (
     LANDFILL_EMISSIONS_PER_M3_KG,
@@ -6,10 +5,13 @@ from config.constants import (
     KILOGRAMS_PER_TONNE,
     WASTE_DENSITIES,
     EXPANSION_SIZE_M3,
+    EXPANSION_COST_PER_M3,
+    EXPANSION_COST_ESCALATION_PER_PRIOR,
+    LANDFILL_COST_ESCALATION_PER_PRIOR,
     OVERFLOW_VOLUME_TOLERANCE_M3,
     OPERATING_TICK_DAYS,
 )
-from models.enums import WasteType
+from models.enums import WasteType, sorted_by_value
 
 def per_tick_capacity(capacity_per_period: float, period_days: float) -> float:
     """One operating tick's share of a capacity the region data gives per period.
@@ -48,7 +50,8 @@ def compute_and_handle_overflow(
     entity,
     original_amounts: Dict[WasteType, float],
     allowed_amounts: Dict[WasteType, float],
-) -> None:
+    force_landfill: bool = False,
+) -> Tuple[float, str]:
     """Route the per-type overflow skimmed by check_storage_capacity to handle_storage_event.
 
     check_storage_capacity already scaled each type proportionally, so the
@@ -58,11 +61,9 @@ def compute_and_handle_overflow(
     per_type_overflow = {
         waste_type: original_amounts[waste_type]
         - allowed_amounts.get(waste_type, 0.0)
-        for waste_type in sorted(
-            original_amounts, key=lambda waste_type: waste_type.value
-        )
+        for waste_type in sorted_by_value(original_amounts)
     }
-    handle_storage_event(entity, per_type_overflow)
+    return handle_storage_event(entity, per_type_overflow, force_landfill=force_landfill)
 
 
 def split_overflow_by_type(
@@ -85,13 +86,11 @@ def split_overflow_by_type(
     if total_composition <= 0.0:
         return {
             waste_type: 0.0
-            for waste_type in sorted(composition, key=lambda item: item.value)
+            for waste_type in sorted_by_value(composition)
         }
     return {
-        waste_type: overflow_total * (volume_m3 / total_composition)
-        for waste_type, volume_m3 in sorted(
-            composition.items(), key=lambda item: item[0].value
-        )
+        waste_type: overflow_total * (composition[waste_type] / total_composition)
+        for waste_type in sorted_by_value(composition)
     }
 
 
@@ -116,7 +115,7 @@ def handle_storage_event(entity, composition: Dict[WasteType, float], force_land
     progressively more expensive.
 
     Mutates the entity in place on whichever branch is taken: bumps expansion_count
-    / landfill_count (the escalation counters), accumulates expansion_costs, and on
+    / landfill_count (the escalation counters), and on
     the expand branch grows waste_storage_capacity by EXPANSION_SIZE_M3.
 
     Recording goes through the entity's waste_monitor when it has a truthy one; a
@@ -140,13 +139,11 @@ def handle_storage_event(entity, composition: Dict[WasteType, float], force_land
     if total_volume < OVERFLOW_VOLUME_TOLERANCE_M3:
         return 0.0, "no_action"
 
-    config = get_cost_params()
-    expansion_count = getattr(entity, 'expansion_count', 0)
-    landfill_count = getattr(entity, 'landfill_count', 0)
+    expansion_count = entity.expansion_count
+    landfill_count = entity.landfill_count
 
-    base_expansion_cost_per_m3 = config.expansion_cost_per_m3
-    expansion_cost_per_m3 = base_expansion_cost_per_m3 * (
-        1 + expansion_count * config.expansion_cost_escalation_per_prior
+    expansion_cost_per_m3 = EXPANSION_COST_PER_M3 * (
+        1 + expansion_count * EXPANSION_COST_ESCALATION_PER_PRIOR
     )
 
     # Per-type landfill cost: each stream's volume is converted to mass at its own
@@ -154,14 +151,12 @@ def handle_storage_event(entity, composition: Dict[WasteType, float], force_land
     # then escalated by prior landfills on this entity. Sorted by WasteType.value
     # so the summation order is deterministic across processes (CRN guard).
     landfill_cost_escalation = (
-        1 + landfill_count * config.landfill_cost_escalation_per_prior
+        1 + landfill_count * LANDFILL_COST_ESCALATION_PER_PRIOR
     )
     base_landfill_cost = sum(
-        volume_m3 * (WASTE_DENSITIES[waste_type] / KILOGRAMS_PER_TONNE)
+        composition[waste_type] * (WASTE_DENSITIES[waste_type] / KILOGRAMS_PER_TONNE)
         * LANDFILL_COST_PER_TONNE_USD
-        for waste_type, volume_m3 in sorted(
-            composition.items(), key=lambda item: item[0].value
-        )
+        for waste_type in sorted_by_value(composition)
     )
     landfill_cost = base_landfill_cost * landfill_cost_escalation
 
@@ -172,7 +167,7 @@ def handle_storage_event(entity, composition: Dict[WasteType, float], force_land
 
         emissions = total_volume * LANDFILL_EMISSIONS_PER_M3_KG
 
-        if hasattr(entity, 'waste_monitor') and entity.waste_monitor:
+        if entity.waste_monitor:
             entity.waste_monitor.record_landfill(
                 entity_name=entity.name,
                 composition=composition,
@@ -190,9 +185,8 @@ def handle_storage_event(entity, composition: Dict[WasteType, float], force_land
     else:
         entity.waste_storage_capacity += EXPANSION_SIZE_M3
         entity.expansion_count = expansion_count + 1
-        entity.expansion_costs = getattr(entity, 'expansion_costs', 0) + expansion_cost
 
-        if hasattr(entity, 'waste_monitor') and entity.waste_monitor:
+        if entity.waste_monitor:
             entity.waste_monitor.track_expansion(
                 volume=total_volume,
                 cost_incurred=expansion_cost,
@@ -200,3 +194,34 @@ def handle_storage_event(entity, composition: Dict[WasteType, float], force_land
             )
 
         return expansion_cost, "expand_storage"
+
+
+def store_with_overflow(
+    entity,
+    holdings: Dict[WasteType, float],
+    additions: Dict[WasteType, float],
+) -> Dict[WasteType, float]:
+    """Fit ``additions`` into ``entity``'s storage, which already holds ``holdings``.
+
+    How generator, collector and treatment add waste to their own storage. When the
+    additions don't fit, handle_storage_event either expands the store or
+    landfills the overflow. If it expands, the part that still doesn't fit the
+    larger store is landfilled too, so every m³ offered is either stored or on
+    the landfill ledger.
+
+    Returns the per-type volumes that fit, each type scaled by the same factor.
+    The caller adds them to its own storage; this function only grows
+    ``entity.waste_storage_capacity`` and records landfill and expansion events.
+    """
+    allowed, overflow = check_storage_capacity(holdings, additions, entity.waste_storage_capacity)
+    if overflow <= 0:
+        return allowed
+
+    _cost, action = handle_storage_event(entity, split_overflow_by_type(additions, overflow))
+    if action == "expand_storage":
+        allowed, overflow = check_storage_capacity(holdings, additions, entity.waste_storage_capacity)
+        if overflow > 0:
+            handle_storage_event(
+                entity, split_overflow_by_type(additions, overflow), force_landfill=True
+            )
+    return allowed

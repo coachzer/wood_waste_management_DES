@@ -3,10 +3,11 @@ from config.constants import BASELINE_OUTPUT_ROOT, DEFAULT_BASE_SEED, SCENARIO_C
 from core.simulation_manager import SimulationManager
 from models.enums import InventoryPolicy, StockStrategy
 from visualization.mfa_visualization import create_material_flow_analysis
-from visualization.scenario_comparison import ScenarioComparison
+from visualization.scenario_comparison import create_scenario_comparison
 from analysis.baseline_aggregate import extract_kpis, summary_rows
 from persistence.serialization import build_raw_payload, jsonify
 from analysis.paired_comparison import write_paired_comparison_report
+from analysis.layout import SUMMARY_FILENAME, combo_label, raw_filename, run_filename
 from analysis.pareto import write_pareto_report
 from analysis.stochastic_dominance import write_dominance_report
 from visualization.pareto_visualization import write_pareto_plot
@@ -69,7 +70,7 @@ def run_single_simulation(
                 stock_strategy=stock_strategy.value,
             )
 
-        manager.facility_builder.print_failure_analysis()
+        manager.print_failure_analysis()
 
         return {
             "base_scenario": scenario_name,
@@ -109,26 +110,19 @@ def _run_baseline_replication_task(
         raise_on_violation=False,
     )
     kpis = extract_kpis(simulation_result["monitor_data"])
+    run_identity = {
+        key: simulation_result[key]
+        for key in ("base_scenario", "scenario_name", "inventory_policy", "stock_strategy", "seed")
+    }
 
-    run_path = combo_dir / f"run_{replication_index:03d}.json"
+    run_path = combo_dir / run_filename(replication_index)
     try:
         with open(run_path, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "base_scenario": simulation_result["base_scenario"],
-                    "scenario_name": simulation_result["scenario_name"],
-                    "inventory_policy": simulation_result["inventory_policy"],
-                    "stock_strategy": simulation_result["stock_strategy"],
-                    "seed": simulation_result["seed"],
-                    "kpis": kpis,
-                },
-                f,
-                separators=(",", ":"),
-            )
+            json.dump({**run_identity, "kpis": kpis}, f, separators=(",", ":"))
     except Exception as e:
         print(f"Warning: failed to write {run_path}: {e}")
 
-    raw_path = combo_dir / f"raw_{replication_index:03d}.json"
+    raw_path = combo_dir / raw_filename(replication_index)
     try:
         with open(raw_path, "w", encoding="utf-8") as f:
             json.dump(
@@ -139,15 +133,7 @@ def _run_baseline_replication_task(
     except Exception as e:
         print(f"Warning: failed to write {raw_path}: {e}")
 
-    return {
-        "base_scenario": simulation_result["base_scenario"],
-        "scenario_name": simulation_result["scenario_name"],
-        "inventory_policy": simulation_result["inventory_policy"],
-        "stock_strategy": simulation_result["stock_strategy"],
-        "seed": simulation_result["seed"],
-        "replication_index": replication_index,
-        "kpis": kpis,
-    }
+    return {**run_identity, "replication_index": replication_index, "kpis": kpis}
 
 
 def run_monte_carlo_baseline(
@@ -157,7 +143,7 @@ def run_monte_carlo_baseline(
     workers: int = 1,
 ) -> list[dict]:
     """
-    Run baseline Monte Carlo: 100 replications per InventoryPolicy x StockStrategy.
+    Run baseline Monte Carlo: ``replications`` seeds per InventoryPolicy x StockStrategy.
 
     Returns lightweight per-replication records (no ``monitor_data``) and, when
     ``workers > 1``, uses a process pool to keep artifact writes byte-identical
@@ -181,7 +167,7 @@ def run_monte_carlo_baseline(
     print(f"Inventory policies: {[p.value for p in inventory_policies]}")
     print(f"Stock strategies: {[s.value for s in stock_strategies]}")
 
-    base_seed = DEFAULT_BASE_SEED  # deterministic seed series across runs
+    base_seed = DEFAULT_BASE_SEED
     out_root = Path(BASELINE_OUTPUT_ROOT) if out_root is None else Path(out_root)
     out_root.mkdir(parents=True, exist_ok=True)
 
@@ -196,7 +182,7 @@ def run_monte_carlo_baseline(
         replication_tasks: list[tuple] = []
         for policy in inventory_policies:
             for strategy in stock_strategies:
-                combo_dir = scenario_dir / f"{policy.value}__{strategy.value}"
+                combo_dir = scenario_dir / combo_label(policy.value, strategy.value)
                 combo_dir.mkdir(parents=True, exist_ok=True)
                 for replication_index in range(replications):
                     replication_tasks.append(
@@ -229,7 +215,7 @@ def run_monte_carlo_baseline(
         for policy in inventory_policies:
             for strategy in stock_strategies:
                 print(f"\n-- {policy.value} x {strategy.value} --")
-                combo_dir = scenario_dir / f"{policy.value}__{strategy.value}"
+                combo_dir = scenario_dir / combo_label(policy.value, strategy.value)
                 combo_records = [
                     record
                     for record in replication_records
@@ -243,12 +229,12 @@ def run_monte_carlo_baseline(
                 print(
                     f"Completed {replications} reps for {policy.value} x {strategy.value}"
                 )
-                summary_csv = combo_dir / "summary.csv"
+                summary_csv = combo_dir / SUMMARY_FILENAME
                 try:
-                    _write_combo_summary(summary_csv, combo_kpis)
+                    summary_csv.write_text("\n".join(summary_rows(combo_kpis)), encoding="utf-8")
                 except Exception as e:
                     print(
-                        f"Warning: failed to write summary CSV for {policy.value}__{strategy.value}: {e}"
+                        f"Warning: failed to write summary CSV for {combo_label(policy.value, strategy.value)}: {e}"
                     )
 
         # Paired (CRN) comparison across this scenario's combos by per-replication
@@ -276,7 +262,6 @@ def run_monte_carlo_baseline(
             pareto_path = write_pareto_report(scenario_dir)
             if pareto_path is not None:
                 print(f"Wrote Pareto frontier: {pareto_path}")
-                # Pareto frontier PDF (emissions vs service level with frontier overlay).
                 plot_path = write_pareto_plot(scenario_dir)
                 if plot_path is not None:
                     print(f"Wrote Pareto frontier plot: {plot_path}")
@@ -312,12 +297,6 @@ def run_monte_carlo_baseline(
     return results
 
 
-def _write_combo_summary(csv_path: Path, kpis_list: list[dict]) -> None:
-    # Thin writer over the pure `summary_rows` seam (issue 06): marginal KPIs
-    # plus the generic `bullwhip` namespace, each with a Student-t CI (ADR 0008).
-    csv_path.write_text("\n".join(summary_rows(kpis_list)), encoding="utf-8")
-
-
 def main():
     """Main simulation runner - orchestrates all scenario combinations"""
     start_time = time.time()
@@ -336,7 +315,6 @@ def main():
     total_combinations = len(scenarios) * len(inventory_policies) * len(stock_strategies)
     print(f"\nTotal simulation combinations to run: {total_combinations}")
     
-    # Run all scenario combinations
     for scenario_name in scenarios:
         print(f"\n{'='*60}")
         print(f"Running base scenario: {scenario_name}")
@@ -354,11 +332,7 @@ def main():
     print(f"\n{'='*60}")
     print("Creating scenario comparison visualizations")
     print(f"{'='*60}")
-    comparison = ScenarioComparison(results)
-    comparison.create_storage_heatmaps()
-    comparison.create_temporal_comparison()
-    comparison.create_cost_impact_comparison()
-    comparison.create_summary_dashboard()
+    create_scenario_comparison(results)
     print(f"Scenario comparison visualizations saved to {SCENARIO_COMPARISON_PLOTS_DIR}/")
 
     print(f"\n{'='*60}")
@@ -417,11 +391,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.mode == "baseline":
-        _ = run_monte_carlo_baseline(
+        run_monte_carlo_baseline(
             replications=args.replications,
             scenario_filter=args.scenario,
             out_root=args.out_root,
             workers=args.workers,
         )
     else:
-        all_results = main()
+        main()

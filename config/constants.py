@@ -1,10 +1,14 @@
-from models.enums import WasteType
+from models.enums import OutputType, WasteType
+from models.products import ProductDataManager
 
 LANDFILL_EMISSIONS_PER_M3_KG = 0.24 * 1_000  # 240 kg CO2e / m³ (0.24 t CO2e per m³)
 TRANSPORT_EMISSIONS_PER_TON_KM = 0.087  # kg eCO2 per ton-kilometer or 87 g CO2e/ton km
 
 KILOGRAMS_PER_TONNE = 1000.0  # unit conversion factor, kg per tonne
 LANDFILL_COST_PER_TONNE_USD = 46.0  # $/tonne deterrent gate cost, at par with EU-27 landfill range ~EUR 39-46/t (CEWEP 2021 / EEA 2023)
+EXPANSION_COST_PER_M3 = 100.0
+EXPANSION_COST_ESCALATION_PER_PRIOR = 0.5
+LANDFILL_COST_ESCALATION_PER_PRIOR = 0.3
 
 # Carbon shadow price applied to treatment emissions to derive an environmental
 # cost component. Uncalibrated placeholder (the source comment tagged it "example");
@@ -23,6 +27,20 @@ WASTE_HOLDING_COST_PER_M3_PER_DAY = 0.005
 # estimate uses a flat per-km rate (no volume known yet).
 COLLECTION_COST_PER_KM_PER_M3 = 0.1  # realized: distance * this * collected volume
 ESTIMATED_COLLECTION_COST_PER_KM = 0.5  # pre-trip estimate: distance * this
+# Road km per great-circle km for transport cost and emissions (ADR 0038). Separate from the
+# scenario's transportation_time, which scales travel time only (ADR 0015).
+ROAD_CIRCUITY_FACTOR = 1.35
+
+COLLECTOR_TRIP_COST_CAP = 100
+RESIDUE_TRANSFER_VOLUME_M3 = 1e-6
+COLLECTION_CENTER_CAPACITY_MULTIPLE = 2
+VEHICLES_PER_COLLECTOR = 3
+
+_product_data = ProductDataManager()
+PANEL_DENSITIES = {
+    output_type: _product_data.get_product_specification(output_type.value).density_midpoint
+    for output_type in OutputType
+}
 
 # Standard waste densities in kg/m³ based on EWC codes and industry data
 WASTE_DENSITIES = {
@@ -72,8 +90,6 @@ RECOVERING_BASE_EFFICIENCY = 0.3
 FAILURE_CHECK_INTERVAL_DAYS = 1.0
 # Treatment processing capacity is sized as this fraction of waste storage capacity.
 PROCESSING_CAPACITY_FRACTION = 0.8
-# Collection centers take longer to repair than other entities (days of downtime).
-COLLECTION_CENTER_DOWNTIME_DAYS = 2.0
 
 # Operating clock (ADR 0020). Treatment and collectors act once per tick. The
 # region data keeps each entity's capacity per its native period
@@ -92,9 +108,22 @@ OPERATING_TICK_DAYS = 1.0
 KANBAN_SIGNAL_MAX_AGE_DAYS = OPERATING_TICK_DAYS
 
 COLLECTOR_UTILIZATION_CEILING = 0.80
+PUSH_COLLECTOR_THRESHOLD_BUFFER = 0.10
+PUSH_ON_DEMAND_GENERATOR_SIGNAL_STORAGE_SHARE = 0.1
+
+SAME_REGION_COLLECTION_DISTANCE_KM = 10.0
+SAME_REGION_DISTANCE_VARIATION_RANGE = (0.5, 1.5)
+
+# ON_DEMAND collector should-collect threshold: grows with elapsed time, capped
+# (core/strategies/stock_strategy.py).
+ON_DEMAND_COLLECTOR_BASE_THRESHOLD = 0.10
+ON_DEMAND_COLLECTOR_THRESHOLD_GROWTH_PER_DAY = 0.001
+ON_DEMAND_COLLECTOR_MAX_THRESHOLD_GROWTH = 0.3
+
+SSD_FLOATING_ACCUMULATION_RELATIVE_TOLERANCE = 1e-9
 
 # Transformation-selection scoring (ADR 0002, Phase F). The ABC priority weight
-# enters the score at this multiplier, making it the dominant term (CONTEXT.md
+# enters the score at this multiplier, making it the dominant term (GLOSSARY.md
 # "ABC Classification"); the input-availability term saturates at 1.0 once
 # on-hand input waste reaches this volume.
 ABC_PRIORITY_SCORE_MULTIPLIER = 2.0
@@ -105,7 +134,6 @@ INPUT_AVAILABILITY_SATURATION_M3 = 100.0
 # around 0.82, so the floor only binds on longer horizons.
 COLLECTOR_TIME_DEGRADATION_RATE_PER_DAY = 0.0005
 COLLECTOR_DEGRADATION_FLOOR = 0.5
-HISTORY_BUFFER_SIZE = 1000
 SEASONAL_PERIODS = 4
 SEASONAL_AMPLITUDE = 0.2  # +/- fraction of the seasonal sinusoid about a unit mean
 TRAVEL_SPEED_KMH = 50.0
@@ -113,6 +141,14 @@ TRAVEL_SPEED_KMH = 50.0
 # Market consumption (demand-as-continuous-consumption model, ADR 0002)
 WEEKS_PER_YEAR = 52  # annual demand is spread across this many consumption ticks
 CONSUMPTION_INTERVAL_DAYS = 7  # the market consumes finished goods weekly
+
+# Treatment order-up-to level S (ADR 0027): S = D*n + z*sigma*sqrt(n), with D the
+# waste needed per consumption interval, n the consumption intervals in the
+# protection period (lead time + review period, at least one), and sigma the
+# seasonal standard deviation of D. Treatment intake is drained from collectors
+# within the tick, so the replenishment lead time is zero.
+SAFETY_STOCK_Z = 1.645  # 95% cycle service level
+TREATMENT_REPLENISHMENT_LEAD_TIME_DAYS = 0.0
 
 # Inventory priming (ADR 0002, Phase C). Finished-goods capacity per product is
 # sized to FINISHED_GOODS_BUFFER_WEEKS of that product's expected consumption;
@@ -139,12 +175,7 @@ BASELINE_OUTPUT_ROOT = f"{OUTPUT_ROOT}/baseline"
 BASELINE_SCENARIO_DEFAULT = f"{BASELINE_OUTPUT_ROOT}/Baseline"
 SCENARIO_COMPARISON_PLOTS_DIR = f"{PLOTS_ROOT}/scenario_comparison"
 
-# Visualization theme. Encoding convention for the Plotly comparison suite:
-# color encodes the inventory policy, marker symbol encodes the stock strategy.
-# (The Matplotlib paper figure in policy_comparison_figure.py keeps its own
-# documented caption convention: marker per policy, colour per strategy.)
-POLICY_COLORS = {"push": "#1f77b4", "pull": "#ff7f0e"}
-STRATEGY_SYMBOLS = {"on_demand": "circle", "reorder_50": "square", "reorder_90": "diamond"}
+# Visualization theme. Enum-keyed figure styling lives in visualization/figure_style.py.
 # Positional palette for multi-panel bar charts (Plotly default category colors).
 CHART_PALETTE = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"]
 

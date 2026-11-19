@@ -9,13 +9,15 @@ import json
 
 import pytest
 
+from analysis.layout import combo_label
+
 
 @pytest.fixture
 def write_run():
     """Persist one ``run_*.json`` the way the baseline run does, under its combo dir."""
 
     def _write_run(scenario_dir, inventory_policy, stock_strategy, seed, kpis):
-        combo_dir = scenario_dir / f"{inventory_policy}__{stock_strategy}"
+        combo_dir = scenario_dir / combo_label(inventory_policy, stock_strategy)
         combo_dir.mkdir(parents=True, exist_ok=True)
         run = {
             "inventory_policy": inventory_policy,

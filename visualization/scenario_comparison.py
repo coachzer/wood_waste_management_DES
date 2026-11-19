@@ -8,24 +8,11 @@ from .summary_visualization import (
     create_summary_dashboard
 )
 
-class ScenarioComparison:
-    def __init__(self, results: List[Dict]):
-        self.results = results
-        self.output_dir = SCENARIO_COMPARISON_PLOTS_DIR
-        os.makedirs(self.output_dir, exist_ok=True)
 
-    def create_storage_heatmaps(self):
-        """Create heatmap visualizations of storage utilization"""
-        create_storage_heatmaps(self.results, self.output_dir)
-
-    def create_temporal_comparison(self):
-        """Create time-series comparison plots for key metrics"""
-        create_temporal_comparisons(self.results, self.output_dir)
-
-    def create_cost_impact_comparison(self):
-        """Create bar charts comparing cost and environmental impact breakdowns"""
-        create_cost_impact_comparison(self.results, self.output_dir)
-
-    def create_summary_dashboard(self):
-        """Create a comprehensive dashboard with key metrics"""
-        create_summary_dashboard(self.results, self.output_dir)
+def create_scenario_comparison(results: List[Dict]) -> None:
+    """Draw every grid-mode comparison figure into SCENARIO_COMPARISON_PLOTS_DIR."""
+    os.makedirs(SCENARIO_COMPARISON_PLOTS_DIR, exist_ok=True)
+    create_storage_heatmaps(results, SCENARIO_COMPARISON_PLOTS_DIR)
+    create_temporal_comparisons(results, SCENARIO_COMPARISON_PLOTS_DIR)
+    create_cost_impact_comparison(results, SCENARIO_COMPARISON_PLOTS_DIR)
+    create_summary_dashboard(results, SCENARIO_COMPARISON_PLOTS_DIR)

@@ -2,15 +2,10 @@
 
 These cover the pluggable ``StockStrategy``/``InventoryPolicy`` behavior classes
 that replaced the ``match self.stock_strategy`` / ``if self.inventory_policy ==``
-branches in the process modules. The byte-identical baseline run is the real
-oracle for behavior preservation; these tests pin two things that run does not
-make obvious:
+branches in the process modules. These tests pin two things:
 
-1. The factories map every enum selector to the right concrete class (so adding
-   a strategy is one class plus one mapping entry, zero process-module edits).
-2. The lazy ``get_signals`` callables only fire on the exact paths the original
-   inlined code consulted them -- ``get_signals`` prunes stale signals as a side
-   effect, so an over-eager call would silently break reproducibility.
+1. The factories map every enum selector to the class with that behavior.
+2. PUSH paths never consult the signal callables, so PUSH ignores signals.
 """
 
 import pytest
@@ -34,28 +29,36 @@ def _boom():
     raise AssertionError("signal callable must not be consulted on this path")
 
 
-# --- factories -------------------------------------------------------------
-
-def test_build_stock_strategy_maps_every_enum():
-    assert isinstance(build_stock_strategy(StockStrategy.ON_DEMAND), OnDemandStrategy)
-    assert isinstance(build_stock_strategy(StockStrategy.REORDER_50), Reorder50Strategy)
-    assert isinstance(build_stock_strategy(StockStrategy.REORDER_90), Reorder90Strategy)
-
-
-def test_build_inventory_policy_maps_every_enum():
-    assert isinstance(build_inventory_policy(InventoryPolicy.PUSH), PushPolicy)
-    assert isinstance(build_inventory_policy(InventoryPolicy.PULL), PullPolicy)
+def test_factories_map_every_selector_to_its_behavior():
+    assert {
+        member: (
+            build_stock_strategy(member).treatment_should_reorder(60.0, 100.0),
+            build_stock_strategy(member).treatment_should_reorder(95.0, 100.0),
+        )
+        for member in StockStrategy
+    } == {
+        StockStrategy.ON_DEMAND: (True, True),
+        StockStrategy.REORDER_50: (False, False),
+        StockStrategy.REORDER_90: (True, False),
+    }
+    assert {
+        member: build_inventory_policy(member).treatment_is_demand_driven()
+        for member in InventoryPolicy
+    } == {
+        InventoryPolicy.PUSH: False,
+        InventoryPolicy.PULL: True,
+    }
 
 
 # --- stock strategy thresholds --------------------------------------------
 
 def test_reorder_adaptive_threshold_is_the_fraction():
-    assert Reorder50Strategy().collector_adaptive_threshold(999.0) == 0.5
-    assert Reorder90Strategy().collector_adaptive_threshold(999.0) == 0.9
+    assert build_stock_strategy(StockStrategy.REORDER_50).collector_adaptive_threshold(999.0) == 0.5
+    assert build_stock_strategy(StockStrategy.REORDER_90).collector_adaptive_threshold(999.0) == 0.9
 
 
 def test_ondemand_adaptive_threshold_grows_with_time_and_caps():
-    strategy = OnDemandStrategy()
+    strategy = build_stock_strategy(StockStrategy.ON_DEMAND)
     assert strategy.collector_adaptive_threshold(0.0) == pytest.approx(0.10)
     assert strategy.collector_adaptive_threshold(100.0) == pytest.approx(0.20)
     # Time factor caps at 0.30, so the threshold caps at 0.40.
@@ -82,34 +85,19 @@ def test_ondemand_treatment_trigger_fires_until_full():
 
 # --- generator signaling (double dispatch + laziness) ----------------------
 
-def test_reorder_generator_signal_ignores_policy_and_signals():
-    # Reorder strategies decide purely on storage vs fraction; the signal
-    # callable must never be touched (the original never read it here).
+def test_reorder_generator_signal_ignores_policy():
     assert Reorder90Strategy().generator_should_signal(
-        90.0, 100.0, PullPolicy(), _boom
+        90.0, 100.0, PullPolicy()
     ) is True
     assert Reorder50Strategy().generator_should_signal(
-        49.0, 100.0, PullPolicy(), _boom
+        49.0, 100.0, PullPolicy()
     ) is False
 
 
 def test_ondemand_generator_signal_push_uses_storage_threshold():
-    # PUSH ON_DEMAND signals on substantial waste (> 10% capacity) and never
-    # consults downstream signals.
     strategy = OnDemandStrategy()
-    assert strategy.generator_should_signal(11.0, 100.0, PushPolicy(), _boom) is True
-    assert strategy.generator_should_signal(10.0, 100.0, PushPolicy(), _boom) is False
-
-
-def test_ondemand_generator_signal_pull_needs_downstream_demand():
-    strategy = OnDemandStrategy()
-    assert strategy.generator_should_signal(
-        5.0, 100.0, PullPolicy(), lambda: ["signal"]
-    ) is True
-    # No downstream signals -> no upstream signal even with waste on hand.
-    assert strategy.generator_should_signal(
-        50.0, 100.0, PullPolicy(), lambda: []
-    ) is False
+    assert strategy.generator_should_signal(11.0, 100.0, PushPolicy()) is True
+    assert strategy.generator_should_signal(10.0, 100.0, PushPolicy()) is False
 
 
 # --- inventory policy ------------------------------------------------------
@@ -127,12 +115,12 @@ def test_push_should_collect_uses_buffered_threshold_without_signals():
     assert policy.collector_should_collect(0.65, 0.50, _boom) is False
 
 
-def test_pull_should_collect_short_circuits_on_signals():
+def test_pull_collects_only_against_signals():
+    # Kanban: no signal, no movement (ADR 0025). An empty collection center
+    # with no signal must still stay idle.
     policy = PullPolicy()
     assert policy.collector_should_collect(0.70, 0.50, lambda: ["s"]) is True
-    # Otherwise PULL uses the lowered threshold = max(0.15, adaptive - 0.15).
-    assert policy.collector_should_collect(0.30, 0.50, lambda: []) is True
-    assert policy.collector_should_collect(0.40, 0.50, lambda: []) is False
+    assert policy.collector_should_collect(0.0, 0.50, lambda: []) is False
 
 
 def test_pull_signals_do_not_force_collection_at_the_utilization_ceiling():
@@ -143,37 +131,8 @@ def test_pull_signals_do_not_force_collection_at_the_utilization_ceiling():
     assert policy.collector_should_collect(0.99, 0.50, lambda: ["s"]) is False
 
 
-def test_pull_reads_signals_even_above_the_ceiling():
-    reads = []
-    PullPolicy().collector_should_collect(0.99, 0.50, lambda: reads.append(1) or ["s"])
-    assert reads == [1]
-
-
 def test_policy_production_and_signal_propagation_flags():
     assert PushPolicy().propagates_reorder_signals_upstream() is False
     assert PullPolicy().propagates_reorder_signals_upstream() is True
     assert PushPolicy().treatment_is_demand_driven() is False
     assert PullPolicy().treatment_is_demand_driven() is True
-
-
-def test_policy_clamps_before_delegating_efficiency_curve():
-    # The policy owns clamping; verify out-of-range inputs reach the strategy
-    # already clamped by checking the curve's clamped-boundary behavior.
-    captured = {}
-
-    class _SpyStrategy:
-        def collector_push_efficiency(self, utilization, base):
-            captured["util"] = utilization
-            return base
-
-        def collector_pull_efficiency(self, utilization, signals, base):
-            captured["util"] = utilization
-            captured["signals"] = signals
-            return base
-
-    PushPolicy().collector_efficiency(_SpyStrategy(), utilization=1.5, signals=3, base=1.0)
-    assert captured["util"] == 1.0  # clamped to [0, 1]
-
-    PullPolicy().collector_efficiency(_SpyStrategy(), utilization=-0.2, signals=-4, base=1.0)
-    assert captured["util"] == 0.0
-    assert captured["signals"] == 0  # clamped to >= 0

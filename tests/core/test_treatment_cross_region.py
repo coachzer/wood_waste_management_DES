@@ -1,222 +1,85 @@
-"""Cross-region repositioning must not mutate collected_waste (ADR 0009).
+"""Cross-region repositioning is not counted as collected waste (ADR 0009).
 
-``TreatmentOperator._collect_from_cross_region`` performs a collector-to-collector
-repositioning move: it removes waste from a remote collector and routes it to a
-local collector, from where treatment picks it up later via the normal local intake
-path. The invariant is that ``collected_waste`` -- the dict that accumulates what
-treatment has already received -- must NOT be mutated here; doing so would
-double-count the repositioned volume in the waste-side mass balance.
+The cross-region share of a request is a collector-to-collector repositioning
+move: the remote collector queues a transfer to this region, and treatment picks
+the waste up later through the local intake path. Counting it as collected now
+would double-count it in the waste-side mass balance.
 
-ADR 0009 documents this as a real bug that was previously fixed. These tests pin
-four aspects:
-
-1. Double-count guard: ``collected_waste`` stays empty after the call regardless
-   of what transport returns.
-2. Return-value accounting: the method returns the unsatisfied remainder (request
-   minus what transport supplied).
-3. Nearest-three constraint: only the three geographically closest remote
-   collectors are contacted; a same-region collector is never contacted.
-4. Short-circuit on zero request: returning immediately without calling transport.
+An operator in Osrednjeslovenska orders 100 m3 through ``trigger_collection``:
+80% local, 20% cross-region, then a fallback drain for whatever is still missing.
 """
-
-from types import SimpleNamespace
-
 import pytest
+import simpy
 
-from core.treatment import TreatmentOperator
+from core.transport_manager import PointToPointTransport
+from models.distances import get_distance
 from models.enums import RegionType, WasteType
-
+from models.state import SimulationState
+from tests.core.factories import make_collector, make_treatment
 
 CONSTRUCTION = WasteType.CONSTRUCTION_WOOD_17_02_01
-PACKAGING = WasteType.WOODEN_PACKAGING_15_01_03
+HOME = RegionType.OSREDNJESLOVENSKA
 
 
-# ---------------------------------------------------------------------------
-# Stub builders
-# ---------------------------------------------------------------------------
+def _request_100(waste_monitor, stock_by_region):
+    """One collector per region holding the given stock; returns (collected m3, queued transfers by origin)."""
+    env = simpy.Environment()
+    state = SimulationState()
+    transport_manager = PointToPointTransport(state=state, road_circuity_mean=1.0, env=env)
+    state.collectors = []
+    for region, stock in stock_by_region.items():
+        collector = make_collector(
+            env, waste_monitor, name=f"col_{region.value}", region_type=region,
+            state=state, transport_manager=transport_manager,
+        )
+        collector.collection_center.current_storage[CONSTRUCTION] = stock
+        state.collectors.append(collector)
+    operator = make_treatment(
+        env, waste_monitor, name="proc_home", region_type=HOME, state=state, transformations={},
+        order_share_by_waste_type={CONSTRUCTION: 1.0}, order_up_to_level_m3=100.0,
+    )
 
-def make_remote_collector(region_type, availability=True, name=None):
-    """A collector stand-in for state.collectors.
+    _, collected = operator.trigger_collection({CONSTRUCTION: 100.0})
 
-    Uses real RegionType members so ``get_distance`` in the sort key works
-    without monkeypatching.
+    queued = {request.origin: request.volume for request in transport_manager.pending_requests}
+    return collected, queued
+
+
+def test_cross_region_share_is_queued_not_collected(ledger_waste_monitor):
+    """The local 80 drains from Podravska by fallback; the 20 cross-region share is only queued.
+
+    Mutation check (red): add the transfer to collected_waste -> 100 collected.
     """
-    return SimpleNamespace(
-        region_type=region_type,
-        availability=availability,
-        name=name or region_type.value,
-    )
+    collected, queued = _request_100(ledger_waste_monitor, {HOME: 0.0, RegionType.PODRAVSKA: 500.0})
+
+    assert queued == {RegionType.PODRAVSKA: pytest.approx(20.0)}
+    assert collected == pytest.approx(80.0)
 
 
-def make_treatment_stub(
-    home_region: RegionType,
-    remote_collectors,
-    transport_responses,
-):
-    """Build a minimal SimpleNamespace that satisfies ``_collect_from_cross_region``.
+def test_unfilled_cross_region_share_falls_back_to_a_drain(ledger_waste_monitor):
+    """The three nearest remote regions can transfer only 5 of the 20, so the fallback
+    drains the local 80 plus the missing 15 from far-off Pomurska.
 
-    ``transport_responses`` is a list of dicts (one per consecutive transport
-    call) that ``_request_via_transport`` should return in order.
+    Pomurska is listed before Gorenjska, so the fallback fills from it and never
+    touches the 5 m3 Gorenjska has queued.
 
-    Mirrors only the attributes the method reads: ``region_type``, ``state``,
-    and ``_request_via_transport``.
+    Mutation check (red): return the full request instead of the remainder -> 100 collected.
     """
-    call_log = []
-    response_iter = iter(transport_responses)
+    collected, queued = _request_100(ledger_waste_monitor, {
+        HOME: 0.0, RegionType.POMURSKA: 500.0, RegionType.GORENJSKA: 5.0,
+        RegionType.PRIMORSKONOTRANJSKA: 0.0, RegionType.ZASAVSKA: 0.0,
+    })
 
-    def fake_transport(self_ignored, collector, remaining, waste_types):
-        call_log.append(collector)
-        try:
-            return next(response_iter)
-        except StopIteration:
-            return {}
-
-    import types
-    stub = SimpleNamespace(
-        region_type=home_region,
-        state=SimpleNamespace(collectors=remote_collectors),
-        _call_log=call_log,
-    )
-    stub._request_via_transport = types.MethodType(fake_transport, stub)
-    return stub
+    assert queued == {RegionType.GORENJSKA: 5.0}
+    assert collected == pytest.approx(95.0)
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
+def test_cross_region_asks_only_the_three_nearest_remote_collectors(ledger_waste_monitor):
+    """Every collector holds 1 m3; transfers come from the three nearest remote regions only."""
+    regions = [HOME, RegionType.GORENJSKA, RegionType.GORISKA, RegionType.SAVINJSKA,
+               RegionType.PODRAVSKA, RegionType.KOROSKA]
+    nearest_three = sorted(regions[1:], key=lambda region: get_distance(HOME, region))[:3]
 
-def test_cross_region_never_mutates_collected_waste():
-    """Transport returning waste must NOT modify the collected_waste dict.
+    _, queued = _request_100(ledger_waste_monitor, {region: 1.0 for region in regions})
 
-    This is the ADR 0009 double-count guard: repositioned waste reaches treatment
-    via the later local intake path, so adding it to ``collected_waste`` here
-    would count it twice.
-    """
-    home = RegionType.OSREDNJESLOVENSKA
-    remote = make_remote_collector(RegionType.PODRAVSKA)
-
-    stub = make_treatment_stub(
-        home_region=home,
-        remote_collectors=[remote],
-        transport_responses=[{CONSTRUCTION: 10.0}],
-    )
-
-    collected_waste = {}
-    TreatmentOperator._collect_from_cross_region(
-        stub, 50.0, [CONSTRUCTION], collected_waste
-    )
-
-    assert collected_waste == {}, (
-        "collected_waste must not be mutated by _collect_from_cross_region"
-    )
-
-
-def test_cross_region_return_is_unsatisfied_remainder():
-    """The return value is the original request minus what transport supplied.
-
-    Case 1: transport supplies a partial amount -- remainder > 0.
-    Case 2: transport supplies everything -- remainder == 0.
-    """
-    home = RegionType.OSREDNJESLOVENSKA
-    remote_a = make_remote_collector(RegionType.PODRAVSKA)
-    remote_b = make_remote_collector(RegionType.GORENJSKA)
-
-    # Case 1: two collectors, combined supply=60, request=100 -> remainder=40
-    stub1 = make_treatment_stub(
-        home_region=home,
-        remote_collectors=[remote_a, remote_b],
-        transport_responses=[{CONSTRUCTION: 40.0}, {CONSTRUCTION: 20.0}],
-    )
-    remainder1 = TreatmentOperator._collect_from_cross_region(
-        stub1, 100.0, [CONSTRUCTION], {}
-    )
-    assert remainder1 == pytest.approx(40.0)
-
-    # Case 2: first collector supplies everything, loop short-circuits -> remainder=0
-    stub2 = make_treatment_stub(
-        home_region=home,
-        remote_collectors=[remote_a, remote_b],
-        transport_responses=[{CONSTRUCTION: 100.0}],
-    )
-    remainder2 = TreatmentOperator._collect_from_cross_region(
-        stub2, 100.0, [CONSTRUCTION], {}
-    )
-    assert remainder2 == pytest.approx(0.0)
-
-
-def test_cross_region_consults_at_most_three_nearest_remote_collectors():
-    """Only the three nearest remote collectors are contacted.
-
-    A same-region collector in state.collectors must never be contacted
-    regardless of its availability. Five remote collectors at increasing distance
-    from OSREDNJESLOVENSKA are present; the method must visit only the three
-    closest.
-    """
-    home = RegionType.OSREDNJESLOVENSKA
-
-    # Ordered by ascending get_distance from OSREDNJESLOVENSKA:
-    # GORENJSKA (~50 km) < GORISKA < SAVINJSKA < PODRAVSKA < KOROSKA
-    # The exact ordering does not matter for the test -- we verify that
-    # exactly 3 of the 5 remotes are contacted, and the same-region one is not.
-    same_region = make_remote_collector(home, name="same-region-should-not-be-visited")
-    remote1 = make_remote_collector(RegionType.GORENJSKA, name="r1")
-    remote2 = make_remote_collector(RegionType.GORISKA, name="r2")
-    remote3 = make_remote_collector(RegionType.SAVINJSKA, name="r3")
-    remote4 = make_remote_collector(RegionType.PODRAVSKA, name="r4")
-    remote5 = make_remote_collector(RegionType.KOROSKA, name="r5")
-
-    # Transport returns zero so the loop never short-circuits on satisfaction
-    stub = make_treatment_stub(
-        home_region=home,
-        remote_collectors=[same_region, remote1, remote2, remote3, remote4, remote5],
-        transport_responses=[{}, {}, {}, {}, {}],
-    )
-
-    TreatmentOperator._collect_from_cross_region(
-        stub, 100.0, [CONSTRUCTION], {}
-    )
-
-    visited_names = [c.name for c in stub._call_log]
-
-    # Exactly 3 collectors contacted
-    assert len(visited_names) == 3, (
-        f"Expected 3 collectors contacted, got {len(visited_names)}: {visited_names}"
-    )
-
-    # Same-region collector never contacted
-    assert "same-region-should-not-be-visited" not in visited_names, (
-        "Same-region collector must not be contacted by _collect_from_cross_region"
-    )
-
-
-def test_zero_or_negative_request_short_circuits():
-    """A zero or negative amount_to_collect returns 0.0 immediately.
-
-    The early-exit guard ``if amount_to_collect <= 0: return 0.0`` is tested
-    with a negative request (-5.0): without it the method would compute
-    ``remaining = -5.0`` and return that negative value (no loop iteration
-    occurs because ``remaining <= 0`` breaks immediately, but ``remaining``
-    itself is -5.0). The mutation that removes the early return would return
-    -5.0, not 0.0, making the assertion below fail.
-
-    Transport is never called in either code path, so the call-log check is
-    retained as a secondary sanity guard; it does not drive the non-vacuity.
-    """
-    home = RegionType.OSREDNJESLOVENSKA
-    remote = make_remote_collector(RegionType.PODRAVSKA)
-
-    stub = make_treatment_stub(
-        home_region=home,
-        remote_collectors=[remote],
-        transport_responses=[{CONSTRUCTION: 999.0}],
-    )
-
-    # Negative request: the early exit must absorb it and return 0.0.
-    result = TreatmentOperator._collect_from_cross_region(
-        stub, -5.0, [CONSTRUCTION], {}
-    )
-
-    assert result == pytest.approx(0.0), (
-        "A negative request must return 0.0, not the negative value itself"
-    )
-    assert stub._call_log == [], "Transport must not be called when request is non-positive"
+    assert set(queued) == set(nearest_three)

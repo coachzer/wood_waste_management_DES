@@ -1,12 +1,7 @@
-import logging
-import os
-from typing import Dict, Any
-from config.constants import (
-    SIMULATION_DURATION,
-    PLOTS_ROOT,
-    WASTE_HOLDING_COST_PER_M3_PER_DAY,
-)
+from typing import Dict, Tuple
+from config.constants import WASTE_HOLDING_COST_PER_M3_PER_DAY
 from instrumentation.history_store import HistoryStore
+
 
 class WasteMonitor:
     """Monitoring system for waste management operations"""
@@ -14,10 +9,7 @@ class WasteMonitor:
     def __init__(self, env=None):
         self.env = env
         self.store = HistoryStore()
-
-        # exist_ok: parallel baseline workers construct monitors concurrently,
-        # and a check-then-create pair races on the first run of a fresh checkout.
-        os.makedirs(PLOTS_ROOT, exist_ok=True)
+        self._costs_before_first_sample: Dict[Tuple[str, str], Dict[str, float]] = {}
 
     def track_generation(self, generator, timestamp):
         """Track waste generation events with timestamps and costs"""
@@ -36,6 +28,8 @@ class WasteMonitor:
                 history["volumes"][waste_type] = []
                 history["total_generated"][waste_type] = []
                 history["total_potential_generated"][waste_type] = []
+                history["total_uncollected"][waste_type] = []
+                history["total_outlet"][waste_type] = []
 
             history["volumes"][waste_type].append(stream.volume)
             history["total_generated"][waste_type].append(
@@ -43,6 +37,12 @@ class WasteMonitor:
             )
             history["total_potential_generated"][waste_type].append(
                 generator.total_potential_generated[waste_type]
+            )
+            history["total_uncollected"][waste_type].append(
+                generator.total_uncollected[waste_type]
+            )
+            history["total_outlet"][waste_type].append(
+                generator.total_outlet[waste_type]
             )
 
         history["efficiency"].append(generator.efficiency)
@@ -75,7 +75,7 @@ class WasteMonitor:
             history["collected_volumes"][waste_type].append(amount)
 
         history["efficiency"].append(collector.efficiency)
-        history["transport_costs"].append(getattr(collector, 'last_collection_cost', 0.0))
+        history["transport_costs"].append(0.0)
 
         total_storage = sum(collector.collection_center.current_storage.values())
         utilization = (total_storage / collector.collection_center.waste_storage_capacity) * 100
@@ -91,54 +91,64 @@ class WasteMonitor:
         history["energy_costs"].append(0.0)
         history["operational_costs"].append(0.0)
         history["total_costs"].append(0.0)
+        self._book_costs_before_first_sample(("collector", collector.name), history)
 
     def track_processing(self, treatment, timestamp: float):
         """Track treatment facility metrics with embedded costs"""
         self.store.ensure_processing(treatment.name)
         self.store.ensure_entity_status("treatments", treatment.name)
 
-        self.store.entity_status_history["treatments"][treatment.name]["timestamps"].append(timestamp)
-        self.store.entity_status_history["treatments"][treatment.name]["status"].append(treatment.status.name)
-
         history = self.store.processing_history[treatment.name]
         if not history["timestamps"] or timestamp > history["timestamps"][-1]:
+            self.store.entity_status_history["treatments"][treatment.name]["timestamps"].append(timestamp)
+            self.store.entity_status_history["treatments"][treatment.name]["status"].append(treatment.status.name)
             history["timestamps"].append(timestamp)
             history["status"].append(treatment.status.name)
 
             self._track_storage_metrics(treatment, history)
             self._track_processing_metrics(treatment, history)
-            self._track_product_metrics(treatment, history, timestamp)
+            self._track_product_metrics(treatment, history)
 
             history["operational"]["energy_costs"].append(0.0)
             history["operational"]["processing_costs"].append(0.0)
             history["operational"]["total_costs"].append(0.0)
-            # Daily holding-cost accrual on the waste-side storage; inside the
-            # same-timestamp guard so re-entrant calls from the operator's own
-            # loop cannot accrue more than once per day. Kept out of
-            # total_costs so the processing KPI component stays pure.
+            self._book_costs_before_first_sample(("treatment", treatment.name), history["operational"])
+            # Kept out of total_costs so the processing KPI component stays pure.
             history["operational"]["holding_costs"].append(
                 treatment.current_storage * WASTE_HOLDING_COST_PER_M3_PER_DAY
             )
 
     def update_entity_costs(self, entity_name: str, entity_type: str,
-                       energy_cost: float = 0.0, processing_cost: float = 0.0, 
+                       energy_cost: float = 0.0, processing_cost: float = 0.0,
                        transport_cost: float = 0.0):
-        """Update costs in the most recent tracking entry for an entity"""
+        """Add costs to the entity's latest sample.
 
-        if entity_type == "collector" and entity_name in self.store.collection_history:
-            history = self.store.collection_history[entity_name]
-            if history["timestamps"]:
-                history["energy_costs"][-1] += energy_cost
-                history["operational_costs"][-1] += processing_cost
-                history["transport_costs"][-1] += transport_cost
-                history["total_costs"][-1] += energy_cost + processing_cost + transport_cost
+        Before its first sample (treatment runs at t=0 ahead of the monitor
+        process) the costs are held and booked into that first sample.
+        """
+        if entity_type == "collector":
+            history = self.store.collection_history.get(entity_name)
+            columns = {"energy_costs": energy_cost, "operational_costs": processing_cost,
+                       "transport_costs": transport_cost}
+        elif entity_type == "treatment":
+            history = self.store.processing_history.get(entity_name)
+            history = history["operational"] if history else None
+            columns = {"energy_costs": energy_cost, "processing_costs": processing_cost}
+        else:
+            raise ValueError(f"No cost series for entity type {entity_type!r}")
+        columns["total_costs"] = sum(columns.values())
 
-        elif entity_type == "treatment" and entity_name in self.store.processing_history:
-            history = self.store.processing_history[entity_name]
-            if history["timestamps"]:
-                history["operational"]["energy_costs"][-1] += energy_cost
-                history["operational"]["processing_costs"][-1] += processing_cost
-                history["operational"]["total_costs"][-1] += energy_cost + processing_cost
+        if history is None or not history["total_costs"]:
+            held = self._costs_before_first_sample.setdefault((entity_type, entity_name), {})
+            for column, cost in columns.items():
+                held[column] = held.get(column, 0.0) + cost
+            return
+        for column, cost in columns.items():
+            history[column][-1] += cost
+
+    def _book_costs_before_first_sample(self, entity_key, cost_history):
+        for column, cost in self._costs_before_first_sample.pop(entity_key, {}).items():
+            cost_history[column][-1] += cost
 
     def track_expansion(self, volume: float, cost_incurred: float, timestamp: float):
         """Record one storage expansion (the overflow volume that triggered it)."""
@@ -163,67 +173,6 @@ class WasteMonitor:
         """Write one emission of ``kind`` to the store's ledger (see HistoryStore)."""
         self.store.record_emission(entity_name, kind, kgco2e, timestamp)
 
-    def calculate_efficiency_metrics(self) -> Dict[str, float]:
-        """Calculate system-wide efficiency metrics"""
-        total_generated = self._sum_totals(self.store.generation_history, "total_generated")
-        total_collected = self._sum_totals(self.store.collection_history, "collected_volumes")
-
-        total_processed = 0
-        for history in self.store.processing_history.values():
-            if history["processed"]["total"]:
-                total_processed += history["processed"]["total"][-1]
-
-        return {
-            "collection_rate": (total_collected / total_generated * 100) if total_generated > 0 else 0,
-            "processing_rate": (total_processed / total_collected * 100) if total_collected > 0 else 0,
-            "overall_efficiency": (total_processed / total_generated * 100) if total_generated > 0 else 0,
-        }
-
-    def record_entity_status(self, entity, timestamp: float):
-        """Record entity status at specific moments (like transitions)"""
-
-        entity_type_name = type(entity).__name__
-
-        type_mapping = {
-            'WasteGenerator': 'generators',
-            'CollectorCompany': 'collectors', 
-            'TreatmentOperator': 'treatments'
-        }
-
-        history_category = type_mapping.get(entity_type_name)
-        if not history_category:
-            logging.warning(f"Unknown entity type {entity_type_name}")
-            return
-
-        entity_name = getattr(entity, 'name', str(entity))
-
-        self.store.ensure_entity_status(history_category, entity_name)
-
-        entity_history = self.store.entity_status_history[history_category][entity_name]
-
-        if (not entity_history["timestamps"] or 
-            timestamp > entity_history["timestamps"][-1] or
-            entity.status.name != entity_history["status"][-1]):
-
-            entity_history["timestamps"].append(timestamp)
-            entity_history["status"].append(entity.status.name)
-
-    def generate_summary_report(self) -> str:
-        """Generate a comprehensive summary report"""
-        efficiency_metrics = self.calculate_efficiency_metrics()
-        report = ["\n=== Waste Management System Summary Report ===\n"]
-
-        self._add_generation_summary(report)
-        self._add_collection_summary(report)
-        self._add_processing_summary(report)
-
-        report.append("\nSystem Efficiency Metrics:")
-        report.append(f"- Overall collection rate: {efficiency_metrics['collection_rate']:.1f}%")
-        report.append(f"- Overall processing rate: {efficiency_metrics['processing_rate']:.1f}%")
-        report.append(f"- System-wide efficiency: {efficiency_metrics['overall_efficiency']:.1f}%")
-
-        return "\n".join(report)
-
     def monitor_system_process(self, generators, collectors, treatment_operators):
         """Process for continuous monitoring"""
         while True:
@@ -232,10 +181,7 @@ class WasteMonitor:
             for collector in collectors:
                 self.track_collection(collector, self.env.now)
             for treatment in treatment_operators:
-                self.track_processing(treatment, self.env.now)  
-
-            if self.env.now == SIMULATION_DURATION:
-                print(self.generate_summary_report())
+                self.track_processing(treatment, self.env.now)
             yield self.env.timeout(1)
 
     def _track_storage_metrics(self, treatment, history):
@@ -252,12 +198,11 @@ class WasteMonitor:
         """Track processing-related metrics"""
         total_processed = sum(treatment.processed_volumes.values())
         history["processed"]["total"].append(total_processed)
-        return total_processed
 
-    def _track_product_metrics(self, treatment, history, timestamp):
+    def _track_product_metrics(self, treatment, history):
         """Track product-related metrics"""
         product_types = self.store.product_types
-        product_volumes = getattr(treatment, 'product_volumes', {})
+        product_volumes = treatment.product_volumes
 
         # Cumulative produced volume per output type (C11 avoided-emissions
         # driver). A write-only series consumed post-hoc by
@@ -266,52 +211,3 @@ class WasteMonitor:
             history["products"]["by_type"].setdefault(ptype, []).append(
                 product_volumes.get(ptype, 0)
             )
-
-    def _sum_totals(self, history_dict: Dict[str, Any], key: str) -> float:
-        """Helper function to sum totals across all entities"""
-        total = 0
-        for history in history_dict.values():
-            if key not in history:
-                continue
-            if isinstance(history[key], dict):
-                for values in history[key].values():
-                    if values and isinstance(values, list):
-                        total += values[-1]
-            elif isinstance(history[key], list) and history[key]:
-                total += history[key][-1]
-        return total
-
-    def _add_generation_summary(self, report: list) -> None:
-        """Add generation summary to the report"""
-        report.append("Generation Summary:")
-        for generator_name, history in self.store.generation_history.items():
-            report.append(f"\n{generator_name}:")
-            for waste_type in history["total_generated"]:
-                if history["total_generated"][waste_type]:
-                    total = history["total_generated"][waste_type][-1]
-                    report.append(f"- Total {waste_type} generated: {total:.2f} m³")
-            if history["storage_utilization"]:
-                report.append(f"- Current storage utilization: {history['storage_utilization'][-1]:.1f}%")
-
-    def _add_collection_summary(self, report: list) -> None:
-        """Add collection summary to the report"""
-        report.append("\nCollection Summary:")
-        for collector_name, history in self.store.collection_history.items():
-            report.append(f"\n{collector_name}:")
-            for waste_type in history["collected_volumes"]:
-                if history["collected_volumes"][waste_type]:
-                    total = history["collected_volumes"][waste_type][-1]
-                    report.append(f"- Total {waste_type} collected: {total:.2f} m³")
-            if history["efficiency"]:
-                report.append(f"- Current efficiency: {history['efficiency'][-1]:.2f}")
-
-    def _add_processing_summary(self, report: list) -> None:
-        """Add processing summary to the report"""
-        report.append("\nProcessing Summary:")
-        for facility_name, history in self.store.processing_history.items():
-            report.append(f"\n{facility_name}:")
-            if history["processed"]["total"]:
-                total_processed = history["processed"]["total"][-1]
-                report.append(f"- Total waste processed: {total_processed:.2f} m³")
-            if history["storage"]["utilization"]:
-                report.append(f"- Current storage utilization: {history['storage']['utilization'][-1]:.1f}%")

@@ -71,8 +71,7 @@ def test_landfill_readers_agree_on_the_serialized_copy():
     ``raw_NNN.json`` cannot drift from the in-process value.
 
     Mutation check (red): make ``total_landfilled_volume`` read ``"costs"``
-    instead of delegating to ``landfilled_volume_by_entity`` -> the totals
-    disagree.
+    -> the per-entity totals become the costs (10.0, 1.0).
     """
     from persistence.serialization import jsonify
 
@@ -80,11 +79,13 @@ def test_landfill_readers_agree_on_the_serialized_copy():
     store.record_landfill("col-1", {SAWDUST: 30.0, PAPER: 12.5}, cost=10.0, timestamp=1.0)
     store.record_landfill("col-2", {PAPER: 4.0}, cost=1.0, timestamp=5.0)
 
-    round_tripped = json.loads(json.dumps(jsonify(store.get_landfill_history)))
+    round_tripped = json.loads(json.dumps(jsonify(store.landfill_history)))
 
-    assert landfilled_volume_by_entity(round_tripped) == store.landfilled_volume_by_entity()
-    assert total_landfilled_volume(round_tripped) == store.total_landfilled_volume()
-    assert total_landfill_cost(round_tripped) == total_landfill_cost(store.landfill_history)
+    expected_by_entity = {"col-1": 42.5, "col-2": 4.0}
+    assert store.landfilled_volume_by_entity() == expected_by_entity
+    assert landfilled_volume_by_entity(round_tripped) == expected_by_entity
+    assert store.total_landfilled_volume() == total_landfilled_volume(round_tripped) == 46.5
+    assert total_landfill_cost(store.landfill_history) == total_landfill_cost(round_tripped) == 11.0
 
 
 # --- record_emission --------------------------------------------------------
@@ -129,6 +130,9 @@ def test_record_emission_rejects_an_unknown_kind():
 # --- The invariant: one ledger, two readers, one number --------------------
 
 
+FORCED_OVERFLOW_COLLECTION_CENTER_CAPACITY_M3 = 200.0
+
+
 def test_mass_balance_and_kpi_read_the_same_landfill_ledger():
     """On a real run, the raw-waste discard term the mass-balance monitor closed
     its identities with equals ``extract_kpis``' ``landfill_volume_m3`` -- both
@@ -138,8 +142,9 @@ def test_mass_balance_and_kpi_read_the_same_landfill_ledger():
     executes the armed waste-side invariants (``raise_on_violation=True``), so a
     ledger that under-reports trips ``MassBalanceViolation`` before the
     comparison is reached. The ``> 0`` guard keeps the equality from closing
-    trivially on a run that never landfilled (PULL: on the daily clock
-    the PUSH combos at this seed landfill nothing, ADR 0020).
+    trivially on a run that never landfilled. Since ADR 0023 no Baseline combo
+    landfills, so the run shrinks every collection center to
+    ``FORCED_OVERFLOW_COLLECTION_CENTER_CAPACITY_M3`` to force overflow.
 
     Mutation checks (red): (a) in ``extract_kpis`` read ``landfill_volume``
     from ``event_history`` again -> 0 != ledger total; (b) make
@@ -156,6 +161,8 @@ def test_mass_balance_and_kpi_read_the_same_landfill_ledger():
     manager.initialize_entities(
         get_scenario_config("Baseline"), InventoryPolicy.PULL, StockStrategy.ON_DEMAND
     )
+    for collector in manager.state.collectors:
+        collector.collection_center.waste_storage_capacity = FORCED_OVERFLOW_COLLECTION_CENTER_CAPACITY_M3
     manager.setup_processes(raise_on_violation=True)
     manager.run_simulation()
 

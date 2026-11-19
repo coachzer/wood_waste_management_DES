@@ -19,7 +19,7 @@ drained simulation, see their docstrings).
 import logging
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from instrumentation.history_store import HistoryStore
 from models.enums import OutputType
@@ -54,7 +54,6 @@ class EntityRegistry:
     operators: List[Any]
     generators: Optional[List[Any]] = None
     collectors: Optional[List[Any]] = None
-    transport: Optional[List[Any]] = None
     history: Optional[HistoryStore] = None
 
     def landfilled_by_entity(self) -> Dict[str, float]:
@@ -81,9 +80,6 @@ class MassBalanceMonitor:
         """
         self.registry = registry
         self.raise_on_violation = raise_on_violation
-        # Per-check telemetry: (timestamp, operator, product, lhs, rhs, delta),
-        # emitted on every check so drift is visible before it crosses tolerance.
-        self.telemetry: List[Tuple[Optional[float], str, str, float, float, float]] = []
         self._initial_finished_goods = {
             operator.name: {
                 product: operator.finished_goods.current_storage[OutputType(product)]
@@ -108,7 +104,7 @@ class MassBalanceMonitor:
         )
 
     def check_continuous(self, timestamp: Optional[float] = None) -> None:
-        """Scheduled per-tick check. Records telemetry and raises/warns on drift."""
+        """Scheduled per-tick check. Raises or warns on drift."""
         self._check(timestamp)
 
     def check_final(self, timestamp: Optional[float] = None) -> None:
@@ -132,7 +128,6 @@ class MassBalanceMonitor:
                 lhs = initial + produced
                 rhs = consumed + current
                 delta = lhs - rhs
-                self.telemetry.append((timestamp, operator.name, product, lhs, rhs, delta))
 
                 if not math.isclose(
                     lhs, rhs, rel_tol=RELATIVE_TOLERANCE, abs_tol=ABSOLUTE_TOLERANCE
@@ -161,15 +156,15 @@ class MassBalanceMonitor:
 
         ``inflow`` is every transport flow targeting the collector (collection
         plus cross-region reposition-in); ``outflow`` every flow sourced from it
-        (treatment intake plus reposition-out). Cross-region reposition still in
-        the pipeline at check time is added to ``out``: volume debited from this
-        center but still queued for a vehicle, and volume logged as inflow here
-        but still on a vehicle. Final-only by intent.
+        (treatment intake plus reposition-out). Cross-region reposition logged as
+        inflow here but still on a vehicle is added to ``out``. Volume held for a
+        transfer still queued for a vehicle left the origin's ``current_storage``
+        at request time and is added to its ``out`` (ADR 0041). Final-only by intent.
         """
         state = self.registry.state
         landfilled_by_entity = self.registry.landfilled_by_entity()
-        pending_by_origin = state.pending_reposition_volume_by_origin()
         in_flight_by_destination = state.scheduled_reposition_volume_by_destination()
+        held_by_origin = state.held_transfer_volume_by_collector()
         violations = []
         for collector in (self.registry.collectors or []):
             name = collector.name
@@ -185,12 +180,11 @@ class MassBalanceMonitor:
             current = sum(collector.collection_center.current_storage.values())
             landfilled = landfilled_by_entity.get(name, 0.0)
 
-            in_pipeline = pending_by_origin.get(name, 0.0) + in_flight_by_destination.get(name, 0.0)
+            in_pipeline = in_flight_by_destination.get(name, 0.0)
 
             lhs = initial + inflow
-            rhs = outflow + current + landfilled + in_pipeline
+            rhs = outflow + current + landfilled + in_pipeline + held_by_origin.get(name, 0.0)
             delta = lhs - rhs
-            self.telemetry.append((timestamp, name, "raw_waste", lhs, rhs, delta))
 
             if not math.isclose(
                 lhs, rhs, rel_tol=RELATIVE_TOLERANCE, abs_tol=ABSOLUTE_TOLERANCE
@@ -216,15 +210,16 @@ class MassBalanceMonitor:
         any raw waste primed into treatment at t=0) equals the sum of every fate:
 
             sum(generated) + initial_treatment_storage + initial_collection_center
-                == generator_storage + in_transit + collection_center_storage
-                 + treatment_storage + treated_intake + landfilled
+                == generator_storage + in_transit + held_for_transfer
+                 + collection_center_storage + treatment_storage + treated_intake + landfilled
 
         ``treated_intake`` is ``processed_volumes`` (the corrected ADR 0009
         intake); ``landfilled`` is the single funnel through
         ``handle_storage_event``, read from the landfill ledger. A mismatch means raw waste appeared or vanished
-        without a recorded reason. ``in_transit`` covers loaded vehicles plus
-        repositioning volume debited from its origin but still queued for a
-        vehicle. Final-only by intent.
+        without a recorded reason. ``in_transit`` covers loaded vehicles;
+        ``held_for_transfer`` covers volume held for a transfer still queued for a
+        vehicle, which has left its origin center (ADR 0041).
+        Final-only by intent.
         """
         state = self.registry.state
         generators = self.registry.generators or []
@@ -238,7 +233,8 @@ class MassBalanceMonitor:
         in_transit = sum(
             sum(vehicle.current_load_by_type.values())
             for vehicle in state.iter_outbound_vehicles()
-        ) + sum(state.pending_reposition_volume_by_origin().values())
+        )
+        held_for_transfer = sum(state.held_transfer_volume_by_collector().values())
         collection_center_storage = sum(
             sum(collector.collection_center.current_storage.values())
             for collector in collectors
@@ -256,13 +252,13 @@ class MassBalanceMonitor:
         rhs = (
             generator_storage
             + in_transit
+            + held_for_transfer
             + collection_center_storage
             + treatment_storage
             + treated_intake
             + landfilled
         )
         delta = lhs - rhs
-        self.telemetry.append((timestamp, "system", "raw_waste", lhs, rhs, delta))
 
         if math.isclose(lhs, rhs, rel_tol=RELATIVE_TOLERANCE, abs_tol=ABSOLUTE_TOLERANCE):
             return
@@ -274,15 +270,56 @@ class MassBalanceMonitor:
             raise MassBalanceViolation(message)
         logging.warning(message)
 
+    def check_generators(self, timestamp: Optional[float] = None) -> None:
+        """Check that every generator accounts for all the waste it generated.
+
+        Per generator and waste type:
+
+            total_potential_generated == total_generated + total_uncollected + total_outlet
+
+        ``total_generated`` is the waste that entered generator storage.
+        ``total_uncollected`` is the waste generated while storage was full,
+        which leaves the modelled system without a destination (ADR 0024).
+        ``total_outlet`` is waste of a type no processor accepts, which leaves
+        at the generator without entering storage (ADR 0036).
+        Both accumulate separately, so a generation path that drops or invents
+        waste trips here.
+        """
+        violations = []
+        for generator in self.registry.generators or []:
+            for waste_type, potential in generator.total_potential_generated.items():
+                accounted = (
+                    generator.total_generated[waste_type]
+                    + generator.total_uncollected[waste_type]
+                    + generator.total_outlet[waste_type]
+                )
+                delta = potential - accounted
+                if not math.isclose(
+                    potential, accounted, rel_tol=RELATIVE_TOLERANCE, abs_tol=ABSOLUTE_TOLERANCE
+                ):
+                    violations.append(
+                        f"{generator.name}/{waste_type.value}: potential={potential:.6f} "
+                        f"accounted={accounted:.6f} delta={delta:.6f}"
+                    )
+
+        if not violations:
+            return
+        message = (
+            f"Generator mass-balance violated at t={timestamp}: " + "; ".join(violations)
+        )
+        if self.raise_on_violation:
+            raise MassBalanceViolation(message)
+        logging.warning(message)
+
     def check_yield_bridge(self, timestamp: Optional[float] = None) -> None:
         """Check the waste->product yield bridge, per treatment operator (G1).
 
         The product and waste invariants each close independently; neither
         relates intake to output. This check is the bridge between them:
 
-            expected_output_volume == sum(product_volumes.values())
+            expected_output_volume_from_intake_m3 == sum(product_volumes.values())
 
-        ``expected_output_volume`` accumulates ``intake x efficiency`` at each
+        ``expected_output_volume_from_intake_m3`` accumulates ``intake x efficiency`` at each
         transformation, independent of the deposit path. A wrong conversion
         efficiency or mis-scaled yield makes deposited output diverge from this
         intake-derived expectation and trips here, where the single-ledger
@@ -293,12 +330,9 @@ class MassBalanceMonitor:
         """
         violations = []
         for operator in self.registry.operators:
-            expected = getattr(operator, "expected_output_volume", 0.0)
+            expected = getattr(operator, "expected_output_volume_from_intake_m3", 0.0)
             produced = sum(operator.product_volumes.values())
             delta = expected - produced
-            self.telemetry.append(
-                (timestamp, operator.name, "yield_bridge", expected, produced, delta)
-            )
 
             if not math.isclose(
                 expected, produced, rel_tol=RELATIVE_TOLERANCE, abs_tol=ABSOLUTE_TOLERANCE

@@ -9,13 +9,14 @@ pattern as ``policy_comparison_figure`` (which remains the paper's Fig. 2).
 
 Reads only ``summary.csv`` files and runs standalone via
 ``python -m visualization.kpi_family_figures <scenario_dir>``. Combo discovery
-and CSV parsing are reused from ``analysis.pareto`` and
+and CSV parsing are reused from ``analysis.layout`` and
 ``policy_comparison_figure`` so those rules stay in one place.
 """
 
 import csv
+import math
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 import matplotlib
 
@@ -24,14 +25,16 @@ matplotlib.use("Agg")  # headless, browser-free static rendering
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
-from analysis.pareto import iter_combo_summaries
-from visualization.policy_comparison_figure import (
+from analysis.layout import iter_combo_summaries, split_combo_label
+from visualization.figure_style import (
     FIGURE_SIZE_INCHES,
+    KG_PER_KILOTONNE,
+    PULL_HATCH,
+    REPRODUCIBLE_PDF_METADATA,
     STRATEGY_COLORS,
     STRATEGY_LABELS,
-    _split_combo_label,
-    read_metric_intervals,
 )
+from visualization.visualization_utils import read_metric_intervals
 
 # The six CV^2-ratio bullwhip keys (ADR 0004-0007) in display order: the
 # anchored headline pair, the pooled robustness pair, then the stage-by-stage
@@ -88,10 +91,6 @@ CARBON_METRIC_COLORS = {
 # prefixed rows the summary carries rather than hardcoding product names.
 SERVICE_BY_PRODUCT_PREFIX = "service_level_full_by_product_pct."
 
-# Carbon values are scaled to kilotonnes for a readable axis, same divisor as
-# the policy comparison figure's emissions axis.
-KG_PER_KILOTONNE = 1_000_000.0
-
 
 def to_kilotonnes(interval: Tuple[float, float, float]) -> Tuple[float, float, float]:
     """Scale a ``(mean, ci95_low, ci95_high)`` triple from kg to kilotonnes."""
@@ -109,11 +108,6 @@ BULLWHIP_METRIC_LABELS = {
     "bullwhip.treatment_stage": "Treatment\nstage",
     "bullwhip.collector_stage": "Collector\nstage",
 }
-
-# Bar styling: colour encodes the stock strategy (same palette as the policy
-# comparison figure); fill encodes the inventory policy (solid PUSH, hatched
-# PULL) since bars cannot carry the marker-shape convention.
-PULL_HATCH = "//"
 
 
 def _bar_style(row: dict) -> dict:
@@ -144,8 +138,24 @@ def _grouped_bar_legend(table: List[dict]) -> List[Patch]:
     return handles
 
 
-def _grouped_bars(ax, table: List[dict], metrics: List[str]) -> None:
-    """One bar group per metric, one bar per combo, asymmetric 95% CI whiskers."""
+def _grouped_bars(
+    ax, table: List[dict], metrics: List[str], *, log_y: bool = False
+) -> None:
+    """One bar group per metric, one bar per combo, asymmetric 95% CI whiskers.
+
+    On a log axis a CI reaching zero or below cannot be drawn, so its lower
+    whisker stops at the axis bottom: half the smallest positive mean or CI low.
+    """
+    log_floor = None
+    if log_y:
+        positive = [
+            value
+            for row in table
+            for metric in metrics
+            for value in row["values"][metric][:2]
+            if value > 0
+        ]
+        log_floor = min(positive) / 2 if positive else None
     group_width = 0.8
     bar_width = group_width / len(table)
     for combo_index, row in enumerate(table):
@@ -154,11 +164,16 @@ def _grouped_bars(ax, table: List[dict], metrics: List[str]) -> None:
             for group_index in range(len(metrics))
         ]
         means = [row["values"][metric][0] for metric in metrics]
-        err_low = [
-            row["values"][metric][0] - row["values"][metric][1] for metric in metrics
-        ]
+        err_low = []
+        for metric in metrics:
+            mean, low, _ = row["values"][metric]
+            low_half = max(0.0, mean - low)
+            if log_floor is not None and mean > 0 and mean - low_half <= 0:
+                low_half = mean - log_floor
+            err_low.append(low_half)
         err_high = [
-            row["values"][metric][2] - row["values"][metric][0] for metric in metrics
+            max(0.0, row["values"][metric][2] - row["values"][metric][0])
+            for metric in metrics
         ]
         ax.bar(
             positions,
@@ -169,6 +184,8 @@ def _grouped_bars(ax, table: List[dict], metrics: List[str]) -> None:
             error_kw={"elinewidth": 0.8},
             **_bar_style(row),
         )
+    if log_floor is not None:
+        ax.set_ylim(bottom=log_floor)
     ax.set_xticks(range(len(metrics)))
 
 
@@ -183,7 +200,7 @@ def build_metric_table(path: Path, metrics: List[str]) -> List[dict]:
     """
     table: List[dict] = []
     for label, summary_path in iter_combo_summaries(Path(path), root=False):
-        policy, strategy = _split_combo_label(label)
+        policy, strategy = split_combo_label(label)
         intervals = read_metric_intervals(summary_path, metrics)
         table.append(
             {
@@ -196,7 +213,7 @@ def build_metric_table(path: Path, metrics: List[str]) -> List[dict]:
     return table
 
 
-def write_bullwhip_figure(path, filename: str = "bullwhip_comparison.pdf"):
+def write_bullwhip_figure(path):
     """Render and save the bullwhip-family PDF under scenario dir ``path``.
 
     Grouped bars (one group per CV^2-ratio key, one bar per combo) on a log
@@ -213,32 +230,43 @@ def write_bullwhip_figure(path, filename: str = "bullwhip_comparison.pdf"):
         return None
 
     fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
-    _grouped_bars(ax, table, BULLWHIP_RATIO_METRICS)
-    ax.set_xticklabels(
-        [BULLWHIP_METRIC_LABELS[metric] for metric in BULLWHIP_RATIO_METRICS],
-        fontsize=8,
-    )
-    ax.set_yscale("log")
-    ax.axhline(1.0, color="grey", linestyle="--", linewidth=0.8)
-    ax.set_ylabel("CV$^2$ ratio (log scale)")
-    ax.set_title("Throughput bullwhip across policy configurations")
-    ax.grid(True, axis="y", linestyle=":", alpha=0.5)
-    floor_mean = table[0]["values"][BULLWHIP_FLOOR_METRIC][0]
-    ax.set_xlabel(
-        "Generation source-variance floor (policy-invariant): "
-        f"CV$^2$ = {floor_mean:.3g}",
-        fontsize=8,
-        color="dimgrey",
-    )
-    ax.legend(handles=_grouped_bar_legend(table), loc="best", fontsize=8)
-    fig.tight_layout()
-    output_path = path / filename
-    fig.savefig(output_path)
-    plt.close(fig)
+    output_path = path / "bullwhip_comparison.pdf"
+    try:
+        _grouped_bars(ax, table, BULLWHIP_RATIO_METRICS, log_y=True)
+        ax.set_xticklabels(
+            [BULLWHIP_METRIC_LABELS[metric] for metric in BULLWHIP_RATIO_METRICS],
+            fontsize=8,
+        )
+        ax.set_yscale("log")
+        ax.axhline(1.0, color="grey", linestyle="--", linewidth=0.8)
+        ax.set_ylabel("CV$^2$ ratio (log scale)")
+        ax.set_title("Throughput bullwhip across policy configurations")
+        ax.grid(True, axis="y", linestyle=":", alpha=0.5)
+        floor_values = [row["values"][BULLWHIP_FLOOR_METRIC][0] for row in table]
+        floor_mean = floor_values[0]
+        if all(
+            math.isclose(v, floor_mean, rel_tol=1e-4, abs_tol=1e-9)
+            for v in floor_values
+        ):
+            floor_label = (
+                "Generation source-variance floor (policy-invariant): "
+                f"CV$^2$ = {floor_mean:.3g}"
+            )
+        else:
+            floor_label = (
+                "Generation source-variance floor: "
+                f"CV$^2$ in [{min(floor_values):.3g}, {max(floor_values):.3g}]"
+            )
+        ax.set_xlabel(floor_label, fontsize=8, color="dimgrey")
+        ax.legend(handles=_grouped_bar_legend(table), loc="best", fontsize=8)
+        fig.tight_layout()
+        fig.savefig(output_path, metadata=REPRODUCIBLE_PDF_METADATA)
+    finally:
+        plt.close(fig)
     return output_path
 
 
-def write_residence_figure(path, filename: str = "residence_comparison.pdf"):
+def write_residence_figure(path):
     """Render and save the residence-time PDF under scenario dir ``path``.
 
     Grouped bars of time-averaged residence days (Little's Law, ``W = L/λ``)
@@ -251,43 +279,49 @@ def write_residence_figure(path, filename: str = "residence_comparison.pdf"):
         return None
 
     fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
-    _grouped_bars(ax, table, RESIDENCE_METRICS)
-    ax.set_xticklabels(
-        [RESIDENCE_METRIC_LABELS[metric] for metric in RESIDENCE_METRICS]
-    )
-    ax.set_ylabel("Time-weighted residence (days)")
-    ax.set_title("Per-stage residence time across policy configurations")
-    ax.grid(True, axis="y", linestyle=":", alpha=0.5)
-    ax.legend(handles=_grouped_bar_legend(table), loc="best", fontsize=8)
-    fig.tight_layout()
-    output_path = path / filename
-    fig.savefig(output_path)
-    plt.close(fig)
+    output_path = path / "residence_comparison.pdf"
+    try:
+        _grouped_bars(ax, table, RESIDENCE_METRICS)
+        ax.set_xticklabels(
+            [RESIDENCE_METRIC_LABELS[metric] for metric in RESIDENCE_METRICS]
+        )
+        ax.set_ylabel("Time-weighted residence (days)")
+        ax.set_title("Per-stage residence time across policy configurations")
+        ax.grid(True, axis="y", linestyle=":", alpha=0.5)
+        ax.legend(handles=_grouped_bar_legend(table), loc="best", fontsize=8)
+        fig.tight_layout()
+        fig.savefig(output_path, metadata=REPRODUCIBLE_PDF_METADATA)
+    finally:
+        plt.close(fig)
     return output_path
 
 
 def discover_service_by_product_metrics(path: Path) -> List[str]:
-    """Per-product service metric keys from the first combo's ``summary.csv``.
+    """Per-product service metric keys valid across all combos under ``path``.
 
-    Returns the ``service_level_full_by_product_pct.*`` row names in file
-    order, skipping degenerate count-0 rows (a product never attempted carries
-    no interval). The product set is identical across combos (same demand.json),
-    so reading one combo suffices; ``build_metric_table`` still fails loudly if
-    another combo lacks a discovered key. Empty list if no summaries exist.
+    Inspects every combo's ``summary.csv`` and retains only those
+    ``service_level_full_by_product_pct.*`` rows that have non-blank stats
+    (non-zero count) across all combos, preserving deterministic order from the
+    first combo. Empty list if no summaries exist.
     """
-    for _, summary_path in iter_combo_summaries(Path(path), root=False):
-        metrics: List[str] = []
+    summaries = list(iter_combo_summaries(Path(path), root=False))
+    if not summaries:
+        return []
+    per_combo_valid: List[List[str]] = []
+    for _, summary_path in summaries:
+        valid: List[str] = []
         with open(summary_path, "r", encoding="utf-8", newline="") as handle:
-            reader = csv.reader(handle)
-            next(reader, None)  # skip header
+            reader = csv.DictReader(handle)
             for row in reader:
-                if len(row) < 5 or not row[0].startswith(SERVICE_BY_PRODUCT_PREFIX):
+                metric = row.get("metric", "")
+                if not metric.startswith(SERVICE_BY_PRODUCT_PREFIX):
                     continue
-                if row[1] == "":  # degenerate: blank stats, count 0
+                if (row.get("mean") or "").strip() == "":
                     continue
-                metrics.append(row[0])
-        return metrics
-    return []
+                valid.append(metric)
+        per_combo_valid.append(valid)
+    common_valid = set(per_combo_valid[0]).intersection(*per_combo_valid[1:])
+    return [metric for metric in per_combo_valid[0] if metric in common_valid]
 
 
 def product_label(metric: str) -> str:
@@ -302,9 +336,7 @@ def product_label(metric: str) -> str:
     return product_name.replace("_", " ").capitalize()
 
 
-def write_service_by_product_figure(
-    path, filename: str = "service_by_product_comparison.pdf"
-):
+def write_service_by_product_figure(path):
     """Render and save the per-product service-level PDF under ``path``.
 
     Grouped bars (one group per product, one bar per combo) of the full
@@ -320,20 +352,22 @@ def write_service_by_product_figure(
     table = build_metric_table(path, metrics)
 
     fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
-    _grouped_bars(ax, table, metrics)
-    ax.set_xticklabels([product_label(metric) for metric in metrics])
-    ax.set_ylabel("Full service level (%)")
-    ax.set_title("Per-product full service level across policy configurations")
-    ax.grid(True, axis="y", linestyle=":", alpha=0.5)
-    ax.legend(handles=_grouped_bar_legend(table), loc="best", fontsize=8)
-    fig.tight_layout()
-    output_path = path / filename
-    fig.savefig(output_path)
-    plt.close(fig)
+    output_path = path / "service_by_product_comparison.pdf"
+    try:
+        _grouped_bars(ax, table, metrics)
+        ax.set_xticklabels([product_label(metric) for metric in metrics])
+        ax.set_ylabel("Full service level (%)")
+        ax.set_title("Per-product full service level across policy configurations")
+        ax.grid(True, axis="y", linestyle=":", alpha=0.5)
+        ax.legend(handles=_grouped_bar_legend(table), loc="best", fontsize=8)
+        fig.tight_layout()
+        fig.savefig(output_path, metadata=REPRODUCIBLE_PDF_METADATA)
+    finally:
+        plt.close(fig)
     return output_path
 
 
-def write_carbon_figure(path, filename: str = "carbon_comparison.pdf"):
+def write_carbon_figure(path):
     """Render and save the three-carbon-lines PDF under scenario dir ``path``.
 
     One bar group per combo, three bars per group — operational emissions,
@@ -349,40 +383,46 @@ def write_carbon_figure(path, filename: str = "carbon_comparison.pdf"):
         return None
 
     fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
-    group_width = 0.8
-    bar_width = group_width / len(CARBON_METRICS)
-    for metric_index, metric in enumerate(CARBON_METRICS):
-        positions = [
-            combo_index - group_width / 2 + (metric_index + 0.5) * bar_width
-            for combo_index in range(len(table))
+    output_path = path / "carbon_comparison.pdf"
+    try:
+        group_width = 0.8
+        bar_width = group_width / len(CARBON_METRICS)
+        for metric_index, metric in enumerate(CARBON_METRICS):
+            positions = [
+                combo_index - group_width / 2 + (metric_index + 0.5) * bar_width
+                for combo_index in range(len(table))
+            ]
+            scaled = [to_kilotonnes(row["values"][metric]) for row in table]
+            means = [mean for mean, _, _ in scaled]
+            err_low = [max(0.0, mean - low) for mean, low, _ in scaled]
+            err_high = [max(0.0, high - mean) for mean, _, high in scaled]
+            ax.bar(
+                positions,
+                means,
+                width=bar_width,
+                yerr=[err_low, err_high],
+                capsize=2,
+                error_kw={"elinewidth": 0.8},
+                color=CARBON_METRIC_COLORS[metric],
+                edgecolor="black",
+                linewidth=0.5,
+                label=CARBON_METRIC_LABELS[metric],
+            )
+        ax.set_xticks(range(len(table)))
+        tick_labels = [
+            f"{row['policy'].upper()} / {STRATEGY_LABELS[row['strategy']]}"
+            for row in table
         ]
-        scaled = [to_kilotonnes(row["values"][metric]) for row in table]
-        means = [mean for mean, _, _ in scaled]
-        err_low = [mean - low for mean, low, _ in scaled]
-        err_high = [high - mean for mean, _, high in scaled]
-        ax.bar(
-            positions,
-            means,
-            width=bar_width,
-            yerr=[err_low, err_high],
-            capsize=2,
-            error_kw={"elinewidth": 0.8},
-            color=CARBON_METRIC_COLORS[metric],
-            edgecolor="black",
-            linewidth=0.5,
-            label=CARBON_METRIC_LABELS[metric],
-        )
-    ax.set_xticks(range(len(table)))
-    ax.set_xticklabels([row["label"] for row in table], fontsize=8, rotation=20)
-    ax.axhline(0.0, color="black", linewidth=0.8)
-    ax.set_ylabel("kt CO$_2$e (negative = sequestered)")
-    ax.set_title("Three carbon lines per configuration (not netted)")
-    ax.grid(True, axis="y", linestyle=":", alpha=0.5)
-    ax.legend(loc="best", fontsize=8)
-    fig.tight_layout()
-    output_path = path / filename
-    fig.savefig(output_path)
-    plt.close(fig)
+        ax.set_xticklabels(tick_labels, fontsize=8, rotation=20, ha="right")
+        ax.axhline(0.0, color="black", linewidth=0.8)
+        ax.set_ylabel("kt CO$_2$e (negative = sequestered)")
+        ax.set_title("Three carbon lines per configuration (not netted)")
+        ax.grid(True, axis="y", linestyle=":", alpha=0.5)
+        ax.legend(loc="best", fontsize=8)
+        fig.tight_layout()
+        fig.savefig(output_path, metadata=REPRODUCIBLE_PDF_METADATA)
+    finally:
+        plt.close(fig)
     return output_path
 
 
@@ -415,4 +455,5 @@ if __name__ == "__main__":
     if all(written is None for written in written_paths):
         raise SystemExit(f"No summary.csv files found under {target}")
     for written in written_paths:
-        print(f"Wrote {written}")
+        if written is not None:
+            print(f"Wrote {written}")

@@ -11,6 +11,15 @@ def current_season_index(current_time: float) -> int:
     )
 
 
+def seasonal_factor_standard_deviation() -> float:
+    """Population standard deviation of the seasonal factor across its periods (mean is 1)."""
+    deviations = [
+        SEASONAL_AMPLITUDE * math.sin(2 * math.pi * season_index / SEASONAL_PERIODS)
+        for season_index in range(SEASONAL_PERIODS)
+    ]
+    return math.sqrt(sum(deviation ** 2 for deviation in deviations) / SEASONAL_PERIODS)
+
+
 def seasonal_factor(current_time: float) -> float:
     """Quarter-discretized seasonal multiplier shared by generation and consumption.
 

@@ -26,9 +26,9 @@ per-name counter on ``SimulationState``, and an entity-less monitor bucket)
 with the invariant reading one copy and the KPI another; one ledger, one
 writer, shared readers closes that hole.
 
-The getters return a shallow top-level copy (``dict(...)``) so a caller cannot
-mutate the store's spine while still sharing the per-entity history nodes, which
-is exactly what ``SimulationManager.get_monitor_data`` relies on.
+``SimulationManager.get_monitor_data`` takes a shallow top-level copy
+(``dict(...)``) of each history, so a caller cannot mutate the store's spine
+while still sharing the per-entity history nodes.
 
 The ``ensure_*`` methods are idempotent guards (init-if-absent); they preserve
 the recorder's original insertion order because it calls them in the same
@@ -89,6 +89,17 @@ def total_emissions_kgco2e(environmental_history: Dict[str, Any]) -> float:
     return total
 
 
+HISTORY_KEYS = (
+    "generation_history",
+    "collection_history",
+    "processing_history",
+    "environmental_history",
+    "landfill_history",
+    "event_history",
+    "entity_status_history",
+)
+
+
 class HistoryStore:
     """Holds the raw history dicts and authors their per-entity schemas.
 
@@ -110,30 +121,6 @@ class HistoryStore:
             "treatments": {}
         }
         self.product_types = self._get_product_types()
-
-    @property
-    def get_generation_history(self):
-        return dict(self.generation_history)
-
-    @property
-    def get_collection_history(self):
-        return dict(self.collection_history)
-
-    @property
-    def get_processing_history(self):
-        return dict(self.processing_history)
-
-    @property
-    def get_environmental_history(self):
-        return dict(self.environmental_history)
-
-    @property
-    def get_landfill_history(self):
-        return dict(self.landfill_history)
-
-    @property
-    def get_event_history(self):
-        return dict(self.event_history)
 
     # --- Ledgers -------------------------------------------------------------
 
@@ -184,10 +171,6 @@ class HistoryStore:
         """Live system-wide landfilled volume (m3)."""
         return total_landfilled_volume(self.landfill_history)
 
-    @property
-    def get_entity_status_history(self):
-        return dict(self.entity_status_history)
-
     def ensure_generation(self, generator_name):
         """Initialize the per-generator history entry if it does not yet exist.
 
@@ -203,6 +186,8 @@ class HistoryStore:
                 "efficiency": [],
                 "total_generated": {},
                 "total_potential_generated": {},
+                "total_uncollected": {},
+                "total_outlet": {},
                 "storage_utilization": [],
                 "status": [],
                 "holding_costs": [],

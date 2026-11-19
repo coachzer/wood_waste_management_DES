@@ -3,7 +3,7 @@
 A distribution-level comparison stronger than comparing means: it asks whether
 one configuration's whole empirical CDF sits above the other's. First-order (FSD)
 and second-order (SSD) are defined in the **Stochastic Dominance** glossary term
-(CONTEXT.md); the report names the strongest order that holds and carries the
+(GLOSSARY.md); the report names the strongest order that holds and carries the
 per-KPI *sense* as a separate annotation (the dominance math is sense-free, so
 KPIs without a documented sense still get a factual direction with a blank
 sense). It reads the same CRN-paired ``run_*.json`` set as
@@ -20,16 +20,15 @@ from itertools import combinations
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from config.constants import SSD_FLOATING_ACCUMULATION_RELATIVE_TOLERANCE
+
 from ._kpi_shared import (
     DEFAULT_METRICS,
     KPI_SENSE,
+    KpiSense,
     _discovered_namespace_metrics,
     load_combo_kpis,
 )
-
-KPI_SENSES: Dict[str, str] = {metric: KPI_SENSE[metric] for metric in DEFAULT_METRICS}
-
-SSD_RELATIVE_TOLERANCE = 1e-9
 
 MINIMUM_SAMPLES = 2
 
@@ -87,7 +86,7 @@ def first_order_dominance(
 def second_order_dominance(
     samples_a: List[float],
     samples_b: List[float],
-    relative_tolerance: float = SSD_RELATIVE_TOLERANCE,
+    relative_tolerance: float = SSD_FLOATING_ACCUMULATION_RELATIVE_TOLERANCE,
 ) -> Optional[str]:
     """Return ``"a"`` if A SSD B, ``"b"`` if B SSD A, else ``None``.
 
@@ -137,7 +136,7 @@ def second_order_dominance(
 def dominance_relation(
     samples_a: List[float],
     samples_b: List[float],
-    relative_tolerance: float = SSD_RELATIVE_TOLERANCE,
+    relative_tolerance: float = SSD_FLOATING_ACCUMULATION_RELATIVE_TOLERANCE,
 ) -> Tuple[str, Optional[str]]:
     """Strongest dominance order between two samples and its winner.
 
@@ -158,7 +157,7 @@ def dominance_relation(
 def build_dominance_report(
     scenario_dir: Path,
     metrics: Optional[List[str]] = None,
-    relative_tolerance: float = SSD_RELATIVE_TOLERANCE,
+    relative_tolerance: float = SSD_FLOATING_ACCUMULATION_RELATIVE_TOLERANCE,
 ) -> List[dict]:
     """One row per (metric, combo-pair): the dominance order, winner and sense.
 
@@ -199,7 +198,7 @@ def build_dominance_report(
                     "n_b": len(samples_b),
                     "dominance_order": order,
                     "dominant_combo": dominant_combo,
-                    "sense": KPI_SENSES.get(metric, ""),
+                    "sense": KPI_SENSE.get(metric, ""),
                 }
             )
     return rows
@@ -208,7 +207,6 @@ def build_dominance_report(
 def write_dominance_report(
     scenario_dir,
     metrics: Optional[List[str]] = None,
-    relative_tolerance: float = SSD_RELATIVE_TOLERANCE,
 ) -> Optional[Path]:
     """Write ``stochastic_dominance.csv`` for a scenario and return its path.
 
@@ -216,9 +214,7 @@ def write_dominance_report(
     has enough samples for any metric). Lives beside ``paired_comparison.csv``.
     """
     scenario_dir = Path(scenario_dir)
-    rows = build_dominance_report(
-        scenario_dir, metrics=metrics, relative_tolerance=relative_tolerance
-    )
+    rows = build_dominance_report(scenario_dir, metrics=metrics)
     if not rows:
         return None
 
@@ -250,13 +246,13 @@ def _print_dominance_summary(rows: List[dict]) -> None:
     for row in dominances:
         if row["metric"] != current_metric:
             current_metric = row["metric"]
-            sense = KPI_SENSES.get(current_metric, "")
-            sense_note = f" [larger is {'better' if sense == 'max' else 'worse'}]" if sense else ""
+            sense = KPI_SENSE.get(current_metric, "")
+            sense_note = f" [larger is {'better' if sense == KpiSense.LARGER_IS_BETTER else 'worse'}]" if sense else ""
             print(f"\n  {current_metric}{sense_note}:")
         loser = row["combo_b"] if row["dominant_combo"] == row["combo_a"] else row["combo_a"]
         better = ""
         if row["sense"]:
-            better = " (better)" if row["sense"] == "max" else " (worse)"
+            better = " (better)" if row["sense"] == KpiSense.LARGER_IS_BETTER else " (worse)"
         print(
             f"    {row['dominant_combo']} {row['dominance_order']}-dominates {loser}"
             f"  larger{better}; n={row['n_a']}/{row['n_b']}"

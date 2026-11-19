@@ -1,7 +1,6 @@
 """Throughput-bullwhip measurement (ADR 0004): a post-hoc CV^2-normalized
 flow-amplification ratio read from a single run's persisted ``transport_flows``
-and ``consumption_events`` logs. It does not touch the simulation, so adding it
-keeps the golden byte-identical exit test valid.
+and ``consumption_events`` logs. It does not touch the simulation.
 
 Layering keeps the arithmetic core a sim/IO-free unit-test seam:
 ``cv_squared`` / ``bullwhip_ratio`` take plain numeric sequences;
@@ -12,7 +11,7 @@ wrappers anchored on the same consumption series. ``stage_bullwhip`` is the
 pooled decomposition (ADR 0006), ``pooled_anchored_bullwhip`` the pooled
 robustness variant (ADR 0007), and ``generation_floor_cv2`` the policy-invariant
 source-variance reference (ADR 0005). See those ADRs for the rationale behind
-each choice; the **Throughput Bullwhip** glossary term in CONTEXT.md defines the
+each choice; the **Throughput Bullwhip** glossary term in GLOSSARY.md defines the
 measure.
 """
 from __future__ import annotations

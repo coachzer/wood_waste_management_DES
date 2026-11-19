@@ -2,21 +2,21 @@
 
 Each concrete class owns the strategy-specific arithmetic that used to live in
 ``match self.stock_strategy`` blocks across the collector, treatment, and
-generator process modules. The methods take primitive values (and, where the
-original code only read upstream signals on one branch, a lazy callable) so the
-behavior stays byte-identical to the inlined branches it replaces.
+generator process modules. The methods take primitive values, so the behavior
+stays byte-identical to the inlined branches it replaces.
 
-The collector efficiency curves receive already-clamped utilization/signal
-values from the inventory policy (which owns the PUSH/PULL clamping), matching
-the original ``_calculate_push_efficiency`` / ``_calculate_pull_efficiency``
-split.
+Collector efficiency is the same for every strategy and policy (ADR 0025), so
+no strategy owns an efficiency curve.
 """
 
 from __future__ import annotations
 
-from typing import Callable, List, Protocol, TYPE_CHECKING
+from typing import Protocol, TYPE_CHECKING
 
 from config.constants import (
+    ON_DEMAND_COLLECTOR_BASE_THRESHOLD,
+    ON_DEMAND_COLLECTOR_THRESHOLD_GROWTH_PER_DAY,
+    ON_DEMAND_COLLECTOR_MAX_THRESHOLD_GROWTH,
     PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_50,
     PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_90,
 )
@@ -33,16 +33,6 @@ class StockStrategyProtocol(Protocol):
         """Storage-utilization threshold the collector's should-collect test uses."""
         ...
 
-    def collector_push_efficiency(self, utilization: float, base: float) -> float:
-        """PUSH efficiency curve; ``utilization`` is pre-clamped to [0, 1]."""
-        ...
-
-    def collector_pull_efficiency(
-        self, utilization: float, signals: int, base: float
-    ) -> float:
-        """PULL efficiency curve; ``utilization`` and ``signals`` are pre-clamped."""
-        ...
-
     def treatment_should_reorder(self, current_total: float, capacity: float) -> bool:
         """Reorder threshold ``s`` of the (s, S) rule on treatment waste storage."""
         ...
@@ -52,7 +42,6 @@ class StockStrategyProtocol(Protocol):
         current_storage: float,
         capacity: float,
         inventory_policy: "InventoryPolicyProtocol",
-        active_signals_fn: Callable[[], List],
     ) -> bool:
         """Whether the generator emits a collection signal this period."""
         ...
@@ -74,9 +63,7 @@ class _ReorderStrategy:
     def treatment_should_reorder(self, current_total: float, capacity: float) -> bool:
         return current_total < capacity * self._reorder_fraction
 
-    def generator_should_signal(
-        self, current_storage, capacity, inventory_policy, active_signals_fn
-    ) -> bool:
+    def generator_should_signal(self, current_storage, capacity, inventory_policy) -> bool:
         return current_storage >= capacity * self._reorder_fraction
 
 
@@ -88,40 +75,17 @@ class OnDemandStrategy:
     Lean buffers, responsiveness over utilization."""
 
     def collector_adaptive_threshold(self, base_time: float) -> float:
-        time_factor = min(0.3, base_time * 0.001)
-        return 0.10 + time_factor
-
-    def collector_push_efficiency(self, utilization: float, base: float) -> float:
-        if utilization < 0.1:
-            return base * 1.05
-        elif utilization > 0.8:
-            return base * 0.95
-        else:
-            return base
-
-    def collector_pull_efficiency(
-        self, utilization: float, signals: int, base: float
-    ) -> float:
-        if signals == 0:
-            return base * 0.98
-        else:
-            signal_boost = min(0.15, signals * 0.02)
-
-            if utilization > 0.95:
-                strain = (utilization - 0.95) * 2.0
-                return base * (1.0 + signal_boost) * (1.0 - strain)
-            else:
-                return base * (1.0 + signal_boost)
+        time_factor = min(
+            ON_DEMAND_COLLECTOR_MAX_THRESHOLD_GROWTH,
+            base_time * ON_DEMAND_COLLECTOR_THRESHOLD_GROWTH_PER_DAY,
+        )
+        return ON_DEMAND_COLLECTOR_BASE_THRESHOLD + time_factor
 
     def treatment_should_reorder(self, current_total: float, capacity: float) -> bool:
         return current_total < capacity
 
-    def generator_should_signal(
-        self, current_storage, capacity, inventory_policy, active_signals_fn
-    ) -> bool:
-        return inventory_policy.ondemand_generator_should_signal(
-            current_storage, capacity, active_signals_fn
-        )
+    def generator_should_signal(self, current_storage, capacity, inventory_policy) -> bool:
+        return inventory_policy.ondemand_generator_should_signal(current_storage, capacity)
 
 
 class Reorder50Strategy(_ReorderStrategy):
@@ -129,52 +93,11 @@ class Reorder50Strategy(_ReorderStrategy):
 
     _reorder_fraction = PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_50
 
-    def collector_push_efficiency(self, utilization: float, base: float) -> float:
-        if 0.3 <= utilization <= 0.7:
-            return base * 1.0
-        elif utilization < 0.3:
-            underutilization_penalty = (0.3 - utilization) * 0.2
-            return base * (1.0 - underutilization_penalty)
-        else:
-            overutilization_penalty = (utilization - 0.7) * 0.15
-            return base * (1.0 - overutilization_penalty)
-
-    def collector_pull_efficiency(
-        self, utilization: float, signals: int, base: float
-    ) -> float:
-        if signals > 0 and 0.3 <= utilization <= 0.7:
-            return base * 1.05
-        elif signals == 0:
-            return base * 0.97
-        else:
-            return base
-
 
 class Reorder90Strategy(_ReorderStrategy):
     """Reorder at 90% of capacity; large buffers."""
 
     _reorder_fraction = PUSH_WASTE_STORAGE_REORDER_THRESHOLD_REORDER_90
-
-    def collector_push_efficiency(self, utilization: float, base: float) -> float:
-        if 0.8 <= utilization <= 0.9:
-            return base * 1.05
-        else:
-            distance_from_optimal = abs(utilization - 0.85)
-            penalty = min(0.3, distance_from_optimal * 0.5)
-            return base * (1.0 - penalty)
-
-    def collector_pull_efficiency(
-        self, utilization: float, signals: int, base: float
-    ) -> float:
-        signal_bonus = min(0.1, signals * 0.02)
-
-        if utilization > 0.5:
-            buffer_bonus = 1.0
-        else:
-            buffer_penalty = (0.5 - utilization) * 0.1
-            buffer_bonus = 1.0 - buffer_penalty
-
-        return base * (1.0 + signal_bonus) * buffer_bonus
 
 
 _STOCK_STRATEGY_BY_ENUM = {

@@ -1,13 +1,13 @@
 import numpy as np
-from typing import Dict, Optional
-from config.constants import HISTORY_BUFFER_SIZE
+from typing import Dict, List, Optional
 from utils.seasonality import seasonal_factor
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
-from models.data_classes import WasteStream, OperationalEntity
+from models.data_classes import FailureConfig, WasteStream, OperationalEntity
+from config.base_config import ScenarioConfig
 from instrumentation.waste_monitor import WasteMonitor
 from core.kanban_manager import KanbanManager
 from core.strategies import build_stock_strategy, build_inventory_policy
-from utils.capacity_utils import handle_storage_event, split_overflow_by_type
+from utils.capacity_utils import store_with_overflow
 
 class WasteGenerator(OperationalEntity):
     def __init__(
@@ -18,22 +18,19 @@ class WasteGenerator(OperationalEntity):
         generation_frequency,
         waste_storage_capacity,
         efficiency,
-        region: str,
-        uncertainty_set = None,
+        region_type: RegionType,
+        scenario: ScenarioConfig,
+        waste_monitor: WasteMonitor,
+        stock_strategy: StockStrategy,
+        inventory_policy: InventoryPolicy,
+        kanban_manager: KanbanManager,
+        state,
+        failure_config: Optional[FailureConfig],
+        seed,
         initial_stock: Optional[Dict[WasteType, float]] = None,
-        waste_monitor: Optional[WasteMonitor] = None,
-        stock_strategy: StockStrategy = None,
-        inventory_policy: InventoryPolicy = None,
-        kanban_manager = None,
-        state = None,
-        failure_config = None,
-        seed = None
+        accepted_waste_types: Optional[List[WasteType]] = None,
     ):
-        self.uncertainty_set = uncertainty_set
-
-        if failure_config is None and uncertainty_set:
-            failure_config = uncertainty_set.generator_failure
-
+        self.scenario = scenario
         super().__init__(failure_config=failure_config, seed=seed)
         self.env = env
         self.name = name
@@ -56,25 +53,20 @@ class WasteGenerator(OperationalEntity):
             for waste_type in waste_streams.keys()
         }
         self.waste_generation_rates = dict(waste_streams)
-        if uncertainty_set and uncertainty_set.waste_generation_mean != 1.0:
-            mean_multiplier = uncertainty_set.waste_generation_mean
+        if scenario.waste_generation_mean != 1.0:
+            mean_multiplier = scenario.waste_generation_mean
             self.waste_generation_rates = {
                 waste_type: rate * mean_multiplier
                 for waste_type, rate in self.waste_generation_rates.items()
             }
         self.generation_frequency = generation_frequency
         self.waste_storage_capacity = waste_storage_capacity
+        self.initial_efficiency = efficiency
         self.efficiency = efficiency
         self.current_storage = sum(initial_stock.values() if initial_stock else [0])
-        self.last_collected = env.now
-        self.region = region
-        self.region_type = RegionType[region.upper().replace('-', '_')] if region else None
-
+        self.region_type = region_type
         self.waste_monitor = waste_monitor
-        if waste_monitor is None:
-            raise ValueError("waste_monitor is required for WasteGenerator")
-
-        self.kanban_manager = kanban_manager or KanbanManager()
+        self.kanban_manager = kanban_manager
         self.state = state
 
         self.total_generated = {
@@ -83,37 +75,19 @@ class WasteGenerator(OperationalEntity):
         }
 
         self.total_potential_generated = dict(self.total_generated)
-
-        self.history_size = HISTORY_BUFFER_SIZE
-        self.history_index = 0
-        self.generation_history = {
-            waste_type: {
-                "times": np.zeros(self.history_size),
-                "volumes": np.zeros(self.history_size),
-                "totals": np.zeros(self.history_size),
-                "storage": np.zeros(self.history_size),
-            }
-            for waste_type in waste_streams.keys()
-        }
+        self.total_uncollected = {waste_type: 0.0 for waste_type in waste_streams.keys()}
+        self.outlet_waste_types = frozenset(
+            waste_type for waste_type in waste_streams
+            if accepted_waste_types is not None and waste_type not in accepted_waste_types
+        )
+        self.total_outlet = {waste_type: 0.0 for waste_type in waste_streams.keys()}
 
         self.action = env.process(self.generate_waste())
         self.start_failure_process(env)
 
     def _apply_status_throughput_effects(self):
-        """Scale generation rates by status, restoring originals on recovery."""
-        if self.status == EntityStatus.FAILED:
-            if not hasattr(self, '_original_rates'):
-                self._original_rates = self.waste_generation_rates.copy()
-            self.waste_generation_rates = {wt: r * self.get_operational_efficiency() for wt, r in self._original_rates.items()}
-        elif self.status == EntityStatus.RECOVERING:
-            if hasattr(self, '_original_rates'):
-                self.efficiency = self.get_operational_efficiency()
-                self.waste_generation_rates = {wt: r * self.efficiency for wt, r in self._original_rates.items()}
-        elif self.status == EntityStatus.OPERATIONAL:
-            if hasattr(self, '_original_rates'):
-                self.efficiency = 1.0
-                self.waste_generation_rates = self._original_rates.copy()
-                delattr(self, '_original_rates')
+        """Carry a failure on efficiency alone; generation multiplies the rates by it once."""
+        self.efficiency = self.initial_efficiency * self.get_operational_efficiency()
 
     def generate_waste(self):
         """Generate waste with optimized calculations and failure handling, including Kanban pull logic"""
@@ -126,27 +100,27 @@ class WasteGenerator(OperationalEntity):
 
             self._process_stock_strategy(current_time, seasonal_factor(current_time))
 
-            self.history_index += 1
             yield self.env.timeout(self.generation_frequency)
 
     def _process_stock_strategy(self, current_time, seasonal_factor):
         """Unified strategy processing - always generate waste, manage inventory based on strategy"""
 
-        self._generate_waste_for_period(seasonal_factor, current_time)
+        self._generate_waste_for_period(seasonal_factor)
 
         if self.current_storage > self.waste_storage_capacity:
-            self._handle_overflow(force_landfill=False)
+            self._handle_overflow()
 
         self._handle_inventory_signaling(current_time)
 
     def _handle_inventory_signaling(self, current_time):
         """Signal for collection based on stock strategy and current inventory levels"""
+        if not self.inventory_policy_behavior.generators_request_pickup():
+            return
 
         if self.stock_strategy_behavior.generator_should_signal(
             current_storage=self.current_storage,
             capacity=self.waste_storage_capacity,
             inventory_policy=self.inventory_policy_behavior,
-            active_signals_fn=lambda: self.kanban_manager.get_signals(current_time),
         ):
             self._kanban_signal(current_time)
 
@@ -168,68 +142,40 @@ class WasteGenerator(OperationalEntity):
 
     def _calculate_daily_factors(self):
         """Calculate daily generation factors based on uncertainty"""
-        if not self.uncertainty_set:
-            return [1.0] * len(self.waste_generation_rates)
-
         daily_factors = []
-        variability = getattr(self.uncertainty_set, 'waste_generation_variability', 0.2)
+        variability = self.scenario.waste_generation_variability
 
         for _ in self.waste_generation_rates.keys():
             factor = self.rng.normal(1.0, variability)
             daily_factors.append(np.clip(factor, 0.1, 2.0))
         return daily_factors
 
-    def _update_waste_stream(self, waste_type, generated_volume, current_time, history_index):
-        """Update waste stream and history records"""
-        history = self.generation_history[waste_type]
-
+    def _update_waste_stream(self, waste_type, generated_volume):
         self.waste_streams[waste_type].volume += generated_volume
         self.current_storage += generated_volume
         self.total_generated[waste_type] += generated_volume
 
-        if history_index >= len(history["times"]):
-            history_index = 0
+    def _handle_overflow(self):
+        """Cut the streams back to capacity, expanding or landfilling the excess.
 
-        history["times"][history_index] = current_time
-        history["volumes"][history_index] = generated_volume
-        history["totals"][history_index] = self.total_generated[waste_type]
-        history["storage"][history_index] = self.current_storage
-
-    def _handle_overflow(self, force_landfill=False):
-        """Handle storage overflow situation"""
+        The streams already hold the volume, so it is offered to an empty store;
+        each stream keeps its scaled share.
+        """
         current_volumes = {
             waste_type: stream.volume
             for waste_type, stream in self.waste_streams.items()
         }
-
         total_current = sum(current_volumes.values())
-        if total_current > self.waste_storage_capacity:
-            overflow_amount = total_current - self.waste_storage_capacity
+        if total_current <= self.waste_storage_capacity:
+            return
 
-            handle_storage_event(
-                self,
-                split_overflow_by_type(current_volumes, overflow_amount),
-                force_landfill=force_landfill
-            )
+        fits = store_with_overflow(self, {}, current_volumes)
+        for waste_type, stream in self.waste_streams.items():
+            stream.volume = fits[waste_type]
+        self.current_storage = min(total_current, self.waste_storage_capacity)
 
-            effective_capacity = self.waste_storage_capacity
-
-            if total_current > effective_capacity:
-                scaling_factor = effective_capacity / total_current
-
-                for waste_type, stream in self.waste_streams.items():
-                    stream.volume *= scaling_factor
-
-                self.current_storage = effective_capacity
-            else:
-                self.current_storage = total_current
-
-    def _generate_waste_for_period(self, seasonal_factor, current_time):
+    def _generate_waste_for_period(self, seasonal_factor):
         """Generate waste for all waste types in one period with efficiency consideration"""
-        if self.uncertainty_set:
-            if self.status == EntityStatus.FAILED:
-                return
-
         available_storage = self.waste_storage_capacity - self.current_storage
         daily_factors = self._calculate_daily_factors()
 
@@ -240,9 +186,12 @@ class WasteGenerator(OperationalEntity):
 
             self.total_potential_generated[waste_type] += potential_volume
 
-            generated_volume = min(potential_volume, available_storage)
+            if waste_type in self.outlet_waste_types:
+                self.total_outlet[waste_type] += potential_volume
+                continue
+
+            generated_volume = max(0.0, min(potential_volume, available_storage))
+            self.total_uncollected[waste_type] += potential_volume - generated_volume
             if generated_volume > 0:
-                self._update_waste_stream(
-                    waste_type, generated_volume, current_time, self.history_index
-                )
+                self._update_waste_stream(waste_type, generated_volume)
                 available_storage -= generated_volume
