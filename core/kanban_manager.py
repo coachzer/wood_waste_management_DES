@@ -12,16 +12,17 @@ class KanbanManager:
         self.clean_old_signals(timestamp)
         signal_id = f"{source_id}_{waste_type}_{timestamp}_{target_region}"
 
-        if signal_id not in self.acknowledged_signals:
-            self.signals.append({
-                'id': signal_id,
-                'waste_type': waste_type,
-                'timestamp': timestamp,
-                'volume': volume,
-                'source_id': source_id,
-                "source_type": source_type,
-                'target_region': target_region,
-            })
+        if signal_id in self.acknowledged_signals or any(signal['id'] == signal_id for signal in self.signals):
+            return
+        self.signals.append({
+            'id': signal_id,
+            'waste_type': waste_type,
+            'timestamp': timestamp,
+            'volume': volume,
+            'source_id': source_id,
+            "source_type": source_type,
+            'target_region': target_region,
+        })
 
     def acknowledge_signal(self, signal_id):
         """Mark signal as processed"""

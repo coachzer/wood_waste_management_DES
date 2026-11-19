@@ -34,3 +34,11 @@ def test_reposting_an_acknowledged_signal_stays_suppressed():
     _post(bus, RegionType.PODRAVSKA, 100.0)
 
     assert bus.get_signals() == []
+
+
+def test_reposting_an_active_signal_keeps_one_copy():
+    bus = KanbanManager()
+    _post(bus, RegionType.PODRAVSKA, 100.0)
+    _post(bus, RegionType.PODRAVSKA, 100.0)
+
+    assert len(bus.get_signals()) == 1

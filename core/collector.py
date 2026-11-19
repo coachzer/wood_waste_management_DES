@@ -429,7 +429,11 @@ class CollectorCompany(OperationalEntity):
                 self.kanban_manager.acknowledge_signal(signal['id'])
 
     def _propagate_signal_to_generators(self, signal, current_time):
-        """Propagate demand signals upstream to generators"""
+        """Post the demand signal once on each bus the local PULL generators read.
+
+        The source id names the originating operator, so two operators' same-tick
+        orders for one waste type stay distinct signals.
+        """
         waste_type_enum = signal['waste_type']
 
         state = self.state
@@ -441,12 +445,13 @@ class CollectorCompany(OperationalEntity):
                 g.inventory_policy.is_pull())
         ]
 
-        for generator in local_generators:
-            generator.kanban_manager.add_signal(
+        generator_buses = {id(g.kanban_manager): g.kanban_manager for g in local_generators}
+        for kanban_manager in generator_buses.values():
+            kanban_manager.add_signal(
                 waste_type=waste_type_enum,
                 timestamp=current_time,
                 volume=signal['volume'],
-                source_id=self.name,
+                source_id=f"{self.name}<-{signal['source_id']}",
                 source_type="collector"
             )
 

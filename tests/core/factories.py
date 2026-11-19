@@ -178,14 +178,16 @@ class ChargeRecordingMonitor(WasteMonitor):
 
 
 class RecordingKanbanManager(KanbanManager):
-    """A real bus that also keeps the timestamp of every signal posted, before age pruning."""
+    """A real bus that also keeps the timestamp and source type of every signal posted, before pruning or dedupe."""
 
     def __init__(self):
         super().__init__()
         self.posted_timestamps = []
+        self.posted_source_types = []
 
     def add_signal(self, waste_type, timestamp, **signal):
         self.posted_timestamps.append(timestamp)
+        self.posted_source_types.append(signal.get("source_type"))
         super().add_signal(waste_type, timestamp, **signal)
 
 
