@@ -95,11 +95,9 @@ def _create_grouped_storage_heatmaps(
 ):
     """Create one stacked-by-strategy heatmap figure per scenario/policy combination"""
     for (base_scenario, inventory_policy), results_group in grouped_results.items():
-        # Generate filename-safe identifier
         file_id = f"{base_scenario}_{inventory_policy}"
         file_id = file_id.replace(' ', '_').replace('|', '_').replace(',', '_')
 
-        # Create subplots - one for each stock strategy
         num_strategies = len(results_group)
 
         fig = sp.make_subplots(

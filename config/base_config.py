@@ -18,35 +18,35 @@ class ScenarioConfig:
     finished_goods_buffer_weeks: int = FINISHED_GOODS_BUFFER_WEEKS  # swept by the bucket-C sensitivity scenarios
 
 LOW_FAILURE = FailureConfig(
-    probability=0.0024,  # ~0.24% chance per day 
-    min_duration=1.0,    # 1 day minimum
-    max_duration=3.0,    # 3 days maximum
+    probability=0.0024,
+    min_duration=1.0,
+    max_duration=3.0,
 )
 
 MEDIUM_FAILURE = FailureConfig(
-    probability=0.06,    # ~6% chance per day 
-    min_duration=0.5,    # 0.5 days (12 hours)
-    max_duration=2.0,    # 2 days maximum
+    probability=0.06,
+    min_duration=0.5,
+    max_duration=2.0,
 )
 
 HIGH_FAILURE = FailureConfig(
-    probability=0.12,    # ~12% chance per day 
-    min_duration=0.25,   # 0.25 days (6 hours)
-    max_duration=1.5,    # 1.5 days maximum
+    probability=0.12,
+    min_duration=0.25,
+    max_duration=1.5,
 )
 
 DISASTER_FAILURE = FailureConfig(
-    probability=0.24,   # ~24% chance per day
-    min_duration=30.0,  # 30 days minimum
-    max_duration=60.0,  # 60 days maximum
+    probability=0.24,
+    min_duration=30.0,
+    max_duration=60.0,
 )
 
 SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
     "Baseline": ScenarioConfig(
         name="Baseline",
-        waste_generation_mean=1.0,  # Standard generation, low variability
+        waste_generation_mean=1.0,
         waste_generation_variability=0.1,
-        treatment_conversion=(0.9, 0.03),  # High, stable conversion efficiency
+        treatment_conversion=(0.9, 0.03),
         transportation_time=(1.35, 0.1),  # Road circuity over great-circle distance (ADR 0015)
         generator_failure=LOW_FAILURE,
         collector_failure=MEDIUM_FAILURE,

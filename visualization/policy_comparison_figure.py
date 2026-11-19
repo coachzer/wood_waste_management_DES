@@ -68,7 +68,7 @@ def read_metric_intervals(
     intervals: Dict[str, Tuple[float, float, float]] = {}
     with open(summary_csv_path, "r", encoding="utf-8", newline="") as handle:
         reader = csv.reader(handle)
-        next(reader, None)  # skip header
+        next(reader, None)
         for row in reader:
             if len(row) < 5 or row[0] not in wanted:
                 continue

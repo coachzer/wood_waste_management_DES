@@ -167,7 +167,7 @@ def run_monte_carlo_baseline(
     print(f"Inventory policies: {[p.value for p in inventory_policies]}")
     print(f"Stock strategies: {[s.value for s in stock_strategies]}")
 
-    base_seed = DEFAULT_BASE_SEED  # deterministic seed series across runs
+    base_seed = DEFAULT_BASE_SEED
     out_root = Path(BASELINE_OUTPUT_ROOT) if out_root is None else Path(out_root)
     out_root.mkdir(parents=True, exist_ok=True)
 
@@ -262,7 +262,6 @@ def run_monte_carlo_baseline(
             pareto_path = write_pareto_report(scenario_dir)
             if pareto_path is not None:
                 print(f"Wrote Pareto frontier: {pareto_path}")
-                # Pareto frontier PDF (emissions vs service level with frontier overlay).
                 plot_path = write_pareto_plot(scenario_dir)
                 if plot_path is not None:
                     print(f"Wrote Pareto frontier plot: {plot_path}")
@@ -316,7 +315,6 @@ def main():
     total_combinations = len(scenarios) * len(inventory_policies) * len(stock_strategies)
     print(f"\nTotal simulation combinations to run: {total_combinations}")
     
-    # Run all scenario combinations
     for scenario_name in scenarios:
         print(f"\n{'='*60}")
         print(f"Running base scenario: {scenario_name}")

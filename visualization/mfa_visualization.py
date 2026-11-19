@@ -15,10 +15,10 @@ from visualization.visualization_utils import last_cumulative_by_entity, safe_wr
 
 # Sankey node colors keyed by pipeline stage.
 NODE_COLORS = {
-    'generator': '#2ecc71',    # Green
-    'collector': '#3498db',    # Blue
-    'treatment': '#9b59b6',    # Purple
-    'product': '#e67e22',      # Orange
+    'generator': '#2ecc71',
+    'collector': '#3498db',
+    'treatment': '#9b59b6',
+    'product': '#e67e22',
 }
 UNCOLLECTED_NODE_NAME = "Uncollected"
 OUTLET_NODE_NAME = "Outlet"

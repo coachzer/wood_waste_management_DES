@@ -275,7 +275,7 @@ def discover_service_by_product_metrics(path: Path) -> List[str]:
         metrics: List[str] = []
         with open(summary_path, "r", encoding="utf-8", newline="") as handle:
             reader = csv.reader(handle)
-            next(reader, None)  # skip header
+            next(reader, None)
             for row in reader:
                 if len(row) < 5 or not row[0].startswith(SERVICE_BY_PRODUCT_PREFIX):
                     continue
