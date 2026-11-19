@@ -33,6 +33,8 @@ class OperationalEntity:
     recovery_start_time: Optional[float]
     recovery_duration: Optional[float]
     recovery_progress: float
+    expansion_count: int
+    landfill_count: int
     waste_monitor: Optional[EntityStatusRecorder]
     failure_config: Optional[FailureConfig]
     downtime_duration: float
@@ -50,6 +52,8 @@ class OperationalEntity:
         self.recovery_start_time = None
         self.recovery_duration = None
         self.recovery_progress = 0.0
+        self.expansion_count = 0
+        self.landfill_count = 0
         self.waste_monitor = waste_monitor
         self.failure_config = failure_config
         self.downtime_duration = 1.0

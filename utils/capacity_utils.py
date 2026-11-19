@@ -116,7 +116,7 @@ def handle_storage_event(entity, composition: Dict[WasteType, float], force_land
     progressively more expensive.
 
     Mutates the entity in place on whichever branch is taken: bumps expansion_count
-    / landfill_count (the escalation counters), accumulates expansion_costs, and on
+    / landfill_count (the escalation counters), and on
     the expand branch grows waste_storage_capacity by EXPANSION_SIZE_M3.
 
     Recording goes through the entity's waste_monitor when it has a truthy one; a
@@ -140,8 +140,8 @@ def handle_storage_event(entity, composition: Dict[WasteType, float], force_land
     if total_volume < OVERFLOW_VOLUME_TOLERANCE_M3:
         return 0.0, "no_action"
 
-    expansion_count = getattr(entity, 'expansion_count', 0)
-    landfill_count = getattr(entity, 'landfill_count', 0)
+    expansion_count = entity.expansion_count
+    landfill_count = entity.landfill_count
 
     expansion_cost_per_m3 = EXPANSION_COST_PER_M3 * (
         1 + expansion_count * EXPANSION_COST_ESCALATION_PER_PRIOR
@@ -188,7 +188,6 @@ def handle_storage_event(entity, composition: Dict[WasteType, float], force_land
     else:
         entity.waste_storage_capacity += EXPANSION_SIZE_M3
         entity.expansion_count = expansion_count + 1
-        entity.expansion_costs = getattr(entity, 'expansion_costs', 0) + expansion_cost
 
         if entity.waste_monitor:
             entity.waste_monitor.track_expansion(

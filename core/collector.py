@@ -80,7 +80,6 @@ class CollectorCompany(OperationalEntity):
         self.env = env
         self.name = name
         self.facility_type = "collector"
-        self.expansion_count = 0
         self.waste_types = set(waste_types) if waste_types else set()
         self.kanban_manager = kanban_manager
         self.state = state
