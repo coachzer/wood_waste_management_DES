@@ -81,7 +81,7 @@ class WasteMonitor:
             history["collected_volumes"][waste_type].append(amount)
 
         history["efficiency"].append(collector.efficiency)
-        history["transport_costs"].append(getattr(collector, 'last_collection_cost', 0.0))
+        history["transport_costs"].append(0.0)
 
         total_storage = sum(collector.collection_center.current_storage.values())
         utilization = (total_storage / collector.collection_center.waste_storage_capacity) * 100

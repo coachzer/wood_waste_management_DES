@@ -80,7 +80,6 @@ def test_track_collection_accrues_daily_holding_cost_on_collection_center_storag
         collected_waste = {}
         efficiency = 1.0
         collection_center = _CollectionCenter()
-        last_collection_cost = 12.5
 
     monitor = WasteMonitor()
     monitor.track_collection(_Collector(), timestamp=3.0)

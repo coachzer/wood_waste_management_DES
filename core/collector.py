@@ -95,7 +95,6 @@ class CollectorCompany(OperationalEntity):
         self.collection_capacity_per_tick_m3 = self.initial_collection_capacity_per_tick_m3
         self.initial_transport_cost = transport_cost
         self.transport_cost = transport_cost
-        self.last_collection_cost = 0.0
         self.efficiency = efficiency
         self.status = EntityStatus.OPERATIONAL if availability else EntityStatus.FAILED
         self.region_type = region_type
@@ -172,7 +171,7 @@ class CollectorCompany(OperationalEntity):
             yield self.env.timeout(travel_time)
 
             self._add_to_collection_center(collected_waste)
-            self.last_collection_cost = self.charge_trip(collected_waste, distance)
+            self.charge_trip(collected_waste, distance)
         else:
             yield self.env.timeout(travel_time)
 
