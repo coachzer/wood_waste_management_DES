@@ -20,18 +20,32 @@ def read_metric_intervals(
     """Read ``(mean, ci95_low, ci95_high)`` for each requested metric from one ``summary.csv``.
 
     The file has rows ``metric,mean,stdev,ci95_low,ci95_high,count``. Raises
-    ``KeyError`` if a requested metric is absent, so an incomplete dataset fails
-    loudly rather than silently dropping a configuration from the figure.
+    ``KeyError`` if a requested metric is absent, and ``ValueError`` if the
+    header is invalid or a requested row has blank interval values (e.g. ``count=0``).
     """
     wanted = set(metrics)
     intervals: Dict[str, Tuple[float, float, float]] = {}
+    required_cols = {"metric", "mean", "ci95_low", "ci95_high"}
     with open(summary_csv_path, "r", encoding="utf-8", newline="") as handle:
-        reader = csv.reader(handle)
-        next(reader, None)
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None or not required_cols.issubset(reader.fieldnames):
+            raise ValueError(
+                f"{summary_csv_path}: expected CSV columns {sorted(required_cols)}, "
+                f"got {reader.fieldnames}"
+            )
         for row in reader:
-            if len(row) < 5 or row[0] not in wanted:
+            metric = row.get("metric", "")
+            if metric not in wanted:
                 continue
-            intervals[row[0]] = (float(row[1]), float(row[3]), float(row[4]))
+            mean_str = (row.get("mean") or "").strip()
+            low_str = (row.get("ci95_low") or "").strip()
+            high_str = (row.get("ci95_high") or "").strip()
+            if not mean_str or not low_str or not high_str:
+                raise ValueError(
+                    f"{summary_csv_path}: metric '{metric}' has blank interval values "
+                    "(degenerate count=0 row)"
+                )
+            intervals[metric] = (float(mean_str), float(low_str), float(high_str))
     missing = wanted - intervals.keys()
     if missing:
         raise KeyError(
@@ -56,8 +70,13 @@ def group_results_by_scenario_and_policy(results: List[Dict]) -> Dict:
     return grouped_results
 
 def create_scenario_label(result: Dict) -> str:
-    """Create a standardized scenario label from result data"""
-    return f"{result['inventory_policy']} | {result['stock_strategy']}"
+    """Create a standardized scenario label from result data."""
+    policy = result["inventory_policy"]
+    strategy = result["stock_strategy"]
+    base_scenario = result.get("base_scenario")
+    if base_scenario:
+        return f"{base_scenario} | {policy} | {strategy}"
+    return f"{policy} | {strategy}"
 
 def save_plot_files(fig, output_dir: str, filename: str, print_message: str = None):
     """Save HTML and PDF versions of a plot"""
@@ -76,10 +95,10 @@ def safe_write_image(fig, path, **kwargs):
     try:
         fig.write_image(path, **kwargs)
         return True
-    except Exception:
+    except Exception as exc:
         logging.warning(
-            f"PDF export skipped ({path}) -- Kaleido needs a Chromium runtime; "
-            "run kaleido.get_chrome_sync() once to install it"
+            f"PDF export skipped ({path}): {exc} "
+            "(if Kaleido/Chromium is missing, run kaleido.get_chrome_sync() once)"
         )
         return False
 
@@ -113,8 +132,8 @@ def last_cumulative_by_entity(history: Dict, key: str) -> Dict[str, float]:
 def extract_heatmap_matrix(history: Dict, value_selector) -> Dict:
     """Interpolate each entity's series onto a shared time grid for heatmaps.
 
-    ``value_selector(entity_data)`` returns the series to plot (or a falsy
-    value, rendered as a zero row).
+    ``value_selector(entity_data)`` returns the series to plot (or ``None`` /
+    empty, rendered as a zero row).
     """
     entities = list(history.keys())
     if not entities:
@@ -122,20 +141,28 @@ def extract_heatmap_matrix(history: Dict, value_selector) -> Dict:
 
     all_timestamps = []
     for entity_data in history.values():
-        if 'timestamps' in entity_data:
+        if 'timestamps' in entity_data and entity_data['timestamps'] is not None:
             all_timestamps.extend(entity_data['timestamps'])
 
     if not all_timestamps:
         return {'x_values': [], 'y_values': [], 'z_values': []}
 
-    time_range = np.linspace(min(all_timestamps), max(all_timestamps), HEATMAP_TIME_GRID_POINTS)
+    t_min, t_max = min(all_timestamps), max(all_timestamps)
+    if t_min == t_max:
+        time_range = np.array([t_min], dtype=float)
+    else:
+        time_range = np.linspace(t_min, t_max, HEATMAP_TIME_GRID_POINTS)
     z_matrix = []
 
     for entity in entities:
         entity_data = history[entity]
         values = value_selector(entity_data)
-        if values:
-            interpolated = np.interp(time_range, entity_data['timestamps'], values)
+        if values is not None and len(values) > 0:
+            timestamps = entity_data.get('timestamps')
+            if timestamps is None:
+                raise ValueError(f"Entity '{entity}' has heatmap values but no 'timestamps'")
+            _validate_entity_series(entity, "heatmap", timestamps, values)
+            interpolated = np.interp(time_range, timestamps, values)
             z_matrix.append(interpolated)
         else:
             z_matrix.append(np.zeros(len(time_range)))

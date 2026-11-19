@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 
 import plotly.graph_objects as go
 from typing import Dict
@@ -38,18 +39,25 @@ def format_volume(volume: float) -> str:
     else:
         return f"{volume:.1f} m³"
 
-def _get_product_volumes(state) -> Dict:
+def _format_product_label(key: str) -> str:
+    """Format a snake_case product key for Sankey node labels."""
+    if len(key) <= 3:
+        return key.upper()
+    return key.replace("_", " ").title()
+
+
+def _get_product_volumes(state) -> Dict[str, float]:
     """Sum true per-operator product output (m³) across treatment operators.
 
     Sourced from each operator's ``product_volumes`` -- the real cumulative
     output counters -- rather than the retired demand-ceiling state, so the
     Sankey reports actual production with no ceiling cap.
     """
-    totals = {"MDF": 0.0, "Particle Board": 0.0, "OSB": 0.0}
-    label_by_key = {"mdf": "MDF", "particle_board": "Particle Board", "osb": "OSB"}
-    for operator in state.treatment_operators:
-        for key, label in label_by_key.items():
-            totals[label] += operator.product_volumes.get(key, 0.0)
+    totals: Dict[str, float] = {}
+    for operator in getattr(state, "treatment_operators", []):
+        for key, volume in getattr(operator, "product_volumes", {}).items():
+            label = _format_product_label(key)
+            totals[label] = totals.get(label, 0.0) + volume
     return totals
 
 def get_volumes(generation_history: Dict, collection_history: Dict, processing_history: Dict, state):
@@ -145,10 +153,18 @@ def _create_flows(transport_flows: list, labels: list):
     return sources, targets, values, link_colors
 
 def _stock_at_end_by_entity(state) -> Dict[str, float]:
-    """Waste still in generator storage and collection centers when the run ends."""
+    """Waste still in generator, collector, and treatment storage when the run ends."""
     stock = {generator.name: generator.current_storage for generator in getattr(state, "generators", [])}
     for collector in getattr(state, "collectors", []):
         stock[collector.name] = sum(collector.collection_center.current_storage.values())
+    for operator in getattr(state, "treatment_operators", []):
+        current_storage = getattr(operator, "current_storage", None)
+        if current_storage is not None:
+            stock[operator.name] = (
+                sum(current_storage.values())
+                if isinstance(current_storage, dict)
+                else current_storage
+            )
     return stock
 
 
@@ -156,7 +172,25 @@ def create_sankey(generator_volumes: Dict, generator_sink_volumes: Dict, collect
                   treatment_volumes: Dict, product_volumes: Dict, state):
     min_volume = MFA_MIN_NODE_VOLUME_M3
     generators = _filter_volumes(generator_volumes, min_volume)
-    collectors = _filter_volumes(collector_volumes, min_volume)
+
+    effective_collector_volumes = dict(collector_volumes)
+    for flow in state.transport_flows:
+        if flow.get("transport_method") == "inter_region_transport":
+            target = flow["target_name"]
+            effective_collector_volumes[target] = (
+                effective_collector_volumes.get(target, 0.0) + flow["volume"]
+            )
+    collectors = _filter_volumes(effective_collector_volumes, min_volume)
+    referenced_in_flows = {
+        name
+        for flow in state.transport_flows
+        if flow["volume"] >= MFA_MIN_FLOW_VOLUME_M3
+        for name in (flow["source_name"], flow["target_name"])
+    }
+    for name in referenced_in_flows:
+        if name in effective_collector_volumes and name not in collectors:
+            collectors[name] = effective_collector_volumes[name]
+
     treatments = _filter_volumes(treatment_volumes, min_volume)
     products   = _filter_volumes(product_volumes,   min_volume)
 
@@ -172,14 +206,19 @@ def create_sankey(generator_volumes: Dict, generator_sink_volumes: Dict, collect
     transport_flows = state.transport_flows
     sources, targets, values, link_colors = _create_flows(transport_flows, labels)
 
+    product_key_by_label = {
+        _format_product_label(key): key
+        for operator in getattr(state, "treatment_operators", [])
+        for key in getattr(operator, "product_volumes", {})
+    }
     for t_idx, treat_name in enumerate(treatments.keys()):
         op = next((o for o in state.treatment_operators if o.name == treat_name), None)
         if not op:
             continue
         for p_idx, prod_label in enumerate(products.keys()):
-            key = prod_label.lower().replace(" ", "_")
+            key = product_key_by_label.get(prod_label, prod_label.lower().replace(" ", "_"))
             vol = op.product_volumes.get(key, 0.0)
-            if vol >= min_volume:
+            if vol >= MFA_MIN_FLOW_VOLUME_M3:
                 sources.append(treat_start + t_idx)
                 targets.append(prod_start + p_idx)
                 values.append(vol)
@@ -293,8 +332,13 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
     )
 
     if inventory_policy and stock_strategy:
+        annotation_lines = []
+        if scenario_name:
+            annotation_lines.append(f"Scenario: {scenario_name}")
+        annotation_lines.append(f"Inventory Policy: {inventory_policy}")
+        annotation_lines.append(f"Stock Strategy: {stock_strategy}")
         fig.add_annotation(
-            text=f"Scenario: {scenario_name}<br>Inventory Policy: {inventory_policy}<br>Stock Strategy: {stock_strategy}",
+            text="<br>".join(annotation_lines),
             xref="paper", yref="paper", x=0.98, y=0.98,
             showarrow=False, font={'size': 10},
             bgcolor="rgba(255,255,255,0.8)",
@@ -305,7 +349,7 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
     fig.write_html(save_path)
     logging.info(f"Material flow analysis saved to {save_path}")
 
-    pdf_path = save_path.replace(".html", ".pdf")
+    pdf_path = str(Path(save_path).with_suffix(".pdf"))
     if safe_write_image(fig, pdf_path, height=SANKEY_HEIGHT_PX, width=WIDE_EXPORT_WIDTH_PX):
         logging.info(f"PDF version saved to {pdf_path}")
 

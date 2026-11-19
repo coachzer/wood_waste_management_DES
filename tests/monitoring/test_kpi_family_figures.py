@@ -247,3 +247,79 @@ def test_family_figures_embed_fixed_dates_so_reruns_are_byte_identical(tmp_path)
     pdf = written.read_bytes()
     assert b"/CreationDate (D:19700101" in pdf
     assert b"/ModDate (D:19700101" in pdf
+
+
+def test_discover_service_by_product_metrics_skips_product_blank_in_later_combo(tmp_path):
+    _write_summary(tmp_path / "pull__on_demand", _service_by_product_rows())
+    _write_summary(
+        tmp_path / "push__on_demand",
+        {
+            f"{SERVICE_BY_PRODUCT_PREFIX}mdf": (80.0, 75.0, 85.0),
+            f"{SERVICE_BY_PRODUCT_PREFIX}particle_board": (70.0, 65.0, 75.0),
+        },
+    )
+    with open(tmp_path / "push__on_demand" / "summary.csv", "a", encoding="utf-8") as handle:
+        handle.write(f"\n{SERVICE_BY_PRODUCT_PREFIX}osb,,,,,0")
+
+    discovered = discover_service_by_product_metrics(tmp_path)
+    assert set(discovered) == {
+        f"{SERVICE_BY_PRODUCT_PREFIX}mdf",
+        f"{SERVICE_BY_PRODUCT_PREFIX}particle_board",
+    }
+    written = write_service_by_product_figure(tmp_path)
+    assert written is not None and written.exists()
+
+
+def test_write_bullwhip_figure_clamps_negative_log_whisker_and_checks_floor(tmp_path, recwarn):
+    rows_a = _bullwhip_rows()
+    rows_a[BULLWHIP_RATIO_METRICS[0]] = (10.0, -5.0, 15.0)
+    rows_a[BULLWHIP_FLOOR_METRIC] = (0.025, 0.024, 0.026)
+
+    rows_b = _bullwhip_rows(scale=0.5)
+    rows_b[BULLWHIP_FLOOR_METRIC] = (0.050, 0.048, 0.052)
+
+    _write_summary(tmp_path / "pull__on_demand", rows_a)
+    _write_summary(tmp_path / "push__on_demand", rows_b)
+    written = write_bullwhip_figure(tmp_path)
+    assert written is not None and written.exists()
+    # No matplotlib UserWarning about non-positive values on log scale
+    assert not any("log" in str(w.message).lower() for w in recwarn)
+
+
+def test_kpi_family_figures_main_skips_none_output(tmp_path):
+    import subprocess
+    import sys
+
+    rows = {}
+    rows.update(_bullwhip_rows())
+    rows.update(_residence_rows())
+    rows.update(_carbon_rows())
+    _write_summary(tmp_path / "push__on_demand", rows)
+    proc = subprocess.run(
+        [sys.executable, "-m", "visualization.kpi_family_figures", str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "Wrote None" not in proc.stdout
+    assert "bullwhip_comparison.pdf" in proc.stdout
+
+
+def test_log_axis_whisker_below_zero_stops_at_the_axis_bottom(tmp_path):
+    import matplotlib.pyplot as plt
+
+    from visualization.kpi_family_figures import _grouped_bars, build_metric_table
+
+    rows_a = _bullwhip_rows()
+    rows_a[BULLWHIP_RATIO_METRICS[0]] = (10.0, -5.0, 15.0)
+    _write_summary(tmp_path / "pull__on_demand", rows_a)
+    _write_summary(tmp_path / "push__on_demand", _bullwhip_rows(scale=0.5))
+    table = build_metric_table(tmp_path, BULLWHIP_RATIO_METRICS)
+
+    fig, ax = plt.subplots()
+    try:
+        _grouped_bars(ax, table, BULLWHIP_RATIO_METRICS, log_y=True)
+        ax.set_yscale("log")
+        assert ax.get_ylim()[0] == pytest.approx(4.5 / 2)
+    finally:
+        plt.close(fig)

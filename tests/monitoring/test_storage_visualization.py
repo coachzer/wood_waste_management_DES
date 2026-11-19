@@ -51,3 +51,48 @@ def test_empty_results_still_rejected(tmp_path):
     except ValueError:
         return
     raise AssertionError("expected ValueError for empty results")
+
+
+def test_extract_heatmap_matrix_numpy_array_and_single_timestamp():
+    import numpy as np
+    from visualization.visualization_utils import extract_heatmap_matrix
+
+    history = {
+        "gen_1": {
+            "timestamps": [5.0],
+            "storage_utilization": np.array([42.0]),
+        }
+    }
+    data = extract_heatmap_matrix(history, lambda d: d.get("storage_utilization"))
+    assert list(data["x_values"]) == [5.0]
+    assert data["y_values"] == ["gen_1"]
+    assert list(data["z_values"][0]) == [42.0]
+
+
+def test_storage_heatmaps_colorbar_on_first_nonempty_and_many_strategies(tmp_path):
+    # First strategy has empty generation_history; second is non-empty; 10 strategies test vertical_spacing clamping.
+    results = []
+    for idx in range(10):
+        gen_hist = {} if idx == 0 else {"gen_1": {"timestamps": [0.0, 1.0], "storage_utilization": [10.0, 20.0]}}
+        results.append({
+            "base_scenario": "Baseline",
+            "scenario_name": f"Baseline_push_strat_{idx}",
+            "inventory_policy": "push",
+            "stock_strategy": f"strat_{idx}",
+            "monitor_data": {
+                "generation_history": gen_hist,
+                "collection_history": {"col_1": {"timestamps": [0.0, 1.0], "storage_utilization": [10.0, 20.0]}},
+                "processing_history": {
+                    "proc_1": {
+                        "timestamps": [0.0, 1.0],
+                        "storage": {
+                            "waste_utilization": [10.0, 20.0],
+                            "finished_goods_utilization": [5.0, 15.0],
+                        },
+                    }
+                },
+            },
+        })
+    create_storage_heatmaps(results, str(tmp_path))
+    gen_html = (tmp_path / "storage_heatmaps" / "entity_storage" / "generation" / "generation_storage_heatmap_Baseline_push.html").read_text(encoding="utf-8")
+    assert '"showscale":true' in gen_html

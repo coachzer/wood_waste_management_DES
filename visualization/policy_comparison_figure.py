@@ -62,13 +62,13 @@ def build_points(path: Path) -> List[dict]:
                 "strategy": strategy,
                 "service": service_mean,
                 "service_err": [
-                    [service_mean - service_low],
-                    [service_high - service_mean],
+                    [max(0.0, service_mean - service_low)],
+                    [max(0.0, service_high - service_mean)],
                 ],
                 "emissions": emis_mean / KG_PER_KILOTONNE,
                 "emissions_err": [
-                    [(emis_mean - emis_low) / KG_PER_KILOTONNE],
-                    [(emis_high - emis_mean) / KG_PER_KILOTONNE],
+                    [max(0.0, (emis_mean - emis_low) / KG_PER_KILOTONNE)],
+                    [max(0.0, (emis_high - emis_mean) / KG_PER_KILOTONNE)],
                 ],
             }
         )
@@ -139,11 +139,13 @@ def write_policy_comparison_figure(path):
         return None
     fig = render_figure(points)
     output_path = path / "policy_comparison.pdf"
-    fig.savefig(
-        output_path,
-        metadata=REPRODUCIBLE_PDF_METADATA,
-    )
-    plt.close(fig)
+    try:
+        fig.savefig(
+            output_path,
+            metadata=REPRODUCIBLE_PDF_METADATA,
+        )
+    finally:
+        plt.close(fig)
     return output_path
 
 

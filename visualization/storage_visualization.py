@@ -6,6 +6,7 @@ from config.constants import (
     HEATMAP_COLORSCALE,
     HEATMAP_HEIGHT_PADDING_PX,
     HEATMAP_SUBPLOT_HEIGHT_PX,
+    PDF_EXPORT_SCALE,
     UTILIZATION_PCT_MAX,
     UTILIZATION_PCT_MIN,
     WIDE_EXPORT_WIDTH_PX,
@@ -99,18 +100,23 @@ def _create_grouped_storage_heatmaps(
         file_id = file_id.replace(' ', '_').replace('|', '_').replace(',', '_')
 
         num_strategies = len(results_group)
+        vertical_spacing = (
+            min(0.15, 0.8 / max(1, num_strategies - 1)) if num_strategies > 1 else 0.0
+        )
 
         fig = sp.make_subplots(
             rows=num_strategies,
             cols=1,
             subplot_titles=[f"Stock Strategy: {result['stock_strategy']}" for result in results_group],
-            vertical_spacing=0.15
+            vertical_spacing=vertical_spacing
         )
 
+        colorbar_shown = False
         for i, result in enumerate(results_group, 1):
             heatmap_data = extract_heatmap_data(result['monitor_data'])
 
-            if heatmap_data['z_values']:
+            if len(heatmap_data['z_values']) > 0:
+                show_scale = not colorbar_shown
                 fig.add_trace(
                     go.Heatmap(
                         z=heatmap_data['z_values'],
@@ -118,11 +124,12 @@ def _create_grouped_storage_heatmaps(
                         y=heatmap_data['y_values'],
                         colorscale=HEATMAP_COLORSCALE,
                         zmin=UTILIZATION_PCT_MIN, zmax=UTILIZATION_PCT_MAX,
-                        showscale=(i == 1),
-                        colorbar={"title": colorbar_title} if i == 1 else None
+                        showscale=show_scale,
+                        colorbar={"title": colorbar_title} if show_scale else None
                     ),
                     row=i, col=1
                 )
+                colorbar_shown = True
 
         fig.update_layout(
             title=f"{title_prefix} - {base_scenario}<br>Inventory Policy: {inventory_policy}",
@@ -143,4 +150,5 @@ def _create_grouped_storage_heatmaps(
             f"{output_dir}/{pdf_path}",
             height=HEATMAP_SUBPLOT_HEIGHT_PX * num_strategies + HEATMAP_HEIGHT_PADDING_PX,
             width=WIDE_EXPORT_WIDTH_PX,
+            scale=PDF_EXPORT_SCALE,
         )
