@@ -1,8 +1,6 @@
-import os
 from typing import Dict, Any
 from config.constants import (
     SIMULATION_DURATION,
-    PLOTS_ROOT,
     WASTE_HOLDING_COST_PER_M3_PER_DAY,
 )
 from instrumentation.history_store import HistoryStore
@@ -21,10 +19,6 @@ class WasteMonitor:
     def __init__(self, env=None):
         self.env = env
         self.store = HistoryStore()
-
-        # exist_ok: parallel baseline workers construct monitors concurrently,
-        # and a check-then-create pair races on the first run of a fresh checkout.
-        os.makedirs(PLOTS_ROOT, exist_ok=True)
 
     def track_generation(self, generator, timestamp):
         """Track waste generation events with timestamps and costs"""
