@@ -54,4 +54,4 @@ def build_raw_payload(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
     reloaded sidecar matches the live run. The result still contains Enum
     keys/values; pass it through ``jsonify`` before ``json.dump``.
     """
-    return {key: monitor_data.get(key, {}) for key in RAW_PAYLOAD_KEYS}
+    return {key: monitor_data[key] for key in RAW_PAYLOAD_KEYS}
