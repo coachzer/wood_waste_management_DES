@@ -565,7 +565,12 @@ class TreatmentOperator(OperationalEntity):
         )
 
         if overflow_amount > 0:
-            compute_and_handle_overflow(self, waste_amounts, allowed_additions)
+            _cost, action = compute_and_handle_overflow(self, waste_amounts, allowed_additions)
+            if action == "expand_storage":
+                allowed_additions, _ = check_storage_capacity(
+                    self.waste_storage, waste_amounts, self.waste_storage_capacity
+                )
+                compute_and_handle_overflow(self, waste_amounts, allowed_additions, force_landfill=True)
 
         total_added = 0.0
         for waste_type, amount in allowed_additions.items():

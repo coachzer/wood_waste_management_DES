@@ -50,7 +50,8 @@ def compute_and_handle_overflow(
     entity,
     original_amounts: Dict[WasteType, float],
     allowed_amounts: Dict[WasteType, float],
-) -> None:
+    force_landfill: bool = False,
+) -> Tuple[float, str]:
     """Route the per-type overflow skimmed by check_storage_capacity to handle_storage_event.
 
     check_storage_capacity already scaled each type proportionally, so the
@@ -62,7 +63,7 @@ def compute_and_handle_overflow(
         - allowed_amounts.get(waste_type, 0.0)
         for waste_type in sorted_by_value(original_amounts)
     }
-    handle_storage_event(entity, per_type_overflow)
+    return handle_storage_event(entity, per_type_overflow, force_landfill=force_landfill)
 
 
 def split_overflow_by_type(
