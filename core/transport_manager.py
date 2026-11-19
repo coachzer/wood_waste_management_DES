@@ -3,6 +3,7 @@ from typing import List, Dict, Optional
 from config.constants import TRAVEL_SPEED_KMH
 from models.enums import EntityStatus, RegionType, WasteType
 from models.distances import get_distance
+from utils.capacity_utils import store_with_overflow
 
 @dataclass
 class TransportRequest:
@@ -93,8 +94,10 @@ class PointToPointTransport:
     def deliver(self, transport: Dict) -> None:
         destination_collector = self._destination_collector(transport["destination"])
         if destination_collector:
-            for waste_type, volume in transport["load_by_type"].items():
-                destination_collector.collection_center.current_storage[waste_type] += volume
+            storage = destination_collector.collection_center.current_storage
+            fits = store_with_overflow(destination_collector, storage, transport["load_by_type"])
+            for waste_type, volume in fits.items():
+                storage[waste_type] += volume
         transport["collector"].charge_trip(
             dict(transport["load_by_type"]), get_distance(transport["origin"], transport["destination"]))
 

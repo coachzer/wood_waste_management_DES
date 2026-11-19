@@ -18,7 +18,7 @@ def make_collector(name, region_type, vehicles=(), stock=None):
     collector = SimpleNamespace(
         name=name, region_type=region_type, vehicles=list(vehicles), status=EntityStatus.OPERATIONAL,
         collection_center=SimpleNamespace(current_storage=dict({WASTE: 0.0, OTHER_WASTE: 0.0} if stock is None else stock)),
-        trips=[],
+        trips=[], waste_storage_capacity=1e9,
     )
     collector.charge_trip = lambda load, distance: collector.trips.append((dict(load), distance))
     return collector
