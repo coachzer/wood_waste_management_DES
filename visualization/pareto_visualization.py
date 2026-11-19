@@ -41,7 +41,6 @@ COST_METRIC = "total_system_cost"
 
 def _build_points(
     path: Path,
-    root: bool,
     objectives: List[Tuple[str, str]],
 ) -> List[dict]:
     """One styled point dict per configuration with Pareto status and CI data.
@@ -49,7 +48,7 @@ def _build_points(
     Merges the Pareto frontier report (means + non_dominated flag) with the
     CI intervals from each combo's ``summary.csv``.
     """
-    pareto_rows = build_pareto_report(path, root=root, objectives=objectives)
+    pareto_rows = build_pareto_report(path, root=False, objectives=objectives)
     if not pareto_rows:
         return []
 
@@ -59,7 +58,7 @@ def _build_points(
     all_metrics = [SERVICE_METRIC, EMISSIONS_METRIC, LANDFILL_METRIC, COST_METRIC]
 
     points: List[dict] = []
-    for label, summary_path in iter_combo_summaries(path, root=root):
+    for label, summary_path in iter_combo_summaries(path, root=False):
         if label not in pareto_by_config:
             continue
         policy, strategy = split_combo_label(label)
@@ -223,14 +222,14 @@ def build_pareto_figure(
     return fig
 
 
-def write_pareto_plot(path, root: bool = False):
+def write_pareto_plot(path):
     """Render and save the Pareto frontier PDF under ``path``.
 
     Returns the written ``Path``, or ``None`` if no ``summary.csv`` files
     exist under ``path``.
     """
     path = Path(path)
-    points = _build_points(path, root=root, objectives=OBJECTIVES)
+    points = _build_points(path, objectives=OBJECTIVES)
     if not points:
         return None
     fig = build_pareto_figure(points)
