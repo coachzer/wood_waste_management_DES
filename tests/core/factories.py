@@ -1,5 +1,6 @@
 """Shared builders for core tests."""
 import json
+from types import SimpleNamespace
 
 from config.base_config import ScenarioConfig
 from core.abc_analysis import abc_priority_weights
@@ -7,6 +8,7 @@ from core.collector import CollectorCompany
 from core.kanban_manager import KanbanManager
 from core.transport_manager import PointToPointTransport
 from core.treatment import TreatmentOperator
+from models.data_classes import WasteStream
 from models.enums import InventoryPolicy, OutputType, RegionType, StockStrategy, WasteType, sorted_by_value
 from models.state import SimulationState
 from models.transformations import build_transformations
@@ -88,10 +90,6 @@ def make_treatment(env, waste_monitor, **overrides):
 
 def make_generator_site(volume_by_type, name="generator-1", region_type=RegionType.PODRAVSKA):
     """The generator fields a collector pickup reads: name, region and per-type streams."""
-    from types import SimpleNamespace
-
-    from models.data_classes import WasteStream
-
     return SimpleNamespace(
         name=name,
         region_type=region_type,
