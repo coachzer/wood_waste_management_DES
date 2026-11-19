@@ -19,7 +19,7 @@ drained simulation, see their docstrings).
 import logging
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from instrumentation.history_store import HistoryStore
 from models.enums import OutputType
@@ -80,9 +80,6 @@ class MassBalanceMonitor:
         """
         self.registry = registry
         self.raise_on_violation = raise_on_violation
-        # Per-check telemetry: (timestamp, operator, product, lhs, rhs, delta),
-        # emitted on every check so drift is visible before it crosses tolerance.
-        self.telemetry: List[Tuple[Optional[float], str, str, float, float, float]] = []
         self._initial_finished_goods = {
             operator.name: {
                 product: operator.finished_goods.current_storage[OutputType(product)]
@@ -107,7 +104,7 @@ class MassBalanceMonitor:
         )
 
     def check_continuous(self, timestamp: Optional[float] = None) -> None:
-        """Scheduled per-tick check. Records telemetry and raises/warns on drift."""
+        """Scheduled per-tick check. Raises or warns on drift."""
         self._check(timestamp)
 
     def check_final(self, timestamp: Optional[float] = None) -> None:
@@ -131,7 +128,6 @@ class MassBalanceMonitor:
                 lhs = initial + produced
                 rhs = consumed + current
                 delta = lhs - rhs
-                self.telemetry.append((timestamp, operator.name, product, lhs, rhs, delta))
 
                 if not math.isclose(
                     lhs, rhs, rel_tol=RELATIVE_TOLERANCE, abs_tol=ABSOLUTE_TOLERANCE
@@ -187,7 +183,6 @@ class MassBalanceMonitor:
             lhs = initial + inflow
             rhs = outflow + current + landfilled + in_pipeline
             delta = lhs - rhs
-            self.telemetry.append((timestamp, name, "raw_waste", lhs, rhs, delta))
 
             if not math.isclose(
                 lhs, rhs, rel_tol=RELATIVE_TOLERANCE, abs_tol=ABSOLUTE_TOLERANCE
@@ -259,7 +254,6 @@ class MassBalanceMonitor:
             + landfilled
         )
         delta = lhs - rhs
-        self.telemetry.append((timestamp, "system", "raw_waste", lhs, rhs, delta))
 
         if math.isclose(lhs, rhs, rel_tol=RELATIVE_TOLERANCE, abs_tol=ABSOLUTE_TOLERANCE):
             return
@@ -295,9 +289,6 @@ class MassBalanceMonitor:
                     + generator.total_outlet[waste_type]
                 )
                 delta = potential - accounted
-                self.telemetry.append(
-                    (timestamp, generator.name, f"generation/{waste_type.value}", potential, accounted, delta)
-                )
                 if not math.isclose(
                     potential, accounted, rel_tol=RELATIVE_TOLERANCE, abs_tol=ABSOLUTE_TOLERANCE
                 ):
@@ -337,9 +328,6 @@ class MassBalanceMonitor:
             expected = getattr(operator, "expected_output_volume_from_intake_m3", 0.0)
             produced = sum(operator.product_volumes.values())
             delta = expected - produced
-            self.telemetry.append(
-                (timestamp, operator.name, "yield_bridge", expected, produced, delta)
-            )
 
             if not math.isclose(
                 expected, produced, rel_tol=RELATIVE_TOLERANCE, abs_tol=ABSOLUTE_TOLERANCE
