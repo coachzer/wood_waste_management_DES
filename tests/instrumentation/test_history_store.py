@@ -67,9 +67,6 @@ def test_getters_live_on_the_store_not_the_recorder():
 def test_recorder_writes_status_into_the_store():
     """A recorded status transition lands in the store, not a recorder-local dict.
 
-    ``record_entity_status`` maps an entity by ``type(entity).__name__``, so the
-    stub class is named ``WasteGenerator`` to route into the ``generators`` bucket.
-
     Mutation check (red): point ``record_entity_status`` at a ``self``-owned dict
     instead of ``self.store.entity_status_history`` -> the store stays empty and
     the membership assertion fails.
@@ -79,8 +76,7 @@ def test_recorder_writes_status_into_the_store():
         name = "OPERATIONAL"
 
     class WasteGenerator:
-        """Named to match the recorder's type-name -> 'generators' mapping."""
-
+        facility_type = "generator"
         name = "gen-1"
         status = _Status()
 

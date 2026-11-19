@@ -69,7 +69,7 @@ def run_single_simulation(
                 stock_strategy=stock_strategy.value,
             )
 
-        manager.facility_builder.print_failure_analysis()
+        manager.print_failure_analysis()
 
         return {
             "base_scenario": scenario_name,

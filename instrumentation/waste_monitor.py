@@ -1,4 +1,3 @@
-import logging
 import os
 from typing import Dict, Any
 from config.constants import (
@@ -7,6 +6,14 @@ from config.constants import (
     WASTE_HOLDING_COST_PER_M3_PER_DAY,
 )
 from instrumentation.history_store import HistoryStore
+
+
+HISTORY_CATEGORY_BY_FACILITY_TYPE = {
+    "generator": "generators",
+    "collector": "collectors",
+    "treatment": "treatments",
+}
+
 
 class WasteMonitor:
     """Monitoring system for waste management operations"""
@@ -190,20 +197,8 @@ class WasteMonitor:
     def record_entity_status(self, entity, timestamp: float):
         """Record entity status at specific moments (like transitions)"""
 
-        entity_type_name = type(entity).__name__
-
-        type_mapping = {
-            'WasteGenerator': 'generators',
-            'CollectorCompany': 'collectors', 
-            'TreatmentOperator': 'treatments'
-        }
-
-        history_category = type_mapping.get(entity_type_name)
-        if not history_category:
-            logging.warning(f"Unknown entity type {entity_type_name}")
-            return
-
-        entity_name = getattr(entity, 'name', str(entity))
+        history_category = HISTORY_CATEGORY_BY_FACILITY_TYPE[entity.facility_type]
+        entity_name = entity.name
 
         self.store.ensure_entity_status(history_category, entity_name)
 

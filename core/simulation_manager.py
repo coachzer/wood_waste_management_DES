@@ -319,6 +319,22 @@ class SimulationManager:
                         source_type="market",
                     )
 
+    def print_failure_analysis(self):
+        entities_by_type = {
+            "WasteGenerator": self.state.generators,
+            "CollectorCompany": self.state.collectors,
+            "TreatmentOperator": self.state.treatment_operators,
+        }
+        print("\n=== FAILURE ANALYSIS ===")
+        for entity_type, entities in entities_by_type.items():
+            total_failures = sum(entity.failure_count for entity in entities)
+            if total_failures == 0:
+                continue
+            print(f"{entity_type}:")
+            print(f"  Total entities: {len(entities)}")
+            print(f"  Total failures: {total_failures}")
+            print(f"  Failures per entity: {total_failures / len(entities):.3f}")
+
     def _print_final_status(self):
         """Print final simulation results (continuous market-consumption model)."""
         print(f"\n=== Simulation Complete (Time: {self.env.now}) ===")

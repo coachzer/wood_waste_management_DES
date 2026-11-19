@@ -44,11 +44,6 @@ class FacilityBuilder:
         self.kanban_manager = kanban_manager
         self.state = state
         self.seed_sequence = np.random.SeedSequence(seed)
-        self.facility_counts = {
-            'WasteGenerator': 0,
-            'CollectorCompany': 0,
-            'TreatmentOperator': 0
-        }
 
     def create_generator(self, gen_data, region: RegionType, stock_strategy, inventory_policy,
                          accepted_waste_types=None) -> WasteGenerator:
@@ -62,7 +57,6 @@ class FacilityBuilder:
         if gen_data.initial_stock:
             initial_stock = convert_generation_rates_to_volume(gen_data.initial_stock)
 
-        self.facility_counts['WasteGenerator'] += 1
         [child_seed] = self.seed_sequence.spawn(1)
 
         return WasteGenerator(
@@ -88,7 +82,6 @@ class FacilityBuilder:
     def create_collector(self, col_data, region: RegionType, stock_strategy, inventory_policy) -> CollectorCompany:
         """Create a single collector company"""
 
-        self.facility_counts['CollectorCompany'] += 1
         [child_seed] = self.seed_sequence.spawn(1)
 
         return CollectorCompany(
@@ -131,7 +124,6 @@ class FacilityBuilder:
         )
 
         
-        self.facility_counts['TreatmentOperator'] += 1
         [child_seed] = self.seed_sequence.spawn(1)
 
         return TreatmentOperator(
@@ -319,24 +311,3 @@ class FacilityBuilder:
             for waste_type, volume in convert_generation_rates_to_volume(generator.waste_generation_rates).items():
                 volume_by_type[waste_type] = volume_by_type.get(waste_type, 0.0) + volume
         return volume_by_type
-
-    def print_failure_analysis(self):
-        entities_by_type = {
-            "WasteGenerator": self.state.generators,
-            "CollectorCompany": self.state.collectors,
-            "TreatmentOperator": self.state.treatment_operators,
-        }
-        print("\n=== FAILURE ANALYSIS ===")
-        for entity_type, entities in entities_by_type.items():
-            total_failures = sum(entity.failure_count for entity in entities)
-            if total_failures == 0:
-                continue
-            count = self.facility_counts.get(entity_type, 0)
-            if count > 0:
-                rate = total_failures / count
-                print(f"{entity_type}:")
-                print(f"  Total entities: {count}")
-                print(f"  Total failures: {total_failures}")
-                print(f"  Failures per entity: {rate:.3f}")
-            else:
-                print(f"{entity_type}: No entities found")
