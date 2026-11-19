@@ -49,7 +49,6 @@ def test_completed_transfer_charges_the_vehicle_owner():
     assert destination.collection_center.current_storage[WASTE] == 40.0
     [(billed_collector, billed_cost)] = monitor.costs
     assert billed_collector == "col_owner"
-    # The fixed trip cost ages each tick with the fleet (ADR 0025), so bound it.
     fixed_part = billed_cost - distance * COLLECTION_COST_PER_KM_PER_M3 * 40.0
     assert TRIP_COST <= fixed_part < TRIP_COST * 1.01
     tonnes = 40.0 * WASTE_DENSITIES[WASTE] / KILOGRAMS_PER_TONNE

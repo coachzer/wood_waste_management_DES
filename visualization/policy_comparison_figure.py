@@ -51,7 +51,6 @@ STRATEGY_COLORS = {
 }
 STRATEGY_LABELS = {strategy.value: strategy.name for strategy in StockStrategy}
 
-# Fixed PDF dates so a rerun writes byte-identical figures.
 REPRODUCIBLE_PDF_METADATA = {
     "CreationDate": datetime(1970, 1, 1, 0, 0, 0),
     "ModDate": datetime(1970, 1, 1, 0, 0, 0),

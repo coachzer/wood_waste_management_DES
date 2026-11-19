@@ -1,7 +1,6 @@
 """Throughput-bullwhip measurement (ADR 0004): a post-hoc CV^2-normalized
 flow-amplification ratio read from a single run's persisted ``transport_flows``
-and ``consumption_events`` logs. It does not touch the simulation, so adding it
-keeps the golden byte-identical exit test valid.
+and ``consumption_events`` logs. It does not touch the simulation.
 
 Layering keeps the arithmetic core a sim/IO-free unit-test seam:
 ``cv_squared`` / ``bullwhip_ratio`` take plain numeric sequences;

@@ -301,8 +301,6 @@ def create_material_flow_analysis(generation_history: Dict, collection_history: 
             bordercolor="black", borderwidth=1
         )
 
-    # exist_ok: parallel baseline workers write concurrently, and a
-    # check-then-create pair races on the first run of a fresh checkout.
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     fig.write_html(save_path)
     logging.info(f"Material flow analysis saved to {save_path}")

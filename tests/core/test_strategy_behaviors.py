@@ -2,9 +2,7 @@
 
 These cover the pluggable ``StockStrategy``/``InventoryPolicy`` behavior classes
 that replaced the ``match self.stock_strategy`` / ``if self.inventory_policy ==``
-branches in the process modules. The byte-identical baseline run is the real
-oracle for behavior preservation; these tests pin two things that run does not
-make obvious:
+branches in the process modules. These tests pin two things:
 
 1. The factories map every enum selector to the class with that behavior.
 2. PUSH paths never consult the signal callables, so PUSH ignores signals.
@@ -32,7 +30,6 @@ def _boom():
 
 
 def test_factories_map_every_selector_to_its_behavior():
-    # Treatment reorder decisions at 60% and 95% of storage tell the three apart.
     assert {
         member: (
             build_stock_strategy(member).treatment_should_reorder(60.0, 100.0),
@@ -89,7 +86,6 @@ def test_ondemand_treatment_trigger_fires_until_full():
 # --- generator signaling (double dispatch + laziness) ----------------------
 
 def test_reorder_generator_signal_ignores_policy():
-    # Reorder strategies decide purely on storage vs fraction, under either policy.
     assert Reorder90Strategy().generator_should_signal(
         90.0, 100.0, PullPolicy()
     ) is True
@@ -99,7 +95,6 @@ def test_reorder_generator_signal_ignores_policy():
 
 
 def test_ondemand_generator_signal_push_uses_storage_threshold():
-    # PUSH ON_DEMAND signals on substantial waste (> 10% capacity).
     strategy = OnDemandStrategy()
     assert strategy.generator_should_signal(11.0, 100.0, PushPolicy()) is True
     assert strategy.generator_should_signal(10.0, 100.0, PushPolicy()) is False

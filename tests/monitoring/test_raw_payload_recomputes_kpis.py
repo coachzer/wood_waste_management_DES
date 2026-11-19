@@ -40,6 +40,4 @@ def test_kpis_recomputed_from_the_raw_sidecar_match_the_live_run():
 
     assert recomputed.keys() == live.keys()
 
-    # Summing string-keyed dicts can reorder float additions, so values may
-    # differ in the last digit.
     assert recomputed == pytest.approx(live, rel=1e-12, nan_ok=True)

@@ -61,7 +61,6 @@ def test_zero_capacity_output_contributes_no_shortfall(ledger_waste_monitor):
         capacity={"mdf": 0.0, "particle_board": 100.0, "osb": 100.0},
     )
 
-    # The two capacitated, fully-depleted outputs outrank the zero-capacity one.
     ordering = output_order(operator._get_prioritized_transformations())
 
     assert ordering[-1] == OutputType.MDF

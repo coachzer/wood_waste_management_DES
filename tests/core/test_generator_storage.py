@@ -144,7 +144,6 @@ def test_type_exceeding_available_storage_is_capped_at_headroom(ledger_waste_mon
     assert generator.waste_streams[BARK].volume == pytest.approx(90.0)
     assert generator.current_storage == pytest.approx(100.0)
 
-    # Potential recorded for every type at full offered volume (ADR 0005 floor)
     assert generator.total_potential_generated[PACKAGING] == pytest.approx(15.0)
     assert generator.total_uncollected == pytest.approx({CONSTRUCTION: 0.0, PACKAGING: 13.0, BARK: 5.0})
 

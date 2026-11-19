@@ -19,8 +19,6 @@ from typing import Any, Dict
 
 from instrumentation.history_store import HISTORY_KEYS
 
-# Every monitor_data block extract_kpis reads. Persisting them lets a new KPI
-# be computed without a re-run.
 RAW_PAYLOAD_KEYS = HISTORY_KEYS + (
     "transport_flows",
     "consumption_events",

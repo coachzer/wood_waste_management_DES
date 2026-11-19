@@ -50,12 +50,6 @@ SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
     # stretched transport. Calibration anchor: 2020 COVID contraction (-9%
     # total, -11% C&D waste, Eurostat env_wasgen W075); the 0.60 multiplier is
     # deliberately more severe than observed -- a beyond-observed stress case.
-    # Reorder checks count on-hand stock only (not in-transit), so the long
-    # transportation_time lets orders stack before the first lands -- expected overshoot,
-    # stated as a manuscript footnote. Bullwhip amplification grows with both
-    # the mean and variance of lead time (Chen et al. 2000, "Quantifying the
-    # bullwhip effect in a simple supply chain", Management Science 46(3)),
-    # which motivates the stretched transportation_time=(4.0, 1.2) here.
     "SupplyDisruption": ScenarioConfig(
         name="SupplyDisruption",
         waste_generation_mean=0.60,

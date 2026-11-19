@@ -174,7 +174,6 @@ class TreatmentOperator(OperationalEntity):
             self._propagate_signal_to_collectors(waste_type, order_volumes[waste_type], timestamp)
 
     def _propagate_signal_to_collectors(self, waste_type, needed_volume, current_time):
-        """Propagate signals to operational collectors"""
         state = self.state
 
         local_collectors = [

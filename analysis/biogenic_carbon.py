@@ -2,7 +2,7 @@
 
 A post-hoc accounting metric: rescales the already-recorded cumulative production
 volume per output type by that product's per-m3 biogenic carbon stock. It does
-not touch the simulation, so adding it keeps the golden additive exit test valid.
+not touch the simulation.
 The **Biogenic Carbon Stored** glossary term (CONTEXT.md) defines the static
 credit -- negative = sequestered, one of three orthogonal carbon lines reported
 beside, never netted with, the others (ADR 0011), and explicitly NOT the dynamic
