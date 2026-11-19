@@ -24,6 +24,16 @@ class RegionType(Enum):
     GORISKA = "goriska"
     OBALNO_KRASKA = "obalno_kraska"
 
+
+def sorted_by_value(members):
+    """Return enum members as a list ordered by their value.
+
+    Enum members hash by id(), which PYTHONHASHSEED does not control, so a set or dict of
+    them iterates in per-process memory order. Any iteration that drives ordered simulation
+    work must go through this, or the same seed stops reproducing across processes.
+    """
+    return sorted(members, key=lambda member: member.value)
+
 class WasteType(Enum):
     FORESTRY_WASTE_02_01_07 = "02 01 07"
     BARK_CORK_WASTE_03_01_01 = "03 01 01"

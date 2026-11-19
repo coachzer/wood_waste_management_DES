@@ -9,7 +9,7 @@ from config.constants import (
     OVERFLOW_VOLUME_TOLERANCE_M3,
     OPERATING_TICK_DAYS,
 )
-from models.enums import WasteType
+from models.enums import WasteType, sorted_by_value
 
 def per_tick_capacity(capacity_per_period: float, period_days: float) -> float:
     """One operating tick's share of a capacity the region data gives per period.
@@ -58,9 +58,7 @@ def compute_and_handle_overflow(
     per_type_overflow = {
         waste_type: original_amounts[waste_type]
         - allowed_amounts.get(waste_type, 0.0)
-        for waste_type in sorted(
-            original_amounts, key=lambda waste_type: waste_type.value
-        )
+        for waste_type in sorted_by_value(original_amounts)
     }
     handle_storage_event(entity, per_type_overflow)
 
@@ -85,7 +83,7 @@ def split_overflow_by_type(
     if total_composition <= 0.0:
         return {
             waste_type: 0.0
-            for waste_type in sorted(composition, key=lambda item: item.value)
+            for waste_type in sorted_by_value(composition)
         }
     return {
         waste_type: overflow_total * (volume_m3 / total_composition)

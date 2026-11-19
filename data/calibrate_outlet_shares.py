@@ -15,7 +15,7 @@ from pathlib import Path
 import pandas as pd
 
 from data.calibrate_generation_rates import CALIBRATION_YEARS
-from models.enums import WasteType
+from models.enums import WasteType, sorted_by_value
 
 OUTLET_SHARES_PATH = Path(__file__).parent / "outlet_destination_shares.json"
 PRE_TREATMENT_PROCESSES = {"R_12", "R_13", "R_12, R_13"}
@@ -45,7 +45,7 @@ def destination_shares(green_up_dir: Path) -> dict:
     treated = treated.assign(destination=treated.treatment_process.map(destination))
     by_code = treated.groupby(["treatment_inlet_waste_code", "destination"]).quantity_treated.sum()
     shares = {}
-    for waste_type in sorted(WasteType, key=lambda waste_type: waste_type.value):
+    for waste_type in sorted_by_value(WasteType):
         if waste_type.value not in by_code.index.get_level_values(0):
             continue
         code_totals = by_code[waste_type.value]

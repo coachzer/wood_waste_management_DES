@@ -5,11 +5,10 @@ from typing import Dict, List, Optional
 from core.abc_analysis import BiogenicCarbonABCAnalyzer
 from models.data_classes import WasteTransformation, OperationalEntity, ProductStorage
 from models.distances import get_distance
-from models.enums import OutputType, RegionType, StockStrategy, WasteType, EntityStatus
+from models.enums import EntityStatus, InventoryPolicy, OutputType, RegionType, StockStrategy, WasteType, sorted_by_value
 from instrumentation.waste_monitor import WasteMonitor
 from core.kanban_manager import KanbanManager
 from core.strategies import build_stock_strategy, build_inventory_policy
-from models.enums import InventoryPolicy
 from models.transformations import TRANSFORMATION_CATALOGUE, WASTE_TO_OUTPUT_TYPES
 from utils.capacity_utils import (
     handle_storage_event,
@@ -122,7 +121,7 @@ class TreatmentOperator(OperationalEntity):
         self.pull_production_backlog_m3_by_product: Dict[str, float] = {
             output_type.value: finished_goods_capacity.get(output_type, 0.0)
             - self.finished_goods.current_storage[output_type]
-            for output_type in sorted(OutputType, key=lambda output_type: output_type.value)
+            for output_type in sorted_by_value(OutputType)
         }
 
         self.transformations = transformations or self._default_transformations()
@@ -201,7 +200,7 @@ class TreatmentOperator(OperationalEntity):
         nothing ordered is still on the way.
         """
         orders = {}
-        for waste_type in sorted(self.order_share_by_waste_type, key=lambda waste_type: waste_type.value):
+        for waste_type in sorted_by_value(self.order_share_by_waste_type):
             level = self.order_up_to_level_m3 * self.order_share_by_waste_type[waste_type]
             on_hand = self.waste_storage.get(waste_type, 0.0)
             if self.stock_strategy_behavior.treatment_should_reorder(on_hand, level) and level > on_hand:
@@ -240,7 +239,7 @@ class TreatmentOperator(OperationalEntity):
 
     def _create_reorder_signals(self, order_volumes: Dict[WasteType, float], timestamp: float):
         """Post one reorder signal per ordered waste type, for that type's order volume."""
-        for waste_type in sorted(order_volumes, key=lambda waste_type: waste_type.value):
+        for waste_type in sorted_by_value(order_volumes):
             self._create_collection_signal(waste_type, order_volumes[waste_type], timestamp)
 
     def _propagate_signal_to_collectors(self, waste_type, needed_volume, current_time):
@@ -645,7 +644,7 @@ class TreatmentOperator(OperationalEntity):
         fill the whole order, starving the types after it.
         """
         collected_waste = {}
-        for waste_type in sorted(order_volumes, key=lambda waste_type: waste_type.value):
+        for waste_type in sorted_by_value(order_volumes):
             if order_volumes[waste_type] <= 0:
                 continue
             for collected_type, volume in self.request_waste_directly(order_volumes[waste_type], [waste_type]).items():

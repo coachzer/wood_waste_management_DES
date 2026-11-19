@@ -1,7 +1,7 @@
 import numpy as np
 from simpy import Environment
 from models.facility_data import FacilityDataManager
-from models.enums import RegionType, WasteType, OutputType, normalize_waste_type
+from models.enums import RegionType, WasteType, OutputType, normalize_waste_type, sorted_by_value
 from models.data_classes import WasteTransformation
 from models.transformations import TRANSFORMATION_CATALOGUE, WASTE_TO_OUTPUT_TYPES
 from core.generator import WasteGenerator
@@ -213,10 +213,7 @@ class FacilityBuilder:
             self.uncertainty_set, "finished_goods_buffer_weeks", FINISHED_GOODS_BUFFER_WEEKS
         )
         national_demand = self.facility_manager.demand
-        producible_outputs = sorted(
-            {transformation.output_type for transformation in transformations.values()},
-            key=lambda output_type: output_type.value,
-        )
+        producible_outputs = sorted_by_value({transformation.output_type for transformation in transformations.values()})
         return {
             output_type: (
                 market_share
@@ -274,7 +271,7 @@ class FacilityBuilder:
         """
         national_demand = self.facility_manager.demand
         national_volume_by_type = {}
-        for any_region in sorted(RegionType, key=lambda region_type: region_type.value):
+        for any_region in sorted_by_value(RegionType):
             for waste_type, volume in self._region_generation_volume(any_region).items():
                 national_volume_by_type[waste_type] = national_volume_by_type.get(waste_type, 0.0) + volume
         routes_by_product = {}
@@ -282,7 +279,7 @@ class FacilityBuilder:
             routes_by_product.setdefault(transformation.output_type, []).append(transformation)
 
         waste_need_by_product = {}
-        for output_type in sorted(routes_by_product, key=lambda output_type: output_type.value):
+        for output_type in sorted_by_value(routes_by_product):
             routes = routes_by_product[output_type]
             demand = national_demand.get(output_type.value, 0.0)
             mean_efficiency = sum(route.conversion_efficiency for route in routes) / len(routes)
@@ -294,10 +291,7 @@ class FacilityBuilder:
 
         share_by_waste_type = {}
         for output_type, need in waste_need_by_product.items():
-            input_types = sorted(
-                {route.input_type for route in routes_by_product[output_type]},
-                key=lambda waste_type: waste_type.value,
-            )
+            input_types = sorted_by_value({route.input_type for route in routes_by_product[output_type]})
             weights = {waste_type: national_volume_by_type.get(waste_type, 0.0) for waste_type in input_types}
             total_weight = sum(weights.values())
             if total_weight <= 0:
@@ -322,10 +316,7 @@ class FacilityBuilder:
         operator's transformations -- this only shapes the warm-up mix, which
         collection self-corrects within ~2 weeks, so precision is irrelevant.
         """
-        input_types = sorted(
-            {transformation.input_type for transformation in transformations.values()},
-            key=lambda waste_type: waste_type.value,
-        )
+        input_types = sorted_by_value({transformation.input_type for transformation in transformations.values()})
         if not input_types:
             return {}
 

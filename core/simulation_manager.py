@@ -11,7 +11,7 @@ from config.constants import (
 )
 from utils.seasonality import seasonal_factor
 from core.transport_manager import PointToPointTransport
-from models.enums import RegionType, OutputType, InventoryPolicy, StockStrategy, WasteType
+from models.enums import RegionType, OutputType, InventoryPolicy, StockStrategy, WasteType, sorted_by_value
 from persistence.serialization import HISTORY_KEYS
 from models.state import SimulationState
 from instrumentation.waste_monitor import WasteMonitor
@@ -137,7 +137,7 @@ class SimulationManager:
             if facilities:
                 for proc_data in facilities.processors:
                     accepted.update(proc_data.input_types)
-        return sorted(accepted, key=lambda waste_type: waste_type.value)
+        return sorted_by_value(accepted)
 
     def _total_processor_capacity(self) -> float:
         """Sum of waste storage capacity across every processor in every region.
