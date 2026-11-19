@@ -121,7 +121,6 @@ INPUT_AVAILABILITY_SATURATION_M3 = 100.0
 # around 0.82, so the floor only binds on longer horizons.
 COLLECTOR_TIME_DEGRADATION_RATE_PER_DAY = 0.0005
 COLLECTOR_DEGRADATION_FLOOR = 0.5
-HISTORY_BUFFER_SIZE = 1000
 SEASONAL_PERIODS = 4
 SEASONAL_AMPLITUDE = 0.2  # +/- fraction of the seasonal sinusoid about a unit mean
 TRAVEL_SPEED_KMH = 50.0

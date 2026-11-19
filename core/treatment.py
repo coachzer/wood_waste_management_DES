@@ -10,12 +10,7 @@ from instrumentation.waste_monitor import WasteMonitor
 from core.kanban_manager import KanbanManager
 from core.strategies import build_stock_strategy, build_inventory_policy
 from models.transformations import TRANSFORMATION_CATALOGUE, WASTE_TO_OUTPUT_TYPES
-from utils.capacity_utils import (
-    handle_storage_event,
-    check_storage_capacity,
-    compute_and_handle_overflow,
-    split_overflow_by_type,
-)
+from utils.capacity_utils import check_storage_capacity, compute_and_handle_overflow
 from config.constants import (
     INITIAL_INVENTORY_FRACTION,
     PROCESSING_CAPACITY_FRACTION,
@@ -152,28 +147,6 @@ class TreatmentOperator(OperationalEntity):
         """Get the waste storage dictionary"""
         return self._waste_storage
 
-    @waste_storage.setter
-    def waste_storage(self, new_storage: Dict[WasteType, float]):
-        """Set waste storage with overflow detection"""
-        if not isinstance(new_storage, dict):
-            return
-
-        total_new = sum(new_storage.values())
-        if total_new > self.waste_storage_capacity:
-            overflow_amount = total_new - self.waste_storage_capacity
-            handle_storage_event(
-                self,
-                split_overflow_by_type(new_storage, overflow_amount)
-            )
-
-            scaling_factor = self.waste_storage_capacity / total_new
-            self._waste_storage = {
-                waste_type: amount * scaling_factor
-                for waste_type, amount in new_storage.items()
-            }
-        else:
-            self._waste_storage = dict(new_storage)
-
     def _initialize_abc_priorities(self, config_path: str):
         """Initialize ABC priorities - reuse existing ABCAnalyzer.
 
@@ -231,16 +204,10 @@ class TreatmentOperator(OperationalEntity):
 
             yield self.env.timeout(OPERATING_TICK_DAYS)
 
-    def _create_collection_signal(
-        self, waste_type: WasteType, volume: float, timestamp: float
-    ):
-        """Create a collection signal for specific waste type and volume."""
-        self._propagate_signal_to_collectors(waste_type, volume, timestamp)
-
     def _create_reorder_signals(self, order_volumes: Dict[WasteType, float], timestamp: float):
         """Post one reorder signal per ordered waste type, for that type's order volume."""
         for waste_type in sorted_by_value(order_volumes):
-            self._create_collection_signal(waste_type, order_volumes[waste_type], timestamp)
+            self._propagate_signal_to_collectors(waste_type, order_volumes[waste_type], timestamp)
 
     def _propagate_signal_to_collectors(self, waste_type, needed_volume, current_time):
         """Propagate signals to collectors with availability checking"""
@@ -461,7 +428,7 @@ class TreatmentOperator(OperationalEntity):
 
         output_amount = amount_to_process * efficiency
 
-        self._update_waste_storage(input_type, amount_to_process, output_amount)
+        self._update_waste_storage(input_type, amount_to_process)
 
         if output_type in final_products:
             self.finished_goods.current_storage[output_type] += output_amount
@@ -493,7 +460,7 @@ class TreatmentOperator(OperationalEntity):
                 efficiency = np.clip(self.rng.normal(mean * efficiency, std), 0.6, 1.0)
         return efficiency
 
-    def _update_waste_storage(self, input_type, amount_to_process, output_amount):
+    def _update_waste_storage(self, input_type, amount_to_process):
         """Update waste storage and track raw production"""
         self.waste_storage[input_type] -= amount_to_process
         self.processed_volumes[input_type] += amount_to_process

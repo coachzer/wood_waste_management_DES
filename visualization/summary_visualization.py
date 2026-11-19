@@ -1,7 +1,6 @@
 import plotly.graph_objects as go
 import plotly.subplots as sp
 import pandas as pd
-import numpy as np
 from typing import Dict, List
 from config.constants import CHART_PALETTE, DASHBOARD_HEIGHT_PX
 from .visualization_utils import create_scenario_label, last_cumulative_by_entity

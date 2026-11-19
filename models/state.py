@@ -154,11 +154,3 @@ class SimulationState:
         if attempted <= 0:
             return None
         return sum(event['consumed'] for event in events) / attempted
-
-    def reset(self):
-        """Reset simulation state to initial values"""
-        self.generators = []
-        self.collectors = []
-        self.treatment_operators = []
-        self.transport_flows = []
-        self.consumption_events = []

@@ -1,10 +1,7 @@
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Dict, Tuple, List
-from config.constants import (
-    SIMULATION_DURATION,
-    FINISHED_GOODS_BUFFER_WEEKS,
-)
+from config.constants import FINISHED_GOODS_BUFFER_WEEKS
 from models.data_classes import FailureConfig
 
 @dataclass

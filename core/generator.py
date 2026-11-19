@@ -1,6 +1,5 @@
 import numpy as np
 from typing import Dict, List, Optional
-from config.constants import HISTORY_BUFFER_SIZE
 from utils.seasonality import seasonal_factor
 from models.enums import InventoryPolicy, WasteType, RegionType, EntityStatus, StockStrategy
 from models.data_classes import WasteStream, OperationalEntity
@@ -67,7 +66,6 @@ class WasteGenerator(OperationalEntity):
         self.waste_storage_capacity = waste_storage_capacity
         self.efficiency = efficiency
         self.current_storage = sum(initial_stock.values() if initial_stock else [0])
-        self.last_collected = env.now
         self.region = region
         self.region_type = RegionType[region.upper().replace('-', '_')] if region else None
 
@@ -90,18 +88,6 @@ class WasteGenerator(OperationalEntity):
             if accepted_waste_types is not None and waste_type not in accepted_waste_types
         )
         self.total_outlet = {waste_type: 0.0 for waste_type in waste_streams.keys()}
-
-        self.history_size = HISTORY_BUFFER_SIZE
-        self.history_index = 0
-        self.generation_history = {
-            waste_type: {
-                "times": np.zeros(self.history_size),
-                "volumes": np.zeros(self.history_size),
-                "totals": np.zeros(self.history_size),
-                "storage": np.zeros(self.history_size),
-            }
-            for waste_type in waste_streams.keys()
-        }
 
         self.action = env.process(self.generate_waste())
         self.start_failure_process(env)
@@ -133,13 +119,12 @@ class WasteGenerator(OperationalEntity):
 
             self._process_stock_strategy(current_time, seasonal_factor(current_time))
 
-            self.history_index += 1
             yield self.env.timeout(self.generation_frequency)
 
     def _process_stock_strategy(self, current_time, seasonal_factor):
         """Unified strategy processing - always generate waste, manage inventory based on strategy"""
 
-        self._generate_waste_for_period(seasonal_factor, current_time)
+        self._generate_waste_for_period(seasonal_factor)
 
         if self.current_storage > self.waste_storage_capacity:
             self._handle_overflow(force_landfill=False)
@@ -188,21 +173,10 @@ class WasteGenerator(OperationalEntity):
             daily_factors.append(np.clip(factor, 0.1, 2.0))
         return daily_factors
 
-    def _update_waste_stream(self, waste_type, generated_volume, current_time, history_index):
-        """Update waste stream and history records"""
-        history = self.generation_history[waste_type]
-
+    def _update_waste_stream(self, waste_type, generated_volume):
         self.waste_streams[waste_type].volume += generated_volume
         self.current_storage += generated_volume
         self.total_generated[waste_type] += generated_volume
-
-        if history_index >= len(history["times"]):
-            history_index = 0
-
-        history["times"][history_index] = current_time
-        history["volumes"][history_index] = generated_volume
-        history["totals"][history_index] = self.total_generated[waste_type]
-        history["storage"][history_index] = self.current_storage
 
     def _handle_overflow(self, force_landfill=False):
         """Handle storage overflow situation"""
@@ -233,12 +207,8 @@ class WasteGenerator(OperationalEntity):
             else:
                 self.current_storage = total_current
 
-    def _generate_waste_for_period(self, seasonal_factor, current_time):
+    def _generate_waste_for_period(self, seasonal_factor):
         """Generate waste for all waste types in one period with efficiency consideration"""
-        if self.uncertainty_set:
-            if self.status == EntityStatus.FAILED:
-                return
-
         available_storage = self.waste_storage_capacity - self.current_storage
         daily_factors = self._calculate_daily_factors()
 
@@ -256,7 +226,5 @@ class WasteGenerator(OperationalEntity):
             generated_volume = max(0.0, min(potential_volume, available_storage))
             self.total_uncollected[waste_type] += potential_volume - generated_volume
             if generated_volume > 0:
-                self._update_waste_stream(
-                    waste_type, generated_volume, current_time, self.history_index
-                )
+                self._update_waste_stream(waste_type, generated_volume)
                 available_storage -= generated_volume

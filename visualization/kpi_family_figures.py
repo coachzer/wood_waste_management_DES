@@ -15,7 +15,7 @@ and CSV parsing are reused from ``analysis.pareto`` and
 
 import csv
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 import matplotlib
 

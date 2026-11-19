@@ -67,19 +67,6 @@ def make_generator_stub(
     total_potential_generated = {waste_type: 0.0 for waste_type in waste_generation_rates}
     total_uncollected = {waste_type: 0.0 for waste_type in waste_generation_rates}
 
-    # generation_history needed by _update_waste_stream
-    history_size = 10
-    import numpy as np
-    generation_history = {
-        waste_type: {
-            "times": np.zeros(history_size),
-            "volumes": np.zeros(history_size),
-            "totals": np.zeros(history_size),
-            "storage": np.zeros(history_size),
-        }
-        for waste_type in waste_generation_rates
-    }
-
     def _calculate_daily_factors_stub(self):
         """No uncertainty: return unit factor for every waste type."""
         return [1.0] * len(self.waste_generation_rates)
@@ -94,11 +81,9 @@ def make_generator_stub(
         total_uncollected=total_uncollected,
         outlet_waste_types=frozenset(outlet_waste_types),
         total_outlet={waste_type: 0.0 for waste_type in waste_generation_rates},
-        generation_history=generation_history,
         efficiency=1.0,
         status=status,
         uncertainty_set=uncertainty_set,
-        history_index=0,
         state=state,
         region=region,
     )
@@ -131,8 +116,7 @@ def test_potential_generation_accrues_even_when_storage_is_full():
     )
 
     seasonal = 1.0
-    current_time = 0.0
-    WasteGenerator._generate_waste_for_period(stub, seasonal, current_time)
+    WasteGenerator._generate_waste_for_period(stub, seasonal)
 
     expected_potential = base_rate * seasonal * 1.0 * 1.0  # efficiency=1, factor=1
     assert stub.total_potential_generated[CONSTRUCTION] == pytest.approx(expected_potential)
@@ -167,7 +151,7 @@ def test_type_exceeding_available_storage_is_capped_at_headroom():
         current_storage=initial_storage,
     )
 
-    WasteGenerator._generate_waste_for_period(stub, seasonal_factor=1.0, current_time=0.0)
+    WasteGenerator._generate_waste_for_period(stub, seasonal_factor=1.0)
 
     # Type 1 fits in full (8 <= 10 headroom)
     assert stub.waste_streams[CONSTRUCTION].volume == pytest.approx(8.0)
@@ -190,7 +174,7 @@ def test_type_exceeding_available_storage_is_capped_at_headroom():
     import types
     calls = []
 
-    def recording_update(self, waste_type, volume, current_time, history_index):
+    def recording_update(self, waste_type, volume):
         calls.append((waste_type, volume))
 
     from models.enums import WasteType as WT
@@ -202,7 +186,7 @@ def test_type_exceeding_available_storage_is_capped_at_headroom():
     )
     stub2._update_waste_stream = types.MethodType(recording_update, stub2)
 
-    WasteGenerator._generate_waste_for_period(stub2, seasonal_factor=1.0, current_time=0.0)
+    WasteGenerator._generate_waste_for_period(stub2, seasonal_factor=1.0)
 
     assert stub2.waste_streams[BARK].volume == pytest.approx(0.0)
     assert calls == [], "_update_waste_stream must not be called when headroom is zero"
@@ -223,7 +207,7 @@ def test_update_waste_stream_increments_all_counters_atomically():
 
     volume_to_add = 42.0
     WasteGenerator._update_waste_stream(
-        stub, CONSTRUCTION, volume_to_add, current_time=5.0, history_index=0
+        stub, CONSTRUCTION, volume_to_add
     )
 
     assert stub.waste_streams[CONSTRUCTION].volume == pytest.approx(volume_to_add)
@@ -297,7 +281,7 @@ def test_outlet_type_leaves_without_taking_storage():
         outlet_waste_types=[PACKAGING],
     )
 
-    WasteGenerator._generate_waste_for_period(stub, 1.0, 0.0)
+    WasteGenerator._generate_waste_for_period(stub, 1.0)
 
     assert stub.total_outlet[PACKAGING] == pytest.approx(8.0)
     assert stub.total_generated[PACKAGING] == 0.0

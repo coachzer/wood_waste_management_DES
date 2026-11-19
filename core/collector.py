@@ -1,4 +1,3 @@
-import numpy as np
 from typing import Dict, List, Optional
 from config.constants import (
     TRANSPORT_EMISSIONS_PER_TON_KM,
@@ -355,18 +354,14 @@ class CollectorCompany(OperationalEntity):
         while True:
             current_time = self.env.now
 
-            try:
-                new_transports = self.transport_manager.process_requests(current_time)
-                self.active_transports.extend(new_transports)
+            new_transports = self.transport_manager.process_requests(current_time)
+            self.active_transports.extend(new_transports)
 
-                completed = self._check_completed_transports(current_time)
+            completed = self._check_completed_transports(current_time)
 
-                for transport in completed:
-                    self._handle_completed_transport(transport)
-                    self.active_transports.remove(transport)
-
-            except Exception as e:
-                raise ValueError(f"Error in transport management: {str(e)}")
+            for transport in completed:
+                self._handle_completed_transport(transport)
+                self.active_transports.remove(transport)
 
             yield self.env.timeout(1.0)
 
@@ -549,14 +544,14 @@ class CollectorCompany(OperationalEntity):
         every stream.
         """
         if self.status == EntityStatus.FAILED:
-            return self.env.process(self._dummy_process(0))
+            return
 
         if generator.current_storage <= 0:
-            return self.env.process(self._dummy_process(0))
+            return
 
         available_vehicle = self._find_available_vehicle()
         if not available_vehicle:
-            return self.env.process(self._dummy_process(0))
+            return
 
         available_vehicle.in_transit = True
 
@@ -567,7 +562,7 @@ class CollectorCompany(OperationalEntity):
 
         if collection_center_available <= 0:
             available_vehicle.in_transit = False
-            return self.env.process(self._dummy_process(0))
+            return
 
         if waste_type is not None:
             available_at_generator = generator.waste_streams[waste_type].volume
@@ -585,16 +580,11 @@ class CollectorCompany(OperationalEntity):
 
         if target_volume <= 0:
             available_vehicle.in_transit = False
-            return self.env.process(self._dummy_process(0))
+            return
 
-        return self.env.process(
+        self.env.process(
             self._dispatch_vehicle_for_collection(available_vehicle, generator, target_volume, waste_type)
         )
-
-    def _dummy_process(self, return_value):
-        """Helper for SimPy process returns"""
-        yield self.env.timeout(0)
-        return return_value
 
     def _unified_collection_strategy(self) -> float:
         """Strategy with 80/20 volume allocation between same/cross regions"""

@@ -41,6 +41,3 @@ class FacilityDataManager:
         """Get facilities for a specific region"""
         return self.regions.get(region)
 
-    def get_demand(self, product_type: str) -> float:
-        """Get national demand for a specific product type"""
-        return self.demand.get(product_type, 0)
