@@ -118,13 +118,7 @@ def validate_all_numeric_positive(
                 raise ValueError(f"{key} must be positive")
 
 def validate_tuple(mean_std_tuple: Tuple[float, float], name: str) -> None:
-    """Validate a mean/std tuple
-
-    Both mean and std are validated as non-negative via allow_zero=True. The std
-    field previously carried a manual re-check after being excluded through an
-    `exceptions` argument; that exclusion-then-recheck applied the identical
-    `value < 0` rule, so it was redundant and has been removed.
-    """
+    """Reject a negative mean or standard deviation (zero is allowed)."""
     config_dict = {
         f"{name}_mean": mean_std_tuple[0],
         f"{name}_std": mean_std_tuple[1]
