@@ -145,7 +145,7 @@ def posted_treatment_orders(waste_monitor, stock_strategy, on_hand, order_share_
     state.collectors = [collector]
     make_treatment(
         env, waste_monitor, state=state, inventory_policy=InventoryPolicy.PULL,
-        stock_strategy=stock_strategy, initial_waste_storage=on_hand, transformations={},
+        kanban_manager=collector.kanban_manager, stock_strategy=stock_strategy, initial_waste_storage=on_hand, transformations={},
         order_share_by_waste_type=order_share_by_waste_type, order_up_to_level_m3=order_up_to_level_m3,
         waste_storage_capacity=waste_storage_capacity,
     )
@@ -203,15 +203,26 @@ def signal_recording_collector(region, stock):
     )
 
 
+def signals_addressed_to(collector):
+    """The live signals on the shared bus that name ``collector``'s region."""
+    return [s for s in collector.kanban_manager.get_signals() if s["target_region"] == collector.region_type]
+
+
 def run_empty_pull_operator(waste_monitor, collectors, generators=(), days=0.5, status=EntityStatus.OPERATIONAL):
-    """Run a PULL operator holding no 17 02 01, so every tick orders EMPTY_PULL_OPERATOR_ORDER_M3 of it."""
+    """Run a PULL operator holding no 17 02 01, so every tick orders EMPTY_PULL_OPERATOR_ORDER_M3 of it.
+
+    The operator and ``collectors`` share one bus, as in the simulation.
+    """
     env = simpy.Environment()
     state = SimulationState()
     state.collectors = list(collectors)
+    bus = RecordingKanbanManager()
+    for collector in state.collectors:
+        collector.kanban_manager = bus
     state.generators = list(generators)
     operator = make_treatment(
         env, waste_monitor, state=state, inventory_policy=InventoryPolicy.PULL, transformations={},
-        order_share_by_waste_type={WasteType.CONSTRUCTION_WOOD_17_02_01: 1.0},
+        kanban_manager=bus, order_share_by_waste_type={WasteType.CONSTRUCTION_WOOD_17_02_01: 1.0},
         order_up_to_level_m3=EMPTY_PULL_OPERATOR_ORDER_M3,
     )
     operator.status = status

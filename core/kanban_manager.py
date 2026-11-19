@@ -10,7 +10,7 @@ class KanbanManager:
 
     def add_signal(self, waste_type, timestamp, volume=0, source_id=None, source_type=None, target_region=None):
         self.clean_old_signals(timestamp)
-        signal_id = f"{source_id}_{waste_type}_{timestamp}"
+        signal_id = f"{source_id}_{waste_type}_{timestamp}_{target_region}"
 
         if signal_id not in self.acknowledged_signals:
             self.signals.append({

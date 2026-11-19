@@ -14,6 +14,7 @@ from tests.core.factories import (
     EMPTY_PULL_OPERATOR_ORDER_M3,
     run_empty_pull_operator,
     signal_recording_collector,
+    signals_addressed_to,
 )
 
 CONSTRUCTION = WasteType.CONSTRUCTION_WOOD_17_02_01
@@ -41,7 +42,7 @@ def test_empty_local_collector_receives_treatment_signal(noop_waste_monitor):
     empty = signal_recording_collector(RegionType.PODRAVSKA, {})
     run_empty_pull_operator(noop_waste_monitor, [empty])
 
-    signals = empty.kanban_manager.get_signals()
+    signals = signals_addressed_to(empty)
     assert [(s["source_type"], s["volume"]) for s in signals] == [("treatment", EMPTY_PULL_OPERATOR_ORDER_M3)]
 
 

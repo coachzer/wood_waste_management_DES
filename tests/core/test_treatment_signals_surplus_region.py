@@ -6,6 +6,7 @@ from tests.core.factories import (
     EMPTY_PULL_OPERATOR_ORDER_M3,
     run_empty_pull_operator,
     signal_recording_collector,
+    signals_addressed_to,
 )
 
 CONSTRUCTION = WasteType.CONSTRUCTION_WOOD_17_02_01
@@ -34,7 +35,7 @@ def _signals_after_order(waste_monitor, local_generator_stock):
         ],
     )
     return {
-        name: [signal["volume"] for signal in collector.kanban_manager.get_signals()]
+        name: [signal["volume"] for signal in signals_addressed_to(collector)]
         for name, collector in collectors.items()
     }
 

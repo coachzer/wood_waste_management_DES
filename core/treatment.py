@@ -184,16 +184,15 @@ class TreatmentOperator(OperationalEntity):
                 c.is_operational)
         ]
 
-        for collector in local_collectors:
-            if needed_volume > 0:
-                collector.kanban_manager.add_signal(
-                    waste_type=waste_type,
-                    timestamp=current_time,
-                    volume=needed_volume,
-                    source_id=self.name,
-                    source_type="treatment",
-                    target_region=self.region_type,
-                )
+        if local_collectors and needed_volume > 0:
+            self.kanban_manager.add_signal(
+                waste_type=waste_type,
+                timestamp=current_time,
+                volume=needed_volume,
+                source_id=self.name,
+                source_type="treatment",
+                target_region=self.region_type,
+            )
 
         local_stock = sum(c.collection_center.current_storage.get(waste_type, 0.0) for c in local_collectors) + sum(
             g.waste_streams[waste_type].volume
@@ -204,16 +203,18 @@ class TreatmentOperator(OperationalEntity):
         surplus_region = self._region_with_largest_generator_stock(waste_type)
         if deficit <= 0 or surplus_region is None:
             return
-        for collector in state.collectors:
-            if collector.region_type == surplus_region and collector.inventory_policy.is_pull() and collector.is_operational:
-                collector.kanban_manager.add_signal(
-                    waste_type=waste_type,
-                    timestamp=current_time,
-                    volume=deficit,
-                    source_id=self.name,
-                    source_type="treatment",
-                    target_region=surplus_region,
-                )
+        if any(
+            collector.region_type == surplus_region and collector.inventory_policy.is_pull() and collector.is_operational
+            for collector in state.collectors
+        ):
+            self.kanban_manager.add_signal(
+                waste_type=waste_type,
+                timestamp=current_time,
+                volume=deficit,
+                source_id=self.name,
+                source_type="treatment",
+                target_region=surplus_region,
+            )
 
     def _region_with_largest_generator_stock(self, waste_type):
         """Another region whose generators hold the most of waste_type, or None (ADR 0033)."""
