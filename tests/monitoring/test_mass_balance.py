@@ -339,6 +339,12 @@ def _baseline_run():
     )
 
 
+@pytest.fixture(scope="module")
+def baseline_run_result():
+    """The unmutated baseline run, shared by the clean-run invariant tests below."""
+    return _baseline_run()
+
+
 @pytest.mark.slow
 def test_yield_bridge_trips_on_halved_yield(monkeypatch):
     """A mis-scaled yield is caught end-to-end (connection-audit Probe 4).
@@ -376,7 +382,7 @@ def test_yield_bridge_trips_on_halved_yield(monkeypatch):
 
 
 @pytest.mark.slow
-def test_yield_bridge_holds_on_baseline_run():
+def test_yield_bridge_holds_on_baseline_run(baseline_run_result):
     """The armed yield bridge closes on a real, unmutated baseline run.
 
     ``run_single_simulation`` runs with ``raise_on_violation=True``, so the
@@ -388,12 +394,11 @@ def test_yield_bridge_holds_on_baseline_run():
     """
     from analysis.baseline_aggregate import extract_kpis
 
-    result = _baseline_run()
-    assert extract_kpis(result["monitor_data"])["total_processed_m3"] > 0.0
+    assert extract_kpis(baseline_run_result["monitor_data"])["total_processed_m3"] > 0.0
 
 
 @pytest.mark.slow
-def test_waste_system_invariant_holds_on_baseline_run():
+def test_waste_system_invariant_holds_on_baseline_run(baseline_run_result):
     """The armed waste-side invariant holds on a real drained baseline run.
 
     ``run_single_simulation`` runs with ``raise_on_violation=True``, so the
@@ -405,12 +410,11 @@ def test_waste_system_invariant_holds_on_baseline_run():
     """
     from analysis.baseline_aggregate import extract_kpis
 
-    result = _baseline_run()
-    assert extract_kpis(result["monitor_data"])["total_generated_m3"] > 0.0
+    assert extract_kpis(baseline_run_result["monitor_data"])["total_generated_m3"] > 0.0
 
 
 @pytest.mark.slow
-def test_collection_center_invariant_holds_on_baseline_run():
+def test_collection_center_invariant_holds_on_baseline_run(baseline_run_result):
     """The per-collection-center identity closes on a real drained baseline run.
 
     Wired final-only in ``run_simulation`` alongside ``check_waste_system``. With
@@ -423,8 +427,7 @@ def test_collection_center_invariant_holds_on_baseline_run():
     """
     from analysis.baseline_aggregate import extract_kpis
 
-    result = _baseline_run()
-    assert extract_kpis(result["monitor_data"])["total_collected_m3"] > 0.0
+    assert extract_kpis(baseline_run_result["monitor_data"])["total_collected_m3"] > 0.0
 
 
 # --- cross-region repositioning still in the pipeline at check time ----------
