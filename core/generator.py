@@ -61,6 +61,7 @@ class WasteGenerator(OperationalEntity):
             }
         self.generation_frequency = generation_frequency
         self.waste_storage_capacity = waste_storage_capacity
+        self.initial_efficiency = efficiency
         self.efficiency = efficiency
         self.current_storage = sum(initial_stock.values() if initial_stock else [0])
         self.region_type = region_type
@@ -80,22 +81,13 @@ class WasteGenerator(OperationalEntity):
             if accepted_waste_types is not None and waste_type not in accepted_waste_types
         )
         self.total_outlet = {waste_type: 0.0 for waste_type in waste_streams.keys()}
-        self._in_failure_cycle = False
 
         self.action = env.process(self.generate_waste())
         self.start_failure_process(env)
 
     def _apply_status_throughput_effects(self):
         """Carry a failure on efficiency alone; generation multiplies the rates by it once."""
-        if self.status == EntityStatus.FAILED:
-            self._in_failure_cycle = True
-        elif self.status == EntityStatus.RECOVERING:
-            if self._in_failure_cycle:
-                self.efficiency = self.get_operational_efficiency()
-        elif self.status == EntityStatus.OPERATIONAL:
-            if self._in_failure_cycle:
-                self.efficiency = 1.0
-                self._in_failure_cycle = False
+        self.efficiency = self.initial_efficiency * self.get_operational_efficiency()
 
     def generate_waste(self):
         """Generate waste with optimized calculations and failure handling, including Kanban pull logic"""

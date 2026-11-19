@@ -39,3 +39,20 @@ def test_back_to_operational_restores_full_rate():
     generator._generate_waste_for_period(seasonal_factor=1.0)
 
     assert generator.total_potential_generated[PAPER] - before == pytest.approx(100.0)
+
+
+def test_configured_efficiency_survives_a_failure_cycle():
+    generator = make_waste_generator(simpy.Environment(), None, {PAPER: 100.0}, efficiency=0.8)
+    for status in (EntityStatus.FAILED, EntityStatus.RECOVERING, EntityStatus.OPERATIONAL):
+        generator.status = status
+        generator.apply_failure_tick()
+
+    assert generator.efficiency == pytest.approx(0.8)
+
+
+def test_failed_generator_reports_zero_efficiency():
+    generator = make_waste_generator(simpy.Environment(), None, {PAPER: 100.0})
+    generator.status = EntityStatus.FAILED
+    generator.apply_failure_tick()
+
+    assert generator.efficiency == 0.0
