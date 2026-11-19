@@ -194,3 +194,34 @@ def handle_storage_event(entity, composition: Dict[WasteType, float], force_land
             )
 
         return expansion_cost, "expand_storage"
+
+
+def store_with_overflow(
+    entity,
+    holdings: Dict[WasteType, float],
+    additions: Dict[WasteType, float],
+) -> Dict[WasteType, float]:
+    """Fit ``additions`` into ``entity``'s storage, which already holds ``holdings``.
+
+    How generator, collector and treatment add waste to their own storage. When the
+    additions don't fit, handle_storage_event either expands the store or
+    landfills the overflow. If it expands, the part that still doesn't fit the
+    larger store is landfilled too, so every m³ offered is either stored or on
+    the landfill ledger.
+
+    Returns the per-type volumes that fit, each type scaled by the same factor.
+    The caller adds them to its own storage; this function only grows
+    ``entity.waste_storage_capacity`` and records landfill and expansion events.
+    """
+    allowed, overflow = check_storage_capacity(holdings, additions, entity.waste_storage_capacity)
+    if overflow <= 0:
+        return allowed
+
+    _cost, action = handle_storage_event(entity, split_overflow_by_type(additions, overflow))
+    if action == "expand_storage":
+        allowed, overflow = check_storage_capacity(holdings, additions, entity.waste_storage_capacity)
+        if overflow > 0:
+            handle_storage_event(
+                entity, split_overflow_by_type(additions, overflow), force_landfill=True
+            )
+    return allowed

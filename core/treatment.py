@@ -8,7 +8,6 @@ from models.enums import EntityStatus, InventoryPolicy, OutputType, RegionType, 
 from instrumentation.waste_monitor import WasteMonitor
 from core.kanban_manager import KanbanManager
 from core.strategies import build_stock_strategy, build_inventory_policy
-from utils.capacity_utils import check_storage_capacity, compute_and_handle_overflow
 from config.constants import (
     INITIAL_INVENTORY_FRACTION,
     PROCESSING_CAPACITY_FRACTION,
@@ -18,7 +17,7 @@ from config.constants import (
     INPUT_AVAILABILITY_SATURATION_M3,
     OPERATING_TICK_DAYS,
 )
-from utils.capacity_utils import per_tick_capacity
+from utils.capacity_utils import per_tick_capacity, store_with_overflow
 
 class TreatmentOperator(OperationalEntity):
     """Treatment operator that processes waste into products"""
@@ -556,19 +555,7 @@ class TreatmentOperator(OperationalEntity):
         if not waste_amounts:
             return 0.0
 
-        allowed_additions, overflow_amount = check_storage_capacity(
-            self.waste_storage,
-            waste_amounts,
-            self.waste_storage_capacity
-        )
-
-        if overflow_amount > 0:
-            _cost, action = compute_and_handle_overflow(self, waste_amounts, allowed_additions)
-            if action == "expand_storage":
-                allowed_additions, _ = check_storage_capacity(
-                    self.waste_storage, waste_amounts, self.waste_storage_capacity
-                )
-                compute_and_handle_overflow(self, waste_amounts, allowed_additions, force_landfill=True)
+        allowed_additions = store_with_overflow(self, self.waste_storage, waste_amounts)
 
         total_added = 0.0
         for waste_type, amount in allowed_additions.items():

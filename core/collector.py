@@ -24,11 +24,10 @@ from models.data_classes import FailureConfig, Vehicle, CollectionCenter, Operat
 from config.base_config import ScenarioConfig
 from models.distances import get_distance, get_closest_regions
 from utils.capacity_utils import (
-    handle_storage_event,
     check_storage_capacity,
     compute_and_handle_overflow,
-    split_overflow_by_type,
     per_tick_capacity,
+    store_with_overflow,
 )
 from core.kanban_manager import KanbanManager
 from core.strategies import build_stock_strategy, build_inventory_policy
@@ -280,40 +279,15 @@ class CollectorCompany(OperationalEntity):
         return total_collected, collected_waste
 
     def _add_to_collection_center(self, collected_waste):
-        """Add collected waste to collection center with overflow handling"""
+        """Add collected waste to the collection center, expanding or landfilling overflow."""
         if not collected_waste:
             return
 
-        current_total = sum(self.collection_center.current_storage.values())
-        available_space = self.collection_center.waste_storage_capacity - current_total
-        total_to_add = sum(collected_waste.values())
-
-        if total_to_add <= available_space:
-            for waste_type, amount in collected_waste.items():
-                self.collection_center.current_storage[waste_type] += amount
-        else:
-            overflow_amount = total_to_add - available_space
-
-            _cost, action = handle_storage_event(
-                self, split_overflow_by_type(collected_waste, overflow_amount)
-            )
-
-            if action == "expand_storage":
-                storable = min(
-                    total_to_add,
-                    self.collection_center.waste_storage_capacity - current_total,
-                )
-                handle_storage_event(
-                    self,
-                    split_overflow_by_type(collected_waste, total_to_add - storable),
-                    force_landfill=True,
-                )
-            else:
-                storable = available_space
-
-            scaling_factor = storable / total_to_add if total_to_add > 0 else 0
-            for waste_type, amount in collected_waste.items():
-                self.collection_center.current_storage[waste_type] += amount * scaling_factor
+        fits = store_with_overflow(
+            self, self.collection_center.current_storage, collected_waste
+        )
+        for waste_type, amount in fits.items():
+            self.collection_center.current_storage[waste_type] += amount
 
     def manage_transport(self):
         """Transport management using point-to-point system"""

@@ -127,8 +127,8 @@ def test_handle_overflow_caps_storage_and_scales_streams_proportionally():
     # Stub handle_storage_event so it performs no side effects on capacity or
     # streams; we are testing the scaling step that follows it.
     import unittest.mock as mock
-    with mock.patch("core.generator.handle_storage_event", return_value=(0.0, "landfill")):
-        generator._handle_overflow(force_landfill=False)
+    with mock.patch("utils.capacity_utils.handle_storage_event", return_value=(0.0, "landfill")):
+        generator._handle_overflow()
 
     # Storage must be capped at capacity
     assert generator.current_storage == pytest.approx(capacity)
@@ -191,7 +191,7 @@ def test_overflow_beyond_one_expansion_landfills_the_remainder():
         entity.waste_storage_capacity += 500.0
         return 0.0, "expand_storage"
 
-    with mock.patch("core.generator.handle_storage_event", side_effect=fake_storage_event):
+    with mock.patch("utils.capacity_utils.handle_storage_event", side_effect=fake_storage_event):
         generator._handle_overflow()
 
     assert events == [(pytest.approx(600.0), False), (pytest.approx(100.0), True)]

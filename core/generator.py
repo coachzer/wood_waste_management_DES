@@ -7,7 +7,7 @@ from config.base_config import ScenarioConfig
 from instrumentation.waste_monitor import WasteMonitor
 from core.kanban_manager import KanbanManager
 from core.strategies import build_stock_strategy, build_inventory_policy
-from utils.capacity_utils import handle_storage_event, split_overflow_by_type
+from utils.capacity_utils import store_with_overflow
 
 class WasteGenerator(OperationalEntity):
     def __init__(
@@ -108,7 +108,7 @@ class WasteGenerator(OperationalEntity):
         self._generate_waste_for_period(seasonal_factor)
 
         if self.current_storage > self.waste_storage_capacity:
-            self._handle_overflow(force_landfill=False)
+            self._handle_overflow()
 
         self._handle_inventory_signaling(current_time)
 
@@ -155,40 +155,24 @@ class WasteGenerator(OperationalEntity):
         self.current_storage += generated_volume
         self.total_generated[waste_type] += generated_volume
 
-    def _handle_overflow(self, force_landfill=False):
-        """Handle storage overflow situation"""
+    def _handle_overflow(self):
+        """Cut the streams back to capacity, expanding or landfilling the excess.
+
+        The streams already hold the volume, so it is offered to an empty store;
+        each stream keeps its scaled share.
+        """
         current_volumes = {
             waste_type: stream.volume
             for waste_type, stream in self.waste_streams.items()
         }
-
         total_current = sum(current_volumes.values())
-        if total_current > self.waste_storage_capacity:
-            overflow_amount = total_current - self.waste_storage_capacity
+        if total_current <= self.waste_storage_capacity:
+            return
 
-            _cost, action = handle_storage_event(
-                self,
-                split_overflow_by_type(current_volumes, overflow_amount),
-                force_landfill=force_landfill
-            )
-
-            effective_capacity = self.waste_storage_capacity
-            if action == "expand_storage" and total_current > effective_capacity:
-                handle_storage_event(
-                    self,
-                    split_overflow_by_type(current_volumes, total_current - effective_capacity),
-                    force_landfill=True,
-                )
-
-            if total_current > effective_capacity:
-                scaling_factor = effective_capacity / total_current
-
-                for waste_type, stream in self.waste_streams.items():
-                    stream.volume *= scaling_factor
-
-                self.current_storage = effective_capacity
-            else:
-                self.current_storage = total_current
+        fits = store_with_overflow(self, {}, current_volumes)
+        for waste_type, stream in self.waste_streams.items():
+            stream.volume = fits[waste_type]
+        self.current_storage = min(total_current, self.waste_storage_capacity)
 
     def _generate_waste_for_period(self, seasonal_factor):
         """Generate waste for all waste types in one period with efficiency consideration"""
