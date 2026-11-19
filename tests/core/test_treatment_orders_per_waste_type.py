@@ -8,6 +8,7 @@ from core.facility_builder import FacilityBuilder
 from models.enums import OutputType, RegionType, StockStrategy, WasteType
 from models.state import SimulationState
 from tests.core.factories import make_collector, make_treatment, posted_treatment_orders
+from models.transformations import volumetric_yield
 
 EARLY_TYPE = WasteType.CONSTRUCTION_WOOD_17_02_01
 LATE_TYPE = sorted(WasteType, key=lambda waste_type: waste_type.value)[-1]
@@ -84,5 +85,12 @@ def test_order_shares_follow_product_need_and_national_mix():
 
     shares = builder._order_share_by_waste_type(transformations)
 
-    # OSB is 3/4 of the need, split 3:1 by the mix; MDF's 1/4 goes to LATE_TYPE only.
-    assert shares == {EARLY_TYPE: pytest.approx(0.75 * 0.75), LATE_TYPE: pytest.approx(0.75 * 0.25 + 0.25)}
+    # Need is demand / mean volumetric yield of the product's routes (ADR 0043). OSB's need is
+    # split 3:1 by the mix; MDF's need goes to LATE_TYPE only.
+    osb_need = 300.0 / ((volumetric_yield(0.5, EARLY_TYPE, OutputType.OSB) + volumetric_yield(0.5, LATE_TYPE, OutputType.OSB)) / 2)
+    mdf_need = 100.0 / volumetric_yield(0.5, LATE_TYPE, OutputType.MDF)
+    osb_fraction = osb_need / (osb_need + mdf_need)
+    assert shares == {
+        EARLY_TYPE: pytest.approx(osb_fraction * 0.75),
+        LATE_TYPE: pytest.approx(osb_fraction * 0.25 + (1 - osb_fraction)),
+    }

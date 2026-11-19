@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from config.constants import SAFETY_STOCK_Z, WEEKS_PER_YEAR
+from config.constants import PANEL_DENSITIES, SAFETY_STOCK_Z, WASTE_DENSITIES, WEEKS_PER_YEAR
 from core.facility_builder import FacilityBuilder
 from models.enums import OutputType, StockStrategy, WasteType
 from tests.core.factories import posted_treatment_orders
@@ -21,7 +21,9 @@ def _builder(demand):
 
 
 def _transformation(output_type, efficiency):
-    return SimpleNamespace(output_type=output_type, conversion_efficiency=efficiency)
+    return SimpleNamespace(
+        input_type=WasteType.CONSTRUCTION_WOOD_17_02_01, output_type=output_type, conversion_efficiency=efficiency
+    )
 
 
 def test_order_up_to_level_is_one_interval_of_waste_plus_seasonal_safety_stock():
@@ -30,7 +32,8 @@ def test_order_up_to_level_is_one_interval_of_waste_plus_seasonal_safety_stock()
 
     level = builder._order_up_to_level(transformations, market_share=0.5, waste_storage_capacity=STORAGE_CAPACITY_M3)
 
-    waste_per_interval = 0.5 * (5_200.0 / WEEKS_PER_YEAR) / 0.7
+    density_ratio = WASTE_DENSITIES[WasteType.CONSTRUCTION_WOOD_17_02_01] / PANEL_DENSITIES[OutputType.OSB]
+    waste_per_interval = 0.5 * (5_200.0 / WEEKS_PER_YEAR) / (0.7 * density_ratio)
     expected = waste_per_interval * (1 + SAFETY_STOCK_Z * seasonal_factor_standard_deviation())
     assert level == pytest.approx(expected)
     assert seasonal_factor_standard_deviation() == pytest.approx(0.2 / math.sqrt(2))

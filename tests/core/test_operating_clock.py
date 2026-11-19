@@ -27,6 +27,7 @@ from models.enums import EntityStatus, InventoryPolicy, OutputType, RegionType, 
 from models.state import SimulationState
 from tests.core.factories import deterministic_scenario, make_collector, make_treatment
 from utils.capacity_utils import handle_storage_event
+from models.transformations import volumetric_yield
 
 CONSTRUCTION = WasteType.CONSTRUCTION_WOOD_17_02_01
 TREATMENT_STORAGE_M3 = 24_000.0
@@ -285,7 +286,7 @@ def test_pull_week_of_demand_on_one_day_is_produced_over_later_ticks():
     env = simpy.Environment()
     one_tick_output = (
         TREATMENT_STORAGE_M3 * PROCESSING_CAPACITY_FRACTION * OPERATING_TICK_DAYS / PROCESSING_TIME_DAYS
-    ) * 0.98  # construction wood -> OSB conversion efficiency
+    ) * volumetric_yield(0.98, CONSTRUCTION, OutputType.OSB)  # construction wood -> OSB, ADR 0043
     attempted = 4.5 * one_tick_output
     operator, state = _pull_operator_with_one_week_of_osb_demand(env, attempted)
 

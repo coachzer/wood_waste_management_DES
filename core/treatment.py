@@ -8,6 +8,7 @@ from models.enums import EntityStatus, InventoryPolicy, OutputType, RegionType, 
 from instrumentation.waste_monitor import WasteMonitor
 from core.kanban_manager import KanbanManager
 from core.strategies import build_stock_strategy, build_inventory_policy
+from models.transformations import volumetric_yield
 from config.constants import (
     INITIAL_INVENTORY_FRACTION,
     PROCESSING_CAPACITY_FRACTION,
@@ -356,6 +357,7 @@ class TreatmentOperator(OperationalEntity):
     def _process_waste_transformation(self, input_type, output_type, transformation, output_cap=None):
         """Process a single waste transformation.
 
+        ``efficiency`` is the volumetric yield, panel m3 per waste m3 (ADR 0043).
         ``output_cap`` (PULL, ADR 0002 Phase E) bounds production to the
         demand-driven target: when provided, ``output_cap / efficiency`` joins the
         input-waste, processing-capacity and finished-goods-headroom clamps. PUSH
@@ -363,7 +365,8 @@ class TreatmentOperator(OperationalEntity):
         processed) so the PULL caller can draw down its per-product target.
         """
 
-        efficiency = min(self._get_transformation_efficiency(transformation), 1.0)
+        mass_efficiency = min(self._get_transformation_efficiency(transformation), 1.0)
+        efficiency = volumetric_yield(mass_efficiency, input_type, output_type)
 
         headroom = self.finished_goods.capacity.get(output_type, 0.0) - self.finished_goods.current_storage[output_type]
         if headroom <= 0:

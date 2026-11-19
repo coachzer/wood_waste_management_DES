@@ -2,7 +2,7 @@ import numpy as np
 from simpy import Environment
 from models.facility_data import FacilityDataManager
 from models.enums import RegionType, sorted_by_value
-from models.transformations import build_transformations
+from models.transformations import build_transformations, volumetric_yield
 from core.generator import WasteGenerator
 from core.collector import CollectorCompany
 from core.treatment import TreatmentOperator
@@ -21,6 +21,11 @@ from config.constants import (
     WASTE_STORAGE_PRIMING_WEEKS,
 )
 from utils.capacity_utils import per_tick_capacity
+
+
+def _catalogue_volumetric_yield(transformation) -> float:
+    """Panel m3 per waste m3 at the catalogue mass efficiency, the mean treatment realizes (ADR 0043)."""
+    return volumetric_yield(transformation.conversion_efficiency, transformation.input_type, transformation.output_type)
 
 class FacilityBuilder:
     """Focused on building individual facilities - no orchestration logic"""
@@ -182,15 +187,15 @@ class FacilityBuilder:
         """Treatment order-up-to level S in waste m3 (ADR 0027), the same for PUSH and PULL.
 
         ``D`` is the waste needed per consumption interval to make this
-        operator's share of producible demand, at the blended conversion
-        efficiency. Demand arrives once per interval, so the protection period
+        operator's share of producible demand, at the blended volumetric
+        yield (ADR 0043). Demand arrives once per interval, so the protection period
         covers at least one whole interval. ``sigma`` is the seasonal spread
         of ``D``, the only demand variation in the model. Clamped at storage
         capacity.
         """
         if not transformations:
             return 0.0
-        efficiencies = [transformation.conversion_efficiency for transformation in transformations.values()]
+        efficiencies = [_catalogue_volumetric_yield(transformation) for transformation in transformations.values()]
         blended_efficiency = sum(efficiencies) / len(efficiencies)
         national_demand = self.facility_manager.demand
         producible_products = sorted(
@@ -236,7 +241,7 @@ class FacilityBuilder:
         for output_type in sorted_by_value(routes_by_product):
             routes = routes_by_product[output_type]
             demand = national_demand.get(output_type.value, 0.0)
-            mean_efficiency = sum(route.conversion_efficiency for route in routes) / len(routes)
+            mean_efficiency = sum(_catalogue_volumetric_yield(route) for route in routes) / len(routes)
             if demand > 0 and mean_efficiency > 0:
                 waste_need_by_product[output_type] = demand / mean_efficiency
         total_need = sum(waste_need_by_product.values())
@@ -266,7 +271,7 @@ class FacilityBuilder:
         proportion to the region's volume-generation mix. A type the region does
         not generate gets zero (it arrives later via collection); if the region
         generates none of the input types, an even split avoids divide-by-zero.
-        ``blended_efficiency`` is the mean conversion efficiency across the
+        ``blended_efficiency`` is the mean volumetric yield (ADR 0043) across the
         operator's transformations -- this only shapes the warm-up mix, which
         collection self-corrects within ~2 weeks, so precision is irrelevant.
         """
@@ -274,7 +279,7 @@ class FacilityBuilder:
         if not input_types:
             return {}
 
-        efficiencies = [transformation.conversion_efficiency for transformation in transformations.values()]
+        efficiencies = [_catalogue_volumetric_yield(transformation) for transformation in transformations.values()]
         blended_efficiency = sum(efficiencies) / len(efficiencies)
 
         national_demand = self.facility_manager.demand
