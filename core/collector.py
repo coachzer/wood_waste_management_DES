@@ -122,7 +122,6 @@ class CollectorCompany(OperationalEntity):
         self.waste_monitor = waste_monitor
 
         self.process = env.process(self.collection_loop())
-        env.process(self.manage_transport())
         self.start_failure_process(env)
 
     def _find_available_vehicle(self):
@@ -175,6 +174,14 @@ class CollectorCompany(OperationalEntity):
 
         vehicle.in_transit = False
         vehicle.current_load_by_type = {}
+        self.transport_manager.schedule_dispatch()
+
+    def check_failure(self, current_time, failure_probability):
+        was_failed = self.status == EntityStatus.FAILED
+        failed = super().check_failure(current_time, failure_probability)
+        if was_failed and not failed:
+            self.transport_manager.schedule_dispatch()
+        return failed
 
     def charge_trip(self, load_by_type, distance):
         """Charge one loaded trip: fixed trip cost plus per road km per m3, and ton-km emissions.
@@ -287,11 +294,6 @@ class CollectorCompany(OperationalEntity):
         )
         for waste_type, amount in fits.items():
             self.collection_center.current_storage[waste_type] += amount
-
-    def manage_transport(self):
-        while True:
-            self.transport_manager.schedule_dispatch()
-            yield self.env.timeout(1.0)
 
     def _apply_status_throughput_effects(self):
         """FAILED floors efficiency; RECOVERING ramps it back via recovery progress."""
