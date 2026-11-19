@@ -35,12 +35,6 @@ HIGH_FAILURE = FailureConfig(
     max_duration=1.5,
 )
 
-DISASTER_FAILURE = FailureConfig(
-    probability=0.24,
-    min_duration=30.0,
-    max_duration=60.0,
-)
-
 SCENARIO_CONFIGS: Dict[str, ScenarioConfig] = {
     "Baseline": ScenarioConfig(
         name="Baseline",

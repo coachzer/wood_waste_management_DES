@@ -1,6 +1,6 @@
 """System-wide outbound-vehicle iterator and per-waste-type vehicle load (C2).
 
-``Vehicle.current_load_by_type`` breaks the scalar ``current_load`` down by waste
+``Vehicle.current_load_by_type`` holds a vehicle's load per waste
 type so the waste-side mass-balance invariant (C3) can sum waste in transit.
 ``SimulationState.iter_outbound_vehicles`` is the single seam that finds every
 in-transit vehicle across all collectors' fleets.
@@ -20,7 +20,6 @@ def make_vehicle(vehicle_id, in_transit, load_by_type):
         capacity=1000.0,
         current_region=RegionType.PODRAVSKA,
         in_transit=in_transit,
-        current_load=sum(load_by_type.values()),
         current_load_by_type=dict(load_by_type),
     )
 

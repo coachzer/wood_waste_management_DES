@@ -185,7 +185,6 @@ class Vehicle:
     capacity: CubicMetres
     current_region: RegionType
     in_transit: bool = False
-    current_load: CubicMetres = 0.0
     current_load_by_type: Dict[WasteType, CubicMetres] = field(default_factory=dict)
     destination: Optional[RegionType] = None
     estimated_arrival: Optional[float] = None

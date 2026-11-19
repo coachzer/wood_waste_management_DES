@@ -115,7 +115,6 @@ class PointToPointTransport:
         vehicle.in_transit = True
         vehicle.destination = request.destination
         vehicle.estimated_arrival = arrival_time
-        vehicle.current_load = request.volume
         vehicle.current_load_by_type = {request.waste_type: request.volume}
 
         state = self.state

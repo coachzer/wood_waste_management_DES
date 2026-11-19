@@ -126,7 +126,7 @@ class CollectorCompany(OperationalEntity):
         self.waste_monitor = waste_monitor
 
         self.process = env.process(self.collection_loop())
-        self.transport_process = env.process(self.manage_transport())
+        env.process(self.manage_transport())
         self.start_failure_process(env)
 
     def _find_available_vehicle(self):
@@ -173,7 +173,6 @@ class CollectorCompany(OperationalEntity):
 
         if collected_amount > 0:
 
-            vehicle.current_load = collected_amount
             vehicle.current_load_by_type = dict(collected_waste)
             yield self.env.timeout(travel_time)
 
@@ -185,7 +184,6 @@ class CollectorCompany(OperationalEntity):
             collection_cost = self.transport_cost
 
         vehicle.in_transit = False
-        vehicle.current_load = 0
         vehicle.current_load_by_type = {}
         vehicle.destination = self.region_type
 
@@ -653,7 +651,6 @@ class CollectorCompany(OperationalEntity):
             if current_time >= transport["arrival_time"]:
                 vehicle = transport["vehicle"]
                 home_region = transport["collector"].region_type
-                vehicle.current_load = 0
                 vehicle.current_load_by_type = {}
                 vehicle.current_region = transport["destination"]
                 vehicle.destination = home_region

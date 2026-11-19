@@ -18,7 +18,6 @@ CITY_TO_REGION = {
     "Koper": RegionType.OBALNO_KRASKA,
 }
 
-REGION_TO_CITY = {v: k for k, v in CITY_TO_REGION.items()}
 
 CITY_COORDS = {
     'Murska Sobota': (46.6597, 16.1668),
