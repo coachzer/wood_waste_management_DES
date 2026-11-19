@@ -1,5 +1,8 @@
 """Shared builders for core tests."""
+import json
+
 from config.base_config import ScenarioConfig
+from core.abc_analysis import abc_priority_weights
 from core.collector import CollectorCompany
 from core.kanban_manager import KanbanManager
 from core.transport_manager import PointToPointTransport
@@ -7,6 +10,9 @@ from core.treatment import TreatmentOperator
 from models.enums import InventoryPolicy, OutputType, RegionType, StockStrategy, WasteType, sorted_by_value
 from models.state import SimulationState
 from models.transformations import build_transformations
+
+with open("data/demand.json") as demand_file:
+    SHIPPED_ABC_PRIORITY_WEIGHTS = abc_priority_weights(json.load(demand_file)["national_demand"])
 
 
 def deterministic_scenario(**overrides) -> ScenarioConfig:
@@ -74,6 +80,7 @@ def make_treatment(env, waste_monitor, **overrides):
         state=SimulationState(),
         failure_config=None,
         seed=0,
+        abc_priority_map=SHIPPED_ABC_PRIORITY_WEIGHTS,
     )
     fields.update(overrides)
     return TreatmentOperator(**fields)

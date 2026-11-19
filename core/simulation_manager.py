@@ -17,6 +17,7 @@ from models.state import SimulationState
 from instrumentation.waste_monitor import WasteMonitor
 from instrumentation.mass_balance import EntityRegistry, MassBalanceMonitor
 from models.facility_data import FacilityDataManager
+from core.abc_analysis import abc_priority_weights
 from core.facility_builder import FacilityBuilder
 from core.kanban_manager import KanbanManager
 from core.generator import WasteGenerator
@@ -66,7 +67,8 @@ class SimulationManager:
                 transport_manager=self.transport_manager,
                 kanban_manager=self.kanban_manager,
                 state=self.state,
-                seed=self.seed
+                seed=self.seed,
+                abc_priority_map=abc_priority_weights(self.facility_manager.demand),
             )
             
             generators, collectors, processors = self._build_all_facilities(

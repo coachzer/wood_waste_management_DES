@@ -163,6 +163,7 @@ def test_builder_sets_vehicle_capacity_explicitly_to_one_tick_of_collection():
         kanban_manager=KanbanManager(),
         state=state,
         seed=1,
+        abc_priority_map={},
     )
     col_data = SimpleNamespace(
         id="col-1",

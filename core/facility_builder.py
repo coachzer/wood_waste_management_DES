@@ -35,6 +35,7 @@ class FacilityBuilder:
         kanban_manager,
         state,
         seed,
+        abc_priority_map,
     ):
         self.env = env
         self.facility_manager = facility_manager
@@ -44,6 +45,7 @@ class FacilityBuilder:
         self.kanban_manager = kanban_manager
         self.state = state
         self.seed_sequence = np.random.SeedSequence(seed)
+        self.abc_priority_map = abc_priority_map
 
     def create_generator(self, gen_data, region: RegionType, stock_strategy, inventory_policy,
                          accepted_waste_types=None) -> WasteGenerator:
@@ -148,7 +150,8 @@ class FacilityBuilder:
             kanban_manager=self.kanban_manager,
             state=self.state,
             failure_config=self.scenario.treatment_failure,
-            seed=child_seed
+            seed=child_seed,
+            abc_priority_map=self.abc_priority_map,
         )
 
     def _finished_goods_capacity(self, transformations, market_share: float) -> dict:

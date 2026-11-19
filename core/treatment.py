@@ -1,7 +1,6 @@
 
 import numpy as np
 from typing import Dict, List, Optional, Tuple
-from core.abc_analysis import BiogenicCarbonABCAnalyzer
 from models.data_classes import FailureConfig, WasteTransformation, OperationalEntity, ProductStorage
 from config.base_config import ScenarioConfig
 from models.distances import get_distance
@@ -48,7 +47,7 @@ class TreatmentOperator(OperationalEntity):
         state,
         failure_config: Optional[FailureConfig],
         seed,
-        abc_demand_config_path: str = "data/demand.json",
+        abc_priority_map: Dict[str, float],
     ):
         self.scenario = scenario
         super().__init__(failure_config=failure_config, seed=seed)
@@ -105,8 +104,7 @@ class TreatmentOperator(OperationalEntity):
 
         self.transformations = transformations
 
-        self.abc_priority_map = {}
-        self._initialize_abc_priorities(abc_demand_config_path)
+        self.abc_priority_map = abc_priority_map
 
         self.process = env.process(self.run_facility())
         env.process(self.schedule_collection_requests())
@@ -130,21 +128,6 @@ class TreatmentOperator(OperationalEntity):
     def waste_storage(self) -> Dict[WasteType, float]:
         """Get the waste storage dictionary"""
         return self._waste_storage
-
-    def _initialize_abc_priorities(self, config_path: str):
-        """Initialize ABC priorities - reuse existing ABCAnalyzer.
-
-        Raises on a missing or malformed demand config rather than falling
-        back to hardcoded weights: the fallback would silently change what
-        every operator produces while looking like a configured run.
-        """
-        analyzer = BiogenicCarbonABCAnalyzer(config_path)
-        classifications = analyzer.perform_abc_classification()
-
-        self.abc_priority_map = {
-            item.product_type: item.priority_weight
-            for item in classifications
-        }
 
     def _order_volumes_by_waste_type(self) -> Dict[WasteType, float]:
         """Multi-item (s, S) order: one order-up-to level per input type (ADR 0026).

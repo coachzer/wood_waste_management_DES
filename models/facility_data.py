@@ -30,12 +30,13 @@ class FacilityDataManager:
                         self.regions[region] = RegionalFacilities.from_dict(data)
 
     def _load_demand(self):
-        """Load national demand data"""
-        demand_path = self.data_dir / "demand.json"
-        if demand_path.exists():
-            with open(demand_path, "r") as f:
-                data = json.load(f)
-                self.demand = data["national_demand"]
+        """Load national demand data.
+
+        A missing file raises: demand drives the ABC priority weights, so a
+        moved or renamed file must fail loudly instead of degrading every run.
+        """
+        with open(self.data_dir / "demand.json", "r") as f:
+            self.demand = json.load(f)["national_demand"]
 
     def get_region_facilities(self, region: RegionType) -> Optional[RegionalFacilities]:
         """Get facilities for a specific region"""
