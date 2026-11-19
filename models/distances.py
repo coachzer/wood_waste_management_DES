@@ -19,26 +19,6 @@ CITY_TO_REGION = {
 }
 
 
-CITY_COORDS = {
-    'Murska Sobota': (46.6597, 16.1668),
-    'Maribor': (46.55465, 15.645881),
-    'Slovenj Gradec': (46.5050, 15.1200),
-    'Celje': (46.2276, 15.2672),
-    'Trbovlje': (46.1539, 15.0547),
-    'Krško': (45.9551, 15.5025),
-    'Novo Mesto': (45.8038, 15.1652),
-    'Postojna': (45.7783, 14.2161),
-    'Ljubljana': (46.056947, 14.505751),
-    'Kranj': (46.238108, 14.3556),
-    'Nova Gorica': (45.95619, 13.64826),
-    'Koper': (45.548264, 13.7301),
-}
-
-REGION_COORDINATES: Dict[RegionType, Tuple[float, float]] = {
-    region: CITY_COORDS[city]
-    for city, region in CITY_TO_REGION.items()
-}
-
 DISTANCE_MATRIX: Dict[Tuple[RegionType, RegionType], float] = {}
 
 def _load_distance_matrix():
@@ -70,9 +50,5 @@ def get_closest_regions(
     for r in RegionType:
         if r == region:
             continue
-        try:
-            dist = get_distance(region, r)
-            distances.append((r, dist))
-        except Exception:
-            continue
+        distances.append((r, get_distance(region, r)))
     return sorted(distances, key=lambda x: x[1])[:n]
