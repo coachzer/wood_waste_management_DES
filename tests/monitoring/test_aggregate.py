@@ -227,3 +227,21 @@ def test_total_emissions_sums_per_tick_impact_series_not_last_element():
     }
     kpis = extract_kpis(monitor_data)
     assert kpis["total_emissions_kgco2e"] == 65.0
+
+
+def test_residue_transfers_are_counted_with_their_trip_cost():
+    kpis = extract_kpis({"residue_transfers": [{"cost": 10.0}, {"cost": 2.5}]})
+    assert kpis["residue_transfer_count"] == 2
+    assert kpis["residue_transfer_cost"] == 12.5
+
+
+def test_a_run_without_residue_transfers_reports_zero():
+    kpis = extract_kpis({})
+    assert kpis["residue_transfer_count"] == 0
+    assert kpis["residue_transfer_cost"] == 0.0
+
+
+def test_residue_transfer_kpis_reach_summary_csv():
+    rows = summary_rows([extract_kpis({})])
+    for metric in ("residue_transfer_count", "residue_transfer_cost"):
+        assert _row(rows, metric) is not None, metric

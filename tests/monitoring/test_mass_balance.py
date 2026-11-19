@@ -424,7 +424,6 @@ def test_queued_and_in_flight_reposition_balance_both_waste_checks():
         return SimpleNamespace(
             name=name,
             collection_center=SimpleNamespace(current_storage={waste_type: 0.0}),
-            active_transports=[],
             vehicles=[],
         )
 
@@ -457,7 +456,9 @@ def test_queued_and_in_flight_reposition_balance_both_waste_checks():
     state.transport_flows.append(flow("col-origin", "col-destination", 200.0))
     vehicle = SimpleNamespace(in_transit=True, current_load_by_type={waste_type: 200.0})
     origin.vehicles.append(vehicle)
-    origin.active_transports.append({"volume": 200.0, "target_name": "col-destination"})
+    manager.active_transports.append(
+        {"collector": origin, "volume": 200.0, "target_name": "col-destination"}
+    )
     origin.collection_center.current_storage[waste_type] = 500.0
 
     monitor.check_collection_centers()  # must not raise

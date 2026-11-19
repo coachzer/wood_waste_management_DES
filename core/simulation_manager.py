@@ -228,6 +228,7 @@ class SimulationManager:
         }
         monitor_data.update({
             'transport_flows': self.state.transport_flows,
+            'residue_transfers': self.state.residue_transfers,
             'consumption_events': self.state.consumption_events,
             'storage_capacities': {
                 'generators': {
@@ -346,6 +347,10 @@ class SimulationManager:
         full_str = f"{full * 100:.2f}%" if full is not None else "n/a"
         operational_str = (
             f"{operational * 100:.2f}%" if operational is not None else "n/a"
+        )
+        print(
+            f"Residue transfers: {len(self.state.residue_transfers)} "
+            f"(trip cost {sum(transfer['cost'] for transfer in self.state.residue_transfers):.2f})"
         )
         print(
             f"Service level -- full: {full_str}, operational: {operational_str} "

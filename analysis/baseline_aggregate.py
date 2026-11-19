@@ -53,6 +53,8 @@ _SUMMARY_METRICS = [
     "total_consumed_m3",
     "no_capability_lost_m3",
     "stockout_lost_m3",
+    "residue_transfer_count",
+    "residue_transfer_cost",
 ]
 
 _SUMMARY_HEADER = "metric,mean,stdev,ci95_low,ci95_high,count"
@@ -230,6 +232,7 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         for product_name, value in (final_summary.get("consumption_service_by_product") or {}).items()
     }
 
+    residue_transfers = monitor_data.get("residue_transfers", [])
     transport_flows = monitor_data.get("transport_flows", [])
     consumption_events = monitor_data.get("consumption_events", [])
     treatment_stage, collector_stage = stage_bullwhip(
@@ -285,6 +288,8 @@ def extract_kpis(monitor_data: Dict[str, Any]) -> Dict[str, Any]:
         "total_consumed_m3": float(final_summary.get("total_consumed") or 0.0),
         "no_capability_lost_m3": float(final_summary.get("no_capability_lost") or 0.0),
         "stockout_lost_m3": float(final_summary.get("stockout_lost") or 0.0),
+        "residue_transfer_count": len(residue_transfers),
+        "residue_transfer_cost": float(sum(transfer["cost"] for transfer in residue_transfers)),
         "bullwhip": bullwhip,
         "residence": flow_time_metrics(monitor_data),
         "carbon": {

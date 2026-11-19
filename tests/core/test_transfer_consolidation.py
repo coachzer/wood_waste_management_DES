@@ -14,7 +14,7 @@ def test_types_requested_in_the_same_instant_for_one_destination_share_one_vehic
 
     world.env.run(until=1e-9)
 
-    [transport] = world.home.active_transports
+    [transport] = world.transport_manager.active_transports
     assert transport["load_by_type"] == {WASTE: 30.0, OTHER_WASTE: 10.0}
     assert transport["volume"] == 40.0
     assert sum(vehicle.in_transit for vehicle in world.vehicles) == 1
@@ -38,4 +38,4 @@ def test_different_destinations_take_different_vehicles():
 
     world.env.run(until=1e-9)
 
-    assert sorted(transport["volume"] for transport in world.home.active_transports) == [10.0, 30.0]
+    assert sorted(transport["volume"] for transport in world.transport_manager.active_transports) == [10.0, 30.0]

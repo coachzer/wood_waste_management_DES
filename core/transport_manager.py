@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 from typing import List, Dict, Optional
-from config.constants import TRAVEL_SPEED_KMH
+from config.constants import RESIDUE_TRANSFER_VOLUME_M3, TRAVEL_SPEED_KMH
 from models.enums import EntityStatus, RegionType, WasteType
 from models.distances import get_distance
+from utils.capacity_utils import store_with_overflow
 
 @dataclass
 class TransportRequest:
@@ -20,6 +21,7 @@ class PointToPointTransport:
         self.road_circuity_mean = road_circuity_mean
         self.env = env
         self.pending_requests: List[TransportRequest] = []
+        self.active_transports: List[Dict] = []
         self._dispatch_scheduled = False
 
     def _mean_transport_circuity(self) -> float:
@@ -42,6 +44,16 @@ class PointToPointTransport:
             held[request.requester_id] = held.get(request.requester_id, 0.0) + request.volume
         return held
 
+    def in_flight_volume_by_destination(self) -> Dict[str, float]:
+        """Volume on vehicles per destination collector name, summed collector by collector."""
+        in_flight = {}
+        for collector in self.state.collectors:
+            for transport in self.active_transports:
+                if transport["collector"] is collector:
+                    target_name = transport["target_name"]
+                    in_flight[target_name] = in_flight.get(target_name, 0.0) + transport["volume"]
+        return in_flight
+
     def request_transport(self, request: TransportRequest) -> bool:
         """Hold the requested volume (at most the center's stock) and queue it. False if none is left."""
         stock = self._origin_collector(request).collection_center.current_storage
@@ -63,13 +75,13 @@ class PointToPointTransport:
         yield self.env.timeout(0)
         self._dispatch_scheduled = False
         for transport in self.process_requests(self.env.now):
-            transport["collector"].active_transports.append(transport)
+            self.active_transports.append(transport)
             self.env.process(self._run_transfer(transport))
 
     def _run_transfer(self, transport: Dict):
         yield self.env.timeout(max(0.0, transport["arrival_time"] - self.env.now))
         self.deliver(transport)
-        transport["collector"].active_transports.remove(transport)
+        self.active_transports.remove(transport)
         vehicle = transport["vehicle"]
         home_region = transport["collector"].region_type
         vehicle.current_load_by_type = {}
@@ -82,10 +94,16 @@ class PointToPointTransport:
     def deliver(self, transport: Dict) -> None:
         destination_collector = self._destination_collector(transport["destination"])
         if destination_collector:
-            for waste_type, volume in transport["load_by_type"].items():
-                destination_collector.collection_center.current_storage[waste_type] += volume
-        transport["collector"].charge_trip(
+            storage = destination_collector.collection_center.current_storage
+            fits = store_with_overflow(destination_collector, storage, transport["load_by_type"])
+            for waste_type, volume in fits.items():
+                storage[waste_type] += volume
+        trip_cost = transport["collector"].charge_trip(
             dict(transport["load_by_type"]), get_distance(transport["origin"], transport["destination"]))
+        volume = sum(transport["load_by_type"].values())
+        if volume < RESIDUE_TRANSFER_VOLUME_M3:
+            self.state.record_residue_transfer(
+                source_name=transport["requester_id"], volume=volume, cost=trip_cost, timestamp=self.env.now)
 
     def find_available_vehicle(self, origin: RegionType) -> Optional[Dict]:
         """Find an idle vehicle at or near the origin. A FAILED collector's vehicles take no new jobs."""

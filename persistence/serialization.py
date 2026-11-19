@@ -24,6 +24,7 @@ RAW_PAYLOAD_KEYS = HISTORY_KEYS + (
     "consumption_events",
     "storage_capacities",
     "final_summary",
+    "residue_transfers",
 )
 
 

@@ -20,7 +20,8 @@ def _world(waste_monitor):
                                collection_capacity=10_000.0)
     collector.collection_center.current_storage[WASTE] = 100.0
     destination = SimpleNamespace(name="col_away", region_type=AWAY, vehicles=[], status=collector.status,
-                                  collection_center=SimpleNamespace(current_storage={WASTE: 0.0}))
+                                  collection_center=SimpleNamespace(current_storage={WASTE: 0.0}),
+                                  waste_storage_capacity=1e9)
     state.collectors = [collector, destination]
     return env, collector, transport_manager
 
