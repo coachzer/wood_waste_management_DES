@@ -42,10 +42,10 @@ That gives 6 policy-strategy combinations per scenario. In baseline mode, each c
 All three strategies set *when* upstream replenishment signals fire:
 
 - `ON_DEMAND` signals for the replacement volume after every consumption (lot-for-lot).
-- `REORDER_50` signals when waste storage drops below 50% of capacity.
-- `REORDER_90` signals when waste storage drops below 90% of capacity.
+- `REORDER_50` signals when a waste type's stock drops below 50% of its order-up-to level.
+- `REORDER_90` signals when a waste type's stock drops below 90% of its order-up-to level.
 
-The order-up-to level is always full capacity. Strategy affects waste-side decisions only, not finished goods production.
+Each order fills the gap to that level. The level is sized from demand and clamped at storage capacity (ADR 0026, 0027). Strategy affects waste-side decisions only, not finished goods production.
 
 ## Key mechanisms
 

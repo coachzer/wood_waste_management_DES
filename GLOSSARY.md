@@ -79,7 +79,8 @@ The trigger is the downstream consumption event itself, not the
 inventory drop it causes. When **Market Consumption** pulls from a
 PULL operator, the per-tick **Market Signal** wakes that operator.
 The operator reads its **Consumption Events** for the tick and
-produces each product up to that product's `attempted` volume,
+adds each product's `consumed` volume to its **PULL Production
+Backlog**, which the daily operating tick then produces against,
 subject to the partial-batch headroom clamp on `finished_goods`.
 The **Stock Strategy** gates upstream waste-side replenishment
 only. After production consumes input waste, if `waste_storage`
@@ -152,12 +153,12 @@ consumption occurred. **KanbanManager** delivers it with
 `source_type="market"`, and it carries the operator's total
 producible `attempted` volume. It is an edge trigger, not the
 payload. On that trigger the operator reads its Consumption
-Events for the tick from the log and sets each product's
-production target to that product's `attempted`. A stockout on
-tick N therefore does not silence production on tick N+1, so
-there is no death spiral. Lost-sale tracking stays at the
-`SimulationState` level, and the operator never needs `consumed`
-or `lost`. The aggregate Market Signal keeps the PULL cascade
+Events for the tick from the log and adds each product's
+`consumed` to its **PULL Production Backlog** (ADR 0029). The
+backlog persists across ticks, so a stockout on tick N does not
+silence production on tick N+1 and there is no death spiral.
+Lost-sale tracking stays at the `SimulationState` level; the
+operator never reads `lost`. The aggregate Market Signal keeps the PULL cascade
 uniform (market -> treatment -> collector -> generator), while
 per-product demand comes from the log.
 _Avoid_: demand signal, order
