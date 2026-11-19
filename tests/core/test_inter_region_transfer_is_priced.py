@@ -34,8 +34,8 @@ def _collector(name, region_type, monitor):
         waste_monitor=monitor, env=SimpleNamespace(now=3.0),
         collection_center=SimpleNamespace(current_storage={WASTE: 0.0}),
     )
-    collector._record_trip_cost_and_emissions = (
-        lambda load, distance: CollectorCompany._record_trip_cost_and_emissions(collector, load, distance)
+    collector.charge_trip = (
+        lambda load, distance: CollectorCompany.charge_trip(collector, load, distance)
     )
     return collector
 

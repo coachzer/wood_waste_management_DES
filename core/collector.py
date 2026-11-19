@@ -186,7 +186,7 @@ class CollectorCompany(OperationalEntity):
             yield self.env.timeout(travel_time)
 
             self._add_to_collection_center(collected_waste)
-            collection_cost = self._record_trip_cost_and_emissions(collected_waste, distance)
+            collection_cost = self.charge_trip(collected_waste, distance)
             self.last_collection_cost = collection_cost
         else:
             yield self.env.timeout(travel_time)
@@ -199,7 +199,7 @@ class CollectorCompany(OperationalEntity):
 
         return collection_cost
 
-    def _record_trip_cost_and_emissions(self, load_by_type, distance):
+    def charge_trip(self, load_by_type, distance):
         """Charge one loaded trip: fixed trip cost plus per road km per m3, and ton-km emissions.
 
         ``distance`` is great-circle; cost and emissions use road km (ADR 0038).
@@ -214,7 +214,7 @@ class CollectorCompany(OperationalEntity):
             )
         )
 
-        if hasattr(self, 'waste_monitor') and self.waste_monitor:
+        if self.waste_monitor:
             self.waste_monitor.update_entity_costs(
                 entity_name=self.name,
                 entity_type=self.facility_type,
@@ -505,24 +505,21 @@ class CollectorCompany(OperationalEntity):
             if not _is_market_signal(signal)
         ]
 
-    def transfer_waste_to_region(self, waste_type: WasteType, volume: float, destination: RegionType) -> bool:
-        """Updated method using point-to-point transport"""
-        if volume <= 0:
-            return False
+    def transferable_volume(self, waste_type: WasteType) -> float:
+        """Stock of this waste type not yet claimed by a queued transfer."""
+        return (self.collection_center.current_storage[waste_type]
+                - self.transport_manager.queued_volume(self.name, waste_type))
 
-        if self.collection_center.current_storage[waste_type] < volume:
-            return False
-
-        request = TransportRequest(
+    def transfer_waste_to_region(self, waste_type: WasteType, volume: float, destination: RegionType):
+        """Queue a transfer; the volume stays in this center until a vehicle loads it."""
+        self.transport_manager.request_transport(TransportRequest(
             origin=self.region_type,
             destination=destination,
             waste_type=waste_type,
             volume=volume,
             request_time=self.env.now,
-            requester_id=self.name
-        )
-
-        return self.transport_manager.request_transport(request)
+            requester_id=self.name,
+        ))
 
     def collect_from_generator(self, generator, requested_volume=None, waste_type=None):
         """Vehicle-based collection with proper overflow handling and storage management.
@@ -649,7 +646,7 @@ class CollectorCompany(OperationalEntity):
             target_collector.collection_center.current_storage[
                 transport["waste_type"]
             ] += transport["volume"]
-        transport["collector"]._record_trip_cost_and_emissions(
+        transport["collector"].charge_trip(
             {transport["waste_type"]: transport["volume"]},
             get_distance(transport["origin"], transport["destination"]),
         )

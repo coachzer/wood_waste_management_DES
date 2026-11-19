@@ -505,7 +505,7 @@ class TreatmentOperator(OperationalEntity):
 
             drained = collector.provide_waste_for_treatment(remaining, waste_types, treatment_name=self.name)
             if drained and collector.region_type != self.region_type:
-                collector._record_trip_cost_and_emissions(drained, get_distance(collector.region_type, self.region_type))
+                collector.charge_trip(drained, get_distance(collector.region_type, self.region_type))
 
             for waste_type, amount in drained.items():
                 collected_waste[waste_type] = collected_waste.get(waste_type, 0) + amount
@@ -554,20 +554,9 @@ class TreatmentOperator(OperationalEntity):
 
         available_waste = self._get_available_waste_from_collector(collector, amount, waste_types)
 
-        transported_waste = {}
         for waste_type, volume in available_waste.items():
-            if volume > 0:
-
-                success = collector.transfer_waste_to_region(
-                    waste_type, volume, self.region_type
-                )
-
-                if success:
-                    transported_waste[waste_type] = volume
-                else:
-                    print(f"[TRANSPORT FAILED] Could not schedule transport for {waste_type.value}")
-
-        return transported_waste
+            collector.transfer_waste_to_region(waste_type, volume, self.region_type)
+        return available_waste
 
     def _get_available_waste_from_collector(self, collector, max_amount: float, waste_types: List[WasteType]) -> Dict[WasteType, float]:
         """Check what waste is available from a collector"""
@@ -578,8 +567,7 @@ class TreatmentOperator(OperationalEntity):
             if remaining_capacity <= 0:
                 break
 
-            available_in_storage = (collector.collection_center.current_storage[waste_type]
-                                    - collector.transport_manager.queued_volume(collector.name, waste_type))
+            available_in_storage = collector.transferable_volume(waste_type)
             if available_in_storage > 0:
                 can_take = min(available_in_storage, remaining_capacity)
                 available_waste[waste_type] = can_take

@@ -27,6 +27,7 @@ def _world(origin_stock, vehicles):
     transport_manager = PointToPointTransport(state=state, road_circuity_mean=1.0)
     origin.transport_manager = transport_manager
     origin.env = SimpleNamespace(now=0.0)
+    origin.transferable_volume = lambda waste_type: CollectorCompany.transferable_volume(origin, waste_type)
     return origin, transport_manager
 
 
@@ -39,7 +40,7 @@ def test_queued_volume_stays_at_the_sending_center_until_a_vehicle_loads_it():
     vehicle.in_transit = True
     origin, transport_manager = _world(origin_stock=100.0, vehicles=[vehicle])
 
-    assert CollectorCompany.transfer_waste_to_region(origin, WASTE, 40.0, RegionType.OSREDNJESLOVENSKA)
+    CollectorCompany.transfer_waste_to_region(origin, WASTE, 40.0, RegionType.OSREDNJESLOVENSKA)
     assert transport_manager.process_requests(current_time=0.0) == []
     assert origin.collection_center.current_storage[WASTE] == 100.0
 

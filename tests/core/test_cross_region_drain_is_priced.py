@@ -18,7 +18,7 @@ def _collector(region_type, stock, charges):
         region_type=region_type,
         availability=True,
         provide_waste_for_treatment=provide,
-        _record_trip_cost_and_emissions=lambda load, distance: charges.append((region_type, load, distance)),
+        charge_trip=lambda load, distance: charges.append((region_type, load, distance)),
     )
 
 

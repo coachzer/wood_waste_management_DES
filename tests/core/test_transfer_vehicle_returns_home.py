@@ -25,7 +25,7 @@ def _collector(name, region_type, vehicles, stock=0.0):
         collection_center=SimpleNamespace(current_storage={WASTE: stock}),
         active_transports=[], returning_vehicles=[],
     )
-    collector._record_trip_cost_and_emissions = lambda load, distance: None
+    collector.charge_trip = lambda load, distance: None
     return collector
 
 

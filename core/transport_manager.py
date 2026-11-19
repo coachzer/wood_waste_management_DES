@@ -38,9 +38,8 @@ class PointToPointTransport:
         return sum(request.volume for request in self.pending_requests
                    if request.requester_id == requester_id and request.waste_type == waste_type)
 
-    def request_transport(self, request: TransportRequest) -> bool:
+    def request_transport(self, request: TransportRequest):
         self.pending_requests.append(request)
-        return True
     
     def find_available_vehicle(self, origin: RegionType) -> Optional[Dict]:
         """Find an idle vehicle at or near the origin. A FAILED collector's vehicles take no new jobs."""
