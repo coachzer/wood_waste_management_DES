@@ -79,7 +79,7 @@ def test_landfill_readers_agree_on_the_serialized_copy():
     store.record_landfill("col-1", {SAWDUST: 30.0, PAPER: 12.5}, cost=10.0, timestamp=1.0)
     store.record_landfill("col-2", {PAPER: 4.0}, cost=1.0, timestamp=5.0)
 
-    round_tripped = json.loads(json.dumps(jsonify(store.get_landfill_history)))
+    round_tripped = json.loads(json.dumps(jsonify(store.landfill_history)))
 
     expected_by_entity = {"col-1": 42.5, "col-2": 4.0}
     assert store.landfilled_volume_by_entity() == expected_by_entity

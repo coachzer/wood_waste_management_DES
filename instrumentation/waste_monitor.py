@@ -249,12 +249,11 @@ class WasteMonitor:
         """Track processing-related metrics"""
         total_processed = sum(treatment.processed_volumes.values())
         history["processed"]["total"].append(total_processed)
-        return total_processed
 
     def _track_product_metrics(self, treatment, history, timestamp):
         """Track product-related metrics"""
         product_types = self.store.product_types
-        product_volumes = getattr(treatment, 'product_volumes', {})
+        product_volumes = treatment.product_volumes
 
         # Cumulative produced volume per output type (C11 avoided-emissions
         # driver). A write-only series consumed post-hoc by

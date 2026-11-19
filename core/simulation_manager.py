@@ -222,7 +222,7 @@ class SimulationManager:
     def get_monitor_data(self) -> Dict[str, Any]:
         """Extract all relevant monitoring data"""
         monitor_data: Dict[str, Any] = {
-            key: getattr(self.waste_monitor.store, f"get_{key}")
+            key: dict(getattr(self.waste_monitor.store, key))
             for key in HISTORY_KEYS
         }
         monitor_data.update({

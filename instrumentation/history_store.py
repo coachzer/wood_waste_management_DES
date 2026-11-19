@@ -90,9 +90,9 @@ def total_emissions_kgco2e(environmental_history: Dict[str, Any]) -> float:
 
 
 # The polled history dicts and ledgers, in the order get_monitor_data assembles
-# them. Each name doubles as the export key AND the suffix of the HistoryStore
-# getter it is read from (get_{key}); get_monitor_data builds its export by
-# iterating this tuple, so the persisted and exported lists cannot drift.
+# them. Each name is both the export key and the HistoryStore attribute it is
+# copied from; get_monitor_data builds its export by iterating this tuple, so the
+# persisted and exported lists cannot drift.
 HISTORY_KEYS = (
     "generation_history",
     "collection_history",
@@ -125,30 +125,6 @@ class HistoryStore:
             "treatments": {}
         }
         self.product_types = self._get_product_types()
-
-    @property
-    def get_generation_history(self):
-        return dict(self.generation_history)
-
-    @property
-    def get_collection_history(self):
-        return dict(self.collection_history)
-
-    @property
-    def get_processing_history(self):
-        return dict(self.processing_history)
-
-    @property
-    def get_environmental_history(self):
-        return dict(self.environmental_history)
-
-    @property
-    def get_landfill_history(self):
-        return dict(self.landfill_history)
-
-    @property
-    def get_event_history(self):
-        return dict(self.event_history)
 
     # --- Ledgers -------------------------------------------------------------
 
@@ -198,10 +174,6 @@ class HistoryStore:
     def total_landfilled_volume(self):
         """Live system-wide landfilled volume (m3)."""
         return total_landfilled_volume(self.landfill_history)
-
-    @property
-    def get_entity_status_history(self):
-        return dict(self.entity_status_history)
 
     def ensure_generation(self, generator_name):
         """Initialize the per-generator history entry if it does not yet exist.
